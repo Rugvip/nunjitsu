@@ -85,6 +85,8 @@ export class ArenaWriter {
     options: {
       autoescape: boolean;
       streaming: boolean;
+      trimBlocks: boolean;
+      lstripBlocks: boolean;
       canonicalName?: string;
       capabilities: CapabilityDescriptors;
       limits: NormalizedRenderLimits;
@@ -106,7 +108,10 @@ export class ArenaWriter {
     requestView.setUint32(4, contextOffset, true);
     requestView.setUint32(
       8,
-      (options.autoescape ? 1 : 0) | (options.streaming ? 2 : 0),
+      (options.autoescape ? 1 : 0) |
+        (options.streaming ? 2 : 0) |
+        (options.trimBlocks ? 4 : 0) |
+        (options.lstripBlocks ? 8 : 0),
       true,
     );
     requestView.setUint32(12, canonicalOffset, true);

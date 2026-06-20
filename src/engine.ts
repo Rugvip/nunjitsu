@@ -48,6 +48,10 @@ export interface EngineOptions extends TemplateCapabilities {
   loaders?: readonly TemplateLoader[];
   /** Escapes interpolated strings by default. Matches Nunjucks's default of `false`. */
   autoescape?: boolean;
+  /** Removes one LF or CRLF immediately after each block tag. */
+  trimBlocks?: boolean;
+  /** Removes indentation before block tags on otherwise blank lines. */
+  lstripBlocks?: boolean;
 }
 
 /** An inline template accepted by the initial rendering surface. */
@@ -126,6 +130,8 @@ export async function createEngineWithRuntime(
     retainedMemoryBytes,
     options.loaders ?? [],
     options.autoescape ?? false,
+    options.trimBlocks ?? false,
+    options.lstripBlocks ?? false,
     createCapabilityRegistry(options),
   );
   await engine.initialize();
@@ -266,6 +272,8 @@ class EngineImplementation implements Engine {
   readonly #retainedMemoryBytes: number;
   readonly #loaders: readonly TemplateLoader[];
   readonly #autoescape: boolean;
+  readonly #trimBlocks: boolean;
+  readonly #lstripBlocks: boolean;
   readonly #capabilities: CapabilityRegistry;
   readonly #slots: WorkerSlot[] = [];
   readonly #waiters: WorkerWaiter[] = [];
@@ -277,6 +285,8 @@ class EngineImplementation implements Engine {
     retainedMemoryBytes: number,
     loaders: readonly TemplateLoader[],
     autoescape: boolean,
+    trimBlocks: boolean,
+    lstripBlocks: boolean,
     capabilities: CapabilityRegistry,
   ) {
     this.#runtime = runtime;
@@ -284,6 +294,8 @@ class EngineImplementation implements Engine {
     this.#retainedMemoryBytes = retainedMemoryBytes;
     this.#loaders = Object.freeze([...loaders]);
     this.#autoescape = autoescape;
+    this.#trimBlocks = trimBlocks;
+    this.#lstripBlocks = lstripBlocks;
     this.#capabilities = capabilities;
   }
 
@@ -326,6 +338,8 @@ class EngineImplementation implements Engine {
         resolved,
         context,
         this.#autoescape,
+        this.#trimBlocks,
+        this.#lstripBlocks,
         this.#capabilities.descriptors,
         workerLimits,
         name => loadTemplate(this.#loaders, name, signal),
@@ -411,6 +425,8 @@ class EngineImplementation implements Engine {
         resolved,
         context,
         this.#autoescape,
+        this.#trimBlocks,
+        this.#lstripBlocks,
         this.#capabilities.descriptors,
         workerLimits,
         name => loadTemplate(this.#loaders, name, signal),
@@ -640,6 +656,8 @@ class WorkerSlot {
     template: ResolvedTemplate,
     context: TemplateContext,
     autoescape: boolean,
+    trimBlocks: boolean,
+    lstripBlocks: boolean,
     capabilities: CapabilityDescriptors,
     limits: NormalizedRenderLimits,
     load: (name: string) => Promise<LoadedTemplate>,
@@ -667,6 +685,8 @@ class WorkerSlot {
       {
         autoescape,
         streaming: false,
+        trimBlocks,
+        lstripBlocks,
         capabilities,
         limits,
         ...(template.canonicalName ? { canonicalName: template.canonicalName } : {}),
@@ -714,6 +734,8 @@ class WorkerSlot {
     template: ResolvedTemplate,
     context: TemplateContext,
     autoescape: boolean,
+    trimBlocks: boolean,
+    lstripBlocks: boolean,
     capabilities: CapabilityDescriptors,
     limits: NormalizedRenderLimits,
     load: (name: string) => Promise<LoadedTemplate>,
@@ -741,6 +763,8 @@ class WorkerSlot {
       {
         autoescape,
         streaming: true,
+        trimBlocks,
+        lstripBlocks,
         capabilities,
         limits,
         ...(template.canonicalName ? { canonicalName: template.canonicalName } : {}),
@@ -846,7 +870,7 @@ class WorkerSlot {
       return;
     }
     if (value.type === 'ready') {
-      if (value.abiVersion !== 11 || value.arenaBase <= 0) {
+      if (value.abiVersion !== 12 || value.arenaBase <= 0) {
         this.#fail(new Error('Nunjitsu worker reported an incompatible Wasm ABI'));
         return;
       }

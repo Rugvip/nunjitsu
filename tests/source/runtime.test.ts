@@ -233,6 +233,57 @@ test('omits comments and preserves raw and verbatim regions', async () => {
   }
 });
 
+test('applies explicit and environment whitespace controls', async () => {
+  const engine = await createEngine();
+  try {
+    assert.equal(
+      await engine.render(
+        { source: 'Well, {{- greeting -}} my friend' },
+        { greeting: ' hello, ' },
+      ),
+      'Well, hello, my friend',
+    );
+    assert.equal(
+      await engine.render({ source: 'hello \n{#- comment -#} \n world' }),
+      'helloworld',
+    );
+    assert.equal(
+      await engine.render({ source: '  {% if true -%}\n  hi \n{%- endif %}  ' }),
+      '  hi  ',
+    );
+    assert.equal(
+      await engine.render({ source: 'a {% raw -%}\n {{ value }} \n{%- endraw %} b' }),
+      'a {{ value }} b',
+    );
+  } finally {
+    await engine.dispose();
+  }
+
+  const configured = await createEngine({ trimBlocks: true, lstripBlocks: true });
+  try {
+    assert.equal(
+      await configured.render({
+        source: 'test\n {% if true %}\n  foo\n {% endif %}\n</div>',
+      }),
+      'test\n  foo\n</div>',
+    );
+    assert.equal(
+      await configured.render({
+        source: 'test\r\n {% if true %}\r\n  foo\r\n {% endif %}\r\n</div>',
+      }),
+      'test\r\n  foo\r\n</div>',
+    );
+    assert.equal(
+      await configured.render({
+        source: '   {% set a = 1 %} {% set b = 2 %}{{ a }}{{ b }}',
+      }),
+      ' 12',
+    );
+  } finally {
+    await configured.dispose();
+  }
+});
+
 test('filesystem loading stays within explicit canonical roots', async () => {
   const sandbox = await mkdtemp(join(tmpdir(), 'nunjitsu-'));
   const root = join(sandbox, 'templates');

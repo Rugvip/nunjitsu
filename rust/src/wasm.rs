@@ -3,15 +3,15 @@ use crate::expression::{
     next_record_entry, parse_base, parse_for_clause, parse_set_clause, parse_tag_call,
 };
 use crate::template::{
-    ConditionalBoundary, RenderError, RenderedValue, TemplateItem, directive_keyword, emit_escaped,
-    find_conditional_boundary, find_loop_boundaries, next_item,
+    ConditionalBoundary, ParseOptions, RenderError, RenderedValue, TemplateItem, directive_keyword,
+    emit_escaped, find_conditional_boundary, find_loop_boundaries, next_item_with_options,
 };
 use core::arch::wasm32::{memory_grow, memory_size};
 use core::mem::{align_of, size_of};
 use core::ptr::{addr_of, addr_of_mut, read_unaligned, write_unaligned};
 use core::slice;
 
-const ABI_VERSION: u32 = 11;
+const ABI_VERSION: u32 = 12;
 const PAGE_SIZE: usize = 65_536;
 const STREAM_CHUNK_BYTES: u32 = 64 * 1024;
 const RECORD_ALIGNMENT: u32 = 8;
@@ -261,7 +261,7 @@ fn start_render(request_offset: u32) -> Result<(), u32> {
     let globals_offset = read_u32(request, 44)?;
     let limit_capability_calls = read_u32(request, 48)?;
     let tags_offset = read_u32(request, 52)?;
-    if flags & !3 != 0 {
+    if flags & !15 != 0 {
         return Err(ERROR_INVALID_RECORD);
     }
     record_at(source_offset, TAG_SOURCE)?;
@@ -423,7 +423,9 @@ fn run_active_render() -> Result<u32, u32> {
         let source_offset = read_u32(frame, FRAME_SOURCE)?;
         let cursor = read_u32(frame, FRAME_CURSOR)? as usize;
         let source = record_at(source_offset, TAG_SOURCE)?;
-        let (item, next_cursor) = next_item(source, cursor).map_err(render_error_code)?;
+        let (item, next_cursor) =
+            next_item_with_options(source, cursor, parse_options(state_offset)?)
+                .map_err(render_error_code)?;
         let work = match item {
             TemplateItem::Text(bytes)
             | TemplateItem::Expression(bytes)
@@ -564,7 +566,8 @@ fn start_for(state_offset: u32, source: &[u8]) -> Result<(), u32> {
     let body_cursor = read_u32(frame, FRAME_CURSOR)?;
     let template = record_at(source_offset, TAG_SOURCE)?;
     let boundaries =
-        find_loop_boundaries(template, body_cursor as usize).map_err(render_error_code)?;
+        find_loop_boundaries(template, body_cursor as usize, parse_options(state_offset)?)
+            .map_err(render_error_code)?;
     let iterable_offset = evaluate_sync_expression(state_offset, clause.iterable)?;
     let length = iterable_length(iterable_offset)?;
     if length == 0 && boundaries.else_cursor.is_none() {
@@ -829,7 +832,9 @@ fn apply_if_condition(state_offset: u32, value_offset: u32) -> Result<Option<u32
     let source_offset = read_u32(frame, FRAME_SOURCE)?;
     let cursor = read_u32(frame, FRAME_CURSOR)? as usize;
     let source = record_at(source_offset, TAG_SOURCE)?;
-    match find_conditional_boundary(source, cursor, true).map_err(render_error_code)? {
+    match find_conditional_boundary(source, cursor, true, parse_options(state_offset)?)
+        .map_err(render_error_code)?
+    {
         ConditionalBoundary::Else(next_cursor) | ConditionalBoundary::EndIf(next_cursor) => {
             set_frame_field(frame_offset, FRAME_CURSOR, next_cursor as u32)?;
             Ok(None)
@@ -848,7 +853,8 @@ fn skip_active_conditional(state_offset: u32) -> Result<(), u32> {
     let cursor = read_u32(frame, FRAME_CURSOR)? as usize;
     let source = record_at(source_offset, TAG_SOURCE)?;
     let ConditionalBoundary::EndIf(next_cursor) =
-        find_conditional_boundary(source, cursor, false).map_err(render_error_code)?
+        find_conditional_boundary(source, cursor, false, parse_options(state_offset)?)
+            .map_err(render_error_code)?
     else {
         return Err(ERROR_INVALID_ARENA);
     };
@@ -1701,6 +1707,14 @@ fn utf8_chunk_end(bytes: &[u8], start: usize) -> usize {
 
 fn is_streaming(state_offset: u32) -> Result<bool, u32> {
     Ok(state_field(state_offset, STATE_FLAGS)? & 2 == 2)
+}
+
+fn parse_options(state_offset: u32) -> Result<ParseOptions, u32> {
+    let flags = state_field(state_offset, STATE_FLAGS)?;
+    Ok(ParseOptions {
+        trim_blocks: flags & 4 == 4,
+        lstrip_blocks: flags & 8 == 8,
+    })
 }
 
 fn validate_capability_registry(offset: u32) -> Result<(), u32> {

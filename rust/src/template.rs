@@ -28,6 +28,15 @@ pub struct RenderedValue<'a> {
     pub safe: bool,
 }
 
+/// Whitespace behavior fixed for one template environment.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct ParseOptions {
+    /// Removes one LF or CRLF immediately after block tags.
+    pub trim_blocks: bool,
+    /// Removes indentation before block tags that begin on an otherwise blank line.
+    pub lstrip_blocks: bool,
+}
+
 /// One parser event consumed by the streaming evaluator.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum TemplateItem<'a> {
@@ -67,6 +76,15 @@ pub(crate) struct LoopBoundaries {
 
 /// Returns the next streaming parser event and its following source cursor.
 pub fn next_item(source: &[u8], cursor: usize) -> Result<(TemplateItem<'_>, usize), RenderError> {
+    next_item_with_options(source, cursor, ParseOptions::default())
+}
+
+/// Returns the next parser event using environment-level whitespace behavior.
+pub fn next_item_with_options(
+    source: &[u8],
+    cursor: usize,
+    options: ParseOptions,
+) -> Result<(TemplateItem<'_>, usize), RenderError> {
     if cursor >= source.len() {
         return Ok((TemplateItem::End, source.len()));
     }
@@ -74,33 +92,56 @@ pub fn next_item(source: &[u8], cursor: usize) -> Result<(TemplateItem<'_>, usiz
         return Ok((TemplateItem::Text(&source[cursor..]), source.len()));
     };
     if open > cursor {
-        return Ok((TemplateItem::Text(&source[cursor..open]), open));
+        let mut text_end = open;
+        if source.get(open + 2) == Some(&b'-') {
+            while text_end > cursor && source[text_end - 1].is_ascii_whitespace() {
+                text_end -= 1;
+            }
+        } else if options.lstrip_blocks && delimiter == Delimiter::Block {
+            let line_start = source[..open]
+                .iter()
+                .rposition(|byte| *byte == b'\n')
+                .map_or(0, |index| index + 1);
+            if line_start >= cursor && source[line_start..open].iter().all(u8::is_ascii_whitespace)
+            {
+                text_end = line_start;
+            }
+        }
+        return Ok((TemplateItem::Text(&source[cursor..text_end]), open));
     }
 
-    let content_start = open + 2;
+    let left_trim = source.get(open + 2) == Some(&b'-');
+    let content_start = open + 2 + usize::from(left_trim);
     match delimiter {
         Delimiter::Expression => {
             let close = find_pair(&source[content_start..], b'}', b'}')
                 .map(|relative| content_start + relative)
                 .ok_or(RenderError::UnclosedInterpolation)?;
+            let right_trim = close > content_start && source[close - 1] == b'-';
+            let content_end = close - usize::from(right_trim);
             Ok((
-                TemplateItem::Expression(trim_ascii_whitespace(&source[content_start..close])),
-                close + 2,
+                TemplateItem::Expression(trim_ascii_whitespace(
+                    &source[content_start..content_end],
+                )),
+                following_cursor(source, close + 2, right_trim, false),
             ))
         }
         Delimiter::Block => {
             let close = find_pair(&source[content_start..], b'%', b'}')
                 .map(|relative| content_start + relative)
                 .ok_or(RenderError::UnclosedBlockTag)?;
-            let directive = trim_ascii_whitespace(&source[content_start..close]);
+            let right_trim = close > content_start && source[close - 1] == b'-';
+            let content_end = close - usize::from(right_trim);
+            let next_cursor = following_cursor(source, close + 2, right_trim, options.trim_blocks);
+            let directive = trim_ascii_whitespace(&source[content_start..content_end]);
             if matches!(directive, b"raw" | b"verbatim") {
                 let end_name = if directive == b"raw" {
                     b"endraw".as_slice()
                 } else {
                     b"endverbatim".as_slice()
                 };
-                let body_start = close + 2;
-                let (body_end, next_cursor) = find_raw_end(source, body_start, end_name)?;
+                let body_start = next_cursor;
+                let (body_end, next_cursor) = find_raw_end(source, body_start, end_name, options)?;
                 return Ok((
                     TemplateItem::Text(&source[body_start..body_end]),
                     next_cursor,
@@ -111,16 +152,20 @@ pub fn next_item(source: &[u8], cursor: usize) -> Result<(TemplateItem<'_>, usiz
                 .filter(|remainder| remainder.first().is_some_and(u8::is_ascii_whitespace))
             {
                 let name = parse_quoted_literal(trim_ascii_whitespace(include))?;
-                Ok((TemplateItem::Include(name), close + 2))
+                Ok((TemplateItem::Include(name), next_cursor))
             } else {
-                Ok((TemplateItem::Tag(directive), close + 2))
+                Ok((TemplateItem::Tag(directive), next_cursor))
             }
         }
         Delimiter::Comment => {
             let close = find_pair(&source[content_start..], b'#', b'}')
                 .map(|relative| content_start + relative)
                 .ok_or(RenderError::UnclosedComment)?;
-            Ok((TemplateItem::Text(b""), close + 2))
+            let right_trim = close > content_start && source[close - 1] == b'-';
+            Ok((
+                TemplateItem::Text(b""),
+                following_cursor(source, close + 2, right_trim, false),
+            ))
         }
     }
 }
@@ -131,11 +176,12 @@ pub(crate) fn find_conditional_boundary(
     source: &[u8],
     mut cursor: usize,
     include_else: bool,
+    options: ParseOptions,
 ) -> Result<ConditionalBoundary<'_>, RenderError> {
     let mut depth = 0usize;
     let mut loop_depth = 0usize;
     loop {
-        let (item, next_cursor) = next_item(source, cursor)?;
+        let (item, next_cursor) = next_item_with_options(source, cursor, options)?;
         if let TemplateItem::Tag(directive) = item {
             if directive_keyword(directive, b"if").is_some() {
                 depth = depth.checked_add(1).ok_or(RenderError::OutputTooLarge)?;
@@ -172,12 +218,13 @@ pub(crate) fn find_conditional_boundary(
 pub(crate) fn find_loop_boundaries(
     source: &[u8],
     mut cursor: usize,
+    options: ParseOptions,
 ) -> Result<LoopBoundaries, RenderError> {
     let mut loop_depth = 0usize;
     let mut conditional_depth = 0usize;
     let mut else_cursor = None;
     loop {
-        let (item, next_cursor) = next_item(source, cursor)?;
+        let (item, next_cursor) = next_item_with_options(source, cursor, options)?;
         if let TemplateItem::Tag(directive) = item {
             if directive_keyword(directive, b"for").is_some() {
                 loop_depth = loop_depth
@@ -312,7 +359,7 @@ fn visit_template<'a>(
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Eq, PartialEq)]
 enum Delimiter {
     Expression,
     Block,
@@ -333,26 +380,70 @@ fn find_next_tag(source: &[u8], cursor: usize) -> Option<(usize, Delimiter)> {
 
 fn find_raw_end(
     source: &[u8],
-    mut cursor: usize,
+    body_start: usize,
     end_name: &[u8],
+    options: ParseOptions,
 ) -> Result<(usize, usize), RenderError> {
+    let mut search_cursor = body_start;
     loop {
-        let Some(relative) = source[cursor..]
+        let Some(relative) = source[search_cursor..]
             .windows(2)
             .position(|window| window == b"{%")
         else {
             return Err(RenderError::UnclosedRaw);
         };
-        let open = cursor + relative;
-        let content_start = open + 2;
+        let open = search_cursor + relative;
+        let left_trim = source.get(open + 2) == Some(&b'-');
+        let content_start = open + 2 + usize::from(left_trim);
         let close = find_pair(&source[content_start..], b'%', b'}')
             .map(|relative| content_start + relative)
             .ok_or(RenderError::UnclosedRaw)?;
-        if trim_ascii_whitespace(&source[content_start..close]) == end_name {
-            return Ok((open, close + 2));
+        let right_trim = close > content_start && source[close - 1] == b'-';
+        let content_end = close - usize::from(right_trim);
+        if trim_ascii_whitespace(&source[content_start..content_end]) == end_name {
+            let mut body_end = open;
+            if left_trim {
+                while body_end > body_start && source[body_end - 1].is_ascii_whitespace() {
+                    body_end -= 1;
+                }
+            } else if options.lstrip_blocks {
+                let line_start = source[..open]
+                    .iter()
+                    .rposition(|byte| *byte == b'\n')
+                    .map_or(0, |index| index + 1);
+                if line_start >= body_start
+                    && source[line_start..open].iter().all(u8::is_ascii_whitespace)
+                {
+                    body_end = line_start;
+                }
+            }
+            return Ok((
+                body_end,
+                following_cursor(source, close + 2, right_trim, options.trim_blocks),
+            ));
         }
-        cursor = close + 2;
+        search_cursor = close + 2;
     }
+}
+
+fn following_cursor(
+    source: &[u8],
+    mut cursor: usize,
+    explicit_trim: bool,
+    trim_block: bool,
+) -> usize {
+    if explicit_trim {
+        while source.get(cursor).is_some_and(u8::is_ascii_whitespace) {
+            cursor += 1;
+        }
+    } else if trim_block {
+        if source.get(cursor) == Some(&b'\n') {
+            cursor += 1;
+        } else if source.get(cursor..cursor + 2) == Some(b"\r\n") {
+            cursor += 2;
+        }
+    }
+    cursor
 }
 
 fn find_pair(bytes: &[u8], first: u8, second: u8) -> Option<usize> {
@@ -490,22 +581,22 @@ mod tests {
     fn finds_nested_conditional_branches() {
         let source = b"false {% if nested %}nested{% else %}other{% endif %}{% elif second %}second{% else %}last{% endif %}";
         assert_eq!(
-            find_conditional_boundary(source, 0, true),
+            find_conditional_boundary(source, 0, true, ParseOptions::default()),
             Ok(ConditionalBoundary::ElseIf(b"second", 70)),
         );
         assert_eq!(
-            find_conditional_boundary(source, 70, true),
+            find_conditional_boundary(source, 70, true, ParseOptions::default()),
             Ok(ConditionalBoundary::Else(86)),
         );
         assert_eq!(
-            find_conditional_boundary(source, 70, false),
+            find_conditional_boundary(source, 70, false, ParseOptions::default()),
             Ok(ConditionalBoundary::EndIf(source.len())),
         );
 
         let loop_source =
             b"item{% if condition %}yes{% else %}no{% endif %}{% else %}empty{% endfor %}";
         assert_eq!(
-            find_loop_boundaries(loop_source, 0),
+            find_loop_boundaries(loop_source, 0, ParseOptions::default()),
             Ok(LoopBoundaries {
                 else_cursor: Some(58),
                 end_cursor: loop_source.len(),
@@ -519,5 +610,35 @@ mod tests {
         let mut output = vec![0; source.len()];
         let written = render_template(source, false, |_| None, &mut output).unwrap();
         assert_eq!(&output[..written], b"before{{ visible syntax }}after");
+
+        let source = b"hello \n{#- comment -#} \n world";
+        let mut output = vec![0; source.len()];
+        let written = render_template(source, false, |_| None, &mut output).unwrap();
+        assert_eq!(&output[..written], b"helloworld");
+
+        let source = b"test\n {% raw %}\n  foo\n {% endraw %}\n</div>";
+        let options = ParseOptions {
+            trim_blocks: true,
+            lstrip_blocks: true,
+        };
+        let mut cursor = 0;
+        let mut items = Vec::new();
+        loop {
+            let (item, next) = next_item_with_options(source, cursor, options).unwrap();
+            cursor = next;
+            items.push(item);
+            if item == TemplateItem::End {
+                break;
+            }
+        }
+        assert_eq!(
+            items,
+            [
+                TemplateItem::Text(b"test\n"),
+                TemplateItem::Text(b"  foo\n"),
+                TemplateItem::Text(b"</div>"),
+                TemplateItem::End,
+            ],
+        );
     }
 }
