@@ -43,6 +43,21 @@
       "status": "adapted",
       "reason": "Nunjitsu uses an explicitly tagged copied safe value instead of Nunjucks's live safe filter result.",
       "cases": ["compiler-explicit-safe-value"]
+    },
+    {
+      "upstream": { "id": "tests/compiler.js:105", "file": "tests/compiler.js", "test": "should include templates dynamically" },
+      "status": "ported",
+      "cases": ["compiler-dynamic-include-context"]
+    },
+    {
+      "upstream": { "id": "tests/compiler.js:106", "file": "tests/compiler.js", "test": "should include templates dynamically based on a set var" },
+      "status": "ported",
+      "cases": ["compiler-dynamic-include-set"]
+    },
+    {
+      "upstream": { "id": "tests/compiler.js:107", "file": "tests/compiler.js", "test": "should include templates dynamically based on an object attr" },
+      "status": "ported",
+      "cases": ["compiler-dynamic-include-attribute"]
     }
   ]
 }

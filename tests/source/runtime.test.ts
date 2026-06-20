@@ -23,6 +23,12 @@ test('renders through reusable shared-memory workers', async () => {
     'partial.njk': 'partial {{ value }} {% include \'nested.njk\' %}',
     'nested.njk': 'nested',
     'repeat.njk': '{% include "nested.njk" %}{% include "nested.njk" %}',
+    'dynamic.njk': [
+      '{% set chosen = "nested.njk" %}',
+      '{% include chosen %}|',
+      '{% include selection.name %}|',
+      '{% include "NESTED.NJK" | lower %}',
+    ].join(''),
     'cycle-a.njk': '{% include "cycle-b.njk" %}',
     'cycle-b.njk': '{% include "cycle-a.njk" %}',
     'missing-include.njk': '{% include "absent.njk" %}',
@@ -63,6 +69,10 @@ test('renders through reusable shared-memory workers', async () => {
     nestedLoads = 0;
     assert.equal(await engine.render({ name: 'repeat.njk' }), 'nestednested');
     assert.equal(nestedLoads, 1);
+    assert.equal(
+      await engine.render({ name: 'dynamic.njk' }, { selection: { name: 'nested.njk' } }),
+      'nested|nested|nested',
+    );
     await assert.rejects(
       engine.render({ name: 'cycle-a.njk' }),
       error => error instanceof NunjitsuRenderError && error.code === 6,
@@ -414,6 +424,7 @@ test('dispatches immutable async filters, tests, and globals through safe copied
   const engine = await createEngine({
     autoescape: true,
     workerPool: { minWorkers: 1, maxWorkers: 1 },
+    loaders: [memoryLoader({ 'chosen.njk': 'loaded {{ value }}' })],
     filters: {
       async suffix(input, arguments_) {
         await Promise.resolve();
@@ -447,6 +458,10 @@ test('dispatches immutable async filters, tests, and globals through safe copied
       async greet(arguments_) {
         await Promise.resolve();
         return `Hello ${String(arguments_[0])}`;
+      },
+      async select(arguments_) {
+        await Promise.resolve();
+        return arguments_[0] ?? null;
       },
       describe(arguments_) {
         const [user, flags] = arguments_;
@@ -503,6 +518,15 @@ test('dispatches immutable async filters, tests, and globals through safe copied
         engine.renderStream({ source: 'before{{ "x" | suffix("y") }}after' }),
       )).join(''),
       'beforexyafter',
+    );
+    assert.equal(
+      (await Array.fromAsync(
+        engine.renderStream(
+          { source: 'before{% include select("chosen.njk") %}after' },
+          { value: 'asynchronously' },
+        ),
+      )).join(''),
+      'beforeloaded asynchronouslyafter',
     );
     await assert.rejects(
       engine.render(

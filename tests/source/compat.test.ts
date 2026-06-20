@@ -5,6 +5,7 @@ import test from 'node:test';
 import {
   createEngine,
   markSafe,
+  memoryLoader,
   type TemplateContext,
   type TemplateValue,
 } from '../../src/index.ts';
@@ -18,6 +19,7 @@ type CompatibilityJson = null | boolean | number | string | CompatibilityJson[] 
 interface CompatibilityCase {
   id: string;
   template: string;
+  templates?: Record<string, string>;
   context: Record<string, CompatibilityJson>;
   autoescape: boolean;
   expected: string;
@@ -109,7 +111,12 @@ test('shared compatibility corpus has attributed provenance and valid mappings',
 test('shared compatibility cases render through the TypeScript engine', async t => {
   for (const compatibilityCase of cases.cases) {
     await t.test(compatibilityCase.id, async () => {
-      const engine = await createEngine({ autoescape: compatibilityCase.autoescape });
+      const engine = await createEngine({
+        autoescape: compatibilityCase.autoescape,
+        ...(compatibilityCase.templates
+          ? { loaders: [memoryLoader(compatibilityCase.templates)] }
+          : {}),
+      });
       try {
         const context = decodeContext(compatibilityCase.context);
         assert.equal(

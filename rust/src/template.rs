@@ -11,7 +11,7 @@ pub enum RenderError {
     UnclosedRaw,
     /// A block tag is not implemented by the current evaluator.
     UnsupportedTag,
-    /// An include tag did not contain one quoted literal name.
+    /// An include tag did not contain a target expression.
     InvalidInclude,
     /// The rendered output length exceeded the addressable range.
     OutputTooLarge,
@@ -44,7 +44,7 @@ pub enum TemplateItem<'a> {
     Text(&'a [u8]),
     /// A context expression between interpolation delimiters.
     Expression(&'a [u8]),
-    /// A literal template name requested by an include tag.
+    /// A template-name expression requested by an include tag.
     Include(&'a [u8]),
     /// A non-built-in block directive resolved against declarative tag schemas.
     Tag(&'a [u8]),
@@ -147,12 +147,17 @@ pub fn next_item_with_options(
                     next_cursor,
                 ));
             }
-            if let Some(include) = directive
+            if directive == b"include" {
+                Err(RenderError::InvalidInclude)
+            } else if let Some(include) = directive
                 .strip_prefix(b"include")
                 .filter(|remainder| remainder.first().is_some_and(u8::is_ascii_whitespace))
             {
-                let name = parse_quoted_literal(trim_ascii_whitespace(include))?;
-                Ok((TemplateItem::Include(name), next_cursor))
+                let expression = trim_ascii_whitespace(include);
+                if expression.is_empty() {
+                    return Err(RenderError::InvalidInclude);
+                }
+                Ok((TemplateItem::Include(expression), next_cursor))
             } else {
                 Ok((TemplateItem::Tag(directive), next_cursor))
             }
@@ -452,21 +457,6 @@ fn find_pair(bytes: &[u8], first: u8, second: u8) -> Option<usize> {
         .position(|window| window[0] == first && window[1] == second)
 }
 
-fn parse_quoted_literal(bytes: &[u8]) -> Result<&[u8], RenderError> {
-    if bytes.len() < 2 {
-        return Err(RenderError::InvalidInclude);
-    }
-    let quote = bytes[0];
-    if !matches!(quote, b'\'' | b'"') || bytes[bytes.len() - 1] != quote {
-        return Err(RenderError::InvalidInclude);
-    }
-    let value = &bytes[1..bytes.len() - 1];
-    if value.is_empty() || value.contains(&quote) {
-        return Err(RenderError::InvalidInclude);
-    }
-    Ok(value)
-}
-
 fn trim_ascii_whitespace(mut bytes: &[u8]) -> &[u8] {
     while bytes.first().is_some_and(u8::is_ascii_whitespace) {
         bytes = &bytes[1..];
@@ -489,7 +479,7 @@ mod tests {
             TemplateItem::Text(b"before "),
             TemplateItem::Expression(b"name"),
             TemplateItem::Text(b" "),
-            TemplateItem::Include(b"partial.njk"),
+            TemplateItem::Include(b"'partial.njk'"),
             TemplateItem::Text(b" after"),
             TemplateItem::End,
         ];
@@ -528,6 +518,10 @@ mod tests {
         );
         assert_eq!(
             render_template(b"{% include value %}", false, |_| None, &mut output),
+            Err(RenderError::UnsupportedTag),
+        );
+        assert_eq!(
+            render_template(b"{% include  %}", false, |_| None, &mut output),
             Err(RenderError::InvalidInclude),
         );
         assert_eq!(

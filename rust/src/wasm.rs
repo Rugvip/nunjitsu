@@ -91,6 +91,7 @@ const STATE_PENDING_SET_NAME: usize = 124;
 const EXPRESSION_OUTPUT: u32 = 0;
 const EXPRESSION_IF: u32 = 1;
 const EXPRESSION_SET: u32 = 2;
+const EXPRESSION_INCLUDE: u32 = 3;
 
 const NEGATE_NONE: u32 = 0;
 const NEGATE_BOOLEAN: u32 = 1;
@@ -456,22 +457,11 @@ fn run_active_render() -> Result<u32, u32> {
                     return yield_output(state_offset);
                 }
             }
-            TemplateItem::Include(name) => {
-                charge_counter(
-                    state_offset,
-                    STATE_LOADER_CALLS,
-                    STATE_LIMIT_LOADER_CALLS,
-                    1,
-                )?;
-                let name_offset = write_bytes_record(TAG_STRING, name)?;
-                set_state_field(state_offset, STATE_PENDING_NAME, name_offset)?;
-                set_control(
-                    STATE_LOAD_TEMPLATE,
-                    name_offset,
-                    name.len() as u32,
-                    ERROR_NONE,
-                );
-                return Ok(STATE_LOAD_TEMPLATE);
+            TemplateItem::Include(expression) => {
+                if let Some(state) = start_expression(state_offset, expression, EXPRESSION_INCLUDE)?
+                {
+                    return Ok(state);
+                }
             }
             TemplateItem::Tag(directive) => {
                 if let Some(state) = handle_tag(state_offset, directive)? {
@@ -728,6 +718,7 @@ fn continue_expression(state_offset: u32) -> Result<Option<u32>, u32> {
                 set_state_field(state_offset, STATE_PENDING_SET_NAME, 0)?;
                 None
             }
+            EXPRESSION_INCLUDE => Some(issue_include(state_offset, value_offset)?),
             _ => return Err(ERROR_INVALID_ARENA),
         };
         if next_state.is_none()
@@ -821,6 +812,31 @@ fn continue_expression(state_offset: u32) -> Result<Option<u32>, u32> {
             continue_expression(state_offset)
         }
     }
+}
+
+fn issue_include(state_offset: u32, value_offset: u32) -> Result<u32, u32> {
+    let name = match Value::at(value_offset)? {
+        Value::String(name) | Value::SafeString(name) if !name.is_empty() => name,
+        _ => return Err(ERROR_INVALID_EXPRESSION),
+    };
+    if name.contains(&0) {
+        return Err(ERROR_INVALID_EXPRESSION);
+    }
+    charge_counter(
+        state_offset,
+        STATE_LOADER_CALLS,
+        STATE_LIMIT_LOADER_CALLS,
+        1,
+    )?;
+    let name_offset = write_bytes_record(TAG_STRING, name)?;
+    set_state_field(state_offset, STATE_PENDING_NAME, name_offset)?;
+    set_control(
+        STATE_LOAD_TEMPLATE,
+        name_offset,
+        name.len() as u32,
+        ERROR_NONE,
+    );
+    Ok(STATE_LOAD_TEMPLATE)
 }
 
 fn apply_if_condition(state_offset: u32, value_offset: u32) -> Result<Option<u32>, u32> {

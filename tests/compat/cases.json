@@ -79,6 +79,30 @@
       },
       "autoescape": true,
       "expected": "\"'<>&"
+    },
+    {
+      "id": "compiler-dynamic-include-context",
+      "template": "hello world {% include tmpl %}",
+      "templates": { "include.njk": "FooInclude {{ name }}" },
+      "context": { "name": "thedude", "tmpl": "include.njk" },
+      "autoescape": false,
+      "expected": "hello world FooInclude thedude"
+    },
+    {
+      "id": "compiler-dynamic-include-set",
+      "template": "hello world {% set tmpl = \"include.njk\" %}{% include tmpl %}",
+      "templates": { "include.njk": "FooInclude {{ name }}" },
+      "context": { "name": "thedude" },
+      "autoescape": false,
+      "expected": "hello world FooInclude thedude"
+    },
+    {
+      "id": "compiler-dynamic-include-attribute",
+      "template": "hello world {% include data.tmpl %}",
+      "templates": { "include.njk": "FooInclude {{ name }}" },
+      "context": { "name": "thedude", "data": { "tmpl": "include.njk" } },
+      "autoescape": false,
+      "expected": "hello world FooInclude thedude"
     }
   ]
 }
