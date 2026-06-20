@@ -296,6 +296,16 @@
       "upstream": { "id": "tests/compiler.js:93", "file": "tests/compiler.js", "test": "should render nested blocks in child template" },
       "status": "ported",
       "cases": ["compiler-inheritance-nested-child-block"]
+    },
+    {
+      "upstream": { "id": "tests/compiler.js:94", "file": "tests/compiler.js", "test": "should render parent blocks with super()" },
+      "status": "ported",
+      "cases": ["compiler-inheritance-super", "compiler-inheritance-multilevel-super"]
+    },
+    {
+      "upstream": { "id": "tests/compiler.js:95", "file": "tests/compiler.js", "test": "should let super() see global vars from child template" },
+      "status": "ported",
+      "cases": ["compiler-inheritance-super-child-global"]
     }
   ]
 }

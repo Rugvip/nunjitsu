@@ -15,7 +15,7 @@ use core::mem::{align_of, size_of};
 use core::ptr::{addr_of, addr_of_mut, read_unaligned, write_unaligned};
 use core::slice;
 
-const ABI_VERSION: u32 = 19;
+const ABI_VERSION: u32 = 20;
 const PAGE_SIZE: usize = 65_536;
 const STREAM_CHUNK_BYTES: u32 = 64 * 1024;
 const RECORD_ALIGNMENT: u32 = 8;
@@ -159,7 +159,7 @@ const CAPTURE_LAST_CHUNK: usize = 16;
 const CAPTURE_OUTPUT_LENGTH: usize = 20;
 const CAPTURE_TOTAL_OUTPUT_LENGTH: usize = 24;
 
-const MACRO_DEFINITION_LENGTH: u32 = 28;
+const MACRO_DEFINITION_LENGTH: u32 = 36;
 const MACRO_DEFINITION_PARENT: usize = 0;
 const MACRO_DEFINITION_NAME: usize = 4;
 const MACRO_DEFINITION_SOURCE: usize = 8;
@@ -167,6 +167,8 @@ const MACRO_DEFINITION_BODY_CURSOR: usize = 12;
 const MACRO_DEFINITION_PARAMETERS: usize = 16;
 const MACRO_DEFINITION_SCOPE: usize = 20;
 const MACRO_DEFINITION_FRAME: usize = 24;
+const MACRO_DEFINITION_SUPER: usize = 28;
+const MACRO_DEFINITION_END_CURSOR: usize = 32;
 
 const MACRO_CALL_LENGTH: u32 = 64;
 const MACRO_CALL_PARENT: usize = 0;
@@ -642,6 +644,18 @@ fn run_active_render() -> Result<u32, u32> {
                 }
             }
             TemplateItem::End => {
+                let macro_call = state_field(state_offset, STATE_CURRENT_MACRO_CALL)?;
+                if macro_call != 0
+                    && macro_call_field(macro_call, MACRO_CALL_FRAME)? == frame_offset
+                {
+                    if let Some(state) = finish_macro_call(state_offset)? {
+                        return Ok(state);
+                    }
+                    if should_yield_output(state_offset)? {
+                        return yield_output(state_offset);
+                    }
+                    continue;
+                }
                 let extends_capture = state_field(state_offset, STATE_EXTENDS_CAPTURE)?;
                 if extends_capture != 0
                     && extends_capture == state_field(state_offset, STATE_CURRENT_CAPTURE)?
@@ -858,6 +872,15 @@ fn prepare_extending_template(state_offset: u32) -> Result<(), u32> {
                     };
                     cursor = end_cursor;
                     continue;
+                } else if block_depth == 0
+                    && let Some(clause) = directive_keyword(directive, b"set")
+                {
+                    let clause = parse_set_clause(clause).map_err(|_| ERROR_UNSUPPORTED_TAG)?;
+                    if let Some(expression) = clause.expression {
+                        let bindings = write_bindings(clause.targets)?;
+                        let value = evaluate_sync_expression(state_offset, expression)?;
+                        assign_bindings(state_offset, bindings, value)?;
+                    }
                 }
             }
             TemplateItem::End => break,
@@ -1179,6 +1202,76 @@ fn resolve_block(state_offset: u32, name: &[u8]) -> Result<Option<u32>, u32> {
     Ok(None)
 }
 
+fn write_super_definition(
+    source_offset: u32,
+    body_cursor: u32,
+    end_cursor: u32,
+    scope: u32,
+    owner_frame: u32,
+    next_super: u32,
+) -> Result<u32, u32> {
+    let name = write_bytes_record(TAG_STRING, b"super")?;
+    let parameters = write_bytes_record(TAG_STRING, b"")?;
+    let definition_offset = allocate_record(TAG_MACRO_DEFINITION, MACRO_DEFINITION_LENGTH)?;
+    let definition = mutable_record_at(definition_offset, TAG_MACRO_DEFINITION)?;
+    write_u32(definition, MACRO_DEFINITION_PARENT, 0)?;
+    write_u32(definition, MACRO_DEFINITION_NAME, name)?;
+    write_u32(definition, MACRO_DEFINITION_SOURCE, source_offset)?;
+    write_u32(definition, MACRO_DEFINITION_BODY_CURSOR, body_cursor)?;
+    write_u32(definition, MACRO_DEFINITION_PARAMETERS, parameters)?;
+    write_u32(definition, MACRO_DEFINITION_SCOPE, scope)?;
+    write_u32(definition, MACRO_DEFINITION_FRAME, owner_frame)?;
+    write_u32(definition, MACRO_DEFINITION_SUPER, next_super)?;
+    write_u32(definition, MACRO_DEFINITION_END_CURSOR, end_cursor)?;
+    Ok(definition_offset)
+}
+
+fn write_super_chain(definition_offset: u32, name: &[u8], fallback: u32) -> Result<u32, u32> {
+    let mut count = 0usize;
+    let mut candidate = block_definition_field(definition_offset, BLOCK_DEFINITION_PARENT)?;
+    while candidate != 0 {
+        if record_at(
+            block_definition_field(candidate, BLOCK_DEFINITION_NAME)?,
+            TAG_STRING,
+        )? == name
+        {
+            count = count.checked_add(1).ok_or(ERROR_RESOURCE_LIMIT)?;
+        }
+        candidate = block_definition_field(candidate, BLOCK_DEFINITION_PARENT)?;
+    }
+
+    let mut chain = fallback;
+    for requested in (0..count).rev() {
+        candidate = block_definition_field(definition_offset, BLOCK_DEFINITION_PARENT)?;
+        let mut index = 0usize;
+        let selected = loop {
+            if candidate == 0 {
+                return Err(ERROR_INVALID_ARENA);
+            }
+            if record_at(
+                block_definition_field(candidate, BLOCK_DEFINITION_NAME)?,
+                TAG_STRING,
+            )? == name
+            {
+                if index == requested {
+                    break candidate;
+                }
+                index = index.checked_add(1).ok_or(ERROR_RESOURCE_LIMIT)?;
+            }
+            candidate = block_definition_field(candidate, BLOCK_DEFINITION_PARENT)?;
+        };
+        chain = write_super_definition(
+            block_definition_field(selected, BLOCK_DEFINITION_SOURCE)?,
+            block_definition_field(selected, BLOCK_DEFINITION_BODY_CURSOR)?,
+            block_definition_field(selected, BLOCK_DEFINITION_END_CURSOR)?,
+            block_definition_field(selected, BLOCK_DEFINITION_SCOPE)?,
+            block_definition_field(selected, BLOCK_DEFINITION_FRAME)?,
+            chain,
+        )?;
+    }
+    Ok(chain)
+}
+
 fn start_block(state_offset: u32, name: &[u8]) -> Result<(), u32> {
     let block = parse_tag_call(name).map_err(|_| ERROR_UNSUPPORTED_TAG)?;
     if !block.arguments.is_empty() {
@@ -1202,6 +1295,16 @@ fn start_block(state_offset: u32, name: &[u8]) -> Result<(), u32> {
     )
     .map_err(render_error_code)? as u32;
     set_frame_field(frame_offset, FRAME_CURSOR, end_cursor)?;
+    let current_scope = state_field(state_offset, STATE_CURRENT_SCOPE)?;
+    let base_super = write_super_definition(
+        source_offset,
+        body_cursor,
+        end_cursor,
+        current_scope,
+        frame_offset,
+        0,
+    )?;
+    let super_definition = write_super_chain(definition_offset, block.name, base_super)?;
 
     let block_frame = allocate_record(TAG_FRAME, FRAME_LENGTH)?;
     write_frame(
@@ -1219,7 +1322,9 @@ fn start_block(state_offset: u32, name: &[u8]) -> Result<(), u32> {
         state_offset,
         STATE_CURRENT_SCOPE,
         block_definition_field(definition_offset, BLOCK_DEFINITION_SCOPE)?,
-    )
+    )?;
+    let super_name = write_bytes_record(TAG_STRING, b"super")?;
+    assign_scope(state_offset, super_name, super_definition)
 }
 
 fn start_call_block(state_offset: u32, source: &[u8]) -> Result<(), u32> {
@@ -1521,7 +1626,7 @@ fn start_macro_call(
         macro_definition_field(definition_offset, MACRO_DEFINITION_BODY_CURSOR)?,
         0,
         macro_definition_field(definition_offset, MACRO_DEFINITION_SCOPE)?,
-        0,
+        macro_definition_field(definition_offset, MACRO_DEFINITION_END_CURSOR)?,
     )?;
     let call_offset = allocate_record(TAG_MACRO_CALL, MACRO_CALL_LENGTH)?;
     let call_record = mutable_record_at(call_offset, TAG_MACRO_CALL)?;
@@ -1647,6 +1752,11 @@ fn start_macro_call(
     if caller_definition != 0 {
         let name_offset = write_bytes_record(TAG_STRING, b"caller")?;
         assign_scope(state_offset, name_offset, caller_definition)?;
+    }
+    let super_definition = macro_definition_field(definition_offset, MACRO_DEFINITION_SUPER)?;
+    if super_definition != 0 {
+        let name_offset = write_bytes_record(TAG_STRING, b"super")?;
+        assign_scope(state_offset, name_offset, super_definition)?;
     }
     Ok(())
 }

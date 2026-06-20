@@ -77,7 +77,9 @@ parsed form, dependency graph, or raw source is retained for another render.
 An extending template contributes compact block definitions in child-first
 resolution order. Selected overrides execute through bounded source frames, so
 inheritance does not require copying block bodies or retaining a precompiled
-template graph.
+template graph. Each active override receives a render-local `super` callable
+linked to the next matching definition and ultimately the parent body; invoking
+it uses the same captured, resumable frame path as a macro call.
 
 Imports materialize a render-local namespace record containing exported values
 and deferred macro definitions. `from` imports bind selected namespace entries

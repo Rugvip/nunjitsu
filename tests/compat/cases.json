@@ -771,6 +771,33 @@
       "expected": "FooBARBazFizzle"
     },
     {
+      "id": "compiler-inheritance-super",
+      "template": "{% extends \"base.njk\" %}{% block block1 %}{{ super() }}BAR{% endblock %}",
+      "templates": { "base.njk": "Foo{% block block1 %}Bar{% endblock %}{% block block2 %}Baz{% endblock %}Fizzle" },
+      "nativeRender": false,
+      "context": {},
+      "autoescape": false,
+      "expected": "FooBarBARBazFizzle"
+    },
+    {
+      "id": "compiler-inheritance-multilevel-super",
+      "template": "{% extends \"base-inherit.njk\" %}{% block block1 %}*{{ super() }}*{% endblock %}",
+      "templates": { "base.njk": "Foo{% block block1 %}Bar{% endblock %}{% block block2 %}Baz{% endblock %}Fizzle", "base-inherit.njk": "{% extends \"base.njk\" %}{% block block1 %}*{{ super() }}*{% endblock %}" },
+      "nativeRender": false,
+      "context": {},
+      "autoescape": false,
+      "expected": "Foo**Bar**BazFizzle"
+    },
+    {
+      "id": "compiler-inheritance-super-child-global",
+      "template": "{% extends \"base-show.njk\" %}{% set var = \"child\" %}{% block main %}{{ super() }}{% endblock %}",
+      "templates": { "base-show.njk": "{% block main %}{{ var }}{% endblock %}" },
+      "nativeRender": false,
+      "context": {},
+      "autoescape": false,
+      "expected": "child"
+    },
+    {
       "id": "compiler-block-set-inside-macro",
       "template": "{%- macro foo(bar) -%}{%- set test -%}foo{%- endset -%}{{ bar }}{{ test }}{%- endmacro -%}{{ foo(\"bar\") }}",
       "nativeRender": false,
