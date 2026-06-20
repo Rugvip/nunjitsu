@@ -1,4 +1,3 @@
-import { readFile } from 'node:fs/promises';
 import { parentPort, workerData, type MessagePort } from 'node:worker_threads';
 
 import { decodeLoadRequest, decodeOutput } from './protocol.ts';
@@ -6,7 +5,7 @@ import { decodeLoadRequest, decodeOutput } from './protocol.ts';
 /** Data supplied by the engine when a worker starts. */
 interface NunjitsuWorkerData {
   memory: WebAssembly.Memory;
-  wasmUrl: string;
+  wasmModule: WebAssembly.Module;
 }
 
 /** Initial render command accepted by an idle worker. */
@@ -81,8 +80,7 @@ void start(parentPort).catch(error => {
 
 async function start(port: MessagePort): Promise<void> {
   const data = parseWorkerData(workerData);
-  const bytes = await readFile(new URL(data.wasmUrl));
-  const instantiated = await WebAssembly.instantiate(bytes, {
+  const instance = await WebAssembly.instantiate(data.wasmModule, {
     env: {
       memory: data.memory,
       nunjitsu_random_index: randomIndex,
@@ -108,7 +106,7 @@ async function start(port: MessagePort): Promise<void> {
       ),
     },
   });
-  const exports = parseExports(instantiated.instance.exports);
+  const exports = parseExports(instance.exports);
   exports.arenaReset();
   const controlOffset = exports.controlOffset();
 
@@ -368,10 +366,11 @@ function parseWorkerData(value: unknown): NunjitsuWorkerData {
   if (!(memory.buffer instanceof SharedArrayBuffer)) {
     throw new Error('Nunjitsu worker memory must be shared');
   }
-  if (typeof candidate.wasmUrl !== 'string') {
-    throw new Error('Nunjitsu worker requires a Wasm URL');
+  const wasmModule = candidate.wasmModule;
+  if (!(wasmModule instanceof WebAssembly.Module)) {
+    throw new Error('Nunjitsu worker requires a compiled Wasm module');
   }
-  return { memory, wasmUrl: candidate.wasmUrl };
+  return { memory, wasmModule };
 }
 
 function parseCommand(value: unknown): WorkerCommand {

@@ -1,3 +1,4 @@
+import { readFile } from 'node:fs/promises';
 import { availableParallelism } from 'node:os';
 import { Worker } from 'node:worker_threads';
 
@@ -290,6 +291,7 @@ class EngineImplementation implements Engine {
   readonly #capabilities: CapabilityRegistry;
   readonly #slots: WorkerSlot[] = [];
   readonly #waiters: WorkerWaiter[] = [];
+  #wasmModule: WebAssembly.Module | undefined;
   #disposed = false;
 
   constructor(
@@ -313,8 +315,10 @@ class EngineImplementation implements Engine {
   }
 
   async initialize(): Promise<void> {
-    const slots = Array.from({ length: this.#pool.minWorkers }, () => this.#addSlot());
     try {
+      const bytes = await readFile(this.#runtime.wasmUrl);
+      this.#wasmModule = await WebAssembly.compile(bytes);
+      const slots = Array.from({ length: this.#pool.minWorkers }, () => this.#addSlot());
       await Promise.all(slots.map(slot => slot.ready));
     } catch (error) {
       await this.dispose();
@@ -564,7 +568,11 @@ class EngineImplementation implements Engine {
   }
 
   #addSlot(): WorkerSlot {
-    const slot = new WorkerSlot(this.#runtime);
+    const wasmModule = this.#wasmModule;
+    if (!wasmModule) {
+      throw new Error('The Nunjitsu Wasm module is not initialized');
+    }
+    const slot = new WorkerSlot(this.#runtime.workerUrl, wasmModule);
     this.#slots.push(slot);
     return slot;
   }
@@ -655,7 +663,7 @@ class WorkerSlot {
   #rejectReady: ((error: Error) => void) | undefined;
   #closed = false;
 
-  constructor(runtime: RuntimeAssets) {
+  constructor(workerUrl: URL, wasmModule: WebAssembly.Module) {
     this.memory = new WebAssembly.Memory({
       initial: initialMemoryPages,
       maximum: maximumMemoryPages,
@@ -665,10 +673,10 @@ class WorkerSlot {
       this.#resolveReady = resolve;
       this.#rejectReady = reject;
     });
-    this.#worker = new Worker(runtime.workerUrl, {
+    this.#worker = new Worker(workerUrl, {
       workerData: {
         memory: this.memory,
-        wasmUrl: runtime.wasmUrl.href,
+        wasmModule,
       },
     });
     this.#worker.on('message', message => this.#handleMessage(message));

@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises';
+import { copyFile, mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
@@ -17,6 +17,7 @@ import {
   type TemplateContext,
   type TemplateLoader,
 } from '../../src/index.ts';
+import { createEngineWithRuntime } from '../../src/engine.ts';
 import { decodeLoadRequest } from '../../src/protocol.ts';
 
 test('validates parent-aware loader request records at the Wasm boundary', () => {
@@ -202,6 +203,55 @@ test('renders through reusable shared-memory workers', async () => {
   }
 
   await assert.rejects(engine.render({ source: 'disposed' }), /disposed/);
+});
+
+test('compiles Wasm once before growing the lazy worker pool', async () => {
+  const sandbox = await mkdtemp(join(tmpdir(), 'nunjitsu-wasm-'));
+  const copiedWasm = join(sandbox, 'nunjitsu_engine.wasm');
+  await copyFile(
+    new URL('../../rust/target/wasm32-unknown-unknown/release/nunjitsu_engine.wasm', import.meta.url),
+    copiedWasm,
+  );
+  let markLoadStarted: (() => void) | undefined;
+  const loadStarted = new Promise<void>(resolve => {
+    markLoadStarted = resolve;
+  });
+  let releaseLoad: (() => void) | undefined;
+  const loadReleased = new Promise<void>(resolve => {
+    releaseLoad = resolve;
+  });
+  const engine = await createEngineWithRuntime(
+    {
+      workerUrl: new URL('../../src/worker.ts', import.meta.url),
+      wasmUrl: pathToFileURL(copiedWasm),
+    },
+    {
+      loaders: [{
+        async load(name) {
+          if (name !== 'held.njk') {
+            return null;
+          }
+          markLoadStarted?.();
+          await loadReleased;
+          return { source: 'held', canonicalName: 'memory:held.njk' };
+        },
+      }],
+      workerPool: { minWorkers: 1, maxWorkers: 2 },
+    },
+  );
+
+  try {
+    await rm(copiedWasm);
+    const heldRender = engine.render({ source: '{% include "held.njk" %}' });
+    await loadStarted;
+    assert.equal(await engine.render({ source: 'lazy worker' }), 'lazy worker');
+    releaseLoad?.();
+    assert.equal(await heldRender, 'held');
+  } finally {
+    releaseLoad?.();
+    await engine.dispose();
+    await rm(sandbox, { force: true, recursive: true });
+  }
 });
 
 test('streams evaluator chunks with backpressure and preserves partial failure semantics', async () => {
