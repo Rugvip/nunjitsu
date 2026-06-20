@@ -24,6 +24,32 @@ pub enum Atom<'a> {
     Undefined,
     /// A callable global expression.
     Call(Call<'a>),
+    /// A parenthesized expression evaluated as one operand.
+    Group(&'a [u8]),
+}
+
+/// One atom with an optional unary `not` operator.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct Operand<'a> {
+    /// Directly resolvable operand value.
+    pub atom: Atom<'a>,
+    /// Whether truthiness is inverted before applying the next operation.
+    pub negated: bool,
+}
+
+/// Supported comparison operation.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum Comparison {
+    Equal,
+    StrictEqual,
+    NotEqual,
+    StrictNotEqual,
+    Less,
+    LessOrEqual,
+    Greater,
+    GreaterOrEqual,
+    In,
+    NotIn,
 }
 
 /// One operation following an expression's base atom.
@@ -33,6 +59,15 @@ pub enum Operation<'a> {
     Filter(Call<'a>),
     /// An `is [not] test(...)` operation.
     Test { call: Call<'a>, negated: bool },
+    /// A comparison against one following operand.
+    Compare {
+        operator: Comparison,
+        operand: Operand<'a>,
+    },
+    /// A short-circuiting boolean `and` operation.
+    And(Operand<'a>),
+    /// A short-circuiting boolean `or` operation.
+    Or(Operand<'a>),
 }
 
 /// A malformed or currently unsupported expression shape.
@@ -41,13 +76,8 @@ pub struct ExpressionError;
 
 /// Parses the base atom, its unary negation, and the following operation cursor.
 pub fn parse_base(expression: &[u8]) -> Result<(Atom<'_>, usize, bool), ExpressionError> {
-    let mut cursor = skip_whitespace(expression, 0);
-    let negated = has_keyword(expression, cursor, b"not");
-    if negated {
-        cursor = skip_whitespace(expression, cursor + 3);
-    }
-    let (atom, cursor) = parse_atom(expression, cursor)?;
-    Ok((atom, skip_whitespace(expression, cursor), negated))
+    let (operand, cursor) = parse_operand(expression, 0)?;
+    Ok((operand.atom, cursor, operand.negated))
 }
 
 /// Returns each validated dotted or bracketed lookup segment in order.
@@ -129,6 +159,52 @@ pub fn next_operation(
             skip_whitespace(expression, cursor),
         )));
     }
+    if has_keyword(expression, cursor, b"not") {
+        let next = skip_whitespace(expression, cursor + 3);
+        if has_keyword(expression, next, b"in") {
+            let (operand, cursor) = parse_operand(expression, next + 2)?;
+            return Ok(Some((
+                Operation::Compare {
+                    operator: Comparison::NotIn,
+                    operand,
+                },
+                cursor,
+            )));
+        }
+    }
+    if has_keyword(expression, cursor, b"in") {
+        let (operand, cursor) = parse_operand(expression, cursor + 2)?;
+        return Ok(Some((
+            Operation::Compare {
+                operator: Comparison::In,
+                operand,
+            },
+            cursor,
+        )));
+    }
+    if has_keyword(expression, cursor, b"and") {
+        let (operand, cursor) = parse_operand(expression, cursor + 3)?;
+        return Ok(Some((Operation::And(operand), cursor)));
+    }
+    if has_keyword(expression, cursor, b"or") {
+        let (operand, cursor) = parse_operand(expression, cursor + 2)?;
+        return Ok(Some((Operation::Or(operand), cursor)));
+    }
+    for (symbol, operator) in [
+        (b"!==".as_slice(), Comparison::StrictNotEqual),
+        (b"===".as_slice(), Comparison::StrictEqual),
+        (b"!=".as_slice(), Comparison::NotEqual),
+        (b"==".as_slice(), Comparison::Equal),
+        (b"<=".as_slice(), Comparison::LessOrEqual),
+        (b">=".as_slice(), Comparison::GreaterOrEqual),
+        (b"<".as_slice(), Comparison::Less),
+        (b">".as_slice(), Comparison::Greater),
+    ] {
+        if expression.get(cursor..cursor + symbol.len()) == Some(symbol) {
+            let (operand, cursor) = parse_operand(expression, cursor + symbol.len())?;
+            return Ok(Some((Operation::Compare { operator, operand }, cursor)));
+        }
+    }
     Err(ExpressionError)
 }
 
@@ -168,6 +244,10 @@ pub fn parse_tag_call(directive: &[u8]) -> Result<Call<'_>, ExpressionError> {
 
 fn parse_atom(bytes: &[u8], cursor: usize) -> Result<(Atom<'_>, usize), ExpressionError> {
     let byte = *bytes.get(cursor).ok_or(ExpressionError)?;
+    if byte == b'(' {
+        let (expression, cursor) = parse_parenthesized(bytes, cursor)?;
+        return Ok((Atom::Group(expression), cursor));
+    }
     if matches!(byte, b'\'' | b'"') {
         return parse_string(bytes, cursor, byte);
     }
@@ -205,6 +285,16 @@ fn parse_atom(bytes: &[u8], cursor: usize) -> Result<(Atom<'_>, usize), Expressi
         _ => Atom::Lookup(name),
     };
     Ok((atom, cursor))
+}
+
+fn parse_operand(bytes: &[u8], cursor: usize) -> Result<(Operand<'_>, usize), ExpressionError> {
+    let mut cursor = skip_whitespace(bytes, cursor);
+    let negated = has_keyword(bytes, cursor, b"not");
+    if negated {
+        cursor = skip_whitespace(bytes, cursor + 3);
+    }
+    let (atom, cursor) = parse_atom(bytes, cursor)?;
+    Ok((Operand { atom, negated }, skip_whitespace(bytes, cursor)))
 }
 
 fn parse_named_call(bytes: &[u8], cursor: usize) -> Result<(Call<'_>, usize), ExpressionError> {
@@ -430,5 +520,41 @@ mod tests {
                 b"0".as_slice(),
             ],
         );
+    }
+
+    #[test]
+    fn parses_boolean_and_comparison_operations() {
+        let expression = br#"(hungry or pizza) and not anchovies or food == "salad""#;
+        let (base, cursor, negated) = parse_base(expression).unwrap();
+        assert_eq!(base, Atom::Group(b"hungry or pizza"));
+        assert!(!negated);
+        let (operation, cursor) = next_operation(expression, cursor).unwrap().unwrap();
+        assert_eq!(
+            operation,
+            Operation::And(Operand {
+                atom: Atom::Lookup(b"anchovies"),
+                negated: true,
+            }),
+        );
+        let (operation, cursor) = next_operation(expression, cursor).unwrap().unwrap();
+        assert_eq!(
+            operation,
+            Operation::Or(Operand {
+                atom: Atom::Lookup(b"food"),
+                negated: false,
+            }),
+        );
+        let (operation, cursor) = next_operation(expression, cursor).unwrap().unwrap();
+        assert_eq!(
+            operation,
+            Operation::Compare {
+                operator: Comparison::Equal,
+                operand: Operand {
+                    atom: Atom::String(b"salad"),
+                    negated: false,
+                },
+            },
+        );
+        assert_eq!(next_operation(expression, cursor), Ok(None));
     }
 }

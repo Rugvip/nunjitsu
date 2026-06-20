@@ -428,6 +428,59 @@ test('evaluates nested and resumable if branches without rendering inactive bodi
       'good',
     );
     assert.equal(
+      await engine.render(
+        { source: '{% if hungry and like_pizza %}good{% endif %}' },
+        { hungry: true, like_pizza: true },
+      ),
+      'good',
+    );
+    assert.equal(
+      await engine.render(
+        { source: '{% if hungry or like_pizza %}good{% endif %}' },
+        { hungry: false, like_pizza: true },
+      ),
+      'good',
+    );
+    assert.equal(
+      await engine.render(
+        { source: '{% if (hungry or like_pizza) and anchovies %}good{% endif %}' },
+        { hungry: false, like_pizza: true, anchovies: true },
+      ),
+      'good',
+    );
+    assert.equal(
+      await engine.render(
+        {
+          source: [
+            '{% if food == "pizza" %}pizza{% endif %}',
+            '{% if food =="beer" %}beer{% endif %}',
+            '{% if "pizza" in menu %} menu{% endif %}',
+          ].join(''),
+        },
+        { food: 'beer', menu: { pizza: true } },
+      ),
+      'beer menu',
+    );
+    assert.equal(
+      await engine.render(
+        {
+          source: [
+            '{% if topping == "pepperoni" %}yum',
+            '{% elseif topping == "anchovies" %}yuck',
+            '{% else %}hmmm{% endif %}',
+          ].join(''),
+        },
+        { topping: 'sausage' },
+      ),
+      'hmmm',
+    );
+    assert.equal(
+      await engine.render(
+        { source: '{{ "6" == 6 }}|{{ "6" === 6 }}|{{ "z" > "a" }}' },
+      ),
+      'true|false|true',
+    );
+    assert.equal(
       (await Array.fromAsync(engine.renderStream(
         { source: 'before{% if value is enabled %}yes{% else %}no{% endif %}after' },
         { value: 'enabled' },

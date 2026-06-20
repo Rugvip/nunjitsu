@@ -1,6 +1,6 @@
 use crate::expression::{
-    Atom, Call, Operation, next_argument, next_lookup_segment, next_operation, parse_base,
-    parse_tag_call,
+    Atom, Call, Comparison, Operand, Operation, next_argument, next_lookup_segment, next_operation,
+    parse_base, parse_tag_call,
 };
 use crate::template::{
     ConditionalBoundary, RenderError, RenderedValue, TemplateItem, directive_keyword, emit_escaped,
@@ -560,23 +560,57 @@ fn continue_expression(state_offset: u32) -> Result<Option<u32>, u32> {
     };
 
     let input = state_field(state_offset, STATE_CURRENT_VALUE)?;
-    let (kind, call, negate_mode) = match operation {
-        Operation::Filter(call) => (CAPABILITY_FILTER, call, NEGATE_NONE),
-        Operation::Test { call, negated } => (
+    match operation {
+        Operation::Filter(call) => issue_capability(
+            state_offset,
+            CAPABILITY_FILTER,
+            call,
+            Some(input),
+            next_cursor,
+            NEGATE_NONE,
+        )
+        .map(Some),
+        Operation::Test { call, negated } => issue_capability(
+            state_offset,
             CAPABILITY_TEST,
             call,
+            Some(input),
+            next_cursor,
             if negated { NEGATE_BOOLEAN } else { NEGATE_NONE },
-        ),
-    };
-    issue_capability(
-        state_offset,
-        kind,
-        call,
-        Some(input),
-        next_cursor,
-        negate_mode,
-    )
-    .map(Some)
+        )
+        .map(Some),
+        Operation::Compare { operator, operand } => {
+            let right = resolve_operand(state_offset, operand)?;
+            let value_offset = write_boolean(compare_values(input, operator, right)?)?;
+            set_state_field(state_offset, STATE_CURRENT_VALUE, value_offset)?;
+            set_state_field(state_offset, STATE_EXPRESSION_CURSOR, next_cursor as u32)?;
+            continue_expression(state_offset)
+        }
+        Operation::And(operand) => {
+            let value_offset = if Value::at(input)?.truthy() {
+                resolve_operand(state_offset, operand)?
+            } else {
+                input
+            };
+            set_state_field(state_offset, STATE_CURRENT_VALUE, value_offset)?;
+            set_state_field(state_offset, STATE_EXPRESSION_CURSOR, next_cursor as u32)?;
+            continue_expression(state_offset)
+        }
+        Operation::Or(operand) => {
+            if Value::at(input)?.truthy() {
+                set_state_field(
+                    state_offset,
+                    STATE_EXPRESSION_CURSOR,
+                    expression.len() as u32,
+                )?;
+            } else {
+                let value_offset = resolve_operand(state_offset, operand)?;
+                set_state_field(state_offset, STATE_CURRENT_VALUE, value_offset)?;
+                set_state_field(state_offset, STATE_EXPRESSION_CURSOR, next_cursor as u32)?;
+            }
+            continue_expression(state_offset)
+        }
+    }
 }
 
 fn apply_if_condition(state_offset: u32, value_offset: u32) -> Result<Option<u32>, u32> {
@@ -696,6 +730,138 @@ fn issue_capability(
     Ok(STATE_CALL_CAPABILITY)
 }
 
+fn resolve_operand(state_offset: u32, operand: Operand<'_>) -> Result<u32, u32> {
+    let mut value_offset = resolve_atom(state_offset, operand.atom)?;
+    if operand.negated {
+        value_offset = write_boolean(!Value::at(value_offset)?.truthy())?;
+    }
+    Ok(value_offset)
+}
+
+fn evaluate_sync_expression(state_offset: u32, expression: &[u8]) -> Result<u32, u32> {
+    let (atom, mut cursor, negated) =
+        parse_base(expression).map_err(|_| ERROR_INVALID_EXPRESSION)?;
+    if matches!(atom, Atom::Call(_)) {
+        return Err(ERROR_INVALID_EXPRESSION);
+    }
+    let mut current = resolve_operand(state_offset, Operand { atom, negated })?;
+    while let Some((operation, next_cursor)) =
+        next_operation(expression, cursor).map_err(|_| ERROR_INVALID_EXPRESSION)?
+    {
+        current = match operation {
+            Operation::Compare { operator, operand } => {
+                let right = resolve_operand(state_offset, operand)?;
+                write_boolean(compare_values(current, operator, right)?)?
+            }
+            Operation::And(operand) => {
+                if Value::at(current)?.truthy() {
+                    resolve_operand(state_offset, operand)?
+                } else {
+                    current
+                }
+            }
+            Operation::Or(operand) => {
+                if Value::at(current)?.truthy() {
+                    return Ok(current);
+                }
+                resolve_operand(state_offset, operand)?
+            }
+            Operation::Filter(_) | Operation::Test { .. } => {
+                return Err(ERROR_INVALID_EXPRESSION);
+            }
+        };
+        cursor = next_cursor;
+    }
+    Ok(current)
+}
+
+fn compare_values(left_offset: u32, operator: Comparison, right_offset: u32) -> Result<bool, u32> {
+    let result = match operator {
+        Comparison::Equal => values_equal(left_offset, right_offset, false)?,
+        Comparison::StrictEqual => values_equal(left_offset, right_offset, true)?,
+        Comparison::NotEqual => !values_equal(left_offset, right_offset, false)?,
+        Comparison::StrictNotEqual => !values_equal(left_offset, right_offset, true)?,
+        Comparison::Less => values_order(left_offset, right_offset)? == core::cmp::Ordering::Less,
+        Comparison::LessOrEqual => {
+            values_order(left_offset, right_offset)? != core::cmp::Ordering::Greater
+        }
+        Comparison::Greater => {
+            values_order(left_offset, right_offset)? == core::cmp::Ordering::Greater
+        }
+        Comparison::GreaterOrEqual => {
+            values_order(left_offset, right_offset)? != core::cmp::Ordering::Less
+        }
+        Comparison::In => value_contains(right_offset, left_offset)?,
+        Comparison::NotIn => !value_contains(right_offset, left_offset)?,
+    };
+    Ok(result)
+}
+
+fn values_equal(left_offset: u32, right_offset: u32, strict: bool) -> Result<bool, u32> {
+    if left_offset == right_offset {
+        return Ok(true);
+    }
+    let left = Value::at(left_offset)?;
+    let right = Value::at(right_offset)?;
+    let result = match (left, right) {
+        (Value::Undefined, Value::Undefined) | (Value::Null, Value::Null) => true,
+        (Value::Undefined, Value::Null) | (Value::Null, Value::Undefined) => !strict,
+        (Value::Boolean(left), Value::Boolean(right)) => left == right,
+        (Value::Number { numeric: left, .. }, Value::Number { numeric: right, .. }) => {
+            left == right
+        }
+        (
+            Value::String(left) | Value::SafeString(left),
+            Value::String(right) | Value::SafeString(right),
+        ) => left == right,
+        (Value::Array(_), Value::Array(_)) | (Value::Record(_), Value::Record(_)) => false,
+        (left, right) if !strict => left.as_number() == right.as_number(),
+        _ => false,
+    };
+    Ok(result)
+}
+
+fn values_order(left_offset: u32, right_offset: u32) -> Result<core::cmp::Ordering, u32> {
+    let left = Value::at(left_offset)?;
+    let right = Value::at(right_offset)?;
+    if let (Some(left), Some(right)) = (left.string_bytes(), right.string_bytes()) {
+        return Ok(left.cmp(right));
+    }
+    left.as_number()
+        .partial_cmp(&right.as_number())
+        .ok_or(ERROR_INVALID_EXPRESSION)
+}
+
+fn value_contains(container_offset: u32, needle_offset: u32) -> Result<bool, u32> {
+    let container = Value::at(container_offset)?;
+    let needle = Value::at(needle_offset)?;
+    match container {
+        Value::String(value) | Value::SafeString(value) => {
+            let rendered = needle.rendered().ok_or(ERROR_INVALID_EXPRESSION)?.bytes;
+            if rendered.is_empty() {
+                return Ok(true);
+            }
+            Ok(value
+                .windows(rendered.len())
+                .any(|window| window == rendered))
+        }
+        Value::Array(array) => {
+            for index in 0..array.count {
+                let value_offset = read_u32(array.payload, 4 + index * 4)?;
+                if values_equal(value_offset, needle_offset, false)? {
+                    return Ok(true);
+                }
+            }
+            Ok(false)
+        }
+        Value::Record(record) => {
+            let key = needle.rendered().ok_or(ERROR_INVALID_EXPRESSION)?.bytes;
+            Ok(record.get_offset(key).is_some())
+        }
+        _ => Err(ERROR_INVALID_EXPRESSION),
+    }
+}
+
 fn resolve_atom(state_offset: u32, atom: Atom<'_>) -> Result<u32, u32> {
     match atom {
         Atom::Lookup(path) => {
@@ -711,6 +877,7 @@ fn resolve_atom(state_offset: u32, atom: Atom<'_>) -> Result<u32, u32> {
         Atom::Null => allocate_record(TAG_NULL, 0),
         Atom::Undefined => allocate_record(TAG_UNDEFINED, 0),
         Atom::Call(_) => Err(ERROR_INVALID_EXPRESSION),
+        Atom::Group(expression) => evaluate_sync_expression(state_offset, expression),
     }
 }
 
@@ -1201,6 +1368,34 @@ impl Value {
             Self::String(value) | Self::SafeString(value) => !value.is_empty(),
         }
     }
+
+    fn string_bytes(self) -> Option<&'static [u8]> {
+        match self {
+            Self::String(value) | Self::SafeString(value) => Some(value),
+            _ => None,
+        }
+    }
+
+    fn as_number(self) -> f64 {
+        match self {
+            Self::Null => 0.0,
+            Self::Boolean(false) => 0.0,
+            Self::Boolean(true) => 1.0,
+            Self::Number { numeric, .. } => numeric,
+            Self::String(value) | Self::SafeString(value) => {
+                let value = trim_ascii_whitespace(value);
+                if value.is_empty() {
+                    0.0
+                } else {
+                    core::str::from_utf8(value)
+                        .ok()
+                        .and_then(|value| value.parse().ok())
+                        .unwrap_or(f64::NAN)
+                }
+            }
+            Self::Undefined | Self::Array(_) | Self::Record(_) => f64::NAN,
+        }
+    }
 }
 
 fn allocate_record(tag: u32, payload_length: u32) -> Result<u32, u32> {
@@ -1300,6 +1495,16 @@ fn parse_index(bytes: &[u8]) -> Option<usize> {
         value = value.checked_mul(10)?.checked_add((byte - b'0') as usize)?;
     }
     Some(value)
+}
+
+fn trim_ascii_whitespace(mut bytes: &[u8]) -> &[u8] {
+    while bytes.first().is_some_and(u8::is_ascii_whitespace) {
+        bytes = &bytes[1..];
+    }
+    while bytes.last().is_some_and(u8::is_ascii_whitespace) {
+        bytes = &bytes[..bytes.len() - 1];
+    }
+    bytes
 }
 
 fn write_record_header(offset: u32, tag: u32, payload_length: u32) -> Result<(), u32> {
