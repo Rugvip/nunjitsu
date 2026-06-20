@@ -34,6 +34,11 @@ test('renders through reusable shared-memory workers', async () => {
     'cycle-b.njk': '{% include "cycle-a.njk" %}',
     'missing-include.njk': '{% include "absent.njk" %}',
     'optional-include.njk': 'before{% include "absent.njk" ignore missing %}after',
+    'leaf.njk': 'FooInclude ',
+    'many-includes.njk': Array.from(
+      { length: 130 },
+      () => '{% include "leaf.njk" %}\n',
+    ).join(''),
   };
   const ownedTemplates = memoryLoader(templates);
   let nestedLoads = 0;
@@ -71,6 +76,10 @@ test('renders through reusable shared-memory workers', async () => {
     nestedLoads = 0;
     assert.equal(await engine.render({ name: 'repeat.njk' }), 'nestednested');
     assert.equal(nestedLoads, 1);
+    assert.equal(
+      await engine.render({ name: 'many-includes.njk' }),
+      'FooInclude \n'.repeat(130),
+    );
     assert.equal(
       await engine.render({ name: 'dynamic.njk' }, { selection: { name: 'nested.njk' } }),
       'nested|nested|nested',

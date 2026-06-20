@@ -842,6 +842,68 @@
       "expected": "parent"
     },
     {
+      "id": "compiler-include-basic",
+      "template": "hello world {% include \"include.njk\" %}",
+      "templates": { "include.njk": "FooInclude {{ name }}" },
+      "nativeRender": false,
+      "context": {},
+      "autoescape": false,
+      "expected": "hello world FooInclude "
+    },
+    {
+      "id": "compiler-include-context",
+      "template": "hello world {% include \"include.njk\" %}",
+      "templates": { "include.njk": "FooInclude {{ name }}" },
+      "nativeRender": false,
+      "context": { "name": "james" },
+      "autoescape": false,
+      "expected": "hello world FooInclude james"
+    },
+    {
+      "id": "compiler-include-scope-isolation",
+      "template": "{% set var = 1 %}{% include \"include-set.njk\" %}{{ var }}",
+      "templates": { "include-set.njk": "{{ var }}{% set var = 2 %}{{ var }}\n" },
+      "nativeRender": false,
+      "context": {},
+      "autoescape": false,
+      "expected": "12\n1"
+    },
+    {
+      "id": "compiler-include-array-loop-metadata",
+      "template": "{% for item in [1,2,3] %}{% include \"include-in-loop.njk\" %}{% endfor %}",
+      "templates": { "include-in-loop.njk": "{{ loop.index }},{{ loop.index0 }},{{ loop.first }}\n" },
+      "nativeRender": false,
+      "context": {},
+      "autoescape": false,
+      "expected": "1,0,true\n2,1,false\n3,2,false\n"
+    },
+    {
+      "id": "compiler-include-record-loop-metadata",
+      "template": "{% for k,v in items %}{% include \"include-in-loop.njk\" %}{% endfor %}",
+      "templates": { "include-in-loop.njk": "{{ loop.index }},{{ loop.index0 }},{{ loop.first }}\n" },
+      "nativeRender": false,
+      "context": { "items": { "a": "A", "b": "B" } },
+      "autoescape": false,
+      "expected": "1,0,true\n2,1,false\n"
+    },
+    {
+      "id": "compiler-nested-loop-scope",
+      "template": "{% for i in [1,2] %}{% for i in [3,4] %}{{ i }}{% endfor %}{{ i }}{% endfor %}",
+      "nativeRender": false,
+      "context": {},
+      "autoescape": false,
+      "expected": "341342"
+    },
+    {
+      "id": "compiler-inheritance-block-inside-loop",
+      "template": "{% extends \"base2.njk\" %}{% block item %}hello{{ item }}{% endblock %}",
+      "templates": { "base2.njk": "{% for item in [1,2] %}{% block item %}{{ item }}{% endblock %}{% endfor %}" },
+      "nativeRender": false,
+      "context": {},
+      "autoescape": false,
+      "expected": "hello1hello2"
+    },
+    {
       "id": "compiler-block-set-inside-macro",
       "template": "{%- macro foo(bar) -%}{%- set test -%}foo{%- endset -%}{{ bar }}{{ test }}{%- endmacro -%}{{ foo(\"bar\") }}",
       "nativeRender": false,

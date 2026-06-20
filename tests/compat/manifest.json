@@ -331,6 +331,46 @@
       "upstream": { "id": "tests/compiler.js:100", "file": "tests/compiler.js", "test": "should render blocks in their own scope" },
       "status": "ported",
       "cases": ["compiler-standalone-block-scope-isolation"]
+    },
+    {
+      "upstream": { "id": "tests/compiler.js:101", "file": "tests/compiler.js", "test": "should include templates" },
+      "status": "ported",
+      "cases": ["compiler-include-basic"]
+    },
+    {
+      "upstream": { "id": "tests/compiler.js:102", "file": "tests/compiler.js", "test": "should include 130 templates without call stack size exceed" },
+      "status": "adapted",
+      "reason": "The TypeScript runtime test generates the same 130 sequential includes to avoid duplicating the repetitive fixture in JSON."
+    },
+    {
+      "upstream": { "id": "tests/compiler.js:103", "file": "tests/compiler.js", "test": "should include templates with context" },
+      "status": "ported",
+      "cases": ["compiler-include-context"]
+    },
+    {
+      "upstream": { "id": "tests/compiler.js:104", "file": "tests/compiler.js", "test": "should include templates that can see including scope, but not write to it" },
+      "status": "ported",
+      "cases": ["compiler-include-scope-isolation"]
+    },
+    {
+      "upstream": { "id": "tests/compiler.js:108", "file": "tests/compiler.js", "test": "should throw an error when including a file that does not exist" },
+      "status": "adapted",
+      "reason": "The TypeScript runtime test asserts the new TemplateNotFoundError API instead of Nunjucks's callback error string."
+    },
+    {
+      "upstream": { "id": "tests/compiler.js:110", "file": "tests/compiler.js", "test": "should have access to \"loop\" inside an include" },
+      "status": "ported",
+      "cases": ["compiler-include-array-loop-metadata", "compiler-include-record-loop-metadata"]
+    },
+    {
+      "upstream": { "id": "tests/compiler.js:111", "file": "tests/compiler.js", "test": "should maintain nested scopes" },
+      "status": "ported",
+      "cases": ["compiler-nested-loop-scope"]
+    },
+    {
+      "upstream": { "id": "tests/compiler.js:112", "file": "tests/compiler.js", "test": "should allow blocks in for loops" },
+      "status": "ported",
+      "cases": ["compiler-inheritance-block-inside-loop"]
     }
   ]
 }
