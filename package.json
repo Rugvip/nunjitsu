@@ -23,11 +23,14 @@
     "README.md"
   ],
   "scripts": {
+    "benchmark": "npm run build:wasm && node benchmarks/run.ts",
+    "benchmark:quick": "npm run build:wasm && node benchmarks/run.ts --warmup=1 --iterations=3",
     "build": "npm run clean && npm run build:wasm && npm run build:typescript && node scripts/finalize-build.mjs",
     "build:typescript": "tsgo -p tsconfig.esm.json && tsgo -p tsconfig.cjs.json && node scripts/build-cjs.mjs",
     "build:wasm": "cargo build --manifest-path rust/Cargo.toml --target wasm32-unknown-unknown --release -Z build-std=core,compiler_builtins",
     "clean": "node scripts/clean.mjs",
-    "test": "npm run typecheck && npm run test:rust && npm run test:source && npm run test:package",
+    "test": "npm run typecheck && npm run test:rust && npm run test:source && npm run test:benchmark && npm run test:package",
+    "test:benchmark": "npm run build:wasm && node benchmarks/run.ts --warmup=0 --iterations=1 --json",
     "test:package": "npm run build && node --test tests/package/esm.test.mjs tests/package/commonjs.test.cjs",
     "test:rust": "cargo test --manifest-path rust/Cargo.toml",
     "test:source": "npm run build:wasm && node --test tests/source/runtime.test.ts tests/source/compat.test.ts",
@@ -35,7 +38,9 @@
   },
   "devDependencies": {
     "@types/node": "^24.0.0",
+    "@types/nunjucks": "3.2.6",
     "@typescript/native-preview": "7.0.0-dev.20260613.1",
-    "esbuild": "^0.25.0"
+    "esbuild": "^0.25.0",
+    "nunjucks": "3.2.4"
   }
 }

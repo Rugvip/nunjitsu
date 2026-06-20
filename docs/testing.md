@@ -17,6 +17,8 @@ Nunjitsu uses a small number of thorough suites with clear ownership:
 5. **Package contract tests** build the package and exercise both ESM `import`
    and CommonJS `require`, including worker startup, Wasm loading, rendering,
    streaming, and disposal.
+6. **Benchmark verification** runs one unscored sample of each workload against
+   Nunjitsu and Nunjucks and rejects output differences or harness failures.
 
 Avoid duplicating the full compatibility suite in each layer. Shared cases are
 the behavioral source; layer-specific tests should concentrate on that layer's
@@ -91,3 +93,27 @@ renders, worker reuse without template reuse, bounded output, and memory
 returned after outliers. Report retained bytes and allocation high-water marks
 alongside elapsed time. Do not improve repeated-template throughput by adding a
 persistent source, AST, or compiled cache contrary to the architecture.
+
+The comparison harness pins Nunjucks 3.2.4 and runs each implementation in a
+separate subprocess. Engine/environment setup is measured separately. Timed
+renders reuse the initialized engine but never reuse a parsed template:
+Nunjitsu has no cross-render template cache, and the Nunjucks loader sets
+`noCache`. Before reporting results, the harness requires byte-for-byte
+equivalent output from both implementations.
+
+The checked-in workloads stress distinct paths:
+
+- `template-graph` parses a graph of inheritance, includes, loops, and dense
+  comments across 50 named templates;
+- `expressions` evaluates arithmetic, powers, comparisons, membership, boolean
+  operations, property access, and concatenation over 750 loop iterations; and
+- `capabilities` crosses the host boundary 1,260 times through synchronous and
+  asynchronous filters, tests, and globals.
+
+Run a short verification pass with `npm run benchmark:quick`. Run the default
+baseline with `npm run benchmark`; pass `-- --iterations=N --warmup=N`,
+`-- --case=template-graph,expressions`, or `-- --json` to control or record a
+run. Results include setup time, median and p95 render latency, render
+throughput, retained RSS delta, peak RSS, and output size. Compare runs only on
+the same otherwise-idle machine and Node version. Measurements are diagnostic,
+not deterministic test thresholds.

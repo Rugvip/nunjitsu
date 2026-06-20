@@ -73,6 +73,8 @@ The rationale and detailed contracts live in:
 
 - `src/`: TypeScript public API, engine, worker host, and built-in capabilities.
 - `rust/`: the single Rust engine and Wasm ABI crate.
+- `benchmarks/`: equivalent one-shot workloads and the isolated Nunjucks
+  comparison harness.
 - `tests/compat/`: shared Nunjucks v3.2.4 cases, provenance, manifest, and
   upstream license.
 - `docs/`: normative architecture documentation.
@@ -131,6 +133,10 @@ architectural reason.
   same worker starts from clean state.
 - Security-sensitive parsing, record decoding, and ABI changes require malformed
   input tests and, where appropriate, fuzz coverage.
+- Keep performance workloads output-equivalent across Nunjitsu and the pinned
+  Nunjucks baseline. Disable Nunjucks template caching, isolate implementations
+  in separate processes, and never turn noisy benchmark measurements into test
+  thresholds.
 
 ## Documentation rules
 
