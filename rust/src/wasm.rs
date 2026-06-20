@@ -4,16 +4,21 @@ use core::mem::{align_of, size_of};
 use core::ptr::{addr_of, addr_of_mut, read_unaligned, write_unaligned};
 use core::slice;
 
-const ABI_VERSION: u32 = 1;
+const ABI_VERSION: u32 = 2;
 const PAGE_SIZE: usize = 65_536;
 const RECORD_ALIGNMENT: u32 = 8;
 const RECORD_HEADER_LENGTH: usize = 8;
 
 const TAG_SOURCE: u32 = 1;
 const TAG_STRING: u32 = 2;
-const TAG_CONTEXT: u32 = 3;
 const TAG_REQUEST: u32 = 4;
 const TAG_OUTPUT: u32 = 5;
+const TAG_UNDEFINED: u32 = 6;
+const TAG_NULL: u32 = 7;
+const TAG_BOOLEAN: u32 = 8;
+const TAG_NUMBER: u32 = 9;
+const TAG_ARRAY: u32 = 10;
+const TAG_RECORD: u32 = 11;
 
 const STATE_IDLE: u32 = 0;
 const STATE_COMPLETE: u32 = 1;
@@ -106,7 +111,7 @@ fn render(request_offset: u32) -> Result<(u32, u32), u32> {
     let source_offset = read_u32(request, 0)?;
     let context_offset = read_u32(request, 4)?;
     let source = record_at(source_offset, TAG_SOURCE)?;
-    let context = Context::new(record_at(context_offset, TAG_CONTEXT)?)?;
+    let context = Context::new(record_at(context_offset, TAG_RECORD)?)?;
 
     let output_length =
         measure_template(source, |name| context.lookup(name)).map_err(render_error_code)?;
@@ -126,50 +131,185 @@ fn render(request_offset: u32) -> Result<(u32, u32), u32> {
 }
 
 struct Context {
-    payload: &'static [u8],
-    count: usize,
+    root: Record,
 }
 
 impl Context {
     fn new(payload: &'static [u8]) -> Result<Self, u32> {
-        if payload.len() < size_of::<u32>() {
-            return Err(ERROR_INVALID_RECORD);
+        Ok(Self {
+            root: Record::new(payload)?,
+        })
+    }
+
+    fn lookup(&self, path: &[u8]) -> Option<&'static [u8]> {
+        let mut segments = path.split(|byte| *byte == b'.');
+        let first = trim_ascii_whitespace(segments.next()?);
+        if first.is_empty() {
+            return None;
         }
-        let count = read_u32(payload, 0)? as usize;
-        let expected_length = size_of::<u32>()
-            .checked_add(count.checked_mul(8).ok_or(ERROR_INVALID_RECORD)?)
-            .ok_or(ERROR_INVALID_RECORD)?;
-        if payload.len() != expected_length {
-            return Err(ERROR_INVALID_RECORD);
+        let mut value = self.root.get(first)?;
+        for segment in segments {
+            value = value.get(trim_ascii_whitespace(segment))?;
         }
+        value.rendered()
+    }
+}
+
+#[derive(Clone, Copy)]
+struct Record {
+    payload: &'static [u8],
+    count: usize,
+}
+
+impl Record {
+    fn new(payload: &'static [u8]) -> Result<Self, u32> {
+        let count = collection_count(payload, 8)?;
         Ok(Self { payload, count })
     }
 
-    fn lookup(&self, name: &[u8]) -> Option<&'static [u8]> {
+    fn get(&self, name: &[u8]) -> Option<Value> {
         for index in 0..self.count {
             let entry_offset = 4 + index * 8;
             let key_offset = read_u32(self.payload, entry_offset).ok()?;
             let value_offset = read_u32(self.payload, entry_offset + 4).ok()?;
             let key = record_at(key_offset, TAG_STRING).ok()?;
             if key == name {
-                return record_at(value_offset, TAG_STRING).ok();
+                return Value::at(value_offset).ok();
             }
         }
         None
     }
 }
 
+#[derive(Clone, Copy)]
+struct Array {
+    payload: &'static [u8],
+    count: usize,
+}
+
+impl Array {
+    fn new(payload: &'static [u8]) -> Result<Self, u32> {
+        let count = collection_count(payload, 4)?;
+        Ok(Self { payload, count })
+    }
+
+    fn get(&self, name: &[u8]) -> Option<Value> {
+        let index = parse_index(name)?;
+        if index >= self.count {
+            return None;
+        }
+        let value_offset = read_u32(self.payload, 4 + index * 4).ok()?;
+        Value::at(value_offset).ok()
+    }
+}
+
+#[derive(Clone, Copy)]
+enum Value {
+    Undefined,
+    Null,
+    Boolean(bool),
+    Number(&'static [u8]),
+    String(&'static [u8]),
+    Array(Array),
+    Record(Record),
+}
+
+impl Value {
+    fn at(offset: u32) -> Result<Self, u32> {
+        let (tag, payload) = raw_record_at(offset)?;
+        match tag {
+            TAG_UNDEFINED if payload.is_empty() => Ok(Self::Undefined),
+            TAG_NULL if payload.is_empty() => Ok(Self::Null),
+            TAG_BOOLEAN if payload.len() == 1 => match payload[0] {
+                0 => Ok(Self::Boolean(false)),
+                1 => Ok(Self::Boolean(true)),
+                _ => Err(ERROR_INVALID_RECORD),
+            },
+            TAG_NUMBER if payload.len() >= 8 => Ok(Self::Number(&payload[8..])),
+            TAG_STRING => Ok(Self::String(payload)),
+            TAG_ARRAY => Ok(Self::Array(Array::new(payload)?)),
+            TAG_RECORD => Ok(Self::Record(Record::new(payload)?)),
+            _ => Err(ERROR_INVALID_RECORD),
+        }
+    }
+
+    fn get(self, name: &[u8]) -> Option<Self> {
+        match self {
+            Self::Array(array) => array.get(name),
+            Self::Record(record) => record.get(name),
+            _ => None,
+        }
+    }
+
+    fn rendered(self) -> Option<&'static [u8]> {
+        match self {
+            Self::Undefined | Self::Null => Some(b""),
+            Self::Boolean(false) => Some(b"false"),
+            Self::Boolean(true) => Some(b"true"),
+            Self::Number(value) | Self::String(value) => Some(value),
+            Self::Array(_) | Self::Record(_) => Some(b""),
+        }
+    }
+}
+
 fn record_at(offset: u32, expected_tag: u32) -> Result<&'static [u8], u32> {
-    let header = memory(offset, RECORD_HEADER_LENGTH as u32)?;
-    let tag = read_u32(header, 0)?;
-    let payload_length = read_u32(header, 4)?;
+    let (tag, payload) = raw_record_at(offset)?;
     if tag != expected_tag {
         return Err(ERROR_INVALID_RECORD);
     }
+    Ok(payload)
+}
+
+fn raw_record_at(offset: u32) -> Result<(u32, &'static [u8]), u32> {
+    let header = memory(offset, RECORD_HEADER_LENGTH as u32)?;
+    let tag = read_u32(header, 0)?;
+    let payload_length = read_u32(header, 4)?;
     let payload_offset = offset
         .checked_add(RECORD_HEADER_LENGTH as u32)
         .ok_or(ERROR_INVALID_RECORD)?;
-    memory(payload_offset, payload_length)
+    Ok((tag, memory(payload_offset, payload_length)?))
+}
+
+fn collection_count(payload: &[u8], entry_length: usize) -> Result<usize, u32> {
+    if payload.len() < size_of::<u32>() {
+        return Err(ERROR_INVALID_RECORD);
+    }
+    let count = read_u32(payload, 0)? as usize;
+    let expected_length = size_of::<u32>()
+        .checked_add(
+            count
+                .checked_mul(entry_length)
+                .ok_or(ERROR_INVALID_RECORD)?,
+        )
+        .ok_or(ERROR_INVALID_RECORD)?;
+    if payload.len() != expected_length {
+        return Err(ERROR_INVALID_RECORD);
+    }
+    Ok(count)
+}
+
+fn parse_index(bytes: &[u8]) -> Option<usize> {
+    if bytes.is_empty() {
+        return None;
+    }
+    let mut value = 0usize;
+    for byte in bytes {
+        if !byte.is_ascii_digit() {
+            return None;
+        }
+        value = value.checked_mul(10)?.checked_add((byte - b'0') as usize)?;
+    }
+    Some(value)
+}
+
+fn trim_ascii_whitespace(mut bytes: &[u8]) -> &[u8] {
+    while bytes.first().is_some_and(u8::is_ascii_whitespace) {
+        bytes = &bytes[1..];
+    }
+    while bytes.last().is_some_and(u8::is_ascii_whitespace) {
+        bytes = &bytes[..bytes.len() - 1];
+    }
+    bytes
 }
 
 fn write_record_header(offset: u32, tag: u32, payload_length: u32) -> Result<(), u32> {

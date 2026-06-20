@@ -2,6 +2,7 @@ import { availableParallelism } from 'node:os';
 import { Worker } from 'node:worker_threads';
 
 import { ArenaWriter, decodeOutput } from './protocol.ts';
+import type { TemplateContext } from './values.ts';
 
 const initialMemoryPages = 32;
 const maximumMemoryPages = 4096;
@@ -36,9 +37,6 @@ export interface InlineTemplate {
   /** UTF-8 template source compiled and rendered for this call only. */
   source: string;
 }
-
-/** The currently supported safe context subset. */
-export type TemplateContext = Readonly<Record<string, string>>;
 
 /** Per-render controls that do not alter engine-level authority. */
 export interface RenderOptions {
@@ -421,7 +419,7 @@ class WorkerSlot {
       return;
     }
     if (value.type === 'ready') {
-      if (value.abiVersion !== 1 || value.arenaBase <= 0) {
+      if (value.abiVersion !== 2 || value.arenaBase <= 0) {
         this.#fail(new Error('Nunjitsu worker reported an incompatible Wasm ABI'));
         return;
       }

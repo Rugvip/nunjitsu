@@ -12,9 +12,9 @@ export {
   type EngineOptions,
   type InlineTemplate,
   type RenderOptions,
-  type TemplateContext,
   type WorkerPoolOptions,
 } from './engine.ts';
+export type { TemplateContext, TemplatePrimitive, TemplateValue } from './values.ts';
 
 /** Creates a CommonJS Node.js Nunjitsu engine backed by Rust/Wasm workers. */
 export async function createEngine(options: EngineOptions = {}): Promise<Engine> {

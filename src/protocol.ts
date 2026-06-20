@@ -8,6 +8,12 @@ const recordTag = {
   context: 3,
   request: 4,
   output: 5,
+  undefined: 6,
+  null: 7,
+  boolean: 8,
+  number: 9,
+  array: 10,
+  record: 11,
 } as const;
 
 /** The offsets and cursor for one encoded render request. */
@@ -31,23 +37,9 @@ export class ArenaWriter {
   }
 
   /** Encodes an inline template and string context into the arena. */
-  encodeRender(source: string, context: Readonly<Record<string, string>>): EncodedRenderRequest {
+  encodeRender(source: string, context: TemplateContext): EncodedRenderRequest {
     const sourceOffset = this.#writeTextRecord(recordTag.source, source);
-    const entries = Object.entries(context);
-    const encodedEntries = entries.map(([key, value]) => ({
-      keyOffset: this.#writeTextRecord(recordTag.string, key),
-      valueOffset: this.#writeTextRecord(recordTag.string, value),
-    }));
-
-    const contextPayload = new ArrayBuffer(4 + encodedEntries.length * 8);
-    const contextView = new DataView(contextPayload);
-    contextView.setUint32(0, encodedEntries.length, true);
-    for (const [index, entry] of encodedEntries.entries()) {
-      const offset = 4 + index * 8;
-      contextView.setUint32(offset, entry.keyOffset, true);
-      contextView.setUint32(offset + 4, entry.valueOffset, true);
-    }
-    const contextOffset = this.#writeRecord(recordTag.context, new Uint8Array(contextPayload));
+    const contextOffset = this.#writeValue(context, new Set());
 
     const requestPayload = new ArrayBuffer(8);
     const requestView = new DataView(requestPayload);
@@ -60,6 +52,108 @@ export class ArenaWriter {
 
   #writeTextRecord(tag: number, value: string): number {
     return this.#writeRecord(tag, new TextEncoder().encode(value));
+  }
+
+  #writeValue(value: TemplateValue, ancestors: Set<object>): number {
+    if (value === undefined) {
+      return this.#writeRecord(recordTag.undefined, new Uint8Array());
+    }
+    if (value === null) {
+      return this.#writeRecord(recordTag.null, new Uint8Array());
+    }
+    if (typeof value === 'string') {
+      return this.#writeTextRecord(recordTag.string, value);
+    }
+    if (typeof value === 'boolean') {
+      return this.#writeRecord(recordTag.boolean, Uint8Array.of(value ? 1 : 0));
+    }
+    if (typeof value === 'number') {
+      const rendered = new TextEncoder().encode(String(value));
+      const payload = new Uint8Array(8 + rendered.byteLength);
+      new DataView(payload.buffer).setFloat64(0, value, true);
+      payload.set(rendered, 8);
+      return this.#writeRecord(recordTag.number, payload);
+    }
+    if (typeof value !== 'object') {
+      throw new TypeError(`Unsupported template value of type ${typeof value}`);
+    }
+    if (ancestors.has(value)) {
+      throw new TypeError('Cyclic template values are not supported');
+    }
+
+    ancestors.add(value);
+    try {
+      return Array.isArray(value)
+        ? this.#writeArray(value, ancestors)
+        : this.#writeObject(value, ancestors);
+    } finally {
+      ancestors.delete(value);
+    }
+  }
+
+  #writeArray(value: readonly TemplateValue[], ancestors: Set<object>): number {
+    for (const key of Reflect.ownKeys(value)) {
+      if (key === 'length') {
+        continue;
+      }
+      if (typeof key !== 'string' || !isArrayIndex(key, value.length)) {
+        throw new TypeError('Template arrays cannot have custom properties');
+      }
+      const descriptor = Object.getOwnPropertyDescriptor(value, key);
+      if (descriptor?.get || descriptor?.set) {
+        throw new TypeError('Template values cannot contain accessors');
+      }
+    }
+
+    const offsets = Array.from({ length: value.length }, (_, index) => {
+      const descriptor = Object.getOwnPropertyDescriptor(value, String(index));
+      return this.#writeValue(descriptor ? descriptor.value as TemplateValue : undefined, ancestors);
+    });
+    const payload = new ArrayBuffer(4 + offsets.length * 4);
+    const view = new DataView(payload);
+    view.setUint32(0, offsets.length, true);
+    for (const [index, offset] of offsets.entries()) {
+      view.setUint32(4 + index * 4, offset, true);
+    }
+    return this.#writeRecord(recordTag.array, new Uint8Array(payload));
+  }
+
+  #writeObject(value: object, ancestors: Set<object>): number {
+    const prototype = Object.getPrototypeOf(value) as unknown;
+    if (prototype !== Object.prototype && prototype !== null) {
+      throw new TypeError('Only plain records can be used as template values');
+    }
+
+    const entries: Array<{ keyOffset: number; valueOffset: number }> = [];
+    for (const key of Reflect.ownKeys(value)) {
+      if (typeof key !== 'string') {
+        throw new TypeError('Template records cannot contain symbol keys');
+      }
+      const descriptor = Object.getOwnPropertyDescriptor(value, key);
+      if (!descriptor) {
+        continue;
+      }
+      if (descriptor.get || descriptor.set) {
+        throw new TypeError('Template values cannot contain accessors');
+      }
+      if (!descriptor.enumerable) {
+        continue;
+      }
+      entries.push({
+        keyOffset: this.#writeTextRecord(recordTag.string, key),
+        valueOffset: this.#writeValue(descriptor.value as TemplateValue, ancestors),
+      });
+    }
+
+    const payload = new ArrayBuffer(4 + entries.length * 8);
+    const view = new DataView(payload);
+    view.setUint32(0, entries.length, true);
+    for (const [index, entry] of entries.entries()) {
+      const offset = 4 + index * 8;
+      view.setUint32(offset, entry.keyOffset, true);
+      view.setUint32(offset + 4, entry.valueOffset, true);
+    }
+    return this.#writeRecord(recordTag.record, new Uint8Array(payload));
   }
 
   #writeRecord(tag: number, payload: Uint8Array): number {
@@ -118,3 +212,9 @@ export function decodeOutput(memory: WebAssembly.Memory, offset: number, length:
 function align(value: number, alignment: number): number {
   return Math.ceil(value / alignment) * alignment;
 }
+
+function isArrayIndex(value: string, length: number): boolean {
+  const index = Number(value);
+  return Number.isSafeInteger(index) && index >= 0 && index < length && String(index) === value;
+}
+import type { TemplateContext, TemplateValue } from './values.ts';
