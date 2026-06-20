@@ -164,6 +164,41 @@
       "cases": ["compiler-macro-optional-positional"]
     },
     {
+      "upstream": { "id": "tests/compiler.js:67", "file": "tests/compiler.js", "test": "should compile macros with arg defaults" },
+      "status": "ported",
+      "cases": ["compiler-macro-default-arguments"]
+    },
+    {
+      "upstream": { "id": "tests/compiler.js:68", "file": "tests/compiler.js", "test": "should compile macros with keyword args" },
+      "status": "ported",
+      "cases": ["compiler-macro-keyword-argument"]
+    },
+    {
+      "upstream": { "id": "tests/compiler.js:69", "file": "tests/compiler.js", "test": "should compile macros with only keyword args" },
+      "status": "ported",
+      "cases": ["compiler-macro-keyword-only-arguments"]
+    },
+    {
+      "upstream": { "id": "tests/compiler.js:70", "file": "tests/compiler.js", "test": "should compile macros with keyword args overriding defaults" },
+      "status": "ported",
+      "cases": ["compiler-macro-keyword-overrides-default"]
+    },
+    {
+      "upstream": { "id": "tests/compiler.js:71", "file": "tests/compiler.js", "test": "should compile macros with out-of-order keyword args" },
+      "status": "ported",
+      "cases": ["compiler-macro-out-of-order-keyword"]
+    },
+    {
+      "upstream": { "id": "tests/compiler.js:72", "file": "tests/compiler.js", "test": "should compile macros" },
+      "status": "ported",
+      "cases": ["compiler-macro-default-only-arguments"]
+    },
+    {
+      "upstream": { "id": "tests/compiler.js:73", "file": "tests/compiler.js", "test": "should compile macros with multiple overridden arg defaults" },
+      "status": "ported",
+      "cases": ["compiler-macro-overridden-defaults"]
+    },
+    {
       "upstream": { "id": "tests/compiler.js:76", "file": "tests/compiler.js", "test": "should compile macros that include other templates" },
       "status": "ported",
       "cases": ["compiler-macro-include"]
@@ -182,6 +217,11 @@
       "upstream": { "id": "tests/compiler.js:79", "file": "tests/compiler.js", "test": "should not leak variables set in nested scope within macro out to calling scope" },
       "status": "ported",
       "cases": ["compiler-macro-nested-loop-scope"]
+    },
+    {
+      "upstream": { "id": "tests/compiler.js:80", "file": "tests/compiler.js", "test": "should compile macros without leaking set to calling scope" },
+      "status": "ported",
+      "cases": ["compiler-macro-recursive-scope"]
     },
     {
       "upstream": { "id": "tests/compiler.js:81", "file": "tests/compiler.js", "test": "should compile macros that cannot see variables in caller scope" },

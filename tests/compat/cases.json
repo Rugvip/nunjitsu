@@ -400,6 +400,62 @@
       "expected": "[]|2"
     },
     {
+      "id": "compiler-macro-default-arguments",
+      "template": "{% macro foo(x, y, z=5) %}{{ y }}|{{ z }}{% endmacro %}{{ foo(1, 2) }}",
+      "nativeRender": false,
+      "context": {},
+      "autoescape": false,
+      "expected": "2|5"
+    },
+    {
+      "id": "compiler-macro-keyword-argument",
+      "template": "{% macro foo(x, y, z=5) %}{{ y }}{% endmacro %}{{ foo(1, y=2) }}",
+      "nativeRender": false,
+      "context": {},
+      "autoescape": false,
+      "expected": "2"
+    },
+    {
+      "id": "compiler-macro-keyword-only-arguments",
+      "template": "{% macro foo(x, y, z=5) %}{{ x }}{{ y }}{{ z }}{% endmacro %}{{ foo(x=1, y=2) }}",
+      "nativeRender": false,
+      "context": {},
+      "autoescape": false,
+      "expected": "125"
+    },
+    {
+      "id": "compiler-macro-keyword-overrides-default",
+      "template": "{% macro foo(x, y, z=5) %}{{ x }}{{ y }}{{ z }}{% endmacro %}{{ foo(x=1, y=2, z=3) }}",
+      "nativeRender": false,
+      "context": {},
+      "autoescape": false,
+      "expected": "123"
+    },
+    {
+      "id": "compiler-macro-out-of-order-keyword",
+      "template": "{% macro foo(x, y=2, z=5) %}{{ x }}{{ y }}{{ z }}{% endmacro %}{{ foo(1, z=3) }}",
+      "nativeRender": false,
+      "context": {},
+      "autoescape": false,
+      "expected": "123"
+    },
+    {
+      "id": "compiler-macro-default-only-arguments",
+      "template": "{% macro foo(x, y=2, z=5) %}{{ x }}{{ y }}{{ z }}{% endmacro %}{{ foo(1) }}",
+      "nativeRender": false,
+      "context": {},
+      "autoescape": false,
+      "expected": "125"
+    },
+    {
+      "id": "compiler-macro-overridden-defaults",
+      "template": "{% macro foo(x, y=2, z=5) %}{{ x }}{{ y }}{{ z }}{% endmacro %}{{ foo(1, 10, 20) }}",
+      "nativeRender": false,
+      "context": {},
+      "autoescape": false,
+      "expected": "11020"
+    },
+    {
       "id": "compiler-macro-argument-filter",
       "template": "{% macro foo(x) %}{{ x|title }}{% endmacro %}{{ foo(\"foo\") }}",
       "nativeRender": false,
@@ -439,6 +495,14 @@
       "context": {},
       "autoescape": false,
       "expected": "foobar"
+    },
+    {
+      "id": "compiler-macro-recursive-scope",
+      "template": "{% macro foo(topLevel, prefix=\"\") %}{% if topLevel %}{% set x = \"\" %}{% for i in [1,2] %}{{ foo(false, x) }}{% endfor %}{% else %}{% set x = prefix + \"foo\" %}{{ x }}{% endif %}{% endmacro %}{{ foo(true) }}",
+      "nativeRender": false,
+      "context": {},
+      "autoescape": false,
+      "expected": "foofoo"
     },
     {
       "id": "compiler-macro-no-caller-scope",
