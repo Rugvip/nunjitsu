@@ -12,7 +12,7 @@ use core::mem::{align_of, size_of};
 use core::ptr::{addr_of, addr_of_mut, read_unaligned, write_unaligned};
 use core::slice;
 
-const ABI_VERSION: u32 = 13;
+const ABI_VERSION: u32 = 14;
 const PAGE_SIZE: usize = 65_536;
 const STREAM_CHUNK_BYTES: u32 = 64 * 1024;
 const RECORD_ALIGNMENT: u32 = 8;
@@ -36,7 +36,8 @@ const TAG_CAPABILITY_REGISTRY: u32 = 16;
 const TAG_CAPABILITY_REQUEST: u32 = 17;
 const TAG_LOOP_STATE: u32 = 18;
 const TAG_SCOPE: u32 = 19;
-const TAG_LOOP_BINDINGS: u32 = 20;
+const TAG_BINDINGS: u32 = 20;
+const TAG_CAPTURE: u32 = 21;
 
 const STATE_IDLE: u32 = 0;
 const STATE_COMPLETE: u32 = 1;
@@ -57,7 +58,7 @@ const ERROR_RESOURCE_LIMIT: u32 = 7;
 const ERROR_UNKNOWN_CAPABILITY: u32 = 8;
 const ERROR_INVALID_EXPRESSION: u32 = 9;
 
-const RENDER_STATE_LENGTH: u32 = 132;
+const RENDER_STATE_LENGTH: u32 = 136;
 const STATE_CONTEXT: usize = 0;
 const STATE_FLAGS: usize = 4;
 const STATE_CURRENT_FRAME: usize = 8;
@@ -89,8 +90,9 @@ const STATE_TAGS: usize = 108;
 const STATE_EXPRESSION_ACTION: usize = 112;
 const STATE_CURRENT_LOOP: usize = 116;
 const STATE_CURRENT_SCOPE: usize = 120;
-const STATE_PENDING_SET_NAME: usize = 124;
+const STATE_PENDING_SET_BINDINGS: usize = 124;
 const STATE_INCLUDE_IGNORE_MISSING: usize = 128;
+const STATE_CURRENT_CAPTURE: usize = 132;
 
 const EXPRESSION_OUTPUT: u32 = 0;
 const EXPRESSION_IF: u32 = 1;
@@ -113,7 +115,7 @@ const FRAME_CURSOR: usize = 8;
 const FRAME_CANONICAL_NAME: usize = 12;
 const FRAME_SCOPE_BASE: usize = 16;
 
-const LOOP_STATE_LENGTH: u32 = 40;
+const LOOP_STATE_LENGTH: u32 = 44;
 const LOOP_PARENT: usize = 0;
 const LOOP_FRAME: usize = 4;
 const LOOP_BODY_CURSOR: usize = 8;
@@ -123,7 +125,17 @@ const LOOP_ITERABLE: usize = 20;
 const LOOP_INDEX: usize = 24;
 const LOOP_LENGTH: usize = 28;
 const LOOP_BINDINGS: usize = 32;
-const LOOP_SCOPE_BASE: usize = 36;
+const LOOP_OUTER_SCOPE: usize = 36;
+const LOOP_SCOPE_BASE: usize = 40;
+
+const CAPTURE_LENGTH: u32 = 28;
+const CAPTURE_PARENT: usize = 0;
+const CAPTURE_FRAME: usize = 4;
+const CAPTURE_BINDINGS: usize = 8;
+const CAPTURE_FIRST_CHUNK: usize = 12;
+const CAPTURE_LAST_CHUNK: usize = 16;
+const CAPTURE_OUTPUT_LENGTH: usize = 20;
+const CAPTURE_TOTAL_OUTPUT_LENGTH: usize = 24;
 
 const SCOPE_LENGTH: u32 = 12;
 const SCOPE_PARENT: usize = 0;
@@ -429,7 +441,7 @@ fn resume_capability(value_offset: u32) -> Result<(), u32> {
 
 fn run_active_render() -> Result<u32, u32> {
     let state_offset = active_state()?;
-    if is_streaming(state_offset)? && state_field(state_offset, STATE_OUTPUT_LENGTH)? != 0 {
+    if should_yield_output(state_offset)? {
         return yield_output(state_offset);
     }
     if state_field(state_offset, STATE_PENDING_EXPRESSION)? != 0 {
@@ -439,7 +451,7 @@ fn run_active_render() -> Result<u32, u32> {
         if let Some(state) = continue_expression(state_offset)? {
             return Ok(state);
         }
-        if is_streaming(state_offset)? && state_field(state_offset, STATE_OUTPUT_LENGTH)? != 0 {
+        if should_yield_output(state_offset)? {
             return yield_output(state_offset);
         }
     }
@@ -477,7 +489,7 @@ fn run_active_render() -> Result<u32, u32> {
         match item {
             TemplateItem::Text(text) => {
                 append_output(state_offset, text)?;
-                if is_streaming(state_offset)? && !text.is_empty() {
+                if should_yield_output(state_offset)? {
                     return yield_output(state_offset);
                 }
             }
@@ -486,9 +498,7 @@ fn run_active_render() -> Result<u32, u32> {
                 {
                     return Ok(state);
                 }
-                if is_streaming(state_offset)?
-                    && state_field(state_offset, STATE_OUTPUT_LENGTH)? != 0
-                {
+                if should_yield_output(state_offset)? {
                     return yield_output(state_offset);
                 }
             }
@@ -512,6 +522,12 @@ fn run_active_render() -> Result<u32, u32> {
                 }
             }
             TemplateItem::End => {
+                let capture_offset = state_field(state_offset, STATE_CURRENT_CAPTURE)?;
+                if capture_offset != 0
+                    && capture_field(capture_offset, CAPTURE_FRAME)? == frame_offset
+                {
+                    return Err(ERROR_UNSUPPORTED_TAG);
+                }
                 set_state_field(
                     state_offset,
                     STATE_CURRENT_SCOPE,
@@ -566,9 +582,17 @@ fn handle_tag(state_offset: u32, directive: &[u8]) -> Result<Option<u32>, u32> {
     }
     if let Some(clause) = directive_keyword(directive, b"set") {
         let clause = parse_set_clause(clause).map_err(|_| ERROR_UNSUPPORTED_TAG)?;
-        let name_offset = write_bytes_record(TAG_STRING, clause.name)?;
-        set_state_field(state_offset, STATE_PENDING_SET_NAME, name_offset)?;
-        return start_expression(state_offset, clause.expression, EXPRESSION_SET);
+        let bindings = write_bindings(clause.targets)?;
+        if let Some(expression) = clause.expression {
+            set_state_field(state_offset, STATE_PENDING_SET_BINDINGS, bindings)?;
+            return start_expression(state_offset, expression, EXPRESSION_SET);
+        }
+        begin_capture(state_offset, bindings)?;
+        return Ok(None);
+    }
+    if directive == b"endset" {
+        finish_capture(state_offset)?;
+        return Ok(None);
     }
     if directive == b"endfor" {
         advance_for(state_offset)?;
@@ -608,7 +632,7 @@ fn start_for(state_offset: u32, source: &[u8]) -> Result<(), u32> {
         return Ok(());
     }
 
-    let bindings = write_loop_bindings(clause.bindings)?;
+    let bindings = write_bindings(clause.bindings)?;
     let loop_offset = allocate_record(TAG_LOOP_STATE, LOOP_STATE_LENGTH)?;
     let parent = state_field(state_offset, STATE_CURRENT_LOOP)?;
     let scope_base = state_field(state_offset, STATE_CURRENT_SCOPE)?;
@@ -626,6 +650,7 @@ fn start_for(state_offset: u32, source: &[u8]) -> Result<(), u32> {
     write_u32(loop_state, LOOP_INDEX, 0)?;
     write_u32(loop_state, LOOP_LENGTH, length)?;
     write_u32(loop_state, LOOP_BINDINGS, bindings)?;
+    write_u32(loop_state, LOOP_OUTER_SCOPE, scope_base)?;
     write_u32(loop_state, LOOP_SCOPE_BASE, scope_base)?;
     set_state_field(state_offset, STATE_CURRENT_LOOP, loop_offset)?;
     if length == 0 {
@@ -638,7 +663,7 @@ fn start_for(state_offset: u32, source: &[u8]) -> Result<(), u32> {
     Ok(())
 }
 
-fn write_loop_bindings(bindings: &[u8]) -> Result<u32, u32> {
+fn write_bindings(bindings: &[u8]) -> Result<u32, u32> {
     let mut count = 0usize;
     let mut cursor = 0usize;
     while let Some((_, next)) = next_binding(bindings, cursor).map_err(|_| ERROR_UNSUPPORTED_TAG)? {
@@ -651,12 +676,8 @@ fn write_loop_bindings(bindings: &[u8]) -> Result<u32, u32> {
     let payload_length = 4u32
         .checked_add((count as u32).checked_mul(4).ok_or(ERROR_RESOURCE_LIMIT)?)
         .ok_or(ERROR_RESOURCE_LIMIT)?;
-    let offset = allocate_record(TAG_LOOP_BINDINGS, payload_length)?;
-    write_u32(
-        mutable_record_at(offset, TAG_LOOP_BINDINGS)?,
-        0,
-        count as u32,
-    )?;
+    let offset = allocate_record(TAG_BINDINGS, payload_length)?;
+    write_u32(mutable_record_at(offset, TAG_BINDINGS)?, 0, count as u32)?;
     cursor = 0;
     let mut index = 0usize;
     while let Some((name, next)) =
@@ -664,7 +685,7 @@ fn write_loop_bindings(bindings: &[u8]) -> Result<u32, u32> {
     {
         let name_offset = write_bytes_record(TAG_STRING, name)?;
         write_u32(
-            mutable_record_at(offset, TAG_LOOP_BINDINGS)?,
+            mutable_record_at(offset, TAG_BINDINGS)?,
             4 + index * 4,
             name_offset,
         )?;
@@ -672,6 +693,105 @@ fn write_loop_bindings(bindings: &[u8]) -> Result<u32, u32> {
         cursor = next;
     }
     Ok(offset)
+}
+
+fn assign_bindings(state_offset: u32, bindings_offset: u32, value_offset: u32) -> Result<(), u32> {
+    let bindings = record_at(bindings_offset, TAG_BINDINGS)?;
+    let count = collection_count(bindings, 4)?;
+    for index in 0..count {
+        assign_scope(
+            state_offset,
+            read_u32(bindings, 4 + index * 4)?,
+            value_offset,
+        )?;
+    }
+    Ok(())
+}
+
+fn begin_capture(state_offset: u32, bindings_offset: u32) -> Result<(), u32> {
+    record_at(bindings_offset, TAG_BINDINGS)?;
+    let capture_offset = allocate_record(TAG_CAPTURE, CAPTURE_LENGTH)?;
+    let capture = mutable_record_at(capture_offset, TAG_CAPTURE)?;
+    write_u32(
+        capture,
+        CAPTURE_PARENT,
+        state_field(state_offset, STATE_CURRENT_CAPTURE)?,
+    )?;
+    write_u32(
+        capture,
+        CAPTURE_FRAME,
+        state_field(state_offset, STATE_CURRENT_FRAME)?,
+    )?;
+    write_u32(capture, CAPTURE_BINDINGS, bindings_offset)?;
+    write_u32(
+        capture,
+        CAPTURE_FIRST_CHUNK,
+        state_field(state_offset, STATE_FIRST_CHUNK)?,
+    )?;
+    write_u32(
+        capture,
+        CAPTURE_LAST_CHUNK,
+        state_field(state_offset, STATE_LAST_CHUNK)?,
+    )?;
+    write_u32(
+        capture,
+        CAPTURE_OUTPUT_LENGTH,
+        state_field(state_offset, STATE_OUTPUT_LENGTH)?,
+    )?;
+    write_u32(
+        capture,
+        CAPTURE_TOTAL_OUTPUT_LENGTH,
+        state_field(state_offset, STATE_TOTAL_OUTPUT_LENGTH)?,
+    )?;
+    set_state_field(state_offset, STATE_CURRENT_CAPTURE, capture_offset)?;
+    set_state_field(state_offset, STATE_FIRST_CHUNK, 0)?;
+    set_state_field(state_offset, STATE_LAST_CHUNK, 0)?;
+    set_state_field(state_offset, STATE_OUTPUT_LENGTH, 0)?;
+    set_state_field(state_offset, STATE_TOTAL_OUTPUT_LENGTH, 0)
+}
+
+fn finish_capture(state_offset: u32) -> Result<(), u32> {
+    let capture_offset = state_field(state_offset, STATE_CURRENT_CAPTURE)?;
+    if capture_offset == 0 {
+        return Err(ERROR_UNSUPPORTED_TAG);
+    }
+    let capture = record_at(capture_offset, TAG_CAPTURE)?;
+    if capture.len() != CAPTURE_LENGTH as usize
+        || read_u32(capture, CAPTURE_FRAME)? != state_field(state_offset, STATE_CURRENT_FRAME)?
+    {
+        return Err(ERROR_UNSUPPORTED_TAG);
+    }
+    let value_offset = materialize_output_as(state_offset, TAG_STRING)?.0;
+    set_state_field(
+        state_offset,
+        STATE_FIRST_CHUNK,
+        read_u32(capture, CAPTURE_FIRST_CHUNK)?,
+    )?;
+    set_state_field(
+        state_offset,
+        STATE_LAST_CHUNK,
+        read_u32(capture, CAPTURE_LAST_CHUNK)?,
+    )?;
+    set_state_field(
+        state_offset,
+        STATE_OUTPUT_LENGTH,
+        read_u32(capture, CAPTURE_OUTPUT_LENGTH)?,
+    )?;
+    set_state_field(
+        state_offset,
+        STATE_TOTAL_OUTPUT_LENGTH,
+        read_u32(capture, CAPTURE_TOTAL_OUTPUT_LENGTH)?,
+    )?;
+    set_state_field(
+        state_offset,
+        STATE_CURRENT_CAPTURE,
+        read_u32(capture, CAPTURE_PARENT)?,
+    )?;
+    assign_bindings(
+        state_offset,
+        read_u32(capture, CAPTURE_BINDINGS)?,
+        value_offset,
+    )
 }
 
 fn advance_for(state_offset: u32) -> Result<(), u32> {
@@ -692,12 +812,12 @@ fn advance_for(state_offset: u32) -> Result<(), u32> {
     }
     let index = loop_field(loop_offset, LOOP_INDEX)?;
     let length = loop_field(loop_offset, LOOP_LENGTH)?;
-    set_state_field(
-        state_offset,
-        STATE_CURRENT_SCOPE,
-        loop_field(loop_offset, LOOP_SCOPE_BASE)?,
-    )?;
     if index + 1 < length {
+        set_state_field(
+            state_offset,
+            STATE_CURRENT_SCOPE,
+            loop_field(loop_offset, LOOP_SCOPE_BASE)?,
+        )?;
         set_loop_field(loop_offset, LOOP_INDEX, index + 1)?;
         set_frame_field(
             frame_offset,
@@ -705,6 +825,11 @@ fn advance_for(state_offset: u32) -> Result<(), u32> {
             loop_field(loop_offset, LOOP_BODY_CURSOR)?,
         )
     } else {
+        set_state_field(
+            state_offset,
+            STATE_CURRENT_SCOPE,
+            loop_field(loop_offset, LOOP_OUTER_SCOPE)?,
+        )?;
         if cursor == else_cursor {
             set_frame_field(frame_offset, FRAME_CURSOR, end_cursor)?;
         }
@@ -732,9 +857,32 @@ fn pop_for(state_offset: u32, loop_offset: u32) -> Result<(), u32> {
     )
 }
 
-fn push_scope(state_offset: u32, name_offset: u32, value_offset: u32) -> Result<(), u32> {
+fn assign_scope(state_offset: u32, name_offset: u32, value_offset: u32) -> Result<(), u32> {
     record_at(name_offset, TAG_STRING)?;
     Value::at(value_offset)?;
+    let frame_offset = state_field(state_offset, STATE_CURRENT_FRAME)?;
+    let frame = record_at(frame_offset, TAG_FRAME)?;
+    let boundary = read_u32(frame, FRAME_SCOPE_BASE)?;
+    let mut existing = state_field(state_offset, STATE_CURRENT_SCOPE)?;
+    while existing != 0 && existing != boundary {
+        let scope = record_at(existing, TAG_SCOPE)?;
+        if scope.len() != SCOPE_LENGTH as usize {
+            return Err(ERROR_INVALID_RECORD);
+        }
+        if record_at(read_u32(scope, SCOPE_NAME)?, TAG_STRING)?
+            == record_at(name_offset, TAG_STRING)?
+        {
+            write_u32(
+                mutable_record_at(existing, TAG_SCOPE)?,
+                SCOPE_VALUE,
+                value_offset,
+            )?;
+            set_state_field(state_offset, STATE_TRANSIENT_BASE, unsafe { ARENA_CURSOR })?;
+            return Ok(());
+        }
+        existing = read_u32(scope, SCOPE_PARENT)?;
+    }
+
     let parent = state_field(state_offset, STATE_CURRENT_SCOPE)?;
     let scope_offset = allocate_record(TAG_SCOPE, SCOPE_LENGTH)?;
     let scope = mutable_record_at(scope_offset, TAG_SCOPE)?;
@@ -742,6 +890,10 @@ fn push_scope(state_offset: u32, name_offset: u32, value_offset: u32) -> Result<
     write_u32(scope, SCOPE_NAME, name_offset)?;
     write_u32(scope, SCOPE_VALUE, value_offset)?;
     set_state_field(state_offset, STATE_CURRENT_SCOPE, scope_offset)?;
+    let loop_offset = state_field(state_offset, STATE_CURRENT_LOOP)?;
+    if loop_offset != 0 && loop_field(loop_offset, LOOP_FRAME)? == frame_offset {
+        set_loop_field(loop_offset, LOOP_SCOPE_BASE, scope_offset)?;
+    }
     set_state_field(state_offset, STATE_TRANSIENT_BASE, unsafe { ARENA_CURSOR })
 }
 
@@ -786,9 +938,9 @@ fn continue_expression(state_offset: u32) -> Result<Option<u32>, u32> {
             }
             EXPRESSION_IF => apply_if_condition(state_offset, value_offset)?,
             EXPRESSION_SET => {
-                let name_offset = state_field(state_offset, STATE_PENDING_SET_NAME)?;
-                push_scope(state_offset, name_offset, value_offset)?;
-                set_state_field(state_offset, STATE_PENDING_SET_NAME, 0)?;
+                let bindings = state_field(state_offset, STATE_PENDING_SET_BINDINGS)?;
+                assign_bindings(state_offset, bindings, value_offset)?;
+                set_state_field(state_offset, STATE_PENDING_SET_BINDINGS, 0)?;
                 None
             }
             EXPRESSION_INCLUDE => Some(issue_include(state_offset, value_offset)?),
@@ -797,6 +949,7 @@ fn continue_expression(state_offset: u32) -> Result<Option<u32>, u32> {
         if next_state.is_none()
             && state_field(state_offset, STATE_PENDING_EXPRESSION)? == 0
             && is_streaming(state_offset)?
+            && state_field(state_offset, STATE_CURRENT_CAPTURE)? == 0
             && state_field(state_offset, STATE_OUTPUT_LENGTH)? == 0
         {
             let transient_base = state_field(state_offset, STATE_TRANSIENT_BASE)?;
@@ -1682,6 +1835,9 @@ fn emit_value(state_offset: u32, value_offset: u32) -> Result<(), u32> {
 }
 
 fn complete_render(state_offset: u32) -> Result<u32, u32> {
+    if state_field(state_offset, STATE_CURRENT_CAPTURE)? != 0 {
+        return Err(ERROR_UNSUPPORTED_TAG);
+    }
     if is_streaming(state_offset)? {
         if state_field(state_offset, STATE_OUTPUT_LENGTH)? != 0 {
             return yield_output(state_offset);
@@ -1692,6 +1848,12 @@ fn complete_render(state_offset: u32) -> Result<u32, u32> {
     let (output_offset, output_length) = materialize_output(state_offset)?;
     set_control(STATE_COMPLETE, output_offset, output_length, ERROR_NONE);
     Ok(STATE_COMPLETE)
+}
+
+fn should_yield_output(state_offset: u32) -> Result<bool, u32> {
+    Ok(is_streaming(state_offset)?
+        && state_field(state_offset, STATE_CURRENT_CAPTURE)? == 0
+        && state_field(state_offset, STATE_OUTPUT_LENGTH)? != 0)
 }
 
 fn yield_output(state_offset: u32) -> Result<u32, u32> {
@@ -1769,8 +1931,12 @@ fn materialize_stream_output(state_offset: u32) -> Result<(u32, u32), u32> {
 }
 
 fn materialize_output(state_offset: u32) -> Result<(u32, u32), u32> {
+    materialize_output_as(state_offset, TAG_OUTPUT)
+}
+
+fn materialize_output_as(state_offset: u32, tag: u32) -> Result<(u32, u32), u32> {
     let output_length = state_field(state_offset, STATE_OUTPUT_LENGTH)?;
-    let output_offset = allocate_record(TAG_OUTPUT, output_length)?;
+    let output_offset = allocate_record(tag, output_length)?;
     let output_payload_offset = output_offset
         .checked_add(RECORD_HEADER_LENGTH as u32)
         .ok_or(ERROR_OUTPUT_TOO_LARGE)?;
@@ -1955,6 +2121,14 @@ fn set_loop_field(offset: u32, field: usize, value: u32) -> Result<(), u32> {
     write_u32(state, field, value)
 }
 
+fn capture_field(offset: u32, field: usize) -> Result<u32, u32> {
+    let capture = record_at(offset, TAG_CAPTURE)?;
+    if capture.len() != CAPTURE_LENGTH as usize {
+        return Err(ERROR_INVALID_RECORD);
+    }
+    read_u32(capture, field)
+}
+
 fn iterable_length(offset: u32) -> Result<u32, u32> {
     match Value::at(offset)? {
         Value::Undefined | Value::Null => Ok(0),
@@ -2084,11 +2258,8 @@ impl Context {
     fn lookup_local(&self, name: &[u8]) -> Option<u32> {
         let mut loop_offset = state_field(self.state_offset, STATE_CURRENT_LOOP).ok()?;
         while loop_offset != 0 {
-            let bindings = record_at(
-                loop_field(loop_offset, LOOP_BINDINGS).ok()?,
-                TAG_LOOP_BINDINGS,
-            )
-            .ok()?;
+            let bindings =
+                record_at(loop_field(loop_offset, LOOP_BINDINGS).ok()?, TAG_BINDINGS).ok()?;
             let count = collection_count(bindings, 4).ok()?;
             for index in 0..count {
                 let name_offset = read_u32(bindings, 4 + index * 4).ok()?;

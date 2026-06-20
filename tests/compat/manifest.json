@@ -122,6 +122,28 @@
       "reason": "The for-tag behavior is ported; the same upstream helper also registers asyncEach and asyncAll variants.",
       "removalCondition": "Implement and port the asyncEach and asyncAll variants.",
       "cases": ["compiler-four-value-loop-destructuring"]
+    },
+    {
+      "upstream": { "id": "tests/compiler.js:114", "file": "tests/compiler.js", "test": "should compile a set block" },
+      "status": "ported",
+      "cases": ["compiler-set-multiple-and-arithmetic", "compiler-set-loop-local", "compiler-set-include-isolation", "compiler-set-context-expression", "compiler-set-new-loop-local", "compiler-set-loop-local-accumulation", "compiler-set-resolves-outer-scope", "compiler-set-outer-accumulation"]
+    },
+    {
+      "upstream": { "id": "tests/compiler.js:115", "file": "tests/compiler.js", "test": "should compile set with frame references" },
+      "status": "ported",
+      "cases": ["compiler-set-frame-reference"]
+    },
+    {
+      "upstream": { "id": "tests/compiler.js:116", "file": "tests/compiler.js", "test": "should compile set assignments of the same variable" },
+      "status": "ported",
+      "cases": ["compiler-set-same-variable-branches"]
+    },
+    {
+      "upstream": { "id": "tests/compiler.js:117", "file": "tests/compiler.js", "test": "should compile block-set" },
+      "status": "partial",
+      "reason": "All direct, nested, loop, include, and multi-target captures are ported; the macro-contained regression requires macro support.",
+      "removalCondition": "Implement macros and port the remaining macro-contained assertion.",
+      "cases": ["compiler-block-set-empty-and-text", "compiler-block-set-loop-include", "compiler-block-set-nested", "compiler-block-set-multiple-targets"]
     }
   ]
 }

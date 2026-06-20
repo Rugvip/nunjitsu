@@ -94,6 +94,12 @@ one JavaScript string. Streaming rendering uses bounded chunks and pauses the
 evaluator until the consumer's `ReadableStream` requests more data. The decoder
 must preserve UTF-8 code points across chunk boundaries.
 
+Captured bodies, including block assignments and macro output, push an
+arena-backed output sink. Nested sinks retain their parent chunk chain and byte
+count, never expose captured chunks to a streaming consumer, and restore the
+parent sink before assigning the captured string. Capture failure follows the
+same render-wide cleanup path as ordinary output failure.
+
 A streaming consumer may observe earlier chunks before a later error. That is
 part of the streaming contract and must be documented in the public API.
 

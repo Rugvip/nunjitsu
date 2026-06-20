@@ -797,6 +797,7 @@ test('keeps resumable assignments scoped across loops and includes', async () =>
   const engine = await createEngine({
     loaders: [memoryLoader({
       'mutate.njk': '{% set value = "inside" %}{{ value }}',
+      'capture-item.njk': '<{{ item }}>',
     })],
     globals: {
       async greet(arguments_) {
@@ -827,13 +828,58 @@ test('keeps resumable assignments scoped across loops and includes', async () =>
           ':{{ item }}',
         ].join(''),
       }),
-      '12:outer',
+      '12:2',
     );
     assert.equal(
       (await Array.fromAsync(engine.renderStream({
         source: '{% set greeting = greet("World") %}before {{ greeting }} after',
       }))).join(''),
       'before Hello World after',
+    );
+    assert.equal(
+      await engine.render({
+        source: [
+          '{% set captured %}',
+          '{% for item in [1, 2] %}',
+          '{% include "capture-item.njk" %}{{ greet(item) }}',
+          '{% endfor %}',
+          '{% endset %}',
+          '{{ captured }}',
+        ].join(''),
+      }),
+      '<1>Hello 1<2>Hello 2',
+    );
+    assert.equal(
+      await engine.render({
+        source: [
+          '{% set outer %}',
+          '{% set inner %}item {% for i in [1, 2, 3] %}{{ i }} {% endfor %}{% endset %}',
+          '{% for i in [1, 2] %}{{ i }}={{ inner }};{% endfor %}',
+          '{% endset %}',
+          '{{ outer }}',
+        ].join(''),
+      }),
+      '1=item 1 2 3 ;2=item 1 2 3 ;',
+    );
+    assert.equal(
+      await engine.render({
+        source: '{% set x, y, z %}cool{% endset %}{{ x }} {{ y }} {{ z }}',
+      }),
+      'cool cool cool',
+    );
+    assert.deepEqual(
+      await Array.fromAsync(engine.renderStream({
+        source: 'before{% set captured %}hidden{% endset %}after:{{ captured }}',
+      })),
+      ['before', 'after:', 'hidden'],
+    );
+    await assert.rejects(
+      engine.render({ source: '{% set captured %}unclosed' }),
+      error => error instanceof NunjitsuRenderError && error.code === 5,
+    );
+    assert.equal(
+      await engine.render({ source: 'clean after capture failure' }),
+      'clean after capture failure',
     );
   } finally {
     await engine.dispose();

@@ -268,6 +268,120 @@
       "context": { "arr": [[1, 2, 3, 4], [5, 6, 7, 8]] },
       "autoescape": false,
       "expected": "[1,2,3,4][5,6,7,8]"
+    },
+    {
+      "id": "compiler-set-multiple-and-arithmetic",
+      "template": "{% set username = \"foo\" %}{{ username }}|{% set x, y = \"foo\" %}{{ x }}{{ y }}|{% set sum = 1 + 2 %}{{ sum }}",
+      "nativeRender": false,
+      "context": { "username": "james" },
+      "autoescape": false,
+      "expected": "foo|foofoo|3"
+    },
+    {
+      "id": "compiler-set-loop-local",
+      "template": "{% for i in [1] %}{% set foo=1 %}{% endfor %}{{ foo }}",
+      "nativeRender": false,
+      "context": { "foo": 2 },
+      "autoescape": false,
+      "expected": "2"
+    },
+    {
+      "id": "compiler-set-include-isolation",
+      "template": "{% include \"set.njk\" %}{{ foo }}",
+      "templates": { "set.njk": "{% set foo = \"mumble\" %}" },
+      "nativeRender": false,
+      "context": { "foo": "bar" },
+      "autoescape": false,
+      "expected": "bar"
+    },
+    {
+      "id": "compiler-set-context-expression",
+      "template": "{% set username = username + \"pasta\" %}{{ username }}",
+      "nativeRender": false,
+      "context": { "username": "basta" },
+      "autoescape": false,
+      "expected": "bastapasta"
+    },
+    {
+      "id": "compiler-set-new-loop-local",
+      "template": "{% for i in [1] %}{% set val=5 %}{% endfor %}{{ val }}",
+      "nativeRender": false,
+      "context": {},
+      "autoescape": false,
+      "expected": ""
+    },
+    {
+      "id": "compiler-set-loop-local-accumulation",
+      "template": "{% for i in [1,2,3] %}{% if not val %}{% set val=5 %}{% endif %}{% set val=val+1 %}{{ val }}{% endfor %}afterwards: {{ val }}",
+      "nativeRender": false,
+      "context": {},
+      "autoescape": false,
+      "expected": "678afterwards: "
+    },
+    {
+      "id": "compiler-set-resolves-outer-scope",
+      "template": "{% set val=1 %}{% for i in [1] %}{% set val=5 %}{% endfor %}{{ val }}",
+      "nativeRender": false,
+      "context": {},
+      "autoescape": false,
+      "expected": "5"
+    },
+    {
+      "id": "compiler-set-outer-accumulation",
+      "template": "{% set val=5 %}{% for i in [1,2,3] %}{% set val=val+1 %}{{ val }}{% endfor %}afterwards: {{ val }}",
+      "nativeRender": false,
+      "context": {},
+      "autoescape": false,
+      "expected": "678afterwards: 8"
+    },
+    {
+      "id": "compiler-set-frame-reference",
+      "template": "{% set username = user.name %}{{ username }}",
+      "nativeRender": false,
+      "context": { "user": { "name": "james" } },
+      "autoescape": false,
+      "expected": "james"
+    },
+    {
+      "id": "compiler-set-same-variable-branches",
+      "template": "{% set x = \"hello\" %}{% if false %}{% set x = \"world\" %}{% endif %}{{ x }}|{% set x = \"blue\" %}{% if true %}{% set x = \"green\" %}{% endif %}{{ x }}",
+      "nativeRender": false,
+      "context": {},
+      "autoescape": false,
+      "expected": "hello|green"
+    },
+    {
+      "id": "compiler-block-set-empty-and-text",
+      "template": "{% set empty %}{% endset %}[{{ empty }}]|{% set content %}test string{% endset %}{{ content }}",
+      "nativeRender": false,
+      "context": {},
+      "autoescape": false,
+      "expected": "[]|test string"
+    },
+    {
+      "id": "compiler-block-set-loop-include",
+      "template": "{% set content %}{% for item in [1, 2, 3] %}{% include \"item.njk\" %} {% endfor %}{% endset %}{{ content }}",
+      "templates": { "item.njk": "showing {{ item }}" },
+      "nativeRender": false,
+      "context": {},
+      "autoescape": false,
+      "expected": "showing 1 showing 2 showing 3 "
+    },
+    {
+      "id": "compiler-block-set-nested",
+      "template": "{% set outer %}{% set inner %}{% for i in [1, 2, 3] %}item {{ i }} {% endfor %}{% endset %}{% for i in [1, 2, 3] %}inner {{i}}: \"{{ inner }}\" {% endfor %}{% endset %}{{ outer | safe }}",
+      "nativeRender": false,
+      "context": {},
+      "autoescape": false,
+      "expected": "inner 1: \"item 1 item 2 item 3 \" inner 2: \"item 1 item 2 item 3 \" inner 3: \"item 1 item 2 item 3 \" "
+    },
+    {
+      "id": "compiler-block-set-multiple-targets",
+      "template": "{% set x,y,z %}cool{% endset %}{{ x }} {{ y }} {{ z }}",
+      "nativeRender": false,
+      "context": {},
+      "autoescape": false,
+      "expected": "cool cool cool"
     }
   ]
 }
