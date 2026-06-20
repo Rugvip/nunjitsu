@@ -872,6 +872,76 @@ test('matches scalar, numeric, and text filter edge semantics', async () => {
   }
 });
 
+test('matches built-in test semantics across copied values', async () => {
+  const shared = { value: true };
+  const engine = await createEngine();
+  const cases: readonly [string, TemplateContext, string][] = [
+    [
+      '{% macro available() %}yes{% endmacro %}{{ available is callable }}|{{ "value" is not callable }}',
+      {},
+      'true|true',
+    ],
+    ['{{ missing is defined }}|{{ missing is not defined }}', {}, 'false|true'],
+    ['{{ value is defined }}|{{ value is not defined }}', { value: null }, 'true|false'],
+    [
+      '{% if value is defined %}defined{% else %}undefined{% endif %}',
+      {},
+      'undefined',
+    ],
+    [
+      '{% if value is not defined %}undefined{% else %}defined{% endif %}',
+      { value: null },
+      'defined',
+    ],
+    ['{{ missing is undefined }}|{{ value is not undefined }}', { value: null }, 'true|true'],
+    [
+      '{{ null is null }}|{{ none is none }}|{{ none is null }}|{{ missing is null }}',
+      {},
+      'true|true|true|false',
+    ],
+    ['{{ "6" is divisibleby(3) }}|{{ 3 is not divisibleby(2) }}', {}, 'true|true'],
+    [
+      '{{ safe is escaped }}|{{ unsafe is escaped }}',
+      { safe: markSafe('value'), unsafe: 'value' },
+      'true|false',
+    ],
+    ['{{ "5" is even }}|{{ 4 is not even }}', {}, 'false|false'],
+    ['{{ "5" is odd }}|{{ 4 is not odd }}|{{ -1 is odd }}', {}, 'true|true|false'],
+    ['{{ value is mapping }}|{{ list is mapping }}', { value: {}, list: [] }, 'true|false'],
+    ['{{ 0 is falsy }}|{{ "pancakes" is not falsy }}', {}, 'true|true'],
+    ['{{ null is truthy }}|{{ "pancakes" is not truthy }}', {}, 'false|false'],
+    ['{{ "5" is greaterthan(4) }}|{{ 4 is not greaterthan(2) }}', {}, 'true|false'],
+    ['{{ "5" is ge(5) }}|{{ 4 is not ge(2) }}', {}, 'true|false'],
+    ['{{ "5" is lessthan(4) }}|{{ 4 is not lessthan(2) }}', {}, 'false|true'],
+    ['{{ "5" is le(5) }}|{{ 4 is not le(2) }}', {}, 'true|true'],
+    ['{{ 5 is ne(5) }}|{{ 4 is not ne(2) }}|{{ "5" is ne(5) }}', {}, 'false|false|true'],
+    ['{{ value is iterable }}|{{ text is iterable }}', { value: [], text: 'value' }, 'true|true'],
+    ['{{ 5 is number }}|{{ "42" is number }}', {}, 'true|false'],
+    ['{{ 5 is string }}|{{ "42" is string }}', {}, 'false|true'],
+    ['{{ 1 is equalto(2) }}|{{ 2 is not equalto(2) }}', {}, 'false|false'],
+    ['{{ first is sameas(second) }}', { first: shared, second: shared }, 'true'],
+    [
+      '{{ "foobar" is lower }}|{{ "Foobar" is lower }}|{{ "FOOBAR" is upper }}|{{ "Foobar" is upper }}',
+      {},
+      'true|false|true|false',
+    ],
+  ];
+  try {
+    for (const [source, context, expected] of cases) {
+      assert.equal(await engine.render({ source }, context), expected, source);
+    }
+    await assert.rejects(
+      engine.render(
+        { source: '{{ value is callable }}' },
+        { value: () => true } as unknown as TemplateContext,
+      ),
+      /Unsupported template value of type function/,
+    );
+  } finally {
+    await engine.dispose();
+  }
+});
+
 test('dispatches immutable async filters, tests, and globals through safe copied values', async () => {
   let markBlockingCallStarted: (() => void) | undefined;
   const blockingCallStarted = new Promise<void>(resolve => {

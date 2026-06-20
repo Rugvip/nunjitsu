@@ -22,6 +22,10 @@ Nunjitsu cannot make an arbitrary callback safe.
 Template context is copied into the render arena. Templates never receive a
 live JavaScript object proxy.
 
+Repeated references to the same non-cyclic array or record are copied once per
+render and retain alias identity inside the arena. This supports strict
+`sameas` behavior without retaining or exposing the original host object.
+
 The portable value model consists of:
 
 - `undefined` and `null`;

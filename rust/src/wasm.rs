@@ -3570,14 +3570,17 @@ fn apply_builtin_test(
             require_argument_count(call, 0)?;
             matches!(input, Value::SafeString(_))
         }
+        b"callable" => {
+            require_argument_count(call, 0)?;
+            matches!(input, Value::Macro)
+        }
         b"even" | b"odd" => {
             require_argument_count(call, 0)?;
             let number = input.as_number();
-            let even = number.is_finite() && number % 2.0 == 0.0;
             if call.name == b"even" {
-                even
+                number.is_finite() && number % 2.0 == 0.0
             } else {
-                !even && number.is_finite()
+                number.is_finite() && number % 2.0 == 1.0
             }
         }
         b"divisibleby" => {
@@ -3595,13 +3598,16 @@ fn apply_builtin_test(
                 true,
             )?
         }
-        b"eq" | b"equalto" | b"ne" | b"lt" | b"lessthan" | b"le" | b"lteq" | b"gt"
-        | b"greaterthan" | b"ge" | b"gteq" => {
+        b"eq" | b"equalto" | b"ne" => {
+            require_argument_count(call, 1)?;
+            let right = call_argument(state_offset, call, 0)?.ok_or(ERROR_INVALID_EXPRESSION)?;
+            let equal = values_equal(input_offset, right, true)?;
+            if call.name == b"ne" { !equal } else { equal }
+        }
+        b"lt" | b"lessthan" | b"le" | b"lteq" | b"gt" | b"greaterthan" | b"ge" | b"gteq" => {
             require_argument_count(call, 1)?;
             let right = call_argument(state_offset, call, 0)?.ok_or(ERROR_INVALID_EXPRESSION)?;
             let operator = match call.name {
-                b"eq" | b"equalto" => Comparison::Equal,
-                b"ne" => Comparison::NotEqual,
                 b"lt" | b"lessthan" => Comparison::Less,
                 b"le" | b"lteq" => Comparison::LessOrEqual,
                 b"gt" | b"greaterthan" => Comparison::Greater,
@@ -3614,13 +3620,11 @@ fn apply_builtin_test(
             let Some(value) = input.string_bytes() else {
                 return Ok(Some(false));
             };
-            let has_cased = value.iter().any(u8::is_ascii_alphabetic);
-            has_cased
-                && if call.name == b"lower" {
-                    !value.iter().any(u8::is_ascii_uppercase)
-                } else {
-                    !value.iter().any(u8::is_ascii_lowercase)
-                }
+            if call.name == b"lower" {
+                !value.iter().any(u8::is_ascii_uppercase)
+            } else {
+                !value.iter().any(u8::is_ascii_lowercase)
+            }
         }
         _ => return Ok(None),
     };
@@ -5886,9 +5890,19 @@ fn resolve_atom(state_offset: u32, atom: Atom<'_>) -> Result<u32, u32> {
         Atom::Lookup(path) => {
             let context_offset = state_field(state_offset, STATE_CONTEXT)?;
             let context = Context::new(record_at(context_offset, TAG_RECORD)?, state_offset)?;
-            context
-                .lookup_offset(path)
-                .map_or_else(|| allocate_record(TAG_UNDEFINED, 0), Ok)
+            if let Some(offset) = context.lookup_offset(path) {
+                return Ok(offset);
+            }
+            let simple_name = next_lookup_segment(path, 0)
+                .map_err(|_| ERROR_INVALID_EXPRESSION)?
+                .filter(|(_, cursor)| *cursor == path.len())
+                .map(|(name, _)| name);
+            if let Some(name) = simple_name
+                && let Some(definition) = resolve_macro(state_offset, name)?
+            {
+                return Ok(definition);
+            }
+            allocate_record(TAG_UNDEFINED, 0)
         }
         Atom::String(value) => write_string_literal(value),
         Atom::Number(value) => write_number(value),

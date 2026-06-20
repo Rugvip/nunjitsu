@@ -1062,6 +1062,123 @@
     {
       "upstream": { "id": "tests/filters.js:63", "file": "tests/filters.js", "test": "urlize" },
       "status": "ported"
+    },
+    {
+      "upstream": { "id": "tests/tests.js:1", "file": "tests/tests.js", "test": "callable should detect callability" },
+      "status": "adapted",
+      "reason": "Callable detection is ported for template macros, while arbitrary live functions in render context are rejected by the copied-value contract."
+    },
+    {
+      "upstream": { "id": "tests/tests.js:2", "file": "tests/tests.js", "test": "defined should detect definedness" },
+      "status": "ported"
+    },
+    {
+      "upstream": { "id": "tests/tests.js:3", "file": "tests/tests.js", "test": "should support \"is defined\" in {% if %} expressions" },
+      "status": "ported"
+    },
+    {
+      "upstream": { "id": "tests/tests.js:4", "file": "tests/tests.js", "test": "should support \"is not defined\" in {% if %} expressions" },
+      "status": "ported"
+    },
+    {
+      "upstream": { "id": "tests/tests.js:5", "file": "tests/tests.js", "test": "undefined should detect undefinedness" },
+      "status": "ported"
+    },
+    {
+      "upstream": { "id": "tests/tests.js:6", "file": "tests/tests.js", "test": "none/null should detect strictly null values" },
+      "status": "ported"
+    },
+    {
+      "upstream": { "id": "tests/tests.js:7", "file": "tests/tests.js", "test": "divisibleby should detect divisibility" },
+      "status": "ported"
+    },
+    {
+      "upstream": { "id": "tests/tests.js:8", "file": "tests/tests.js", "test": "escaped should test whether or not something is escaped" },
+      "status": "ported"
+    },
+    {
+      "upstream": { "id": "tests/tests.js:9", "file": "tests/tests.js", "test": "even should detect whether or not a number is even" },
+      "status": "ported"
+    },
+    {
+      "upstream": { "id": "tests/tests.js:10", "file": "tests/tests.js", "test": "odd should detect whether or not a number is odd" },
+      "status": "ported"
+    },
+    {
+      "upstream": { "id": "tests/tests.js:11", "file": "tests/tests.js", "test": "mapping should detect Maps or hashes" },
+      "status": "adapted",
+      "reason": "Plain copied records are ported; JavaScript Map instances are outside the TemplateValue contract."
+    },
+    {
+      "upstream": { "id": "tests/tests.js:12", "file": "tests/tests.js", "test": "falsy should detect whether or not a value is falsy" },
+      "status": "ported"
+    },
+    {
+      "upstream": { "id": "tests/tests.js:13", "file": "tests/tests.js", "test": "truthy should detect whether or not a value is truthy" },
+      "status": "ported"
+    },
+    {
+      "upstream": { "id": "tests/tests.js:14", "file": "tests/tests.js", "test": "greaterthan than should detect whether or not a value is less than another" },
+      "status": "ported"
+    },
+    {
+      "upstream": { "id": "tests/tests.js:15", "file": "tests/tests.js", "test": "ge should detect whether or not a value is greater than or equal to another" },
+      "status": "ported"
+    },
+    {
+      "upstream": { "id": "tests/tests.js:16", "file": "tests/tests.js", "test": "lessthan than should detect whether or not a value is less than another" },
+      "status": "ported"
+    },
+    {
+      "upstream": { "id": "tests/tests.js:17", "file": "tests/tests.js", "test": "le should detect whether or not a value is less than or equal to another" },
+      "status": "ported"
+    },
+    {
+      "upstream": { "id": "tests/tests.js:18", "file": "tests/tests.js", "test": "ne should detect whether or not a value is not equal to another" },
+      "status": "ported"
+    },
+    {
+      "upstream": { "id": "tests/tests.js:19", "file": "tests/tests.js", "test": "iterable should detect that a generator is iterable" },
+      "status": "not applicable",
+      "reason": "Live JavaScript generator objects are outside the copied TemplateValue contract."
+    },
+    {
+      "upstream": { "id": "tests/tests.js:20", "file": "tests/tests.js", "test": "iterable should detect that an Array is not non-iterable" },
+      "status": "ported"
+    },
+    {
+      "upstream": { "id": "tests/tests.js:21", "file": "tests/tests.js", "test": "iterable should detect that a Map is iterable" },
+      "status": "not applicable",
+      "reason": "JavaScript Map instances are outside the copied TemplateValue contract."
+    },
+    {
+      "upstream": { "id": "tests/tests.js:22", "file": "tests/tests.js", "test": "iterable should detect that a Set is not non-iterable" },
+      "status": "not applicable",
+      "reason": "JavaScript Set instances are outside the copied TemplateValue contract."
+    },
+    {
+      "upstream": { "id": "tests/tests.js:23", "file": "tests/tests.js", "test": "number should detect whether a value is numeric" },
+      "status": "ported"
+    },
+    {
+      "upstream": { "id": "tests/tests.js:24", "file": "tests/tests.js", "test": "string should detect whether a value is a string" },
+      "status": "ported"
+    },
+    {
+      "upstream": { "id": "tests/tests.js:25", "file": "tests/tests.js", "test": "equalto should detect value equality" },
+      "status": "ported"
+    },
+    {
+      "upstream": { "id": "tests/tests.js:26", "file": "tests/tests.js", "test": "sameas should alias to equalto" },
+      "status": "ported"
+    },
+    {
+      "upstream": { "id": "tests/tests.js:27", "file": "tests/tests.js", "test": "lower should detect whether or not a string is lowercased" },
+      "status": "ported"
+    },
+    {
+      "upstream": { "id": "tests/tests.js:28", "file": "tests/tests.js", "test": "upper should detect whether or not a string is uppercased" },
+      "status": "ported"
     }
   ]
 }

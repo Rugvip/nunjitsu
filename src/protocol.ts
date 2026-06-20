@@ -96,7 +96,7 @@ export class ArenaWriter {
     },
   ): EncodedRenderRequest {
     const sourceOffset = this.#writeTextRecord(recordTag.source, source);
-    const contextOffset = this.#writeValue(context, new Set());
+    const contextOffset = this.#writeValue(context, new Set(), new Map());
 
     const canonicalOffset = options.canonicalName
       ? this.#writeTextRecord(recordTag.string, options.canonicalName)
@@ -145,7 +145,7 @@ export class ArenaWriter {
 
   /** Appends one copied safe value returned by a trusted host capability. */
   encodeCapabilityResult(value: TemplateValue): EncodedCapabilityResult {
-    const valueOffset = this.#writeValue(value, new Set());
+    const valueOffset = this.#writeValue(value, new Set(), new Map());
     return { valueOffset, cursor: this.#cursor };
   }
 
@@ -205,7 +205,11 @@ export class ArenaWriter {
     return this.#writeRecord(tag, new TextEncoder().encode(value));
   }
 
-  #writeValue(value: TemplateValue, ancestors: Set<object>): number {
+  #writeValue(
+    value: TemplateValue,
+    ancestors: Set<object>,
+    aliases: Map<object, number>,
+  ): number {
     if (value === undefined) {
       return this.#writeRecord(recordTag.undefined, new Uint8Array());
     }
@@ -234,18 +238,29 @@ export class ArenaWriter {
     if (ancestors.has(value)) {
       throw new TypeError('Cyclic template values are not supported');
     }
+    const existing = aliases.get(value);
+    if (existing !== undefined) {
+      return existing;
+    }
 
     ancestors.add(value);
+    let offset: number;
     try {
-      return Array.isArray(value)
-        ? this.#writeArray(value, ancestors)
-        : this.#writeObject(value, ancestors);
+      offset = Array.isArray(value)
+        ? this.#writeArray(value, ancestors, aliases)
+        : this.#writeObject(value, ancestors, aliases);
     } finally {
       ancestors.delete(value);
     }
+    aliases.set(value, offset);
+    return offset;
   }
 
-  #writeArray(value: readonly TemplateValue[], ancestors: Set<object>): number {
+  #writeArray(
+    value: readonly TemplateValue[],
+    ancestors: Set<object>,
+    aliases: Map<object, number>,
+  ): number {
     for (const key of Reflect.ownKeys(value)) {
       if (key === 'length') {
         continue;
@@ -261,7 +276,11 @@ export class ArenaWriter {
 
     const offsets = Array.from({ length: value.length }, (_, index) => {
       const descriptor = Object.getOwnPropertyDescriptor(value, String(index));
-      return this.#writeValue(descriptor ? descriptor.value as TemplateValue : undefined, ancestors);
+      return this.#writeValue(
+        descriptor ? descriptor.value as TemplateValue : undefined,
+        ancestors,
+        aliases,
+      );
     });
     const payload = new ArrayBuffer(4 + offsets.length * 4);
     const view = new DataView(payload);
@@ -272,7 +291,11 @@ export class ArenaWriter {
     return this.#writeRecord(recordTag.array, new Uint8Array(payload));
   }
 
-  #writeObject(value: object, ancestors: Set<object>): number {
+  #writeObject(
+    value: object,
+    ancestors: Set<object>,
+    aliases: Map<object, number>,
+  ): number {
     const prototype = Object.getPrototypeOf(value) as unknown;
     if (prototype !== Object.prototype && prototype !== null) {
       throw new TypeError('Only plain records can be used as template values');
@@ -295,7 +318,7 @@ export class ArenaWriter {
       }
       entries.push({
         keyOffset: this.#writeTextRecord(recordTag.string, key),
-        valueOffset: this.#writeValue(descriptor.value as TemplateValue, ancestors),
+        valueOffset: this.#writeValue(descriptor.value as TemplateValue, ancestors, aliases),
       });
     }
 
