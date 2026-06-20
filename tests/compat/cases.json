@@ -30,8 +30,36 @@
       "expected": "baz"
     },
     {
+      "id": "compiler-bracket-reference",
+      "template": "{{ foo[\"bar\"] }}",
+      "context": { "foo": { "bar": "baz" } },
+      "autoescape": false,
+      "expected": "baz"
+    },
+    {
+      "id": "compiler-missing-root-value",
+      "template": "{{ foo }}",
+      "context": {},
+      "autoescape": false,
+      "expected": ""
+    },
+    {
+      "id": "compiler-missing-dotted-value",
+      "template": "{{ foo.bar }}",
+      "context": {},
+      "autoescape": false,
+      "expected": ""
+    },
+    {
       "id": "compiler-missing-value",
       "template": "{{ foo.bar.baz }}",
+      "context": {},
+      "autoescape": false,
+      "expected": ""
+    },
+    {
+      "id": "compiler-missing-mixed-reference",
+      "template": "{{ foo.bar.baz[\"biz\"].mumble }}",
       "context": {},
       "autoescape": false,
       "expected": ""

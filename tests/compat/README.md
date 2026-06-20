@@ -13,6 +13,11 @@ Coverage is intentionally explicit: the manifest remains incomplete until
 every inventory entry is classified as ported, adapted, or not applicable.
 Release validation must reject incomplete coverage.
 
+While coverage is partial, an entry may itself use `status: "partial"` with a
+reason and removal condition when only some assertions from one upstream Mocha
+case have been adapted. Partial entries are forbidden once the document moves
+to complete coverage.
+
 Case context uses ordinary JSON plus `{ "$nunjitsu": "safe", "value": "..." }`
 for explicitly safe strings. Additional tagged values must be added to the
 schema rather than encoded as executable JavaScript.

@@ -39,11 +39,65 @@ pub enum Operation<'a> {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct ExpressionError;
 
-/// Parses the base atom and returns the cursor at its first following operation.
-pub fn parse_base(expression: &[u8]) -> Result<(Atom<'_>, usize), ExpressionError> {
-    let cursor = skip_whitespace(expression, 0);
+/// Parses the base atom, its unary negation, and the following operation cursor.
+pub fn parse_base(expression: &[u8]) -> Result<(Atom<'_>, usize, bool), ExpressionError> {
+    let mut cursor = skip_whitespace(expression, 0);
+    let negated = has_keyword(expression, cursor, b"not");
+    if negated {
+        cursor = skip_whitespace(expression, cursor + 3);
+    }
     let (atom, cursor) = parse_atom(expression, cursor)?;
-    Ok((atom, skip_whitespace(expression, cursor)))
+    Ok((atom, skip_whitespace(expression, cursor), negated))
+}
+
+/// Returns each validated dotted or bracketed lookup segment in order.
+pub fn next_lookup_segment(
+    path: &[u8],
+    cursor: usize,
+) -> Result<Option<(&[u8], usize)>, ExpressionError> {
+    if cursor == path.len() {
+        return Ok(None);
+    }
+    let mut cursor = cursor;
+    if cursor != 0 && path.get(cursor) == Some(&b'.') {
+        cursor += 1;
+    }
+    if path.get(cursor) == Some(&b'[') {
+        cursor = skip_whitespace(path, cursor + 1);
+        let quote = path.get(cursor).copied();
+        let (segment, next) = if matches!(quote, Some(b'\'' | b'"')) {
+            let quote = quote.ok_or(ExpressionError)?;
+            let start = cursor + 1;
+            let mut end = start;
+            while path.get(end).is_some_and(|byte| *byte != quote) {
+                if path[end] == b'\\' {
+                    return Err(ExpressionError);
+                }
+                end += 1;
+            }
+            if path.get(end) != Some(&quote) {
+                return Err(ExpressionError);
+            }
+            (&path[start..end], end + 1)
+        } else {
+            let start = cursor;
+            while path.get(cursor).is_some_and(u8::is_ascii_digit) {
+                cursor += 1;
+            }
+            if cursor == start {
+                return Err(ExpressionError);
+            }
+            (&path[start..cursor], cursor)
+        };
+        let next = skip_whitespace(path, next);
+        if path.get(next) != Some(&b']') {
+            return Err(ExpressionError);
+        }
+        return Ok(Some((segment, next + 1)));
+    }
+    let start = cursor;
+    let end = parse_path_segment(path, cursor)?;
+    Ok(Some((&path[start..end], end)))
 }
 
 /// Parses the next filter or test operation from a previously returned cursor.
@@ -128,8 +182,11 @@ fn parse_atom(bytes: &[u8], cursor: usize) -> Result<(Atom<'_>, usize), Expressi
 
     let start = cursor;
     let mut cursor = parse_identifier(bytes, cursor)?;
-    while bytes.get(cursor) == Some(&b'.') {
-        cursor = parse_path_segment(bytes, cursor + 1)?;
+    while matches!(bytes.get(cursor), Some(b'.' | b'[')) {
+        let Some((_, next)) = next_lookup_segment(&bytes[start..], cursor - start)? else {
+            return Err(ExpressionError);
+        };
+        cursor = start + next;
     }
     let name = &bytes[start..cursor];
     let following = skip_whitespace(bytes, cursor);
@@ -298,7 +355,8 @@ mod tests {
     #[test]
     fn parses_globals_filters_tests_and_arguments() {
         let expression = br#"hello("World", user.name) | suffix("!") is not empty"#;
-        let (base, cursor) = parse_base(expression).unwrap();
+        let (base, cursor, negated) = parse_base(expression).unwrap();
+        assert!(!negated);
         assert_eq!(
             base,
             Atom::Call(Call {
@@ -340,7 +398,7 @@ mod tests {
     #[test]
     fn rejects_trailing_arguments_and_unsupported_operators() {
         assert!(parse_base(b"value + 1").is_ok());
-        let (_, cursor) = parse_base(b"value + 1").unwrap();
+        let (_, cursor, _) = parse_base(b"value + 1").unwrap();
         assert_eq!(next_operation(b"value + 1", cursor), Err(ExpressionError));
         assert_eq!(next_argument(b"value,", 0), Err(ExpressionError));
         assert_eq!(parse_base(br#""escaped\"""#), Err(ExpressionError));
@@ -352,5 +410,25 @@ mod tests {
             }),
         );
         assert_eq!(parse_tag_call(b"badge trailing"), Err(ExpressionError));
+        assert_eq!(
+            parse_base(br#"not user["profile"].flags[0]"#),
+            Ok((Atom::Lookup(br#"user["profile"].flags[0]"#), 28, true)),
+        );
+        let path = br#"user["profile"].flags[0]"#;
+        let mut cursor = 0;
+        let mut segments = Vec::new();
+        while let Some((segment, next)) = next_lookup_segment(path, cursor).unwrap() {
+            segments.push(segment);
+            cursor = next;
+        }
+        assert_eq!(
+            segments,
+            [
+                b"user".as_slice(),
+                b"profile".as_slice(),
+                b"flags".as_slice(),
+                b"0".as_slice(),
+            ],
+        );
     }
 }

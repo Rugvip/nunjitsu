@@ -39,7 +39,7 @@ interface UpstreamReference {
 /** One classified mapping from upstream behavior to shared cases. */
 interface ManifestEntry {
   upstream: UpstreamReference;
-  status: 'ported' | 'adapted' | 'not applicable';
+  status: 'ported' | 'adapted' | 'not applicable' | 'partial';
   cases?: string[];
 }
 
@@ -97,6 +97,7 @@ test('shared compatibility corpus has attributed provenance and valid mappings',
     }
   }
   if (manifest.coverage === 'complete') {
+    assert.ok(manifest.entries.every(entry => entry.status !== 'partial'));
     assert.equal(classified.size, inventory.entries.length);
     assert.deepEqual(classified, new Set(inventory.entries.map(entry => entry.id)));
   }

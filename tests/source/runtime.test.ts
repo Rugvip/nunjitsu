@@ -380,6 +380,80 @@ test('dispatches immutable async filters, tests, and globals through safe copied
   }
 });
 
+test('evaluates nested and resumable if branches without rendering inactive bodies', async () => {
+  const engine = await createEngine({
+    tests: {
+      async enabled(input) {
+        await Promise.resolve();
+        return input === 'enabled';
+      },
+    },
+  });
+  try {
+    const template = {
+      source: [
+        '{% if outer %}',
+        'outer:',
+        '{% if inner %}inner{% else %}fallback{% endif %}',
+        '{% else %}',
+        '{% if alternate %}alternate{% elif final %}final{% else %}none{% endif %}',
+        '{% endif %}',
+      ].join(''),
+    };
+    assert.equal(
+      await engine.render(template, { outer: true, inner: true }),
+      'outer:inner',
+    );
+    assert.equal(
+      await engine.render(template, { outer: true, inner: false }),
+      'outer:fallback',
+    );
+    assert.equal(
+      await engine.render(template, { outer: false, alternate: true }),
+      'alternate',
+    );
+    assert.equal(
+      await engine.render(template, { outer: false, alternate: false, final: true }),
+      'final',
+    );
+    assert.equal(
+      await engine.render(template, { outer: false, alternate: false, final: false }),
+      'none',
+    );
+    assert.equal(
+      await engine.render(
+        { source: '{% if not hungry %}good{% else %}bad{% endif %}' },
+        { hungry: false },
+      ),
+      'good',
+    );
+    assert.equal(
+      (await Array.fromAsync(engine.renderStream(
+        { source: 'before{% if value is enabled %}yes{% else %}no{% endif %}after' },
+        { value: 'enabled' },
+      ))).join(''),
+      'beforeyesafter',
+    );
+    assert.equal(
+      await engine.render(
+        { source: '{% if value is not enabled %}disabled{% else %}enabled{% endif %}' },
+        { value: 'disabled' },
+      ),
+      'disabled',
+    );
+    await assert.rejects(
+      engine.render({ source: '{% if value %}unclosed' }, { value: false }),
+      error => error instanceof NunjitsuRenderError && error.code === 5,
+    );
+    await assert.rejects(
+      engine.render({ source: '{% if value %}{{ unclosed{% endif %}' }, { value: false }),
+      error => error instanceof NunjitsuRenderError && error.code === 3,
+    );
+  } finally {
+    await engine.dispose();
+  }
+});
+
 test('cancels a render while its worker is suspended on an include loader', async () => {
   let markLoadStarted: (() => void) | undefined;
   const loadStarted = new Promise<void>(resolve => {

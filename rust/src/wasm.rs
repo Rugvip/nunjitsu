@@ -1,13 +1,17 @@
 use crate::expression::{
-    Atom, Call, Operation, next_argument, next_operation, parse_base, parse_tag_call,
+    Atom, Call, Operation, next_argument, next_lookup_segment, next_operation, parse_base,
+    parse_tag_call,
 };
-use crate::template::{RenderError, RenderedValue, TemplateItem, emit_escaped, next_item};
+use crate::template::{
+    ConditionalBoundary, RenderError, RenderedValue, TemplateItem, directive_keyword, emit_escaped,
+    find_conditional_boundary, next_item,
+};
 use core::arch::wasm32::{memory_grow, memory_size};
 use core::mem::{align_of, size_of};
 use core::ptr::{addr_of, addr_of_mut, read_unaligned, write_unaligned};
 use core::slice;
 
-const ABI_VERSION: u32 = 8;
+const ABI_VERSION: u32 = 9;
 const PAGE_SIZE: usize = 65_536;
 const STREAM_CHUNK_BYTES: u32 = 64 * 1024;
 const RECORD_ALIGNMENT: u32 = 8;
@@ -48,7 +52,7 @@ const ERROR_RESOURCE_LIMIT: u32 = 7;
 const ERROR_UNKNOWN_CAPABILITY: u32 = 8;
 const ERROR_INVALID_EXPRESSION: u32 = 9;
 
-const RENDER_STATE_LENGTH: u32 = 112;
+const RENDER_STATE_LENGTH: u32 = 116;
 const STATE_CONTEXT: usize = 0;
 const STATE_FLAGS: usize = 4;
 const STATE_CURRENT_FRAME: usize = 8;
@@ -77,6 +81,14 @@ const STATE_EXPRESSION_CURSOR: usize = 96;
 const STATE_CURRENT_VALUE: usize = 100;
 const STATE_NEGATE_RESULT: usize = 104;
 const STATE_TAGS: usize = 108;
+const STATE_EXPRESSION_ACTION: usize = 112;
+
+const EXPRESSION_OUTPUT: u32 = 0;
+const EXPRESSION_IF: u32 = 1;
+
+const NEGATE_NONE: u32 = 0;
+const NEGATE_BOOLEAN: u32 = 1;
+const NEGATE_TRUTHINESS: u32 = 2;
 
 const CAPABILITY_FILTER: u32 = 1;
 const CAPABILITY_TEST: u32 = 2;
@@ -332,16 +344,20 @@ fn resume_capability(value_offset: u32) -> Result<(), u32> {
         return Err(ERROR_INVALID_ARENA);
     }
     let value = Value::at(value_offset)?;
-    if state_field(state_offset, STATE_NEGATE_RESULT)? != 0 {
-        let Value::Boolean(result) = value else {
-            return Err(ERROR_INVALID_EXPRESSION);
-        };
-        let offset = write_boolean(!result)?;
-        set_state_field(state_offset, STATE_NEGATE_RESULT, 0)?;
-        set_state_field(state_offset, STATE_CURRENT_VALUE, offset)?;
-    } else {
-        set_state_field(state_offset, STATE_CURRENT_VALUE, value_offset)?;
-    }
+    let negate = state_field(state_offset, STATE_NEGATE_RESULT)?;
+    let current = match negate {
+        NEGATE_NONE => value_offset,
+        NEGATE_BOOLEAN => {
+            let Value::Boolean(result) = value else {
+                return Err(ERROR_INVALID_EXPRESSION);
+            };
+            write_boolean(!result)?
+        }
+        NEGATE_TRUTHINESS => write_boolean(!value.truthy())?,
+        _ => return Err(ERROR_INVALID_ARENA),
+    };
+    set_state_field(state_offset, STATE_NEGATE_RESULT, NEGATE_NONE)?;
+    set_state_field(state_offset, STATE_CURRENT_VALUE, current)?;
     Ok(())
 }
 
@@ -396,7 +412,8 @@ fn run_active_render() -> Result<u32, u32> {
                 }
             }
             TemplateItem::Expression(expression) => {
-                if let Some(state) = start_expression(state_offset, expression)? {
+                if let Some(state) = start_expression(state_offset, expression, EXPRESSION_OUTPUT)?
+                {
                     return Ok(state);
                 }
                 if is_streaming(state_offset)?
@@ -422,7 +439,11 @@ fn run_active_render() -> Result<u32, u32> {
                 );
                 return Ok(STATE_LOAD_TEMPLATE);
             }
-            TemplateItem::Tag(directive) => return Ok(start_tag(state_offset, directive)?),
+            TemplateItem::Tag(directive) => {
+                if let Some(state) = handle_tag(state_offset, directive)? {
+                    return Ok(state);
+                }
+            }
             TemplateItem::End => {
                 set_state_field(state_offset, STATE_CURRENT_FRAME, parent)?;
                 let depth = state_field(state_offset, STATE_INCLUDE_DEPTH)?;
@@ -432,20 +453,52 @@ fn run_active_render() -> Result<u32, u32> {
     }
 }
 
-fn start_expression(state_offset: u32, expression: &[u8]) -> Result<Option<u32>, u32> {
+fn start_expression(state_offset: u32, expression: &[u8], action: u32) -> Result<Option<u32>, u32> {
     let expression_offset = write_bytes_record(TAG_STRING, expression)?;
-    let (base, cursor) = parse_base(expression).map_err(|_| ERROR_INVALID_EXPRESSION)?;
+    let (base, cursor, negated) = parse_base(expression).map_err(|_| ERROR_INVALID_EXPRESSION)?;
     set_state_field(state_offset, STATE_PENDING_EXPRESSION, expression_offset)?;
     set_state_field(state_offset, STATE_EXPRESSION_CURSOR, cursor as u32)?;
     set_state_field(state_offset, STATE_CURRENT_VALUE, 0)?;
+    set_state_field(state_offset, STATE_EXPRESSION_ACTION, action)?;
 
     if let Atom::Call(call) = base {
-        return issue_capability(state_offset, CAPABILITY_GLOBAL, call, None, cursor, false)
-            .map(Some);
+        return issue_capability(
+            state_offset,
+            CAPABILITY_GLOBAL,
+            call,
+            None,
+            cursor,
+            if negated {
+                NEGATE_TRUTHINESS
+            } else {
+                NEGATE_NONE
+            },
+        )
+        .map(Some);
     }
-    let value_offset = resolve_atom(state_offset, base)?;
+    let mut value_offset = resolve_atom(state_offset, base)?;
+    if negated {
+        value_offset = write_boolean(!Value::at(value_offset)?.truthy())?;
+    }
     set_state_field(state_offset, STATE_CURRENT_VALUE, value_offset)?;
     continue_expression(state_offset)
+}
+
+fn handle_tag(state_offset: u32, directive: &[u8]) -> Result<Option<u32>, u32> {
+    if let Some(condition) = directive_keyword(directive, b"if") {
+        return start_expression(state_offset, condition, EXPRESSION_IF);
+    }
+    if directive == b"else"
+        || directive_keyword(directive, b"elif").is_some()
+        || directive_keyword(directive, b"elseif").is_some()
+    {
+        skip_active_conditional(state_offset)?;
+        return Ok(None);
+    }
+    if directive == b"endif" {
+        return Ok(None);
+    }
+    start_tag(state_offset, directive).map(Some)
 }
 
 fn start_tag(state_offset: u32, directive: &[u8]) -> Result<u32, u32> {
@@ -458,13 +511,14 @@ fn start_tag(state_offset: u32, directive: &[u8]) -> Result<u32, u32> {
         directive.len() as u32,
     )?;
     set_state_field(state_offset, STATE_CURRENT_VALUE, 0)?;
+    set_state_field(state_offset, STATE_EXPRESSION_ACTION, EXPRESSION_OUTPUT)?;
     issue_capability(
         state_offset,
         CAPABILITY_TAG,
         call,
         None,
         directive.len(),
-        false,
+        NEGATE_NONE,
     )
 }
 
@@ -476,11 +530,24 @@ fn continue_expression(state_offset: u32) -> Result<Option<u32>, u32> {
         next_operation(expression, cursor).map_err(|_| ERROR_INVALID_EXPRESSION)?
     else {
         let value_offset = state_field(state_offset, STATE_CURRENT_VALUE)?;
-        emit_value(state_offset, value_offset)?;
+        let action = state_field(state_offset, STATE_EXPRESSION_ACTION)?;
         set_state_field(state_offset, STATE_PENDING_EXPRESSION, 0)?;
         set_state_field(state_offset, STATE_EXPRESSION_CURSOR, 0)?;
         set_state_field(state_offset, STATE_CURRENT_VALUE, 0)?;
-        if is_streaming(state_offset)? && state_field(state_offset, STATE_OUTPUT_LENGTH)? == 0 {
+        set_state_field(state_offset, STATE_EXPRESSION_ACTION, EXPRESSION_OUTPUT)?;
+        let next_state = match action {
+            EXPRESSION_OUTPUT => {
+                emit_value(state_offset, value_offset)?;
+                None
+            }
+            EXPRESSION_IF => apply_if_condition(state_offset, value_offset)?,
+            _ => return Err(ERROR_INVALID_ARENA),
+        };
+        if next_state.is_none()
+            && state_field(state_offset, STATE_PENDING_EXPRESSION)? == 0
+            && is_streaming(state_offset)?
+            && state_field(state_offset, STATE_OUTPUT_LENGTH)? == 0
+        {
             let transient_base = state_field(state_offset, STATE_TRANSIENT_BASE)?;
             if transient_base > unsafe { ARENA_CURSOR } {
                 return Err(ERROR_INVALID_ARENA);
@@ -489,15 +556,62 @@ fn continue_expression(state_offset: u32) -> Result<Option<u32>, u32> {
                 ARENA_CURSOR = transient_base;
             }
         }
-        return Ok(None);
+        return Ok(next_state);
     };
 
     let input = state_field(state_offset, STATE_CURRENT_VALUE)?;
-    let (kind, call, negated) = match operation {
-        Operation::Filter(call) => (CAPABILITY_FILTER, call, false),
-        Operation::Test { call, negated } => (CAPABILITY_TEST, call, negated),
+    let (kind, call, negate_mode) = match operation {
+        Operation::Filter(call) => (CAPABILITY_FILTER, call, NEGATE_NONE),
+        Operation::Test { call, negated } => (
+            CAPABILITY_TEST,
+            call,
+            if negated { NEGATE_BOOLEAN } else { NEGATE_NONE },
+        ),
     };
-    issue_capability(state_offset, kind, call, Some(input), next_cursor, negated).map(Some)
+    issue_capability(
+        state_offset,
+        kind,
+        call,
+        Some(input),
+        next_cursor,
+        negate_mode,
+    )
+    .map(Some)
+}
+
+fn apply_if_condition(state_offset: u32, value_offset: u32) -> Result<Option<u32>, u32> {
+    if Value::at(value_offset)?.truthy() {
+        return Ok(None);
+    }
+    let frame_offset = state_field(state_offset, STATE_CURRENT_FRAME)?;
+    let frame = record_at(frame_offset, TAG_FRAME)?;
+    let source_offset = read_u32(frame, FRAME_SOURCE)?;
+    let cursor = read_u32(frame, FRAME_CURSOR)? as usize;
+    let source = record_at(source_offset, TAG_SOURCE)?;
+    match find_conditional_boundary(source, cursor, true).map_err(render_error_code)? {
+        ConditionalBoundary::Else(next_cursor) | ConditionalBoundary::EndIf(next_cursor) => {
+            set_frame_field(frame_offset, FRAME_CURSOR, next_cursor as u32)?;
+            Ok(None)
+        }
+        ConditionalBoundary::ElseIf(condition, next_cursor) => {
+            set_frame_field(frame_offset, FRAME_CURSOR, next_cursor as u32)?;
+            start_expression(state_offset, condition, EXPRESSION_IF)
+        }
+    }
+}
+
+fn skip_active_conditional(state_offset: u32) -> Result<(), u32> {
+    let frame_offset = state_field(state_offset, STATE_CURRENT_FRAME)?;
+    let frame = record_at(frame_offset, TAG_FRAME)?;
+    let source_offset = read_u32(frame, FRAME_SOURCE)?;
+    let cursor = read_u32(frame, FRAME_CURSOR)? as usize;
+    let source = record_at(source_offset, TAG_SOURCE)?;
+    let ConditionalBoundary::EndIf(next_cursor) =
+        find_conditional_boundary(source, cursor, false).map_err(render_error_code)?
+    else {
+        return Err(ERROR_INVALID_ARENA);
+    };
+    set_frame_field(frame_offset, FRAME_CURSOR, next_cursor as u32)
 }
 
 fn issue_capability(
@@ -506,7 +620,7 @@ fn issue_capability(
     call: Call<'_>,
     input: Option<u32>,
     next_cursor: usize,
-    negated: bool,
+    negate_mode: u32,
 ) -> Result<u32, u32> {
     let registry_field = match kind {
         CAPABILITY_FILTER => STATE_FILTERS,
@@ -572,7 +686,7 @@ fn issue_capability(
     )?;
     set_state_field(state_offset, STATE_EXPRESSION_CURSOR, next_cursor as u32)?;
     set_state_field(state_offset, STATE_CURRENT_VALUE, 0)?;
-    set_state_field(state_offset, STATE_NEGATE_RESULT, u32::from(negated))?;
+    set_state_field(state_offset, STATE_NEGATE_RESULT, negate_mode)?;
     set_control(
         STATE_CALL_CAPABILITY,
         request_offset,
@@ -938,16 +1052,11 @@ impl Context {
     }
 
     fn lookup_offset(&self, path: &[u8]) -> Option<u32> {
-        let mut segments = path.split(|byte| *byte == b'.');
-        let first = trim_ascii_whitespace(segments.next()?);
-        if first.is_empty() {
-            return None;
-        }
+        let (first, mut cursor) = next_lookup_segment(path, 0).ok()??;
         let mut offset = self.root.get_offset(first)?;
-        for segment in segments {
-            offset = Value::at(offset)
-                .ok()?
-                .get_offset(trim_ascii_whitespace(segment))?;
+        while let Some((segment, next)) = next_lookup_segment(path, cursor).ok()? {
+            offset = Value::at(offset).ok()?.get_offset(segment)?;
+            cursor = next;
         }
         Some(offset)
     }
@@ -1006,7 +1115,10 @@ enum Value {
     Undefined,
     Null,
     Boolean(bool),
-    Number(&'static [u8]),
+    Number {
+        numeric: f64,
+        rendered: &'static [u8],
+    },
     String(&'static [u8]),
     SafeString(&'static [u8]),
     Array(Array),
@@ -1024,7 +1136,14 @@ impl Value {
                 1 => Ok(Self::Boolean(true)),
                 _ => Err(ERROR_INVALID_RECORD),
             },
-            TAG_NUMBER if payload.len() >= 8 => Ok(Self::Number(&payload[8..])),
+            TAG_NUMBER if payload.len() >= 8 => {
+                let numeric =
+                    f64::from_le_bytes(payload[..8].try_into().map_err(|_| ERROR_INVALID_RECORD)?);
+                Ok(Self::Number {
+                    numeric,
+                    rendered: &payload[8..],
+                })
+            }
             TAG_STRING => Ok(Self::String(payload)),
             TAG_SAFE_STRING => Ok(Self::SafeString(payload)),
             TAG_ARRAY => Ok(Self::Array(Array::new(payload)?)),
@@ -1055,7 +1174,11 @@ impl Value {
                 bytes: b"true",
                 safe: false,
             }),
-            Self::Number(value) | Self::String(value) => Some(RenderedValue {
+            Self::Number { rendered, .. } => Some(RenderedValue {
+                bytes: rendered,
+                safe: false,
+            }),
+            Self::String(value) => Some(RenderedValue {
                 bytes: value,
                 safe: false,
             }),
@@ -1067,6 +1190,15 @@ impl Value {
                 bytes: b"",
                 safe: false,
             }),
+        }
+    }
+
+    fn truthy(self) -> bool {
+        match self {
+            Self::Undefined | Self::Null | Self::Boolean(false) => false,
+            Self::Boolean(true) | Self::Array(_) | Self::Record(_) => true,
+            Self::Number { numeric, .. } => numeric != 0.0 && !numeric.is_nan(),
+            Self::String(value) | Self::SafeString(value) => !value.is_empty(),
         }
     }
 }
@@ -1168,16 +1300,6 @@ fn parse_index(bytes: &[u8]) -> Option<usize> {
         value = value.checked_mul(10)?.checked_add((byte - b'0') as usize)?;
     }
     Some(value)
-}
-
-fn trim_ascii_whitespace(mut bytes: &[u8]) -> &[u8] {
-    while bytes.first().is_some_and(u8::is_ascii_whitespace) {
-        bytes = &bytes[1..];
-    }
-    while bytes.last().is_some_and(u8::is_ascii_whitespace) {
-        bytes = &bytes[..bytes.len() - 1];
-    }
-    bytes
 }
 
 fn write_record_header(offset: u32, tag: u32, payload_length: u32) -> Result<(), u32> {

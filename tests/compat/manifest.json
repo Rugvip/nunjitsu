@@ -19,16 +19,23 @@
     {
       "upstream": { "id": "tests/compiler.js:4", "file": "tests/compiler.js", "test": "should compile references" },
       "status": "ported",
-      "cases": ["compiler-dotted-reference"]
+      "cases": ["compiler-dotted-reference", "compiler-bracket-reference"]
     },
     {
       "upstream": { "id": "tests/compiler.js:6", "file": "tests/compiler.js", "test": "should fail silently on undefined values" },
       "status": "ported",
-      "cases": ["compiler-missing-value"]
+      "cases": [
+        "compiler-missing-root-value",
+        "compiler-missing-dotted-value",
+        "compiler-missing-value",
+        "compiler-missing-mixed-reference"
+      ]
     },
     {
       "upstream": { "id": "tests/compiler.js:125", "file": "tests/compiler.js", "test": "should autoescape if autoescape is on" },
-      "status": "ported",
+      "status": "partial",
+      "reason": "Only direct string autoescaping is ported; reverse/safe pipelines and collection coercion remain.",
+      "removalCondition": "Port or adapt every assertion in the upstream autoescape case.",
       "cases": ["compiler-autoescape"]
     },
     {

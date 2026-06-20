@@ -39,6 +39,18 @@ pub enum TemplateItem<'a> {
     End,
 }
 
+/// A branch boundary found while skipping an inactive conditional body.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[cfg(any(target_arch = "wasm32", test))]
+pub(crate) enum ConditionalBoundary<'a> {
+    /// An unconditional else body begins after this cursor.
+    Else(usize),
+    /// An else-if condition and the cursor after its directive.
+    ElseIf(&'a [u8], usize),
+    /// The conditional ends after this cursor.
+    EndIf(usize),
+}
+
 /// Returns the next streaming parser event and its following source cursor.
 pub fn next_item(source: &[u8], cursor: usize) -> Result<(TemplateItem<'_>, usize), RenderError> {
     if cursor >= source.len() {
@@ -78,6 +90,50 @@ pub fn next_item(source: &[u8], cursor: usize) -> Result<(TemplateItem<'_>, usiz
             }
         }
     }
+}
+
+/// Finds the next branch at the current conditional nesting depth.
+#[cfg(any(target_arch = "wasm32", test))]
+pub(crate) fn find_conditional_boundary(
+    source: &[u8],
+    mut cursor: usize,
+    include_else: bool,
+) -> Result<ConditionalBoundary<'_>, RenderError> {
+    let mut depth = 0usize;
+    loop {
+        let (item, next_cursor) = next_item(source, cursor)?;
+        if let TemplateItem::Tag(directive) = item {
+            if directive_keyword(directive, b"if").is_some() {
+                depth = depth.checked_add(1).ok_or(RenderError::OutputTooLarge)?;
+            } else if directive == b"endif" {
+                if depth == 0 {
+                    return Ok(ConditionalBoundary::EndIf(next_cursor));
+                }
+                depth -= 1;
+            } else if include_else && depth == 0 && directive == b"else" {
+                return Ok(ConditionalBoundary::Else(next_cursor));
+            } else if include_else
+                && depth == 0
+                && let Some(expression) = directive_keyword(directive, b"elif")
+                    .or_else(|| directive_keyword(directive, b"elseif"))
+            {
+                return Ok(ConditionalBoundary::ElseIf(expression, next_cursor));
+            }
+        } else if item == TemplateItem::End {
+            return Err(RenderError::UnclosedBlockTag);
+        }
+        cursor = next_cursor;
+    }
+}
+
+/// Returns a non-empty directive remainder after an exact keyword and whitespace.
+#[cfg(any(target_arch = "wasm32", test))]
+pub(crate) fn directive_keyword<'a>(directive: &'a [u8], keyword: &[u8]) -> Option<&'a [u8]> {
+    directive
+        .strip_prefix(keyword)
+        .filter(|remainder| remainder.first().is_some_and(u8::is_ascii_whitespace))
+        .map(trim_ascii_whitespace)
+        .filter(|remainder| !remainder.is_empty())
 }
 
 /// Parses and renders templates that do not require asynchronous host work.
@@ -308,5 +364,22 @@ mod tests {
         )
         .unwrap();
         assert_eq!(&output[..written], b"<p><strong>safe</strong></p>");
+    }
+
+    #[test]
+    fn finds_nested_conditional_branches() {
+        let source = b"false {% if nested %}nested{% else %}other{% endif %}{% elif second %}second{% else %}last{% endif %}";
+        assert_eq!(
+            find_conditional_boundary(source, 0, true),
+            Ok(ConditionalBoundary::ElseIf(b"second", 70)),
+        );
+        assert_eq!(
+            find_conditional_boundary(source, 70, true),
+            Ok(ConditionalBoundary::Else(86)),
+        );
+        assert_eq!(
+            find_conditional_boundary(source, 70, false),
+            Ok(ConditionalBoundary::EndIf(source.len())),
+        );
     }
 }
