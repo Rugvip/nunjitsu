@@ -15,7 +15,7 @@ use core::mem::{align_of, size_of};
 use core::ptr::{addr_of, addr_of_mut, read_unaligned, write_unaligned};
 use core::slice;
 
-const ABI_VERSION: u32 = 21;
+const ABI_VERSION: u32 = 22;
 const PAGE_SIZE: usize = 65_536;
 const STREAM_CHUNK_BYTES: u32 = 64 * 1024;
 const RECORD_ALIGNMENT: u32 = 8;
@@ -49,6 +49,7 @@ const TAG_TAG_REGISTRY: u32 = 26;
 const TAG_TAG_CALL: u32 = 27;
 const TAG_TAG_BOUNDARIES: u32 = 28;
 const TAG_TAG_ARGUMENTS: u32 = 29;
+const TAG_FILTER_BLOCK: u32 = 30;
 
 const STATE_IDLE: u32 = 0;
 const STATE_COMPLETE: u32 = 1;
@@ -69,7 +70,7 @@ const ERROR_RESOURCE_LIMIT: u32 = 7;
 const ERROR_UNKNOWN_CAPABILITY: u32 = 8;
 const ERROR_INVALID_EXPRESSION: u32 = 9;
 
-const RENDER_STATE_LENGTH: u32 = 168;
+const RENDER_STATE_LENGTH: u32 = 172;
 const STATE_CONTEXT: usize = 0;
 const STATE_FLAGS: usize = 4;
 const STATE_CURRENT_FRAME: usize = 8;
@@ -112,6 +113,7 @@ const STATE_IMPORT_WITH_CONTEXT: usize = 152;
 const STATE_PENDING_IMPORT_BINDINGS: usize = 156;
 const STATE_EXTENDS_CAPTURE: usize = 160;
 const STATE_CURRENT_TAG_CALL: usize = 164;
+const STATE_CURRENT_FILTER_BLOCK: usize = 168;
 
 const EXPRESSION_OUTPUT: u32 = 0;
 const EXPRESSION_IF: u32 = 1;
@@ -215,6 +217,11 @@ const TAG_CALL_RESULTS: usize = 28;
 const TAG_ARGUMENTS_LENGTH: u32 = 8;
 const TAG_ARGUMENTS_POSITIONAL: usize = 0;
 const TAG_ARGUMENTS_KEYWORD: usize = 4;
+
+const FILTER_BLOCK_LENGTH: u32 = 12;
+const FILTER_BLOCK_PARENT: usize = 0;
+const FILTER_BLOCK_FRAME: usize = 4;
+const FILTER_BLOCK_EXPRESSION: usize = 8;
 
 const SCOPE_LENGTH: u32 = 12;
 const SCOPE_PARENT: usize = 0;
@@ -830,6 +837,13 @@ fn handle_tag(state_offset: u32, directive: &[u8]) -> Result<Option<u32>, u32> {
         begin_capture(state_offset, bindings)?;
         return Ok(None);
     }
+    if let Some(filter) = directive_keyword(directive, b"filter") {
+        start_filter_block(state_offset, filter)?;
+        return Ok(None);
+    }
+    if directive == b"endfilter" {
+        return finish_filter_block(state_offset);
+    }
     if directive == b"endset" {
         finish_capture(state_offset)?;
         return Ok(None);
@@ -853,6 +867,57 @@ fn handle_tag(state_offset: u32, directive: &[u8]) -> Result<Option<u32>, u32> {
         return Ok(None);
     }
     start_tag(state_offset, directive)
+}
+
+fn start_filter_block(state_offset: u32, filter: &[u8]) -> Result<(), u32> {
+    if filter.is_empty() {
+        return Err(ERROR_UNSUPPORTED_TAG);
+    }
+    let expression_length = 2u32
+        .checked_add(filter.len() as u32)
+        .ok_or(ERROR_RESOURCE_LIMIT)?;
+    let expression_offset = allocate_record(TAG_STRING, expression_length)?;
+    let expression = mutable_record_at(expression_offset, TAG_STRING)?;
+    expression[..2].copy_from_slice(b"| ");
+    expression[2..].copy_from_slice(filter);
+
+    let block_offset = allocate_record(TAG_FILTER_BLOCK, FILTER_BLOCK_LENGTH)?;
+    let block = mutable_record_at(block_offset, TAG_FILTER_BLOCK)?;
+    write_u32(
+        block,
+        FILTER_BLOCK_PARENT,
+        state_field(state_offset, STATE_CURRENT_FILTER_BLOCK)?,
+    )?;
+    write_u32(
+        block,
+        FILTER_BLOCK_FRAME,
+        state_field(state_offset, STATE_CURRENT_FRAME)?,
+    )?;
+    write_u32(block, FILTER_BLOCK_EXPRESSION, expression_offset)?;
+    set_state_field(state_offset, STATE_CURRENT_FILTER_BLOCK, block_offset)?;
+    begin_capture(state_offset, 0)
+}
+
+fn finish_filter_block(state_offset: u32) -> Result<Option<u32>, u32> {
+    let block_offset = state_field(state_offset, STATE_CURRENT_FILTER_BLOCK)?;
+    if block_offset == 0 {
+        return Err(ERROR_UNSUPPORTED_TAG);
+    }
+    let block = record_at(block_offset, TAG_FILTER_BLOCK)?;
+    if block.len() != FILTER_BLOCK_LENGTH as usize
+        || read_u32(block, FILTER_BLOCK_FRAME)? != state_field(state_offset, STATE_CURRENT_FRAME)?
+    {
+        return Err(ERROR_UNSUPPORTED_TAG);
+    }
+    let expression_offset = read_u32(block, FILTER_BLOCK_EXPRESSION)?;
+    let parent = read_u32(block, FILTER_BLOCK_PARENT)?;
+    let value_offset = finish_output_capture(state_offset, TAG_SAFE_STRING)?;
+    set_state_field(state_offset, STATE_CURRENT_FILTER_BLOCK, parent)?;
+    set_state_field(state_offset, STATE_PENDING_EXPRESSION, expression_offset)?;
+    set_state_field(state_offset, STATE_EXPRESSION_CURSOR, 0)?;
+    set_state_field(state_offset, STATE_CURRENT_VALUE, value_offset)?;
+    set_state_field(state_offset, STATE_EXPRESSION_ACTION, EXPRESSION_OUTPUT)?;
+    continue_expression(state_offset)
 }
 
 fn prepare_extending_template(state_offset: u32) -> Result<(), u32> {
@@ -2992,9 +3057,32 @@ fn apply_builtin_filter(
             require_argument_count(call, 0)?;
             ascii_case_value(input_offset, false, false)?
         }
-        b"capitalize" | b"title" => {
+        b"capitalize" => {
             require_argument_count(call, 0)?;
             ascii_case_value(input_offset, false, true)?
+        }
+        b"title" => {
+            require_argument_count(call, 0)?;
+            title_value(input_offset)?
+        }
+        b"replace" => {
+            let count = argument_count(call)?;
+            if !(2..=3).contains(&count) {
+                return Err(ERROR_INVALID_EXPRESSION);
+            }
+            let from = call_argument(state_offset, call, 0)?.ok_or(ERROR_INVALID_EXPRESSION)?;
+            let to = call_argument(state_offset, call, 1)?.ok_or(ERROR_INVALID_EXPRESSION)?;
+            let limit = if count == 3 {
+                let value = call_argument(state_offset, call, 2)?.ok_or(ERROR_INVALID_EXPRESSION)?;
+                let number = Value::at(value)?.as_number();
+                if !number.is_finite() || number < 0.0 {
+                    return Err(ERROR_INVALID_EXPRESSION);
+                }
+                number as usize
+            } else {
+                usize::MAX
+            };
+            replace_value(input_offset, from, to, limit)?
         }
         b"length" => {
             require_argument_count(call, 0)?;
@@ -3255,6 +3343,98 @@ fn ascii_case_value(value_offset: u32, uppercase: bool, capitalize: bool) -> Res
             byte.to_ascii_lowercase()
         };
     }
+    Ok(offset)
+}
+
+fn title_value(value_offset: u32) -> Result<u32, u32> {
+    let rendered = rendered_value(value_offset)?;
+    let tag = if rendered.safe {
+        TAG_SAFE_STRING
+    } else {
+        TAG_STRING
+    };
+    let offset = allocate_record(tag, rendered.bytes.len() as u32)?;
+    let output = mutable_record_at(offset, tag)?;
+    let mut word_start = true;
+    for (index, byte) in rendered.bytes.iter().copied().enumerate() {
+        output[index] = if byte.is_ascii_alphabetic() {
+            let value = if word_start {
+                byte.to_ascii_uppercase()
+            } else {
+                byte.to_ascii_lowercase()
+            };
+            word_start = false;
+            value
+        } else {
+            word_start = true;
+            byte
+        };
+    }
+    Ok(offset)
+}
+
+fn replace_value(
+    input_offset: u32,
+    from_offset: u32,
+    to_offset: u32,
+    limit: usize,
+) -> Result<u32, u32> {
+    let input = rendered_value(input_offset)?;
+    let from = rendered_value(from_offset)?.bytes;
+    let to = rendered_value(to_offset)?.bytes;
+    if from.is_empty() || limit == 0 {
+        let tag = if input.safe { TAG_SAFE_STRING } else { TAG_STRING };
+        return write_bytes_record(tag, input.bytes);
+    }
+    let mut count = 0usize;
+    let mut cursor = 0usize;
+    while count < limit && cursor + from.len() <= input.bytes.len() {
+        let Some(relative) = input.bytes[cursor..]
+            .windows(from.len())
+            .position(|window| window == from)
+        else {
+            break;
+        };
+        count = count.checked_add(1).ok_or(ERROR_RESOURCE_LIMIT)?;
+        cursor = cursor
+            .checked_add(relative)
+            .and_then(|value| value.checked_add(from.len()))
+            .ok_or(ERROR_RESOURCE_LIMIT)?;
+    }
+    let removed = count
+        .checked_mul(from.len())
+        .ok_or(ERROR_RESOURCE_LIMIT)?;
+    let added = count.checked_mul(to.len()).ok_or(ERROR_RESOURCE_LIMIT)?;
+    let length = input
+        .bytes
+        .len()
+        .checked_sub(removed)
+        .and_then(|value| value.checked_add(added))
+        .ok_or(ERROR_RESOURCE_LIMIT)?;
+    let tag = if input.safe { TAG_SAFE_STRING } else { TAG_STRING };
+    let offset = allocate_record(
+        tag,
+        u32::try_from(length).map_err(|_| ERROR_RESOURCE_LIMIT)?,
+    )?;
+    let output = mutable_record_at(offset, tag)?;
+    let mut input_cursor = 0usize;
+    let mut output_cursor = 0usize;
+    let mut replaced = 0usize;
+    while replaced < count {
+        let relative = input.bytes[input_cursor..]
+            .windows(from.len())
+            .position(|window| window == from)
+            .ok_or(ERROR_INVALID_ARENA)?;
+        let match_start = input_cursor + relative;
+        let prefix = &input.bytes[input_cursor..match_start];
+        output[output_cursor..output_cursor + prefix.len()].copy_from_slice(prefix);
+        output_cursor += prefix.len();
+        output[output_cursor..output_cursor + to.len()].copy_from_slice(to);
+        output_cursor += to.len();
+        input_cursor = match_start + from.len();
+        replaced += 1;
+    }
+    output[output_cursor..].copy_from_slice(&input.bytes[input_cursor..]);
     Ok(offset)
 }
 

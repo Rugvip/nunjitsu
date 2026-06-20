@@ -495,6 +495,46 @@
       "upstream": { "id": "tests/compiler.js:142", "file": "tests/compiler.js", "test": "should not leak scope from call blocks to parent" },
       "status": "ported",
       "cases": ["compiler-call-block-scope-does-not-leak"]
+    },
+    {
+      "upstream": { "id": "tests/compiler.js:143", "file": "tests/compiler.js", "test": "should import template objects" },
+      "status": "not applicable",
+      "reason": "Nunjitsu's copied safe-value model does not accept live Nunjucks Template instances; imports resolve names through explicit loaders."
+    },
+    {
+      "upstream": { "id": "tests/compiler.js:144", "file": "tests/compiler.js", "test": "should inherit template objects" },
+      "status": "not applicable",
+      "reason": "Nunjitsu's copied safe-value model does not accept live Nunjucks Template instances; inheritance resolves names through explicit loaders."
+    },
+    {
+      "upstream": { "id": "tests/compiler.js:145", "file": "tests/compiler.js", "test": "should include template objects" },
+      "status": "not applicable",
+      "reason": "Nunjitsu's copied safe-value model does not accept live Nunjucks Template instances; includes resolve names through explicit loaders."
+    },
+    {
+      "upstream": { "id": "tests/compiler.js:146", "file": "tests/compiler.js", "test": "should throw an error when invalid expression whitespaces are used" },
+      "status": "adapted",
+      "reason": "The TypeScript runtime test asserts Nunjitsu's structured invalid-expression failure instead of the upstream parser error text."
+    },
+    {
+      "upstream": { "id": "tests/compiler.js:147", "file": "tests/compiler.js", "test": "should apply the title filter to the body" },
+      "status": "ported",
+      "cases": ["compiler-filter-block-title"]
+    },
+    {
+      "upstream": { "id": "tests/compiler.js:148", "file": "tests/compiler.js", "test": "should apply the replace filter to the body" },
+      "status": "ported",
+      "cases": ["compiler-filter-block-replace"]
+    },
+    {
+      "upstream": { "id": "tests/compiler.js:149", "file": "tests/compiler.js", "test": "should work with variables in the body" },
+      "status": "ported",
+      "cases": ["compiler-filter-block-variable"]
+    },
+    {
+      "upstream": { "id": "tests/compiler.js:150", "file": "tests/compiler.js", "test": "should work with blocks in the body" },
+      "status": "ported",
+      "cases": ["compiler-filter-block-inheritance"]
     }
   ]
 }

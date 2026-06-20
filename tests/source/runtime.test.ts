@@ -1093,7 +1093,7 @@ test('loads imported macro namespaces without rendering module text', async () =
   }
 });
 
-test('rejects non-callable and undefined macros across deferred template frames', async () => {
+test('rejects invalid expressions and calls across deferred template frames', async () => {
   const engine = await createEngine({
     loaders: [memoryLoader({
       'undefined-macro.njk': '{{ undef() }}',
@@ -1114,6 +1114,7 @@ test('rejects non-callable and undefined macros across deferred template frames'
       ['{% include "undefined-macro.njk" %}', {}],
       ['{% if true %}{% include "undefined-macro.njk" %}{% endif %}', {}],
       ['{% include "import-macro-call-undefined-macro.njk" %}', { list: [1, 2, 3] }],
+      [' {{ 2 + 2- }}', {}],
     ] as const) {
       await assert.rejects(
         engine.render({ source }, context),

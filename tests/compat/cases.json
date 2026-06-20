@@ -1223,6 +1223,39 @@
       "context": {},
       "autoescape": true,
       "expected": "expected"
+    },
+    {
+      "id": "compiler-filter-block-title",
+      "template": "{% filter title %}may the force be with you{% endfilter %}",
+      "nativeRender": false,
+      "context": {},
+      "autoescape": true,
+      "expected": "May The Force Be With You"
+    },
+    {
+      "id": "compiler-filter-block-replace",
+      "template": "{% filter replace(\"force\", \"forth\") %}may the force be with you{% endfilter %}",
+      "nativeRender": false,
+      "context": {},
+      "autoescape": true,
+      "expected": "may the forth be with you"
+    },
+    {
+      "id": "compiler-filter-block-variable",
+      "template": "{% set foo = \"force\" %}{% filter replace(\"force\", \"forth\") %}may the {{ foo }} be with you{% endfilter %}",
+      "nativeRender": false,
+      "context": {},
+      "autoescape": true,
+      "expected": "may the forth be with you"
+    },
+    {
+      "id": "compiler-filter-block-inheritance",
+      "template": "{% extends \"filter-block.html\" %}{% block block1 %}force{% endblock %}",
+      "templates": { "filter-block.html": "may the {% filter replace(\"force\", \"forth\") %}{% block block1 %}bar{% endblock %}{% endfilter %} be with you\n" },
+      "nativeRender": false,
+      "context": {},
+      "autoescape": true,
+      "expected": "may the forth be with you\n"
     }
   ]
 }
