@@ -33,6 +33,7 @@ test('renders through reusable shared-memory workers', async () => {
     'cycle-a.njk': '{% include "cycle-b.njk" %}',
     'cycle-b.njk': '{% include "cycle-a.njk" %}',
     'missing-include.njk': '{% include "absent.njk" %}',
+    'broken-import.njk': '{% from "doesnotexist" import foo %}',
     'optional-include.njk': 'before{% include "absent.njk" ignore missing %}after',
     'leaf.njk': 'FooInclude ',
     'many-includes.njk': Array.from(
@@ -98,6 +99,10 @@ test('renders through reusable shared-memory workers', async () => {
     await assert.rejects(
       engine.render({ name: 'missing-include.njk' }),
       error => error instanceof TemplateNotFoundError && /not found/.test(error.message),
+    );
+    await assert.rejects(
+      engine.render({ source: '{% include "broken-import.njk" %}' }),
+      error => error instanceof TemplateNotFoundError,
     );
     assert.equal(await engine.render({ name: 'optional-include.njk' }), 'beforeafter');
     assert.equal(
@@ -505,6 +510,9 @@ test('dispatches immutable async filters, tests, and globals through safe copied
         await Promise.resolve();
         return arguments_[0] ?? null;
       },
+      explode() {
+        throw new Error('ERROR');
+      },
       describe(arguments_) {
         const [user, flags] = arguments_;
         assert.equal(Object.getPrototypeOf(user), null);
@@ -586,6 +594,7 @@ test('dispatches immutable async filters, tests, and globals through safe copied
       engine.render({ source: '{% absentTag %}' }),
       error => error instanceof NunjitsuRenderError && error.code === 5,
     );
+    await assert.rejects(engine.render({ source: '{{ explode() }}' }), /ERROR/);
 
     const controller = new AbortController();
     const rendering = engine.render(
@@ -1121,6 +1130,8 @@ test('rejects invalid expressions and calls across deferred template frames', as
       ['{% if true %}{% include "undefined-macro.njk" %}{% endif %}', {}],
       ['{% include "import-macro-call-undefined-macro.njk" %}', { list: [1, 2, 3] }],
       [' {{ 2 + 2- }}', {}],
+      ['{% if "a" in 1 %}yes{% endif %}', {}],
+      ['{% if "a" in obj %}yes{% endif %}', {}],
     ] as const) {
       await assert.rejects(
         engine.render({ source }, context),

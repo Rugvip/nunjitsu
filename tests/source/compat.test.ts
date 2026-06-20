@@ -227,6 +227,15 @@ function capabilityFixture(name: string | undefined): TemplateCapabilities {
       },
     };
   }
+  if (name === 'compiler-comparison-global') {
+    return {
+      globals: {
+        foo(arguments_) {
+          return Number(arguments_[0]) - 1;
+        },
+      },
+    };
+  }
   throw new Error(`Unknown compatibility capability fixture: ${name}`);
 }
 

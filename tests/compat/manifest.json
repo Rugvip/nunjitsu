@@ -694,6 +694,59 @@
       "upstream": { "id": "tests/compiler.js:45", "file": "tests/compiler.js", "test": "should compile async control" },
       "status": "adapted",
       "reason": "Nunjitsu's evaluator is uniformly resumable: ordinary control flow, asyncEach, and asyncAll all suspend on asynchronous filters and loaders. Runtime tests cover capability and include suspension, while the shared cases cover the async loop spellings."
+    },
+    {
+      "upstream": { "id": "tests/compiler.js:14", "file": "tests/compiler.js", "test": "should compile if blocks" },
+      "status": "ported",
+      "cases": ["compiler-if-hungry-true", "compiler-if-hungry-false", "compiler-if-not", "compiler-if-boolean-operators", "compiler-if-equality-branches", "compiler-if-membership", "compiler-if-elif-spellings", "compiler-if-elif-alternative", "compiler-if-elseif-else"]
+    },
+    {
+      "upstream": { "id": "tests/compiler.js:51", "file": "tests/compiler.js", "test": "should compile comparison operators" },
+      "status": "adapted",
+      "reason": "All comparisons are ported; the final function operand uses Nunjitsu's explicit callable-global capability instead of a live context function.",
+      "cases": ["compiler-comparison-operators"]
+    },
+    {
+      "upstream": { "id": "tests/compiler.js:53", "file": "tests/compiler.js", "test": "should compile the \"in\" operator for Arrays" },
+      "status": "ported", "cases": ["compiler-in-arrays"]
+    },
+    {
+      "upstream": { "id": "tests/compiler.js:54", "file": "tests/compiler.js", "test": "should compile the \"in\" operator for objects" },
+      "status": "ported", "cases": ["compiler-in-records"]
+    },
+    {
+      "upstream": { "id": "tests/compiler.js:55", "file": "tests/compiler.js", "test": "should compile the \"in\" operator for strings" },
+      "status": "ported", "cases": ["compiler-in-strings"]
+    },
+    {
+      "upstream": { "id": "tests/compiler.js:56", "file": "tests/compiler.js", "test": "should throw an error when using the \"in\" operator on unexpected types" },
+      "status": "adapted",
+      "reason": "The TypeScript runtime test asserts Nunjitsu's structured invalid-expression failure for numeric and undefined containers instead of upstream error text."
+    },
+    {
+      "upstream": { "id": "tests/compiler.js:57", "file": "tests/compiler.js", "test": "should throw exceptions when called synchronously" },
+      "status": "not applicable",
+      "reason": "Nunjitsu intentionally exposes only an asynchronous render API."
+    },
+    {
+      "upstream": { "id": "tests/compiler.js:58", "file": "tests/compiler.js", "test": "should include error line in raised TemplateError" },
+      "status": "not applicable",
+      "reason": "Exact upstream exception formatting and source locations are outside the documented compatibility contract."
+    },
+    {
+      "upstream": { "id": "tests/compiler.js:59", "file": "tests/compiler.js", "test": "should include error line when exception raised in user function" },
+      "status": "adapted",
+      "reason": "The runtime capability test verifies trusted host callback failures propagate, while exact upstream line formatting and live context functions are outside the contract."
+    },
+    {
+      "upstream": { "id": "tests/compiler.js:60", "file": "tests/compiler.js", "test": "should throw exceptions from included templates when called synchronously" },
+      "status": "adapted",
+      "reason": "Nunjitsu's async-only runtime test verifies a missing dependency nested in an included template rejects with TemplateNotFoundError."
+    },
+    {
+      "upstream": { "id": "tests/compiler.js:61", "file": "tests/compiler.js", "test": "should pass errors from included templates to callback when async" },
+      "status": "adapted",
+      "reason": "Nunjitsu uses promises instead of callbacks; the runtime test verifies the equivalent nested include rejection."
     }
   ]
 }

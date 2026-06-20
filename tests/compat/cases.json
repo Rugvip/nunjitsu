@@ -1602,6 +1602,111 @@
       "context": { "arr": [[1, 2, 3, 4], [5, 6, 7, 8]] },
       "autoescape": true,
       "expected": "[1,2,3,4][5,6,7,8]"
+    },
+    {
+      "id": "compiler-if-hungry-true",
+      "template": "Give me some {% if hungry %}pizza{% else %}water{% endif %}",
+      "nativeRender": false,
+      "context": { "hungry": true },
+      "autoescape": true,
+      "expected": "Give me some pizza"
+    },
+    {
+      "id": "compiler-if-hungry-false",
+      "template": "Give me some {% if hungry %}pizza{% else %}water{% endif %}",
+      "nativeRender": false,
+      "context": { "hungry": false },
+      "autoescape": true,
+      "expected": "Give me some water"
+    },
+    {
+      "id": "compiler-if-not",
+      "template": "{% if not hungry %}good{% endif %}",
+      "nativeRender": false,
+      "context": { "hungry": false },
+      "autoescape": true,
+      "expected": "good"
+    },
+    {
+      "id": "compiler-if-boolean-operators",
+      "template": "{% if hungry and like_pizza %}A{% endif %}{% if hungry or anchovies %}B{% endif %}{% if (hungry or like_pizza) and anchovies %}C{% endif %}",
+      "nativeRender": false,
+      "context": { "hungry": true, "like_pizza": true, "anchovies": true },
+      "autoescape": true,
+      "expected": "ABC"
+    },
+    {
+      "id": "compiler-if-equality-branches",
+      "template": "{% if food == \"pizza\" %}pizza{% endif %}{% if food ==\"beer\" %}beer{% endif %}",
+      "nativeRender": false,
+      "context": { "food": "beer" },
+      "autoescape": true,
+      "expected": "beer"
+    },
+    {
+      "id": "compiler-if-membership",
+      "template": "{% if \"pizza\" in food %}yum{% endif %}",
+      "nativeRender": false,
+      "context": { "food": { "pizza": true } },
+      "autoescape": true,
+      "expected": "yum"
+    },
+    {
+      "id": "compiler-if-elif-spellings",
+      "template": "{% if pizza %}yum{% elif anchovies %}yuck{% endif %}|{% if pizza %}yum{% elseif anchovies %}yuck{% endif %}",
+      "nativeRender": false,
+      "context": { "pizza": true },
+      "autoescape": true,
+      "expected": "yum|yum"
+    },
+    {
+      "id": "compiler-if-elif-alternative",
+      "template": "{% if pizza %}yum{% elif anchovies %}yuck{% endif %}|{% if pizza %}yum{% elseif anchovies %}yuck{% endif %}",
+      "nativeRender": false,
+      "context": { "anchovies": true },
+      "autoescape": true,
+      "expected": "yuck|yuck"
+    },
+    {
+      "id": "compiler-if-elseif-else",
+      "template": "{% if topping == \"pepperoni\" %}yum{% elseif topping == \"anchovies\" %}yuck{% else %}hmmm{% endif %}",
+      "nativeRender": false,
+      "context": { "topping": "sausage" },
+      "autoescape": true,
+      "expected": "hmmm"
+    },
+    {
+      "id": "compiler-comparison-operators",
+      "template": "{% if 3 < 4 %}a{% endif %}{% if 3 > 4 %}x{% endif %}{% if 9 >= 10 %}x{% endif %}{% if 10 >= 10 %}b{% endif %}{% if 9 <= 10 %}c{% endif %}{% if 10 <= 10 %}d{% endif %}{% if 11 <= 10 %}x{% endif %}{% if 10 != 10 %}x{% endif %}{% if 10 == 10 %}e{% endif %}{% if \"0\" == 0 %}f{% endif %}{% if \"0\" === 0 %}x{% endif %}{% if \"0\" !== 0 %}g{% endif %}{% if 0 == false %}h{% endif %}{% if 0 === false %}x{% endif %}{% if foo(20) > bar %}i{% endif %}",
+      "capabilityFixture": "compiler-comparison-global",
+      "nativeRender": false,
+      "context": { "bar": 15 },
+      "autoescape": true,
+      "expected": "abcdefghi"
+    },
+    {
+      "id": "compiler-in-arrays",
+      "template": "{% if 1 in [1, 2] %}A{% endif %}{% if 1 in [2, 3] %}X{% endif %}{% if 1 not in [1, 2] %}X{% endif %}{% if 1 not in [2, 3] %}B{% endif %}{% if \"a\" in vals %}C{% endif %}",
+      "nativeRender": false,
+      "context": { "vals": ["a", "b"] },
+      "autoescape": true,
+      "expected": "ABC"
+    },
+    {
+      "id": "compiler-in-records",
+      "template": "{% if \"a\" in obj %}A{% endif %}|{% if \"a\" in other %}A{% endif %}",
+      "nativeRender": false,
+      "context": { "obj": { "a": true }, "other": { "b": true } },
+      "autoescape": true,
+      "expected": "A|"
+    },
+    {
+      "id": "compiler-in-strings",
+      "template": "{% if \"foo\" in \"foobar\" %}yes{% endif %}",
+      "nativeRender": false,
+      "context": {},
+      "autoescape": true,
+      "expected": "yes"
     }
   ]
 }
