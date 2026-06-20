@@ -306,6 +306,31 @@
       "upstream": { "id": "tests/compiler.js:95", "file": "tests/compiler.js", "test": "should let super() see global vars from child template" },
       "status": "ported",
       "cases": ["compiler-inheritance-super-child-global"]
+    },
+    {
+      "upstream": { "id": "tests/compiler.js:96", "file": "tests/compiler.js", "test": "should not let super() see vars from child block" },
+      "status": "ported",
+      "cases": ["compiler-inheritance-super-hides-child-block-local"]
+    },
+    {
+      "upstream": { "id": "tests/compiler.js:97", "file": "tests/compiler.js", "test": "should let child templates access parent global scope" },
+      "status": "ported",
+      "cases": ["compiler-inheritance-child-sees-parent-global"]
+    },
+    {
+      "upstream": { "id": "tests/compiler.js:98", "file": "tests/compiler.js", "test": "should not let super() modify calling scope" },
+      "status": "ported",
+      "cases": ["compiler-inheritance-super-scope-isolation"]
+    },
+    {
+      "upstream": { "id": "tests/compiler.js:99", "file": "tests/compiler.js", "test": "should not let child templates set vars in parent scope" },
+      "status": "ported",
+      "cases": ["compiler-inheritance-child-block-scope-isolation"]
+    },
+    {
+      "upstream": { "id": "tests/compiler.js:100", "file": "tests/compiler.js", "test": "should render blocks in their own scope" },
+      "status": "ported",
+      "cases": ["compiler-standalone-block-scope-isolation"]
     }
   ]
 }

@@ -1226,7 +1226,12 @@ fn write_super_definition(
     Ok(definition_offset)
 }
 
-fn write_super_chain(definition_offset: u32, name: &[u8], fallback: u32) -> Result<u32, u32> {
+fn write_super_chain(
+    definition_offset: u32,
+    name: &[u8],
+    fallback: u32,
+    scope: u32,
+) -> Result<u32, u32> {
     let mut count = 0usize;
     let mut candidate = block_definition_field(definition_offset, BLOCK_DEFINITION_PARENT)?;
     while candidate != 0 {
@@ -1264,7 +1269,7 @@ fn write_super_chain(definition_offset: u32, name: &[u8], fallback: u32) -> Resu
             block_definition_field(selected, BLOCK_DEFINITION_SOURCE)?,
             block_definition_field(selected, BLOCK_DEFINITION_BODY_CURSOR)?,
             block_definition_field(selected, BLOCK_DEFINITION_END_CURSOR)?,
-            block_definition_field(selected, BLOCK_DEFINITION_SCOPE)?,
+            scope,
             block_definition_field(selected, BLOCK_DEFINITION_FRAME)?,
             chain,
         )?;
@@ -1277,16 +1282,9 @@ fn start_block(state_offset: u32, name: &[u8]) -> Result<(), u32> {
     if !block.arguments.is_empty() {
         return Err(ERROR_UNSUPPORTED_TAG);
     }
-    let Some(definition_offset) = resolve_block(state_offset, block.name)? else {
-        return Ok(());
-    };
     let frame_offset = state_field(state_offset, STATE_CURRENT_FRAME)?;
     let frame = record_at(frame_offset, TAG_FRAME)?;
     let source_offset = read_u32(frame, FRAME_SOURCE)?;
-    let override_source = block_definition_field(definition_offset, BLOCK_DEFINITION_SOURCE)?;
-    if source_offset == override_source {
-        return Ok(());
-    }
     let body_cursor = read_u32(frame, FRAME_CURSOR)?;
     let end_cursor = find_block_end(
         record_at(source_offset, TAG_SOURCE)?,
@@ -1296,6 +1294,30 @@ fn start_block(state_offset: u32, name: &[u8]) -> Result<(), u32> {
     .map_err(render_error_code)? as u32;
     set_frame_field(frame_offset, FRAME_CURSOR, end_cursor)?;
     let current_scope = state_field(state_offset, STATE_CURRENT_SCOPE)?;
+
+    let definition_offset = resolve_block(state_offset, block.name)?;
+    let is_override = if let Some(definition_offset) = definition_offset {
+        block_definition_field(definition_offset, BLOCK_DEFINITION_SOURCE)? != source_offset
+    } else {
+        false
+    };
+    if !is_override {
+        let block_frame = allocate_record(TAG_FRAME, FRAME_LENGTH)?;
+        write_frame(
+            block_frame,
+            frame_offset,
+            source_offset,
+            body_cursor,
+            0,
+            current_scope,
+            end_cursor,
+        )?;
+        set_state_field(state_offset, STATE_CURRENT_FRAME, block_frame)?;
+        set_state_field(state_offset, STATE_TRANSIENT_BASE, unsafe { ARENA_CURSOR })?;
+        return Ok(());
+    }
+    let definition_offset = definition_offset.ok_or(ERROR_INVALID_ARENA)?;
+    let override_source = block_definition_field(definition_offset, BLOCK_DEFINITION_SOURCE)?;
     let base_super = write_super_definition(
         source_offset,
         body_cursor,
@@ -1304,7 +1326,8 @@ fn start_block(state_offset: u32, name: &[u8]) -> Result<(), u32> {
         frame_offset,
         0,
     )?;
-    let super_definition = write_super_chain(definition_offset, block.name, base_super)?;
+    let super_definition =
+        write_super_chain(definition_offset, block.name, base_super, current_scope)?;
 
     let block_frame = allocate_record(TAG_FRAME, FRAME_LENGTH)?;
     write_frame(
@@ -1313,16 +1336,11 @@ fn start_block(state_offset: u32, name: &[u8]) -> Result<(), u32> {
         override_source,
         block_definition_field(definition_offset, BLOCK_DEFINITION_BODY_CURSOR)?,
         0,
-        state_field(state_offset, STATE_CURRENT_SCOPE)?,
+        current_scope,
         block_definition_field(definition_offset, BLOCK_DEFINITION_END_CURSOR)?,
     )?;
     set_state_field(state_offset, STATE_CURRENT_FRAME, block_frame)?;
     set_state_field(state_offset, STATE_TRANSIENT_BASE, unsafe { ARENA_CURSOR })?;
-    set_state_field(
-        state_offset,
-        STATE_CURRENT_SCOPE,
-        block_definition_field(definition_offset, BLOCK_DEFINITION_SCOPE)?,
-    )?;
     let super_name = write_bytes_record(TAG_STRING, b"super")?;
     assign_scope(state_offset, super_name, super_definition)
 }
@@ -1386,10 +1404,15 @@ fn define_macro(state_offset: u32, signature: &[u8]) -> Result<(), u32> {
     let frame = record_at(frame_offset, TAG_FRAME)?;
     let source_offset = read_u32(frame, FRAME_SOURCE)?;
     let body_cursor = read_u32(frame, FRAME_CURSOR)?;
+    let owner_frame = if read_u32(frame, FRAME_END_CURSOR)? != 0 {
+        read_u32(frame, FRAME_PARENT)?
+    } else {
+        frame_offset
+    };
     let end_cursor = register_macro_definition(
         state_offset,
         signature,
-        frame_offset,
+        owner_frame,
         source_offset,
         body_cursor,
     )?;

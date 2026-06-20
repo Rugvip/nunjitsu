@@ -79,7 +79,10 @@ resolution order. Selected overrides execute through bounded source frames, so
 inheritance does not require copying block bodies or retaining a precompiled
 template graph. Each active override receives a render-local `super` callable
 linked to the next matching definition and ultimately the parent body; invoking
-it uses the same captured, resumable frame path as a macro call.
+it uses the same captured, resumable frame path as a macro call. Every block
+runs behind the pre-block scope boundary: parent globals remain readable, while
+assignments in child, parent, standalone, and `super` bodies cannot mutate the
+calling scope.
 
 Imports materialize a render-local namespace record containing exported values
 and deferred macro definitions. `from` imports bind selected namespace entries

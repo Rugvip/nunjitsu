@@ -798,6 +798,50 @@
       "expected": "child"
     },
     {
+      "id": "compiler-inheritance-super-hides-child-block-local",
+      "template": "{% extends \"base-show.njk\" %}{% block main %}{% set var = \"child\" %}{{ super() }}{% endblock %}",
+      "templates": { "base-show.njk": "{% block main %}{{ var }}{% endblock %}" },
+      "nativeRender": false,
+      "context": {},
+      "autoescape": false,
+      "expected": ""
+    },
+    {
+      "id": "compiler-inheritance-child-sees-parent-global",
+      "template": "{% extends \"base-set.njk\" %}{% block main %}{{ var }}{% endblock %}",
+      "templates": { "base-set.njk": "{% set var = 'parent' %}{% block main %}{% set var = 'inner' %}{% endblock %}" },
+      "nativeRender": false,
+      "context": {},
+      "autoescape": false,
+      "expected": "parent"
+    },
+    {
+      "id": "compiler-inheritance-super-scope-isolation",
+      "template": "{% extends \"base-set-inside-block.njk\" %}{% block main %}{{ super() }}{{ var }}{% endblock %}",
+      "templates": { "base-set-inside-block.njk": "{% block main %}{% set var = 'inner' %}{% endblock %}" },
+      "nativeRender": false,
+      "context": {},
+      "autoescape": false,
+      "expected": ""
+    },
+    {
+      "id": "compiler-inheritance-child-block-scope-isolation",
+      "template": "{% extends \"base-set-and-show.njk\" %}{% block main %}{% set var = \"child\" %}{% endblock %}",
+      "templates": { "base-set-and-show.njk": "{% set var = 'parent' %}{% block main %}{% set var = 'inner' %}{% endblock %}{{ var }}" },
+      "nativeRender": false,
+      "context": {},
+      "autoescape": false,
+      "expected": "parent"
+    },
+    {
+      "id": "compiler-standalone-block-scope-isolation",
+      "template": "{% set var = \"parent\" %}{% block main %}{% set var = \"inner\" %}{% endblock %}{{ var }}",
+      "nativeRender": false,
+      "context": {},
+      "autoescape": false,
+      "expected": "parent"
+    },
+    {
       "id": "compiler-block-set-inside-macro",
       "template": "{%- macro foo(bar) -%}{%- set test -%}foo{%- endset -%}{{ bar }}{{ test }}{%- endmacro -%}{{ foo(\"bar\") }}",
       "nativeRender": false,
