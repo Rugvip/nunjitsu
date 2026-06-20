@@ -164,6 +164,15 @@ pub struct MacroArgument<'a> {
     pub next_cursor: usize,
 }
 
+/// One call-block clause with optional caller parameters.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct CallBlock<'a> {
+    /// Comma-separated names bound when the macro invokes `caller`.
+    pub bindings: &'a [u8],
+    /// Macro invoked with the captured caller body.
+    pub call: Call<'a>,
+}
+
 /// Parses the base atom, its unary negation, and the following operation cursor.
 pub fn parse_base(expression: &[u8]) -> Result<(Atom<'_>, usize, bool), ExpressionError> {
     if let Some(atom) = parse_inline_if(expression)? {
@@ -641,6 +650,27 @@ pub fn parse_tag_call(directive: &[u8]) -> Result<Call<'_>, ExpressionError> {
     Ok(call)
 }
 
+/// Parses `(optional, bindings) macro(arguments)` call-block syntax.
+pub fn parse_call_block(source: &[u8]) -> Result<CallBlock<'_>, ExpressionError> {
+    let mut cursor = skip_whitespace(source, 0);
+    let bindings = if source.get(cursor) == Some(&b'(') {
+        let (bindings, next) = parse_parenthesized(source, cursor)?;
+        let mut binding_cursor = 0usize;
+        while let Some((_, next)) = next_binding(bindings, binding_cursor)? {
+            binding_cursor = next;
+        }
+        cursor = skip_whitespace(source, next);
+        bindings
+    } else {
+        b""
+    };
+    let (call, cursor) = parse_named_call(source, cursor)?;
+    if skip_whitespace(source, cursor) != source.len() {
+        return Err(ExpressionError);
+    }
+    Ok(CallBlock { bindings, call })
+}
+
 /// Parses one identifier from a validated comma-separated binding list.
 pub fn next_binding(
     bindings: &[u8],
@@ -1113,6 +1143,30 @@ mod tests {
             }),
         );
         assert_eq!(parse_tag_call(b"badge trailing"), Err(ExpressionError));
+        assert_eq!(
+            parse_call_block(br#"(item, index) list(["a", "b"])"#),
+            Ok(CallBlock {
+                bindings: b"item, index",
+                call: Call {
+                    name: b"list",
+                    arguments: br#"["a", "b"]"#,
+                },
+            }),
+        );
+        assert_eq!(
+            parse_call_block(b"(item) wrap()"),
+            Ok(CallBlock {
+                bindings: b"item",
+                call: Call {
+                    name: b"wrap",
+                    arguments: b"",
+                },
+            }),
+        );
+        assert_eq!(
+            parse_call_block(b"(item,) list(values)"),
+            Err(ExpressionError)
+        );
         assert_eq!(next_macro_parameter(b"value=", 0), Err(ExpressionError));
         assert_eq!(next_macro_argument(b"value=", 0), Err(ExpressionError));
         assert_eq!(

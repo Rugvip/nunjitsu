@@ -323,6 +323,36 @@ pub(crate) fn find_block_end(
     }
 }
 
+/// Finds the cursor immediately after the matching `endcall` tag.
+#[cfg(any(target_arch = "wasm32", test))]
+pub(crate) fn find_call_end(
+    source: &[u8],
+    mut cursor: usize,
+    options: ParseOptions,
+) -> Result<usize, RenderError> {
+    let mut depth = 0usize;
+    loop {
+        let (item, next_cursor) = next_item_with_options(source, cursor, options)?;
+        if let TemplateItem::Tag(directive) = item {
+            if directive_keyword(directive, b"call").is_some()
+                || directive
+                    .strip_prefix(b"call")
+                    .is_some_and(|remainder| remainder.first() == Some(&b'('))
+            {
+                depth = depth.checked_add(1).ok_or(RenderError::OutputTooLarge)?;
+            } else if directive == b"endcall" {
+                if depth == 0 {
+                    return Ok(next_cursor);
+                }
+                depth -= 1;
+            }
+        } else if item == TemplateItem::End {
+            return Err(RenderError::UnclosedBlockTag);
+        }
+        cursor = next_cursor;
+    }
+}
+
 /// Returns a non-empty directive remainder after an exact keyword and whitespace.
 #[cfg(any(target_arch = "wasm32", test))]
 pub(crate) fn directive_keyword<'a>(directive: &'a [u8], keyword: &[u8]) -> Option<&'a [u8]> {
@@ -782,6 +812,12 @@ mod tests {
         assert_eq!(
             find_block_end(block_source, 0, ParseOptions::default()),
             Ok(60),
+        );
+
+        let call_source = b"body{% call wrap() %}nested{% endcall %}tail{% endcall %}after";
+        assert_eq!(
+            find_call_end(call_source, 0, ParseOptions::default()),
+            Ok(57),
         );
     }
 

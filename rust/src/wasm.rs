@@ -1,13 +1,13 @@
 use crate::expression::{
     Atom, BinaryOperator, Call, Comparison, Operand, Operation, next_argument, next_binding,
     next_lookup_segment, next_macro_argument, next_macro_parameter, next_operation,
-    next_record_entry, parse_base, parse_for_clause, parse_set_clause, parse_tag_call,
-    split_binary_expression,
+    next_record_entry, parse_base, parse_call_block, parse_for_clause, parse_set_clause,
+    parse_tag_call, split_binary_expression,
 };
 use crate::template::{
     ConditionalBoundary, ParseOptions, RenderError, RenderedValue, TemplateItem, directive_keyword,
-    emit_escaped, find_block_end, find_conditional_boundary, find_loop_boundaries, find_macro_end,
-    next_item_with_options,
+    emit_escaped, find_block_end, find_call_end, find_conditional_boundary, find_loop_boundaries,
+    find_macro_end, next_item_with_options,
 };
 use core::arch::wasm32::{memory_grow, memory_size};
 use core::mem::{align_of, size_of};
@@ -609,8 +609,16 @@ fn start_expression(state_offset: u32, expression: &[u8], action: u32) -> Result
     set_state_field(state_offset, STATE_EXPRESSION_ACTION, action)?;
 
     if let Atom::Call(call) = base {
+        let context_offset = state_field(state_offset, STATE_CONTEXT)?;
+        let context = Context::new(record_at(context_offset, TAG_RECORD)?, state_offset)?;
+        if let Some(definition_offset) = context.lookup_offset(call.name)
+            && matches!(Value::at(definition_offset)?, Value::Macro)
+        {
+            start_macro_call(state_offset, definition_offset, call, negated, 0)?;
+            return Ok(None);
+        }
         if let Some(definition_offset) = resolve_macro(state_offset, call.name)? {
-            start_macro_call(state_offset, definition_offset, call, negated)?;
+            start_macro_call(state_offset, definition_offset, call, negated, 0)?;
             return Ok(None);
         }
         return issue_capability(
@@ -647,6 +655,17 @@ fn handle_tag(state_offset: u32, directive: &[u8]) -> Result<Option<u32>, u32> {
     }
     if directive == b"endblock" {
         return Ok(None);
+    }
+    if let Some(clause) = directive_keyword(directive, b"call").or_else(|| {
+        directive
+            .strip_prefix(b"call")
+            .filter(|remainder| remainder.first() == Some(&b'('))
+    }) {
+        start_call_block(state_offset, clause)?;
+        return Ok(None);
+    }
+    if directive == b"endcall" {
+        return finish_macro_call(state_offset);
     }
     if let Some(signature) = directive_keyword(directive, b"macro") {
         define_macro(state_offset, signature)?;
@@ -861,6 +880,60 @@ fn start_block(state_offset: u32, name: &[u8]) -> Result<(), u32> {
         state_offset,
         STATE_CURRENT_SCOPE,
         block_definition_field(definition_offset, BLOCK_DEFINITION_SCOPE)?,
+    )
+}
+
+fn start_call_block(state_offset: u32, source: &[u8]) -> Result<(), u32> {
+    let clause = parse_call_block(source).map_err(|_| ERROR_UNSUPPORTED_TAG)?;
+    let frame_offset = state_field(state_offset, STATE_CURRENT_FRAME)?;
+    let frame = record_at(frame_offset, TAG_FRAME)?;
+    let source_offset = read_u32(frame, FRAME_SOURCE)?;
+    let body_cursor = read_u32(frame, FRAME_CURSOR)?;
+    let end_cursor = find_call_end(
+        record_at(source_offset, TAG_SOURCE)?,
+        body_cursor as usize,
+        parse_options(state_offset)?,
+    )
+    .map_err(render_error_code)? as u32;
+    set_frame_field(frame_offset, FRAME_CURSOR, end_cursor)?;
+
+    let caller_name = write_bytes_record(TAG_STRING, b"caller")?;
+    let parameters = write_bytes_record(TAG_STRING, clause.bindings)?;
+    let caller_definition = allocate_record(TAG_MACRO_DEFINITION, MACRO_DEFINITION_LENGTH)?;
+    let definition = mutable_record_at(caller_definition, TAG_MACRO_DEFINITION)?;
+    write_u32(definition, MACRO_DEFINITION_PARENT, 0)?;
+    write_u32(definition, MACRO_DEFINITION_NAME, caller_name)?;
+    write_u32(definition, MACRO_DEFINITION_SOURCE, source_offset)?;
+    write_u32(definition, MACRO_DEFINITION_BODY_CURSOR, body_cursor)?;
+    write_u32(definition, MACRO_DEFINITION_PARAMETERS, parameters)?;
+    write_u32(
+        definition,
+        MACRO_DEFINITION_SCOPE,
+        state_field(state_offset, STATE_CURRENT_SCOPE)?,
+    )?;
+    write_u32(definition, MACRO_DEFINITION_FRAME, frame_offset)?;
+
+    let context_offset = state_field(state_offset, STATE_CONTEXT)?;
+    let context = Context::new(record_at(context_offset, TAG_RECORD)?, state_offset)?;
+    let target_definition = if let Some(offset) = context.lookup_offset(clause.call.name)
+        && matches!(Value::at(offset)?, Value::Macro)
+    {
+        offset
+    } else {
+        resolve_macro(state_offset, clause.call.name)?.ok_or(ERROR_INVALID_EXPRESSION)?
+    };
+
+    let pending_expression = write_bytes_record(TAG_STRING, b"")?;
+    set_state_field(state_offset, STATE_PENDING_EXPRESSION, pending_expression)?;
+    set_state_field(state_offset, STATE_EXPRESSION_CURSOR, 0)?;
+    set_state_field(state_offset, STATE_CURRENT_VALUE, 0)?;
+    set_state_field(state_offset, STATE_EXPRESSION_ACTION, EXPRESSION_OUTPUT)?;
+    start_macro_call(
+        state_offset,
+        target_definition,
+        clause.call,
+        false,
+        caller_definition,
     )
 }
 
@@ -1096,6 +1169,7 @@ fn start_macro_call(
     definition_offset: u32,
     call: Call<'_>,
     negated: bool,
+    caller_definition: u32,
 ) -> Result<(), u32> {
     let transient_base = state_field(state_offset, STATE_TRANSIENT_BASE)?;
     let arguments_offset = write_macro_arguments(state_offset, definition_offset, call)?;
@@ -1212,6 +1286,10 @@ fn start_macro_call(
         };
         assign_scope(state_offset, name_offset, value_offset)?;
         parameter_cursor = parameter.next_cursor;
+    }
+    if caller_definition != 0 {
+        let name_offset = write_bytes_record(TAG_STRING, b"caller")?;
+        assign_scope(state_offset, name_offset, caller_definition)?;
     }
     Ok(())
 }
@@ -3105,6 +3183,7 @@ enum Value {
     SafeString(&'static [u8]),
     Array(Array),
     Record(Record),
+    Macro,
 }
 
 impl Value {
@@ -3130,6 +3209,9 @@ impl Value {
             TAG_SAFE_STRING => Ok(Self::SafeString(payload)),
             TAG_ARRAY => Ok(Self::Array(Array::new(payload)?)),
             TAG_RECORD => Ok(Self::Record(Record::new(payload)?)),
+            TAG_MACRO_DEFINITION if payload.len() == MACRO_DEFINITION_LENGTH as usize => {
+                Ok(Self::Macro)
+            }
             _ => Err(ERROR_INVALID_RECORD),
         }
     }
@@ -3168,7 +3250,7 @@ impl Value {
                 bytes: value,
                 safe: true,
             }),
-            Self::Array(_) | Self::Record(_) => Some(RenderedValue {
+            Self::Array(_) | Self::Record(_) | Self::Macro => Some(RenderedValue {
                 bytes: b"",
                 safe: false,
             }),
@@ -3178,7 +3260,7 @@ impl Value {
     fn truthy(self) -> bool {
         match self {
             Self::Undefined | Self::Null | Self::Boolean(false) => false,
-            Self::Boolean(true) | Self::Array(_) | Self::Record(_) => true,
+            Self::Boolean(true) | Self::Array(_) | Self::Record(_) | Self::Macro => true,
             Self::Number { numeric, .. } => numeric != 0.0 && !numeric.is_nan(),
             Self::String(value) | Self::SafeString(value) => !value.is_empty(),
         }
@@ -3208,7 +3290,7 @@ impl Value {
                         .unwrap_or(f64::NAN)
                 }
             }
-            Self::Undefined | Self::Array(_) | Self::Record(_) => f64::NAN,
+            Self::Undefined | Self::Array(_) | Self::Record(_) | Self::Macro => f64::NAN,
         }
     }
 }

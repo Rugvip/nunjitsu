@@ -530,6 +530,22 @@
       "expected": ""
     },
     {
+      "id": "compiler-call-block",
+      "template": "{% macro wrap(el) %}<{{ el }}>{{ caller() }}</{{ el }}>{% endmacro %}{% call wrap(\"div\") %}Hello{% endcall %}",
+      "nativeRender": false,
+      "context": {},
+      "autoescape": false,
+      "expected": "<div>Hello</div>"
+    },
+    {
+      "id": "compiler-call-block-arguments",
+      "template": "{% macro list(items) %}<ul>{% for i in items %}<li>{{ caller(i) }}</li>{% endfor %}</ul>{% endmacro %}{% call(item) list([\"a\", \"b\"]) %}{{ item }}{% endcall %}",
+      "nativeRender": false,
+      "context": {},
+      "autoescape": false,
+      "expected": "<ul><li>a</li><li>b</li></ul>"
+    },
+    {
       "id": "compiler-block-set-inside-macro",
       "template": "{%- macro foo(bar) -%}{%- set test -%}foo{%- endset -%}{{ bar }}{{ test }}{%- endmacro -%}{{ foo(\"bar\") }}",
       "nativeRender": false,

@@ -237,6 +237,16 @@
       "upstream": { "id": "tests/compiler.js:81", "file": "tests/compiler.js", "test": "should compile macros that cannot see variables in caller scope" },
       "status": "ported",
       "cases": ["compiler-macro-no-caller-scope"]
+    },
+    {
+      "upstream": { "id": "tests/compiler.js:82", "file": "tests/compiler.js", "test": "should compile call blocks" },
+      "status": "ported",
+      "cases": ["compiler-call-block"]
+    },
+    {
+      "upstream": { "id": "tests/compiler.js:83", "file": "tests/compiler.js", "test": "should compile call blocks with args" },
+      "status": "ported",
+      "cases": ["compiler-call-block-arguments"]
     }
   ]
 }
