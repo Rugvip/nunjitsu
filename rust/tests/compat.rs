@@ -16,7 +16,7 @@ struct CompatibilityCase {
     #[serde(rename = "nativeRender", default = "enabled")]
     native_render: bool,
     context: Map<String, Value>,
-    autoescape: bool,
+    autoescape: Option<bool>,
     expected: String,
 }
 
@@ -34,7 +34,7 @@ fn renders_shared_compatibility_cases_natively() {
         let mut output = vec![0; case.expected.len().saturating_mul(6).max(1024)];
         let written = render_template(
             case.template.as_bytes(),
-            case.autoescape,
+            case.autoescape.expect("native cases require autoescape"),
             |path| lookup(&case.context, path),
             &mut output,
         )

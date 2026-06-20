@@ -2948,7 +2948,7 @@ fn apply_builtin_filter(
     let output = match call.name {
         b"safe" => {
             require_argument_count(call, 0)?;
-            let rendered = input.rendered().ok_or(ERROR_INVALID_EXPRESSION)?;
+            let rendered = rendered_value(input_offset)?;
             write_bytes_record(TAG_SAFE_STRING, rendered.bytes)?
         }
         b"escape" | b"e" => {
@@ -2956,12 +2956,12 @@ fn apply_builtin_filter(
             if matches!(input, Value::SafeString(_)) {
                 input_offset
             } else {
-                write_escaped_string(input.rendered().ok_or(ERROR_INVALID_EXPRESSION)?.bytes)?
+                write_escaped_string(rendered_value(input_offset)?.bytes)?
             }
         }
         b"forceescape" => {
             require_argument_count(call, 0)?;
-            write_escaped_string(input.rendered().ok_or(ERROR_INVALID_EXPRESSION)?.bytes)?
+            write_escaped_string(rendered_value(input_offset)?.bytes)?
         }
         b"default" | b"d" => {
             let count = argument_count(call)?;
@@ -2986,15 +2986,15 @@ fn apply_builtin_filter(
         }
         b"upper" => {
             require_argument_count(call, 0)?;
-            ascii_case_value(input, true, false)?
+            ascii_case_value(input_offset, true, false)?
         }
         b"lower" => {
             require_argument_count(call, 0)?;
-            ascii_case_value(input, false, false)?
+            ascii_case_value(input_offset, false, false)?
         }
         b"capitalize" | b"title" => {
             require_argument_count(call, 0)?;
-            ascii_case_value(input, false, true)?
+            ascii_case_value(input_offset, false, true)?
         }
         b"length" => {
             require_argument_count(call, 0)?;
@@ -3239,8 +3239,8 @@ fn reverse_value(value: Value) -> Result<u32, u32> {
     }
 }
 
-fn ascii_case_value(value: Value, uppercase: bool, capitalize: bool) -> Result<u32, u32> {
-    let rendered = value.rendered().ok_or(ERROR_INVALID_EXPRESSION)?;
+fn ascii_case_value(value_offset: u32, uppercase: bool, capitalize: bool) -> Result<u32, u32> {
+    let rendered = rendered_value(value_offset)?;
     let tag = if rendered.safe {
         TAG_SAFE_STRING
     } else {
@@ -3350,7 +3350,7 @@ fn apply_binary_operator(
         || (operator == BinaryOperator::Add
             && (left.string_bytes().is_some() || right.string_bytes().is_some()))
     {
-        return concatenate_values(left, right);
+        return concatenate_values(left_offset, right_offset);
     }
     let left = left.as_number();
     let right = right.as_number();
@@ -3367,9 +3367,9 @@ fn apply_binary_operator(
     write_computed_number(result)
 }
 
-fn concatenate_values(left: Value, right: Value) -> Result<u32, u32> {
-    let left = left.rendered().ok_or(ERROR_INVALID_EXPRESSION)?.bytes;
-    let right = right.rendered().ok_or(ERROR_INVALID_EXPRESSION)?.bytes;
+fn concatenate_values(left_offset: u32, right_offset: u32) -> Result<u32, u32> {
+    let left = rendered_value(left_offset)?.bytes;
+    let right = rendered_value(right_offset)?.bytes;
     let length = left
         .len()
         .checked_add(right.len())
@@ -3440,10 +3440,9 @@ fn values_order(left_offset: u32, right_offset: u32) -> Result<core::cmp::Orderi
 
 fn value_contains(container_offset: u32, needle_offset: u32) -> Result<bool, u32> {
     let container = Value::at(container_offset)?;
-    let needle = Value::at(needle_offset)?;
     match container {
         Value::String(value) | Value::SafeString(value) => {
-            let rendered = needle.rendered().ok_or(ERROR_INVALID_EXPRESSION)?.bytes;
+            let rendered = rendered_value(needle_offset)?.bytes;
             if rendered.is_empty() {
                 return Ok(true);
             }
@@ -3461,7 +3460,7 @@ fn value_contains(container_offset: u32, needle_offset: u32) -> Result<bool, u32
             Ok(false)
         }
         Value::Record(record) => {
-            let key = needle.rendered().ok_or(ERROR_INVALID_EXPRESSION)?.bytes;
+            let key = rendered_value(needle_offset)?.bytes;
             Ok(record.get_offset(key).is_some())
         }
         _ => Err(ERROR_INVALID_EXPRESSION),
@@ -3565,10 +3564,96 @@ fn write_record_literal(state_offset: u32, entries: &[u8]) -> Result<u32, u32> {
     Ok(offset)
 }
 
+fn rendered_value(value_offset: u32) -> Result<RenderedValue<'static>, u32> {
+    let value = Value::at(value_offset)?;
+    if matches!(value, Value::Array(_) | Value::Record(_)) {
+        let coerced_offset = write_coerced_value(value_offset)?;
+        return Value::at(coerced_offset)?
+            .rendered()
+            .ok_or(ERROR_INVALID_EXPRESSION);
+    }
+    value.rendered().ok_or(ERROR_INVALID_EXPRESSION)
+}
+
+fn write_coerced_value(value_offset: u32) -> Result<u32, u32> {
+    let length = coerced_value_length(value_offset)?;
+    let length = u32::try_from(length).map_err(|_| ERROR_RESOURCE_LIMIT)?;
+    let offset = allocate_record(TAG_STRING, length)?;
+    let output = mutable_record_at(offset, TAG_STRING)?;
+    let mut cursor = 0usize;
+    write_coerced_value_into(value_offset, output, &mut cursor)?;
+    if cursor != output.len() {
+        return Err(ERROR_INVALID_ARENA);
+    }
+    Ok(offset)
+}
+
+fn coerced_value_length(value_offset: u32) -> Result<usize, u32> {
+    match Value::at(value_offset)? {
+        Value::Array(array) => {
+            let mut length = array.count.saturating_sub(1);
+            for index in 0..array.count {
+                length = length
+                    .checked_add(coerced_value_length(read_u32(array.payload, 4 + index * 4)?)?)
+                    .ok_or(ERROR_RESOURCE_LIMIT)?;
+            }
+            Ok(length)
+        }
+        Value::Record(_) => Ok(b"[object Object]".len()),
+        value => Ok(value
+            .rendered()
+            .ok_or(ERROR_INVALID_EXPRESSION)?
+            .bytes
+            .len()),
+    }
+}
+
+fn write_coerced_value_into(
+    value_offset: u32,
+    output: &mut [u8],
+    cursor: &mut usize,
+) -> Result<(), u32> {
+    match Value::at(value_offset)? {
+        Value::Array(array) => {
+            for index in 0..array.count {
+                if index != 0 {
+                    write_coerced_bytes(output, cursor, b",")?;
+                }
+                write_coerced_value_into(
+                    read_u32(array.payload, 4 + index * 4)?,
+                    output,
+                    cursor,
+                )?;
+            }
+            Ok(())
+        }
+        Value::Record(_) => write_coerced_bytes(output, cursor, b"[object Object]"),
+        value => write_coerced_bytes(
+            output,
+            cursor,
+            value.rendered().ok_or(ERROR_INVALID_EXPRESSION)?.bytes,
+        ),
+    }
+}
+
+fn write_coerced_bytes(
+    output: &mut [u8],
+    cursor: &mut usize,
+    bytes: &[u8],
+) -> Result<(), u32> {
+    let end = cursor
+        .checked_add(bytes.len())
+        .ok_or(ERROR_RESOURCE_LIMIT)?;
+    let destination = output
+        .get_mut(*cursor..end)
+        .ok_or(ERROR_INVALID_ARENA)?;
+    destination.copy_from_slice(bytes);
+    *cursor = end;
+    Ok(())
+}
+
 fn emit_value(state_offset: u32, value_offset: u32) -> Result<(), u32> {
-    let value = Value::at(value_offset)?
-        .rendered()
-        .ok_or(ERROR_INVALID_EXPRESSION)?;
+    let value = rendered_value(value_offset)?;
     let autoescape = state_field(state_offset, STATE_FLAGS)? & 1 == 1;
     if autoescape && !value.safe {
         emit_escaped(value.bytes, &mut |segment| {

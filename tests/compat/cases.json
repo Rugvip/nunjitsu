@@ -81,6 +81,117 @@
       "expected": "\"'<>&"
     },
     {
+      "id": "compiler-autoescape-default",
+      "template": "{{ foo }}",
+      "nativeRender": false,
+      "context": { "foo": "\"'<>&" },
+      "expected": "&quot;&#39;&lt;&gt;&amp;"
+    },
+    {
+      "id": "compiler-autoescape-reverse",
+      "template": "{{ foo|reverse }}",
+      "nativeRender": false,
+      "context": { "foo": "\"'<>&" },
+      "autoescape": true,
+      "expected": "&amp;&gt;&lt;&#39;&quot;"
+    },
+    {
+      "id": "compiler-autoescape-reverse-safe",
+      "template": "{{ foo|reverse|safe }}",
+      "nativeRender": false,
+      "context": { "foo": "\"'<>&" },
+      "autoescape": true,
+      "expected": "&><'\""
+    },
+    {
+      "id": "compiler-autoescape-null",
+      "template": "{{ foo }}",
+      "context": { "foo": null },
+      "autoescape": true,
+      "expected": ""
+    },
+    {
+      "id": "compiler-autoescape-array",
+      "template": "{{ foo }}",
+      "nativeRender": false,
+      "context": { "foo": ["<p>foo</p>"] },
+      "autoescape": true,
+      "expected": "&lt;p&gt;foo&lt;/p&gt;"
+    },
+    {
+      "id": "compiler-autoescape-safe-null",
+      "template": "{{ foo | safe }}",
+      "nativeRender": false,
+      "context": { "foo": null },
+      "autoescape": true,
+      "expected": ""
+    },
+    {
+      "id": "compiler-autoescape-safe-string",
+      "template": "{{ foo | safe }}",
+      "nativeRender": false,
+      "context": { "foo": "<p>foo</p>" },
+      "autoescape": true,
+      "expected": "<p>foo</p>"
+    },
+    {
+      "id": "compiler-autoescape-safe-array",
+      "template": "{{ foo | safe }}",
+      "nativeRender": false,
+      "context": { "foo": ["<p>foo</p>"] },
+      "autoescape": true,
+      "expected": "<p>foo</p>"
+    },
+    {
+      "id": "compiler-safe-filter",
+      "template": "{{ foo|safe }}",
+      "nativeRender": false,
+      "context": { "foo": "\"'<>&" },
+      "autoescape": true,
+      "expected": "\"'<>&"
+    },
+    {
+      "id": "compiler-autoescape-macro",
+      "template": "{% macro foo(x, y) %}{{ x }} and {{ y }}{% endmacro %}{{ foo(\"<>&\", \"<>\") }}",
+      "nativeRender": false,
+      "context": {},
+      "autoescape": true,
+      "expected": "&lt;&gt;&amp; and &lt;&gt;"
+    },
+    {
+      "id": "compiler-autoescape-macro-safe-value",
+      "template": "{% macro foo(x, y) %}{{ x|safe }} and {{ y }}{% endmacro %}{{ foo(\"<>&\", \"<>\") }}",
+      "nativeRender": false,
+      "context": {},
+      "autoescape": true,
+      "expected": "<>& and &lt;&gt;"
+    },
+    {
+      "id": "compiler-autoescape-super",
+      "template": "{% extends \"base3.njk\" %}{% block block1 %}{{ super() }}{% endblock %}",
+      "templates": { "base3.njk": "{% block block1 %}<b>Foo</b>{% endblock %}" },
+      "nativeRender": false,
+      "context": {},
+      "autoescape": true,
+      "expected": "<b>Foo</b>"
+    },
+    {
+      "id": "compiler-autoescape-backslashes",
+      "template": "{{ foo }}",
+      "context": { "foo": "foo \\' bar" },
+      "autoescape": true,
+      "expected": "foo &#92;&#39; bar"
+    },
+    {
+      "id": "compiler-autoescape-disabled-tag-output",
+      "template": "{% test \"123456\" %}",
+      "capabilityFixture": "compiler-safe-inline-tag",
+      "nativeRender": false,
+      "context": {},
+      "autoescape": true,
+      "expected": "<b>Foo</b>"
+    },
+    {
       "id": "compiler-dynamic-include-context",
       "template": "hello world {% include tmpl %}",
       "templates": { "include.njk": "FooInclude {{ name }}" },

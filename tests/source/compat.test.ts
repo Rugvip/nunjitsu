@@ -24,7 +24,7 @@ interface CompatibilityCase {
   capabilityFixture?: string;
   nativeRender?: boolean;
   context: Record<string, CompatibilityJson>;
-  autoescape: boolean;
+  autoescape?: boolean;
   expected: string;
 }
 
@@ -115,7 +115,9 @@ test('shared compatibility cases render through the TypeScript engine', async t 
   for (const compatibilityCase of cases.cases) {
     await t.test(compatibilityCase.id, async () => {
       const engine = await createEngine({
-        autoescape: compatibilityCase.autoescape,
+        ...(compatibilityCase.autoescape === undefined
+          ? {}
+          : { autoescape: compatibilityCase.autoescape }),
         ...capabilityFixture(compatibilityCase.capabilityFixture),
         ...(compatibilityCase.templates
           ? { loaders: [memoryLoader(compatibilityCase.templates)] }
@@ -187,6 +189,18 @@ function capabilityFixture(name: string | undefined): TemplateCapabilities {
             const output = prefix + Array.from(invocation.body).reverse().join('');
             const cutoff = invocation.keywordArguments.cutoff;
             return typeof cutoff === 'number' ? output.slice(0, cutoff) : output;
+          },
+        },
+      },
+    };
+  }
+  if (name === 'compiler-safe-inline-tag') {
+    return {
+      tags: {
+        test: {
+          type: 'inline',
+          render() {
+            return markSafe('<b>Foo</b>');
           },
         },
       },

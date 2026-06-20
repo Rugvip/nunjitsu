@@ -159,6 +159,7 @@ test('streams evaluator chunks with backpressure and preserves partial failure s
     markIncludeStarted = resolve;
   });
   const engine = await createEngine({
+    autoescape: false,
     loaders: [{
       async load(name) {
         if (name !== 'partial.njk') {
@@ -870,6 +871,7 @@ test('iterates arena-backed arrays and records with nested local scopes', async 
 
 test('keeps resumable assignments scoped across loops and includes', async () => {
   const engine = await createEngine({
+    autoescape: false,
     loaders: [memoryLoader({
       'mutate.njk': '{% set value = "inside" %}{{ value }}',
       'capture-item.njk': '<{{ item }}>',

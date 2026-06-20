@@ -51,7 +51,7 @@ export interface EngineOptions extends TemplateCapabilities {
   retainedMemoryBytes?: number;
   /** Trusted template loaders fixed for the lifetime of this engine. */
   loaders?: readonly TemplateLoader[];
-  /** Escapes interpolated strings by default. Matches Nunjucks's default of `false`. */
+  /** Escapes interpolated values. Defaults to `true`, matching Nunjucks. */
   autoescape?: boolean;
   /** Removes one LF or CRLF immediately after each block tag. */
   trimBlocks?: boolean;
@@ -134,7 +134,7 @@ export async function createEngineWithRuntime(
     pool,
     retainedMemoryBytes,
     options.loaders ?? [],
-    options.autoescape ?? false,
+    options.autoescape ?? true,
     options.trimBlocks ?? false,
     options.lstripBlocks ?? false,
     createCapabilityRegistry(options),

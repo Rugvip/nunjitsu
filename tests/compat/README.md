@@ -21,3 +21,9 @@ to complete coverage.
 Case context uses ordinary JSON plus `{ "$nunjitsu": "safe", "value": "..." }`
 for explicitly safe strings. Additional tagged values must be added to the
 schema rather than encoded as executable JavaScript.
+
+Cases that require trusted host behavior name a deterministic
+`capabilityFixture` and set `nativeRender` to `false`; the TypeScript harness
+provides the fixture while still exercising the Rust/Wasm evaluator. Omitting
+`autoescape` verifies the engine default, while an explicit boolean fixes the
+mode for all other cases.

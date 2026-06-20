@@ -41,6 +41,8 @@ Public API design may refine names while preserving these contracts:
 - `renderStream` returns a Web `ReadableStream<string>` with pull-based
   backpressure and may error after emitting earlier chunks.
 - Render options carry cancellation and per-render resource limits.
+- Interpolated values are autoescaped by default; `autoescape: false` is an
+  explicit engine-level compatibility override.
 - Engine disposal is explicit and asynchronous; it rejects or cancels queued
   work and terminates workers deterministically.
 

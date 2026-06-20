@@ -33,16 +33,14 @@
     },
     {
       "upstream": { "id": "tests/compiler.js:125", "file": "tests/compiler.js", "test": "should autoescape if autoescape is on" },
-      "status": "partial",
-      "reason": "Only direct string autoescaping is ported; reverse/safe pipelines and collection coercion remain.",
-      "removalCondition": "Port or adapt every assertion in the upstream autoescape case.",
-      "cases": ["compiler-autoescape"]
+      "status": "adapted",
+      "reason": "All copied-value assertions are ported. The two live objects with custom JavaScript toString methods are outside the documented safe-value contract.",
+      "cases": ["compiler-autoescape", "compiler-autoescape-reverse", "compiler-autoescape-reverse-safe", "compiler-autoescape-null", "compiler-autoescape-array", "compiler-autoescape-safe-null", "compiler-autoescape-safe-string", "compiler-autoescape-safe-array"]
     },
     {
       "upstream": { "id": "tests/compiler.js:126", "file": "tests/compiler.js", "test": "should not autoescape safe strings" },
-      "status": "adapted",
-      "reason": "Nunjitsu uses an explicitly tagged copied safe value instead of Nunjucks's live safe filter result.",
-      "cases": ["compiler-explicit-safe-value"]
+      "status": "ported",
+      "cases": ["compiler-safe-filter", "compiler-explicit-safe-value"]
     },
     {
       "upstream": { "id": "tests/compiler.js:105", "file": "tests/compiler.js", "test": "should include templates dynamically" },
@@ -410,6 +408,32 @@
       "status": "adapted",
       "reason": "The templates and outputs are unchanged while positional and keyword arguments are delivered through a copied declarative invocation.",
       "cases": ["compiler-custom-body-tag-no-arguments", "compiler-custom-body-tag-positional-argument", "compiler-custom-body-tag-keyword-argument"]
+    },
+    {
+      "upstream": { "id": "tests/compiler.js:124", "file": "tests/compiler.js", "test": "should autoescape by default" },
+      "status": "ported",
+      "cases": ["compiler-autoescape-default"]
+    },
+    {
+      "upstream": { "id": "tests/compiler.js:127", "file": "tests/compiler.js", "test": "should not autoescape macros" },
+      "status": "ported",
+      "cases": ["compiler-autoescape-macro", "compiler-autoescape-macro-safe-value"]
+    },
+    {
+      "upstream": { "id": "tests/compiler.js:128", "file": "tests/compiler.js", "test": "should not autoescape super()" },
+      "status": "ported",
+      "cases": ["compiler-autoescape-super"]
+    },
+    {
+      "upstream": { "id": "tests/compiler.js:129", "file": "tests/compiler.js", "test": "should autoescape backslashes" },
+      "status": "ported",
+      "cases": ["compiler-autoescape-backslashes"]
+    },
+    {
+      "upstream": { "id": "tests/compiler.js:130", "file": "tests/compiler.js", "test": "should not autoescape when extension set false" },
+      "status": "adapted",
+      "reason": "Nunjitsu requires the trusted declarative tag renderer to return markSafe output instead of exposing a mutable extension autoescape flag.",
+      "cases": ["compiler-autoescape-disabled-tag-output"]
     }
   ]
 }
