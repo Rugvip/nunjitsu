@@ -32,8 +32,20 @@ interface ResumeOutputCommand {
   id: number;
 }
 
+/** Host capability result accepted while expression evaluation is suspended. */
+interface ResumeCapabilityCommand {
+  type: 'resumeCapability';
+  id: number;
+  valueOffset: number;
+  cursor: number;
+}
+
 /** Command accepted by the worker protocol. */
-type WorkerCommand = RenderCommand | ResumeLoadCommand | ResumeOutputCommand;
+type WorkerCommand =
+  | RenderCommand
+  | ResumeLoadCommand
+  | ResumeOutputCommand
+  | ResumeCapabilityCommand;
 
 /** Numeric exports in the Nunjitsu raw Wasm ABI. */
 interface NunjitsuExports {
@@ -46,6 +58,7 @@ interface NunjitsuExports {
   render: (requestOffset: number) => number;
   resumeInclude: (sourceOffset: number, canonicalOffset: number) => number;
   resumeOutput: () => number;
+  resumeCapability: (valueOffset: number) => number;
 }
 
 if (!parentPort) {
@@ -107,6 +120,26 @@ async function start(port: MessagePort): Promise<void> {
     }
     if (command.type === 'resumeOutput') {
       const state = exports.resumeOutput();
+      activeRenderId = reportState(
+        port,
+        data.memory,
+        exports,
+        controlOffset,
+        command.id,
+        state,
+      )
+        ? command.id
+        : undefined;
+      return;
+    }
+    if (command.type === 'resumeCapability') {
+      const cursorState = exports.arenaSetCursor(command.cursor);
+      if (cursorState !== 1) {
+        finishWithError(port, command.id, cursorState === 2 ? 7 : 1, exports);
+        activeRenderId = undefined;
+        return;
+      }
+      const state = exports.resumeCapability(command.valueOffset);
       activeRenderId = reportState(
         port,
         data.memory,
@@ -184,6 +217,16 @@ function reportState(
     });
     return true;
   }
+  if (state === 5) {
+    port.postMessage({
+      type: 'capability',
+      id,
+      requestOffset: control.getUint32(4, true),
+      requestLength: control.getUint32(8, true),
+      cursor: exports.arenaCursor(),
+    });
+    return true;
+  }
   finishWithError(port, id, control.getUint32(12, true), exports);
   return false;
 }
@@ -232,6 +275,18 @@ function parseCommand(value: unknown): WorkerCommand {
   if (candidate.type === 'resumeOutput') {
     return { type: 'resumeOutput', id: candidate.id };
   }
+  if (
+    candidate.type === 'resumeCapability' &&
+    typeof candidate.valueOffset === 'number' &&
+    typeof candidate.cursor === 'number'
+  ) {
+    return {
+      type: 'resumeCapability',
+      id: candidate.id,
+      valueOffset: candidate.valueOffset,
+      cursor: candidate.cursor,
+    };
+  }
   if (candidate.type === 'render' && typeof candidate.requestOffset === 'number') {
     if (typeof candidate.cursor !== 'number') {
       throw new Error('Nunjitsu worker received an invalid render cursor');
@@ -271,6 +326,7 @@ function parseExports(value: WebAssembly.Exports): NunjitsuExports {
     render: exportedFunction(value, 'nunjitsu_render'),
     resumeInclude: exportedFunction(value, 'nunjitsu_resume_include'),
     resumeOutput: exportedFunction(value, 'nunjitsu_resume_output'),
+    resumeCapability: exportedFunction(value, 'nunjitsu_resume_capability'),
   };
 }
 

@@ -1,6 +1,13 @@
 import { availableParallelism } from 'node:os';
 import { Worker } from 'node:worker_threads';
 
+import {
+  createCapabilityRegistry,
+  type CapabilityKind,
+  type CapabilityDescriptors,
+  type CapabilityRegistry,
+  type TemplateCapabilities,
+} from './capabilities.ts';
 import { loadTemplate, type LoadedTemplate, type TemplateLoader } from './loaders.ts';
 import {
   NunjitsuLimitError,
@@ -8,8 +15,8 @@ import {
   type NormalizedRenderLimits,
   type RenderLimits,
 } from './limits.ts';
-import { ArenaWriter, decodeOutput } from './protocol.ts';
-import type { TemplateContext } from './values.ts';
+import { ArenaWriter, decodeCapabilityRequest, decodeOutput } from './protocol.ts';
+import type { TemplateContext, TemplateValue } from './values.ts';
 
 const initialMemoryPages = 32;
 const maximumMemoryPages = 4096;
@@ -32,7 +39,7 @@ export interface WorkerPoolOptions {
 }
 
 /** Configures an immutable Nunjitsu engine. */
-export interface EngineOptions {
+export interface EngineOptions extends TemplateCapabilities {
   /** Lazy worker pool bounds. */
   workerPool?: WorkerPoolOptions;
   /** Worker memory retained after a render before that worker is recycled. */
@@ -117,8 +124,9 @@ export async function createEngineWithRuntime(
     runtime,
     pool,
     retainedMemoryBytes,
-    options.loaders,
+    options.loaders ?? [],
     options.autoescape ?? false,
+    createCapabilityRegistry(options),
   );
   await engine.initialize();
   return engine;
@@ -143,7 +151,13 @@ interface PendingRenderBase {
   id: number;
   abort: (() => void) | undefined;
   load: (name: string) => Promise<LoadedTemplate>;
+  call: (
+    kind: CapabilityKind,
+    id: number,
+    arguments_: readonly TemplateValue[],
+  ) => Promise<TemplateValue>;
   loading: boolean;
+  calling: boolean;
   loadedByName: Map<string, CachedLoadedTemplate>;
   loadedByCanonicalName: Map<string, CachedLoadedTemplate>;
 }
@@ -228,8 +242,23 @@ interface ChunkMessage {
   chunk: string;
 }
 
+/** Trusted host capability request yielded by expression evaluation. */
+interface CapabilityMessage {
+  type: 'capability';
+  id: number;
+  requestOffset: number;
+  requestLength: number;
+  cursor: number;
+}
+
 /** Worker response accepted by the host protocol. */
-type WorkerMessage = ReadyMessage | ResultMessage | ErrorMessage | LoadMessage | ChunkMessage;
+type WorkerMessage =
+  | ReadyMessage
+  | ResultMessage
+  | ErrorMessage
+  | LoadMessage
+  | ChunkMessage
+  | CapabilityMessage;
 
 class EngineImplementation implements Engine {
   readonly #runtime: RuntimeAssets;
@@ -237,6 +266,7 @@ class EngineImplementation implements Engine {
   readonly #retainedMemoryBytes: number;
   readonly #loaders: readonly TemplateLoader[];
   readonly #autoescape: boolean;
+  readonly #capabilities: CapabilityRegistry;
   readonly #slots: WorkerSlot[] = [];
   readonly #waiters: WorkerWaiter[] = [];
   #disposed = false;
@@ -245,14 +275,16 @@ class EngineImplementation implements Engine {
     runtime: RuntimeAssets,
     pool: NormalizedPoolOptions,
     retainedMemoryBytes: number,
-    loaders: readonly TemplateLoader[] = [],
-    autoescape = false,
+    loaders: readonly TemplateLoader[],
+    autoescape: boolean,
+    capabilities: CapabilityRegistry,
   ) {
     this.#runtime = runtime;
     this.#pool = pool;
     this.#retainedMemoryBytes = retainedMemoryBytes;
     this.#loaders = Object.freeze([...loaders]);
     this.#autoescape = autoescape;
+    this.#capabilities = capabilities;
   }
 
   async initialize(): Promise<void> {
@@ -271,31 +303,40 @@ class EngineImplementation implements Engine {
     options: RenderOptions = {},
   ): Promise<string> {
     this.#assertActive();
-    if (options.signal?.aborted) {
-      throw abortError();
-    }
-
-    const limits = normalizeRenderLimits(options.limits);
-    const resolved = await this.#resolveTemplate(template, limits, options.signal);
-    const workerLimits: NormalizedRenderLimits = Object.freeze({
-      ...limits,
-      loaderCalls:
-        limits.loaderCalls === Number.POSITIVE_INFINITY
-          ? limits.loaderCalls
-          : limits.loaderCalls - resolved.loaderCalls,
-    });
-    const slot = await this.#acquire(options.signal);
+    const cancellation = new AbortController();
+    const signal = options.signal
+      ? AbortSignal.any([options.signal, cancellation.signal])
+      : cancellation.signal;
+    let slot: WorkerSlot | undefined;
     try {
+      if (signal.aborted) {
+        throw abortError();
+      }
+      const limits = normalizeRenderLimits(options.limits);
+      const resolved = await this.#resolveTemplate(template, limits, signal);
+      const workerLimits: NormalizedRenderLimits = Object.freeze({
+        ...limits,
+        loaderCalls:
+          limits.loaderCalls === Number.POSITIVE_INFINITY
+            ? limits.loaderCalls
+            : limits.loaderCalls - resolved.loaderCalls,
+      });
+      slot = await this.#acquire(signal);
       return await slot.render(
         resolved,
         context,
         this.#autoescape,
+        this.#capabilities.descriptors,
         workerLimits,
-        name => loadTemplate(this.#loaders, name, options.signal),
-        options.signal,
+        name => loadTemplate(this.#loaders, name, signal),
+        (kind, id, arguments_) => this.#capabilities.invoke(kind, id, arguments_, signal),
+        signal,
       );
     } finally {
-      this.#release(slot);
+      cancellation.abort();
+      if (slot) {
+        this.#release(slot);
+      }
     }
   }
 
@@ -310,7 +351,13 @@ class EngineImplementation implements Engine {
       : cancellation.signal;
     let sessionPromise: Promise<WorkerStreamSession> | undefined;
     const getSession = () => {
-      sessionPromise ??= this.#startStreaming(template, context, options.limits, signal);
+      sessionPromise ??= this.#startStreaming(
+        template,
+        context,
+        options.limits,
+        signal,
+        () => cancellation.abort(),
+      );
       return sessionPromise;
     };
 
@@ -342,6 +389,7 @@ class EngineImplementation implements Engine {
     context: TemplateContext,
     requestedLimits: Partial<RenderLimits> | undefined,
     signal: AbortSignal,
+    cancel: () => void,
   ): Promise<WorkerStreamSession> {
     this.#assertActive();
     if (signal.aborted) {
@@ -363,13 +411,21 @@ class EngineImplementation implements Engine {
         resolved,
         context,
         this.#autoescape,
+        this.#capabilities.descriptors,
         workerLimits,
         name => loadTemplate(this.#loaders, name, signal),
+        (kind, id, arguments_) => this.#capabilities.invoke(kind, id, arguments_, signal),
         signal,
       );
       void session.finished.then(
-        () => this.#release(slot),
-        () => this.#release(slot),
+        () => {
+          cancel();
+          this.#release(slot);
+        },
+        () => {
+          cancel();
+          this.#release(slot);
+        },
       );
       return session;
     } catch (error) {
@@ -584,8 +640,14 @@ class WorkerSlot {
     template: ResolvedTemplate,
     context: TemplateContext,
     autoescape: boolean,
+    capabilities: CapabilityDescriptors,
     limits: NormalizedRenderLimits,
     load: (name: string) => Promise<LoadedTemplate>,
+    call: (
+      kind: CapabilityKind,
+      id: number,
+      arguments_: readonly TemplateValue[],
+    ) => Promise<TemplateValue>,
     signal: AbortSignal | undefined,
   ): Promise<string> {
     await this.ready;
@@ -605,6 +667,7 @@ class WorkerSlot {
       {
         autoescape,
         streaming: false,
+        capabilities,
         limits,
         ...(template.canonicalName ? { canonicalName: template.canonicalName } : {}),
       },
@@ -624,7 +687,9 @@ class WorkerSlot {
         reject,
         abort: undefined,
         load,
+        call,
         loading: false,
+        calling: false,
         loadedByName: new Map(),
         loadedByCanonicalName: new Map(),
       };
@@ -649,8 +714,14 @@ class WorkerSlot {
     template: ResolvedTemplate,
     context: TemplateContext,
     autoescape: boolean,
+    capabilities: CapabilityDescriptors,
     limits: NormalizedRenderLimits,
     load: (name: string) => Promise<LoadedTemplate>,
+    call: (
+      kind: CapabilityKind,
+      id: number,
+      arguments_: readonly TemplateValue[],
+    ) => Promise<TemplateValue>,
     signal: AbortSignal | undefined,
   ): Promise<WorkerStreamSession> {
     await this.ready;
@@ -670,6 +741,7 @@ class WorkerSlot {
       {
         autoescape,
         streaming: true,
+        capabilities,
         limits,
         ...(template.canonicalName ? { canonicalName: template.canonicalName } : {}),
       },
@@ -692,7 +764,9 @@ class WorkerSlot {
       id: this.#nextRenderId++,
       abort: undefined,
       load,
+      call,
       loading: false,
+      calling: false,
       loadedByName: new Map(),
       loadedByCanonicalName: new Map(),
       chunk: undefined,
@@ -772,7 +846,7 @@ class WorkerSlot {
       return;
     }
     if (value.type === 'ready') {
-      if (value.abiVersion !== 6 || value.arenaBase <= 0) {
+      if (value.abiVersion !== 7 || value.arenaBase <= 0) {
         this.#fail(new Error('Nunjitsu worker reported an incompatible Wasm ABI'));
         return;
       }
@@ -793,12 +867,21 @@ class WorkerSlot {
       return;
     }
     if (value.type === 'load') {
-      if (pending.loading) {
-        this.#fail(new Error('Nunjitsu worker yielded overlapping loader requests'));
+      if (pending.loading || pending.calling) {
+        this.#fail(new Error('Nunjitsu worker yielded overlapping host requests'));
         return;
       }
       pending.loading = true;
       void this.#resumeLoad(pending, value);
+      return;
+    }
+    if (value.type === 'capability') {
+      if (pending.loading || pending.calling) {
+        this.#fail(new Error('Nunjitsu worker yielded overlapping host requests'));
+        return;
+      }
+      pending.calling = true;
+      void this.#resumeCapability(pending, value);
       return;
     }
     if (value.type === 'chunk') {
@@ -901,6 +984,43 @@ class WorkerSlot {
     }
   }
 
+  async #resumeCapability(
+    pending: PendingRender,
+    message: CapabilityMessage,
+  ): Promise<void> {
+    try {
+      const request = decodeCapabilityRequest(
+        this.memory,
+        message.requestOffset,
+        message.requestLength,
+      );
+      const result = await pending.call(
+        request.kind,
+        request.capabilityId,
+        request.arguments,
+      );
+      const encoded = new ArenaWriter(this.memory, message.cursor).encodeCapabilityResult(result);
+      if (this.#pending !== pending || this.failed || this.#closed) {
+        return;
+      }
+      pending.calling = false;
+      this.#worker.postMessage({
+        type: 'resumeCapability',
+        id: pending.id,
+        valueOffset: encoded.valueOffset,
+        cursor: encoded.cursor,
+      });
+    } catch (error) {
+      if (this.#pending !== pending) {
+        return;
+      }
+      this.#pending = undefined;
+      this.failed = true;
+      void this.#worker.terminate();
+      this.#rejectPending(pending, asError(error));
+    }
+  }
+
   #abortRender(pending: PendingRender, error: Error): void {
     if (this.#pending !== pending) {
       return;
@@ -980,6 +1100,14 @@ function isWorkerMessage(value: unknown): value is WorkerMessage {
   if (message.type === 'chunk') {
     return typeof message.id === 'number' && typeof message.chunk === 'string';
   }
+  if (message.type === 'capability') {
+    return (
+      typeof message.id === 'number' &&
+      typeof message.requestOffset === 'number' &&
+      typeof message.requestLength === 'number' &&
+      typeof message.cursor === 'number'
+    );
+  }
   if (message.type !== 'result' || typeof message.id !== 'number') {
     return false;
   }
@@ -1001,6 +1129,12 @@ function renderErrorMessage(code: number): string {
   }
   if (code === 6) {
     return 'Template include cycle detected';
+  }
+  if (code === 8) {
+    return 'Template requested an unknown host capability';
+  }
+  if (code === 9) {
+    return 'Invalid or unsupported template expression';
   }
   return `Nunjitsu rendering failed with ABI error code ${code}`;
 }

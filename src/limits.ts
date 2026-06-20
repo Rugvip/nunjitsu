@@ -10,6 +10,8 @@ export interface RenderLimits {
   arenaBytes: number;
   /** Maximum named-template loader requests, including the entry template. */
   loaderCalls: number;
+  /** Maximum trusted host filter, test, and global invocations. */
+  capabilityCalls: number;
 }
 
 /** Fully populated limits passed to the arena encoder and evaluator. */
@@ -34,6 +36,7 @@ const defaultLimits: NormalizedRenderLimits = Object.freeze({
   outputBytes: 16 * 1024 * 1024,
   arenaBytes: 64 * 1024 * 1024,
   loaderCalls: 1024,
+  capabilityCalls: 4096,
 });
 
 /** Applies finite defaults and validates explicit per-render overrides. */

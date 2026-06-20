@@ -250,6 +250,115 @@ test('autoescaping requires an explicit safe string to bypass', async () => {
   }
 });
 
+test('dispatches immutable async filters, tests, and globals through safe copied values', async () => {
+  let markBlockingCallStarted: (() => void) | undefined;
+  const blockingCallStarted = new Promise<void>(resolve => {
+    markBlockingCallStarted = resolve;
+  });
+  const engine = await createEngine({
+    autoescape: true,
+    workerPool: { minWorkers: 1, maxWorkers: 1 },
+    filters: {
+      async suffix(input, arguments_) {
+        await Promise.resolve();
+        return `${String(input)}${String(arguments_[0])}`;
+      },
+      trusted(input) {
+        return markSafe(`<strong>${String(input)}</strong>`);
+      },
+      async blocking(_input, _arguments, { signal }) {
+        markBlockingCallStarted?.();
+        return await new Promise<never>((_resolve, reject) => {
+          const rejectAborted = () => {
+            const error = new Error('capability aborted');
+            error.name = 'AbortError';
+            reject(error);
+          };
+          if (signal.aborted) {
+            rejectAborted();
+          } else {
+            signal.addEventListener('abort', rejectAborted, { once: true });
+          }
+        });
+      },
+    },
+    tests: {
+      odd(input) {
+        return typeof input === 'number' && input % 2 === 1;
+      },
+    },
+    globals: {
+      async greet(arguments_) {
+        await Promise.resolve();
+        return `Hello ${String(arguments_[0])}`;
+      },
+      describe(arguments_) {
+        const [user, flags] = arguments_;
+        assert.equal(Object.getPrototypeOf(user), null);
+        assert.ok(Object.isFrozen(user));
+        assert.ok(Array.isArray(flags));
+        assert.ok(Object.isFrozen(flags));
+        return `${String((user as Record<string, unknown>).name)}:${String(flags[0])}`;
+      },
+    },
+  });
+
+  try {
+    assert.equal(
+      await engine.render(
+        {
+          source: [
+            '{{ greet("World") | suffix(punctuation) }}',
+            '{{ count is odd }}',
+            '{{ count is not odd }}',
+            '{{ unsafe | trusted }}',
+            '{{ describe(user, flags) }}',
+          ].join('|'),
+        },
+        {
+          punctuation: '!',
+          count: 3,
+          unsafe: '<tag>',
+          user: { name: 'copied' },
+          flags: ['first'],
+        },
+      ),
+      'Hello World!|true|false|<strong><tag></strong>|copied:first',
+    );
+    assert.equal(
+      (await Array.fromAsync(
+        engine.renderStream({ source: 'before{{ "x" | suffix("y") }}after' }),
+      )).join(''),
+      'beforexyafter',
+    );
+    await assert.rejects(
+      engine.render(
+        { source: '{{ "x" | suffix("a") | suffix("b") }}' },
+        {},
+        { limits: { capabilityCalls: 1 } },
+      ),
+      error => error instanceof NunjitsuLimitError,
+    );
+    await assert.rejects(
+      engine.render({ source: '{{ value | absent }}' }, { value: 'x' }),
+      error => error instanceof NunjitsuRenderError && error.code === 8,
+    );
+
+    const controller = new AbortController();
+    const rendering = engine.render(
+      { source: '{{ "x" | blocking }}' },
+      {},
+      { signal: controller.signal },
+    );
+    await blockingCallStarted;
+    controller.abort();
+    await assert.rejects(rendering, error => error instanceof Error && error.name === 'AbortError');
+    assert.equal(await engine.render({ source: 'clean' }), 'clean');
+  } finally {
+    await engine.dispose();
+  }
+});
+
 test('cancels a render while its worker is suspended on an include loader', async () => {
   let markLoadStarted: (() => void) | undefined;
   const loadStarted = new Promise<void>(resolve => {

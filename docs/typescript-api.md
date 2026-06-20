@@ -7,7 +7,11 @@ The public API is asynchronous and centered on an explicitly managed engine:
 ```ts
 const engine = await createEngine({
   loaders: [fileSystemLoader({ roots: [templateRoot] })],
-  filters,
+  filters: {
+    async lookup(input, arguments_, { signal }) {
+      return await applicationLookup(input, arguments_, { signal });
+    },
+  },
   workerPool: { minWorkers: 1, maxWorkers: 4 },
 });
 
@@ -66,6 +70,20 @@ and expire with that render. They do not alter global registrations.
 Host callbacks may be asynchronous. They receive decoded safe values, not raw
 arena offsets, and their results are validated and encoded before evaluation
 resumes. Callbacks and loaders are trusted application code.
+
+`filters`, `tests`, and callable `globals` are immutable name-to-function
+records on `EngineOptions`. A filter receives its input separately from its
+remaining arguments, a test must return a boolean, and a global receives its
+argument array. Every callback also receives a render-owned `AbortSignal`.
+Returned values cross the same safe-value encoder as context input and are not
+implicitly safe; callbacks must return `markSafe(value)` to bypass escaping.
+
+Each configured name receives a stable numeric engine-lifetime identity. The
+name tables are copied into each render arena so Rust resolves syntax before it
+yields a numeric request. The main thread validates the request category and
+identity, invokes exactly one registered callback, copies the result into the
+arena, and resumes the recorded expression continuation. Capability calls are
+charged against the per-render `capabilityCalls` limit.
 
 ## Source and build constraints
 

@@ -4,7 +4,13 @@ const test = require('node:test');
 const { createEngine } = require('../../dist/cjs/index.cjs');
 
 test('renders through the CommonJS package entry', async () => {
-  const engine = await createEngine();
+  const engine = await createEngine({
+    globals: {
+      value() {
+        return 'works';
+      },
+    },
+  });
   try {
     assert.equal(
       await engine.render({ source: 'CommonJS {{ value }}' }, { value: 'works' }),
@@ -12,7 +18,7 @@ test('renders through the CommonJS package entry', async () => {
     );
     assert.equal(
       (await Array.fromAsync(
-        engine.renderStream({ source: 'stream {{ value }}' }, { value: 'works' }),
+        engine.renderStream({ source: 'stream {{ value() }}' }),
       )).join(''),
       'stream works',
     );

@@ -1,5 +1,7 @@
 #![cfg_attr(target_arch = "wasm32", no_std)]
 
+#[cfg(any(target_arch = "wasm32", test))]
+mod expression;
 mod template;
 
 #[cfg(target_arch = "wasm32")]

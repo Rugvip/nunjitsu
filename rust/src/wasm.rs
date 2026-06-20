@@ -1,10 +1,11 @@
+use crate::expression::{Atom, Call, Operation, next_argument, next_operation, parse_base};
 use crate::template::{RenderError, RenderedValue, TemplateItem, emit_escaped, next_item};
 use core::arch::wasm32::{memory_grow, memory_size};
 use core::mem::{align_of, size_of};
 use core::ptr::{addr_of, addr_of_mut, read_unaligned, write_unaligned};
 use core::slice;
 
-const ABI_VERSION: u32 = 6;
+const ABI_VERSION: u32 = 7;
 const PAGE_SIZE: usize = 65_536;
 const STREAM_CHUNK_BYTES: u32 = 64 * 1024;
 const RECORD_ALIGNMENT: u32 = 8;
@@ -24,12 +25,15 @@ const TAG_SAFE_STRING: u32 = 12;
 const TAG_RENDER_STATE: u32 = 13;
 const TAG_FRAME: u32 = 14;
 const TAG_OUTPUT_CHUNK: u32 = 15;
+const TAG_CAPABILITY_REGISTRY: u32 = 16;
+const TAG_CAPABILITY_REQUEST: u32 = 17;
 
 const STATE_IDLE: u32 = 0;
 const STATE_COMPLETE: u32 = 1;
 const STATE_ERROR: u32 = 2;
 const STATE_LOAD_TEMPLATE: u32 = 3;
 const STATE_OUTPUT_AVAILABLE: u32 = 4;
+const STATE_CALL_CAPABILITY: u32 = 5;
 
 const ERROR_NONE: u32 = 0;
 const ERROR_INVALID_ARENA: u32 = 1;
@@ -39,8 +43,10 @@ const ERROR_OUTPUT_TOO_LARGE: u32 = 4;
 const ERROR_UNSUPPORTED_TAG: u32 = 5;
 const ERROR_INCLUDE_CYCLE: u32 = 6;
 const ERROR_RESOURCE_LIMIT: u32 = 7;
+const ERROR_UNKNOWN_CAPABILITY: u32 = 8;
+const ERROR_INVALID_EXPRESSION: u32 = 9;
 
-const RENDER_STATE_LENGTH: u32 = 72;
+const RENDER_STATE_LENGTH: u32 = 108;
 const STATE_CONTEXT: usize = 0;
 const STATE_FLAGS: usize = 4;
 const STATE_CURRENT_FRAME: usize = 8;
@@ -59,6 +65,19 @@ const STATE_INCLUDE_DEPTH: usize = 56;
 const STATE_TRANSIENT_BASE: usize = 60;
 const STATE_TOTAL_OUTPUT_LENGTH: usize = 64;
 const STATE_MATERIALIZATION_BASE: usize = 68;
+const STATE_FILTERS: usize = 72;
+const STATE_TESTS: usize = 76;
+const STATE_GLOBALS: usize = 80;
+const STATE_CAPABILITY_CALLS: usize = 84;
+const STATE_LIMIT_CAPABILITY_CALLS: usize = 88;
+const STATE_PENDING_EXPRESSION: usize = 92;
+const STATE_EXPRESSION_CURSOR: usize = 96;
+const STATE_CURRENT_VALUE: usize = 100;
+const STATE_NEGATE_RESULT: usize = 104;
+
+const CAPABILITY_FILTER: u32 = 1;
+const CAPABILITY_TEST: u32 = 2;
+const CAPABILITY_GLOBAL: u32 = 3;
 
 const FRAME_LENGTH: u32 = 16;
 const FRAME_PARENT: usize = 0;
@@ -170,9 +189,21 @@ pub extern "C" fn nunjitsu_resume_output() -> u32 {
     }
 }
 
+#[unsafe(no_mangle)]
+pub extern "C" fn nunjitsu_resume_capability(value_offset: u32) -> u32 {
+    if unsafe { CONTROL.state } != STATE_CALL_CAPABILITY {
+        return fail(ERROR_INVALID_ARENA);
+    }
+    set_control(STATE_IDLE, 0, 0, ERROR_NONE);
+    match resume_capability(value_offset).and_then(|()| run_active_render()) {
+        Ok(state) => state,
+        Err(error) => fail(error),
+    }
+}
+
 fn start_render(request_offset: u32) -> Result<(), u32> {
     let request = record_at(request_offset, TAG_REQUEST)?;
-    if request.len() != 36 {
+    if request.len() != 52 {
         return Err(ERROR_INVALID_RECORD);
     }
     let source_offset = read_u32(request, 0)?;
@@ -184,6 +215,10 @@ fn start_render(request_offset: u32) -> Result<(), u32> {
     let limit_output_bytes = read_u32(request, 24)?;
     let limit_arena_bytes = read_u32(request, 28)?;
     let limit_loader_calls = read_u32(request, 32)?;
+    let filters_offset = read_u32(request, 36)?;
+    let tests_offset = read_u32(request, 40)?;
+    let globals_offset = read_u32(request, 44)?;
+    let limit_capability_calls = read_u32(request, 48)?;
     if flags & !3 != 0 {
         return Err(ERROR_INVALID_RECORD);
     }
@@ -192,6 +227,9 @@ fn start_render(request_offset: u32) -> Result<(), u32> {
     if canonical_offset != 0 {
         record_at(canonical_offset, TAG_STRING)?;
     }
+    validate_capability_registry(filters_offset)?;
+    validate_capability_registry(tests_offset)?;
+    validate_capability_registry(globals_offset)?;
     if limit_include_depth == 0 {
         return Err(ERROR_RESOURCE_LIMIT);
     }
@@ -208,6 +246,14 @@ fn start_render(request_offset: u32) -> Result<(), u32> {
     set_state_field(state_offset, STATE_LIMIT_ARENA_BYTES, limit_arena_bytes)?;
     set_state_field(state_offset, STATE_LIMIT_LOADER_CALLS, limit_loader_calls)?;
     set_state_field(state_offset, STATE_INCLUDE_DEPTH, 1)?;
+    set_state_field(state_offset, STATE_FILTERS, filters_offset)?;
+    set_state_field(state_offset, STATE_TESTS, tests_offset)?;
+    set_state_field(state_offset, STATE_GLOBALS, globals_offset)?;
+    set_state_field(
+        state_offset,
+        STATE_LIMIT_CAPABILITY_CALLS,
+        limit_capability_calls,
+    )?;
     unsafe {
         ACTIVE_RENDER = state_offset;
     }
@@ -273,10 +319,40 @@ fn resume_output() -> Result<(), u32> {
     set_state_field(state_offset, STATE_MATERIALIZATION_BASE, 0)
 }
 
+fn resume_capability(value_offset: u32) -> Result<(), u32> {
+    let state_offset = active_state()?;
+    if state_field(state_offset, STATE_PENDING_EXPRESSION)? == 0 {
+        return Err(ERROR_INVALID_ARENA);
+    }
+    let value = Value::at(value_offset)?;
+    if state_field(state_offset, STATE_NEGATE_RESULT)? != 0 {
+        let Value::Boolean(result) = value else {
+            return Err(ERROR_INVALID_EXPRESSION);
+        };
+        let offset = write_boolean(!result)?;
+        set_state_field(state_offset, STATE_NEGATE_RESULT, 0)?;
+        set_state_field(state_offset, STATE_CURRENT_VALUE, offset)?;
+    } else {
+        set_state_field(state_offset, STATE_CURRENT_VALUE, value_offset)?;
+    }
+    Ok(())
+}
+
 fn run_active_render() -> Result<u32, u32> {
     let state_offset = active_state()?;
     if is_streaming(state_offset)? && state_field(state_offset, STATE_OUTPUT_LENGTH)? != 0 {
         return yield_output(state_offset);
+    }
+    if state_field(state_offset, STATE_PENDING_EXPRESSION)? != 0 {
+        if state_field(state_offset, STATE_CURRENT_VALUE)? == 0 {
+            return Err(ERROR_INVALID_ARENA);
+        }
+        if let Some(state) = continue_expression(state_offset)? {
+            return Ok(state);
+        }
+        if is_streaming(state_offset)? && state_field(state_offset, STATE_OUTPUT_LENGTH)? != 0 {
+            return yield_output(state_offset);
+        }
     }
     loop {
         let frame_offset = state_field(state_offset, STATE_CURRENT_FRAME)?;
@@ -312,19 +388,8 @@ fn run_active_render() -> Result<u32, u32> {
                 }
             }
             TemplateItem::Expression(expression) => {
-                let context_offset = state_field(state_offset, STATE_CONTEXT)?;
-                let context = Context::new(record_at(context_offset, TAG_RECORD)?)?;
-                if let Some(value) = context.lookup(expression) {
-                    let autoescape = state_field(state_offset, STATE_FLAGS)? & 1 == 1;
-                    if autoescape && !value.safe {
-                        emit_escaped(value.bytes, &mut |segment| {
-                            append_output(state_offset, segment)
-                                .map_err(|_| RenderError::OutputTooLarge)
-                        })
-                        .map_err(render_error_code)?;
-                    } else {
-                        append_output(state_offset, value.bytes)?;
-                    }
+                if let Some(state) = start_expression(state_offset, expression)? {
+                    return Ok(state);
                 }
                 if is_streaming(state_offset)?
                     && state_field(state_offset, STATE_OUTPUT_LENGTH)? != 0
@@ -355,6 +420,164 @@ fn run_active_render() -> Result<u32, u32> {
                 set_state_field(state_offset, STATE_INCLUDE_DEPTH, depth.saturating_sub(1))?;
             }
         }
+    }
+}
+
+fn start_expression(state_offset: u32, expression: &[u8]) -> Result<Option<u32>, u32> {
+    let expression_offset = write_bytes_record(TAG_STRING, expression)?;
+    let (base, cursor) = parse_base(expression).map_err(|_| ERROR_INVALID_EXPRESSION)?;
+    set_state_field(state_offset, STATE_PENDING_EXPRESSION, expression_offset)?;
+    set_state_field(state_offset, STATE_EXPRESSION_CURSOR, cursor as u32)?;
+    set_state_field(state_offset, STATE_CURRENT_VALUE, 0)?;
+
+    if let Atom::Call(call) = base {
+        return issue_capability(state_offset, CAPABILITY_GLOBAL, call, None, cursor, false)
+            .map(Some);
+    }
+    let value_offset = resolve_atom(state_offset, base)?;
+    set_state_field(state_offset, STATE_CURRENT_VALUE, value_offset)?;
+    continue_expression(state_offset)
+}
+
+fn continue_expression(state_offset: u32) -> Result<Option<u32>, u32> {
+    let expression_offset = state_field(state_offset, STATE_PENDING_EXPRESSION)?;
+    let expression = record_at(expression_offset, TAG_STRING)?;
+    let cursor = state_field(state_offset, STATE_EXPRESSION_CURSOR)? as usize;
+    let Some((operation, next_cursor)) =
+        next_operation(expression, cursor).map_err(|_| ERROR_INVALID_EXPRESSION)?
+    else {
+        let value_offset = state_field(state_offset, STATE_CURRENT_VALUE)?;
+        emit_value(state_offset, value_offset)?;
+        set_state_field(state_offset, STATE_PENDING_EXPRESSION, 0)?;
+        set_state_field(state_offset, STATE_EXPRESSION_CURSOR, 0)?;
+        set_state_field(state_offset, STATE_CURRENT_VALUE, 0)?;
+        if is_streaming(state_offset)? && state_field(state_offset, STATE_OUTPUT_LENGTH)? == 0 {
+            let transient_base = state_field(state_offset, STATE_TRANSIENT_BASE)?;
+            if transient_base > unsafe { ARENA_CURSOR } {
+                return Err(ERROR_INVALID_ARENA);
+            }
+            unsafe {
+                ARENA_CURSOR = transient_base;
+            }
+        }
+        return Ok(None);
+    };
+
+    let input = state_field(state_offset, STATE_CURRENT_VALUE)?;
+    let (kind, call, negated) = match operation {
+        Operation::Filter(call) => (CAPABILITY_FILTER, call, false),
+        Operation::Test { call, negated } => (CAPABILITY_TEST, call, negated),
+    };
+    issue_capability(state_offset, kind, call, Some(input), next_cursor, negated).map(Some)
+}
+
+fn issue_capability(
+    state_offset: u32,
+    kind: u32,
+    call: Call<'_>,
+    input: Option<u32>,
+    next_cursor: usize,
+    negated: bool,
+) -> Result<u32, u32> {
+    let registry_field = match kind {
+        CAPABILITY_FILTER => STATE_FILTERS,
+        CAPABILITY_TEST => STATE_TESTS,
+        CAPABILITY_GLOBAL => STATE_GLOBALS,
+        _ => return Err(ERROR_INVALID_EXPRESSION),
+    };
+    let registry_offset = state_field(state_offset, registry_field)?;
+    let capability_id =
+        resolve_capability(registry_offset, call.name)?.ok_or(ERROR_UNKNOWN_CAPABILITY)?;
+
+    let mut argument_count = usize::from(input.is_some());
+    let mut argument_cursor = 0usize;
+    while let Some((atom, next)) =
+        next_argument(call.arguments, argument_cursor).map_err(|_| ERROR_INVALID_EXPRESSION)?
+    {
+        if matches!(atom, Atom::Call(_)) {
+            return Err(ERROR_INVALID_EXPRESSION);
+        }
+        argument_count = argument_count.checked_add(1).ok_or(ERROR_RESOURCE_LIMIT)?;
+        argument_cursor = next;
+    }
+    let payload_length = 12u32
+        .checked_add(
+            (argument_count as u32)
+                .checked_mul(4)
+                .ok_or(ERROR_RESOURCE_LIMIT)?,
+        )
+        .ok_or(ERROR_RESOURCE_LIMIT)?;
+    let request_offset = allocate_record(TAG_CAPABILITY_REQUEST, payload_length)?;
+    {
+        let request = mutable_record_at(request_offset, TAG_CAPABILITY_REQUEST)?;
+        write_u32(request, 0, kind)?;
+        write_u32(request, 4, capability_id)?;
+        write_u32(request, 8, argument_count as u32)?;
+        if let Some(input) = input {
+            write_u32(request, 12, input)?;
+        }
+    }
+
+    let mut index = usize::from(input.is_some());
+    argument_cursor = 0;
+    while let Some((atom, next)) =
+        next_argument(call.arguments, argument_cursor).map_err(|_| ERROR_INVALID_EXPRESSION)?
+    {
+        let value_offset = resolve_atom(state_offset, atom)?;
+        let request = mutable_record_at(request_offset, TAG_CAPABILITY_REQUEST)?;
+        write_u32(request, 12 + index * 4, value_offset)?;
+        index += 1;
+        argument_cursor = next;
+    }
+
+    charge_counter(
+        state_offset,
+        STATE_CAPABILITY_CALLS,
+        STATE_LIMIT_CAPABILITY_CALLS,
+        1,
+    )?;
+    set_state_field(state_offset, STATE_EXPRESSION_CURSOR, next_cursor as u32)?;
+    set_state_field(state_offset, STATE_CURRENT_VALUE, 0)?;
+    set_state_field(state_offset, STATE_NEGATE_RESULT, u32::from(negated))?;
+    set_control(
+        STATE_CALL_CAPABILITY,
+        request_offset,
+        payload_length,
+        ERROR_NONE,
+    );
+    Ok(STATE_CALL_CAPABILITY)
+}
+
+fn resolve_atom(state_offset: u32, atom: Atom<'_>) -> Result<u32, u32> {
+    match atom {
+        Atom::Lookup(path) => {
+            let context_offset = state_field(state_offset, STATE_CONTEXT)?;
+            let context = Context::new(record_at(context_offset, TAG_RECORD)?)?;
+            context
+                .lookup_offset(path)
+                .map_or_else(|| allocate_record(TAG_UNDEFINED, 0), Ok)
+        }
+        Atom::String(value) => write_bytes_record(TAG_STRING, value),
+        Atom::Number(value) => write_number(value),
+        Atom::Boolean(value) => write_boolean(value),
+        Atom::Null => allocate_record(TAG_NULL, 0),
+        Atom::Undefined => allocate_record(TAG_UNDEFINED, 0),
+        Atom::Call(_) => Err(ERROR_INVALID_EXPRESSION),
+    }
+}
+
+fn emit_value(state_offset: u32, value_offset: u32) -> Result<(), u32> {
+    let value = Value::at(value_offset)?
+        .rendered()
+        .ok_or(ERROR_INVALID_EXPRESSION)?;
+    let autoescape = state_field(state_offset, STATE_FLAGS)? & 1 == 1;
+    if autoescape && !value.safe {
+        emit_escaped(value.bytes, &mut |segment| {
+            append_output(state_offset, segment).map_err(|_| RenderError::OutputTooLarge)
+        })
+        .map_err(render_error_code)
+    } else {
+        append_output(state_offset, value.bytes)
     }
 }
 
@@ -541,6 +764,33 @@ fn is_streaming(state_offset: u32) -> Result<bool, u32> {
     Ok(state_field(state_offset, STATE_FLAGS)? & 2 == 2)
 }
 
+fn validate_capability_registry(offset: u32) -> Result<(), u32> {
+    let registry = record_at(offset, TAG_CAPABILITY_REGISTRY)?;
+    let count = collection_count(registry, 8)?;
+    for index in 0..count {
+        let entry = 4 + index * 8;
+        if read_u32(registry, entry)? == 0 {
+            return Err(ERROR_INVALID_RECORD);
+        }
+        record_at(read_u32(registry, entry + 4)?, TAG_STRING)?;
+    }
+    Ok(())
+}
+
+fn resolve_capability(registry_offset: u32, name: &[u8]) -> Result<Option<u32>, u32> {
+    let registry = record_at(registry_offset, TAG_CAPABILITY_REGISTRY)?;
+    let count = collection_count(registry, 8)?;
+    for index in 0..count {
+        let entry = 4 + index * 8;
+        let capability_id = read_u32(registry, entry)?;
+        let registered_name = record_at(read_u32(registry, entry + 4)?, TAG_STRING)?;
+        if registered_name == name {
+            return Ok(Some(capability_id));
+        }
+    }
+    Ok(None)
+}
+
 fn include_cycle(mut frame_offset: u32, canonical_offset: u32) -> Result<bool, u32> {
     let canonical = record_at(canonical_offset, TAG_STRING)?;
     while frame_offset != 0 {
@@ -653,17 +903,19 @@ impl Context {
         })
     }
 
-    fn lookup(&self, path: &[u8]) -> Option<RenderedValue<'static>> {
+    fn lookup_offset(&self, path: &[u8]) -> Option<u32> {
         let mut segments = path.split(|byte| *byte == b'.');
         let first = trim_ascii_whitespace(segments.next()?);
         if first.is_empty() {
             return None;
         }
-        let mut value = self.root.get(first)?;
+        let mut offset = self.root.get_offset(first)?;
         for segment in segments {
-            value = value.get(trim_ascii_whitespace(segment))?;
+            offset = Value::at(offset)
+                .ok()?
+                .get_offset(trim_ascii_whitespace(segment))?;
         }
-        value.rendered()
+        Some(offset)
     }
 }
 
@@ -679,14 +931,14 @@ impl Record {
         Ok(Self { payload, count })
     }
 
-    fn get(&self, name: &[u8]) -> Option<Value> {
+    fn get_offset(&self, name: &[u8]) -> Option<u32> {
         for index in 0..self.count {
             let entry_offset = 4 + index * 8;
             let key_offset = read_u32(self.payload, entry_offset).ok()?;
             let value_offset = read_u32(self.payload, entry_offset + 4).ok()?;
             let key = record_at(key_offset, TAG_STRING).ok()?;
             if key == name {
-                return Value::at(value_offset).ok();
+                return Some(value_offset);
             }
         }
         None
@@ -705,13 +957,13 @@ impl Array {
         Ok(Self { payload, count })
     }
 
-    fn get(&self, name: &[u8]) -> Option<Value> {
+    fn get_offset(&self, name: &[u8]) -> Option<u32> {
         let index = parse_index(name)?;
         if index >= self.count {
             return None;
         }
         let value_offset = read_u32(self.payload, 4 + index * 4).ok()?;
-        Value::at(value_offset).ok()
+        Some(value_offset)
     }
 }
 
@@ -747,10 +999,10 @@ impl Value {
         }
     }
 
-    fn get(self, name: &[u8]) -> Option<Self> {
+    fn get_offset(self, name: &[u8]) -> Option<u32> {
         match self {
-            Self::Array(array) => array.get(name),
-            Self::Record(record) => record.get(name),
+            Self::Array(array) => array.get_offset(name),
+            Self::Record(record) => record.get_offset(name),
             _ => None,
         }
     }
@@ -799,6 +1051,25 @@ fn allocate_record(tag: u32, payload_length: u32) -> Result<u32, u32> {
 fn write_bytes_record(tag: u32, bytes: &[u8]) -> Result<u32, u32> {
     let offset = allocate_record(tag, bytes.len() as u32)?;
     mutable_record_at(offset, tag)?.copy_from_slice(bytes);
+    Ok(offset)
+}
+
+fn write_boolean(value: bool) -> Result<u32, u32> {
+    let offset = allocate_record(TAG_BOOLEAN, 1)?;
+    mutable_record_at(offset, TAG_BOOLEAN)?[0] = u8::from(value);
+    Ok(offset)
+}
+
+fn write_number(source: &[u8]) -> Result<u32, u32> {
+    let text = core::str::from_utf8(source).map_err(|_| ERROR_INVALID_EXPRESSION)?;
+    let value = text.parse::<f64>().map_err(|_| ERROR_INVALID_EXPRESSION)?;
+    let payload_length = 8u32
+        .checked_add(source.len() as u32)
+        .ok_or(ERROR_RESOURCE_LIMIT)?;
+    let offset = allocate_record(TAG_NUMBER, payload_length)?;
+    let payload = mutable_record_at(offset, TAG_NUMBER)?;
+    payload[..8].copy_from_slice(&value.to_le_bytes());
+    payload[8..].copy_from_slice(source);
     Ok(offset)
 }
 

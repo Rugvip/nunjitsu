@@ -16,6 +16,13 @@ export {
   type TemplateInput,
   type WorkerPoolOptions,
 } from './engine.ts';
+export type {
+  CapabilityCallContext,
+  TemplateCapabilities,
+  TemplateFilter,
+  TemplateGlobal,
+  TemplateTest,
+} from './capabilities.ts';
 export {
   fileSystemLoader,
   memoryLoader,

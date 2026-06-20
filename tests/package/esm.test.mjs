@@ -6,6 +6,11 @@ import { createEngine, markSafe, memoryLoader } from '../../dist/esm/index.js';
 test('renders through the ESM package entry', async () => {
   const engine = await createEngine({
     autoescape: true,
+    filters: {
+      upper(input) {
+        return String(input).toUpperCase();
+      },
+    },
     loaders: [memoryLoader({
       'entry.njk': 'ESM {% include "value.njk" %}',
       'value.njk': '{{ value }}',
@@ -18,9 +23,9 @@ test('renders through the ESM package entry', async () => {
     );
     assert.equal(
       (await Array.fromAsync(
-        engine.renderStream({ source: 'stream {{ value }}' }, { value: 'works' }),
+        engine.renderStream({ source: 'stream {{ value | upper }}' }, { value: 'works' }),
       )).join(''),
-      'stream works',
+      'stream WORKS',
     );
   } finally {
     await engine.dispose();

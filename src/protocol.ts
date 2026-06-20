@@ -1,5 +1,10 @@
 import { SafeString, type TemplateContext, type TemplateValue } from './values.ts';
 import {
+  capabilityKind,
+  type CapabilityDescriptors,
+  type CapabilityKind,
+} from './capabilities.ts';
+import {
   encodeRenderLimit,
   type NormalizedRenderLimits,
 } from './limits.ts';
@@ -21,6 +26,8 @@ const recordTag = {
   array: 10,
   record: 11,
   safeString: 12,
+  capabilityRegistry: 16,
+  capabilityRequest: 17,
 } as const;
 
 /** The offsets and cursor for one encoded render request. */
@@ -39,6 +46,24 @@ export interface EncodedLoadedTemplate {
   canonicalOffset: number;
   /** First unallocated byte after the loader result. */
   cursor: number;
+}
+
+/** Offset and cursor for one host capability result appended to a suspended render. */
+export interface EncodedCapabilityResult {
+  /** Offset of the copied safe result value. */
+  valueOffset: number;
+  /** First unallocated byte after the result. */
+  cursor: number;
+}
+
+/** One validated host capability request decoded from shared memory. */
+export interface DecodedCapabilityRequest {
+  /** Numeric callback category. */
+  kind: CapabilityKind;
+  /** Engine-lifetime callback identity. */
+  capabilityId: number;
+  /** Copied callback arguments in call order. */
+  arguments: readonly TemplateValue[];
 }
 /** Writes render-local records into one worker's shared arena. */
 export class ArenaWriter {
@@ -61,6 +86,7 @@ export class ArenaWriter {
       autoescape: boolean;
       streaming: boolean;
       canonicalName?: string;
+      capabilities: CapabilityDescriptors;
       limits: NormalizedRenderLimits;
     },
   ): EncodedRenderRequest {
@@ -70,7 +96,10 @@ export class ArenaWriter {
     const canonicalOffset = options.canonicalName
       ? this.#writeTextRecord(recordTag.string, options.canonicalName)
       : 0;
-    const requestPayload = new ArrayBuffer(36);
+    const filtersOffset = this.#writeCapabilityRegistry(options.capabilities.filters);
+    const testsOffset = this.#writeCapabilityRegistry(options.capabilities.tests);
+    const globalsOffset = this.#writeCapabilityRegistry(options.capabilities.globals);
+    const requestPayload = new ArrayBuffer(52);
     const requestView = new DataView(requestPayload);
     requestView.setUint32(0, sourceOffset, true);
     requestView.setUint32(4, contextOffset, true);
@@ -85,6 +114,10 @@ export class ArenaWriter {
     requestView.setUint32(24, encodeRenderLimit(options.limits.outputBytes), true);
     requestView.setUint32(28, encodeRenderLimit(options.limits.arenaBytes), true);
     requestView.setUint32(32, encodeRenderLimit(options.limits.loaderCalls), true);
+    requestView.setUint32(36, filtersOffset, true);
+    requestView.setUint32(40, testsOffset, true);
+    requestView.setUint32(44, globalsOffset, true);
+    requestView.setUint32(48, encodeRenderLimit(options.limits.capabilityCalls), true);
     const requestOffset = this.#writeRecord(recordTag.request, new Uint8Array(requestPayload));
 
     return { requestOffset, cursor: this.#cursor };
@@ -98,6 +131,29 @@ export class ArenaWriter {
     const sourceOffset = this.#writeTextRecord(recordTag.source, source);
     const canonicalOffset = this.#writeTextRecord(recordTag.string, canonicalName);
     return { sourceOffset, canonicalOffset, cursor: this.#cursor };
+  }
+
+  /** Appends one copied safe value returned by a trusted host capability. */
+  encodeCapabilityResult(value: TemplateValue): EncodedCapabilityResult {
+    const valueOffset = this.#writeValue(value, new Set());
+    return { valueOffset, cursor: this.#cursor };
+  }
+
+  #writeCapabilityRegistry(
+    descriptors: readonly { id: number; name: string }[],
+  ): number {
+    const entries = descriptors.map(descriptor => ({
+      id: descriptor.id,
+      nameOffset: this.#writeTextRecord(recordTag.string, descriptor.name),
+    }));
+    const payload = new ArrayBuffer(4 + entries.length * 8);
+    const view = new DataView(payload);
+    view.setUint32(0, entries.length, true);
+    for (const [index, entry] of entries.entries()) {
+      view.setUint32(4 + index * 8, entry.id, true);
+      view.setUint32(8 + index * 8, entry.nameOffset, true);
+    }
+    return this.#writeRecord(recordTag.capabilityRegistry, new Uint8Array(payload));
   }
 
   #writeTextRecord(tag: number, value: string): number {
@@ -289,6 +345,142 @@ export function decodeStringRecord(
   return new TextDecoder('utf-8', { fatal: true }).decode(
     new Uint8Array(buffer, offset + recordHeaderLength, length),
   );
+}
+
+/** Decodes a yielded capability request and recursively copies its safe arguments. */
+export function decodeCapabilityRequest(
+  memory: WebAssembly.Memory,
+  offset: number,
+  length: number,
+): DecodedCapabilityRequest {
+  const payload = readRecord(memory, offset, recordTag.capabilityRequest, length);
+  if (payload.byteLength < 12 || (payload.byteLength - 12) % 4 !== 0) {
+    throw new Error('Wasm returned an invalid capability request');
+  }
+  const view = new DataView(payload.buffer, payload.byteOffset, payload.byteLength);
+  const kind = view.getUint32(0, true);
+  if (
+    kind !== capabilityKind.filter &&
+    kind !== capabilityKind.test &&
+    kind !== capabilityKind.global
+  ) {
+    throw new Error('Wasm returned an unknown capability category');
+  }
+  const count = view.getUint32(8, true);
+  if (payload.byteLength !== 12 + count * 4) {
+    throw new Error('Wasm returned an inconsistent capability argument count');
+  }
+  const arguments_: TemplateValue[] = [];
+  for (let index = 0; index < count; index += 1) {
+    arguments_.push(decodeValue(memory, view.getUint32(12 + index * 4, true), new Set()));
+  }
+  return Object.freeze({
+    kind,
+    capabilityId: view.getUint32(4, true),
+    arguments: Object.freeze(arguments_),
+  });
+}
+
+function decodeValue(
+  memory: WebAssembly.Memory,
+  offset: number,
+  ancestors: Set<number>,
+): TemplateValue {
+  if (ancestors.has(offset)) {
+    throw new Error('Wasm returned a cyclic capability value');
+  }
+  const { tag, payload } = readAnyRecord(memory, offset);
+  if (tag === recordTag.undefined && payload.byteLength === 0) {
+    return undefined;
+  }
+  if (tag === recordTag.null && payload.byteLength === 0) {
+    return null;
+  }
+  if (tag === recordTag.boolean && payload.byteLength === 1) {
+    if (payload[0] === 0) {
+      return false;
+    }
+    if (payload[0] === 1) {
+      return true;
+    }
+  }
+  if (tag === recordTag.number && payload.byteLength >= 8) {
+    return new DataView(payload.buffer, payload.byteOffset, payload.byteLength).getFloat64(0, true);
+  }
+  if (tag === recordTag.string || tag === recordTag.safeString) {
+    const value = new TextDecoder('utf-8', { fatal: true }).decode(payload);
+    return tag === recordTag.safeString ? new SafeString(value) : value;
+  }
+  if (tag !== recordTag.array && tag !== recordTag.record) {
+    throw new Error('Wasm returned an unsupported capability value');
+  }
+
+  ancestors.add(offset);
+  try {
+    const view = new DataView(payload.buffer, payload.byteOffset, payload.byteLength);
+    if (payload.byteLength < 4) {
+      throw new Error('Wasm returned a truncated capability collection');
+    }
+    const count = view.getUint32(0, true);
+    if (tag === recordTag.array) {
+      if (payload.byteLength !== 4 + count * 4) {
+        throw new Error('Wasm returned an inconsistent capability array');
+      }
+      return Object.freeze(Array.from(
+        { length: count },
+        (_, index) => decodeValue(memory, view.getUint32(4 + index * 4, true), ancestors),
+      ));
+    }
+    if (payload.byteLength !== 4 + count * 8) {
+      throw new Error('Wasm returned an inconsistent capability record');
+    }
+    const result: Record<string, TemplateValue> = Object.create(null) as Record<string, TemplateValue>;
+    for (let index = 0; index < count; index += 1) {
+      const entry = 4 + index * 8;
+      const keyRecord = readAnyRecord(memory, view.getUint32(entry, true));
+      if (keyRecord.tag !== recordTag.string) {
+        throw new Error('Wasm returned a non-string capability record key');
+      }
+      const key = new TextDecoder('utf-8', { fatal: true }).decode(keyRecord.payload);
+      result[key] = decodeValue(memory, view.getUint32(entry + 4, true), ancestors);
+    }
+    return Object.freeze(result);
+  } finally {
+    ancestors.delete(offset);
+  }
+}
+
+function readRecord(
+  memory: WebAssembly.Memory,
+  offset: number,
+  expectedTag: number,
+  expectedLength: number,
+): Uint8Array {
+  const record = readAnyRecord(memory, offset);
+  if (record.tag !== expectedTag || record.payload.byteLength !== expectedLength) {
+    throw new Error('Wasm returned an inconsistent record envelope');
+  }
+  return record.payload;
+}
+
+function readAnyRecord(
+  memory: WebAssembly.Memory,
+  offset: number,
+): { tag: number; payload: Uint8Array } {
+  const buffer = memory.buffer;
+  if (!Number.isSafeInteger(offset) || offset < 0 || offset + recordHeaderLength > buffer.byteLength) {
+    throw new Error('Wasm returned an out-of-bounds record');
+  }
+  const view = new DataView(buffer);
+  const length = view.getUint32(offset + 4, true);
+  const end = offset + recordHeaderLength + length;
+  if (end > buffer.byteLength) {
+    throw new Error('Wasm returned an out-of-bounds record payload');
+  }
+  return {
+    tag: view.getUint32(offset, true),
+    payload: new Uint8Array(buffer, offset + recordHeaderLength, length),
+  };
 }
 
 function align(value: number, alignment: number): number {
