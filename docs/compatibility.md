@@ -26,6 +26,8 @@ Compatibility does not include:
 
 - Nunjucks's JavaScript API, object model, CLI, Express integration, or loader
   registration API;
+- custom lexer delimiter configuration and public lexer token or parser AST
+  inspection APIs; templates use the standard Nunjucks delimiters;
 - precompilation or a persistent compiled-template format;
 - browser execution;
 - exact upstream exception classes, messages, formatting, or source locations;

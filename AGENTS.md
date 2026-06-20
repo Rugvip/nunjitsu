@@ -53,6 +53,9 @@ implementation and documentation aligned with the architecture in
   Precompilation, browser execution, exact upstream error text, live-object
   semantics, and arbitrary parser extensions are outside the compatibility
   contract.
+- Keep the standard Nunjucks template delimiters fixed. Do not expose the
+  replaced Nunjucks lexer token stream, parser AST object model, or mutable
+  delimiter configuration through the TypeScript API.
 - Adapt upstream tests into one attributed, language-neutral corpus consumed by
   Rust and TypeScript. Classify every upstream v3.2.4 test in the parity
   manifest.

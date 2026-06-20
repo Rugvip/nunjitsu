@@ -1139,7 +1139,10 @@ fn parse_regex(bytes: &[u8], start: usize) -> Result<(Atom<'_>, usize), Expressi
             }
             Some(b'/') => {
                 cursor += 1;
-                while bytes.get(cursor).is_some_and(u8::is_ascii_alphabetic) {
+                while bytes
+                    .get(cursor)
+                    .is_some_and(|flag| matches!(flag, b'g' | b'i' | b'm' | b'y'))
+                {
                     cursor += 1;
                 }
                 return Ok((Atom::Regex(&bytes[start + 1..cursor]), cursor));
@@ -1648,6 +1651,10 @@ mod tests {
         assert_eq!(has_top_level_comma(b"1, 2, 3"), Ok(true));
         assert_eq!(has_top_level_comma(br#"[1, 2], "three,four""#), Ok(true));
         assert_eq!(has_top_level_comma(br#"[1, 2] | join(",")"#), Ok(false));
+        assert_eq!(
+            parse_base(b"r/x$/iv"),
+            Ok((Atom::Regex(b"/x$/i"), 6, false)),
+        );
         assert_eq!(
             parse_base(b"imp.wrap(\"span\")"),
             Ok((

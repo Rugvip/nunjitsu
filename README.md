@@ -19,9 +19,12 @@ JavaScript API. The initial runtime target is Node.js only.
 
 ## Status
 
-Nunjitsu is in its architecture and initial implementation phase. The normative
-design, compatibility boundaries, and testing strategy are documented in
-[`docs/`](docs/index.md). Contributors should also read [`AGENTS.md`](AGENTS.md).
+Nunjitsu implements the pinned Nunjucks 3.2.4 compatibility baseline within the
+documented API boundaries. All 364 upstream test cases are classified in the
+attributed parity manifest and enforced by the shared compatibility corpus. The
+normative design, compatibility boundaries, and testing strategy are documented
+in [`docs/`](docs/index.md). Contributors should also read
+[`AGENTS.md`](AGENTS.md).
 
 ## Setup
 

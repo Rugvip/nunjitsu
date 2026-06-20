@@ -121,5 +121,6 @@ clearly separated from authored source.
 - Implicit filesystem access relative to the process working directory.
 - Live proxying of arbitrary JavaScript object graphs into templates.
 - Arbitrary JavaScript parser extensions for custom tags.
+- Custom lexer delimiters or public lexer-token and parser-AST APIs.
 
 See the area documents for the rationale and exact boundaries.

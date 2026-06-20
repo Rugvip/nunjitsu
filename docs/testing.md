@@ -51,10 +51,10 @@ executes without an explicit reason.
 
 `upstream-inventory.json` is a checked-in inventory of all 364 Mocha cases in
 the pinned release. It is regenerated only from an explicit v3.2.4 checkout by
-`scripts/import-nunjucks-inventory.mjs`; CI never fetches upstream. While the
-port is incomplete, `manifest.json` declares `coverage: "partial"`. A release
-requires `coverage: "complete"`, one classification for every inventory entry,
-and no dangling or duplicate case mappings.
+`scripts/import-nunjucks-inventory.mjs`; CI never fetches upstream. The checked-in
+manifest declares `coverage: "complete"`. A release requires complete coverage,
+one classification for every inventory entry, and no dangling or duplicate case
+mappings.
 
 ## Security tests
 

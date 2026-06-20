@@ -1814,6 +1814,22 @@
       "expected": "value"
     },
     {
+      "id": "lexer-no-delimiter-whitespace",
+      "template": "data{{hello}}{%if true%}data{%endif%}",
+      "nativeRender": false,
+      "context": { "hello": "value" },
+      "autoescape": true,
+      "expected": "datavaluedata"
+    },
+    {
+      "id": "lexer-complex-regex-literals",
+      "template": "{{ \"basic regex z\" | replace(r/basic regex [a-z]/, \"first\") }}|{{ \"{aaab} /regex! 7/\" | replace(r/{a*b} \\/regex! [0-9]\\//, \"second\") }}",
+      "nativeRender": false,
+      "context": {},
+      "autoescape": true,
+      "expected": "first|second"
+    },
+    {
       "id": "parser-raw-delimiter-text",
       "template": "{% raw %}hello {{ {% %} }}{% endraw %}",
       "nativeRender": false,

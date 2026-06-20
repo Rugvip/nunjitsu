@@ -9,14 +9,13 @@ under the adjacent [BSD-2-Clause license](upstream/LICENSE).
 `upstream-inventory.json` records every upstream Mocha `it(...)` case without
 making the upstream repository a network dependency. `manifest.json` maps
 classified upstream assertions to language-neutral cases in `cases.json`.
-Coverage is intentionally explicit: the manifest remains incomplete until
-every inventory entry is classified as ported, adapted, or not applicable.
-Release validation must reject incomplete coverage.
+Coverage is intentionally explicit: the checked-in manifest classifies every
+inventory entry as ported, adapted, or not applicable. Release validation must
+reject incomplete coverage.
 
-While coverage is partial, an entry may itself use `status: "partial"` with a
-reason and removal condition when only some assertions from one upstream Mocha
-case have been adapted. Partial entries are forbidden once the document moves
-to complete coverage.
+Entries may use `status: "partial"` with a reason and removal condition only
+during future compatibility work. Partial entries are forbidden in the
+complete manifest.
 
 Case context uses ordinary JSON plus `{ "$nunjitsu": "safe", "value": "..." }`
 for explicitly safe strings. Additional tagged values must be added to the

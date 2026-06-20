@@ -1979,6 +1979,7 @@ test('rejects invalid expressions and calls across deferred template frames', as
       ['{% from "foo" %}', {}],
       ['{% from "foo" import bar baz %}', {}],
       ['{% from "foo" import _bar %}', {}],
+      ['{{ "x" | replace(r/x$/iv, "y") }}', {}],
       ['{% call foo() %}{% endcall %}', { foo: 'bar' }],
       ['{% include "undefined-macro.njk" %}', {}],
       ['{% if true %}{% include "undefined-macro.njk" %}{% endif %}', {}],

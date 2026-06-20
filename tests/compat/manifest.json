@@ -5,7 +5,7 @@
     "tag": "v3.2.4",
     "commit": "86a77f49da4779d55414d8337e1a4d7ec7582da5"
   },
-  "coverage": "partial",
+  "coverage": "complete",
   "entries": [
     {
       "upstream": { "id": "tests/api.js:3", "file": "tests/api.js", "test": "should handle correctly relative paths" },
@@ -336,6 +336,148 @@
       "status": "adapted",
       "reason": "Nunjitsu replaces parser-object extensions with declarative inline and body tag schemas; equivalent arguments and rendered bodies are covered through the new capability API.",
       "cases": ["compiler-custom-inline-tag", "compiler-custom-body-tag", "compiler-custom-body-tag-keyword-argument"]
+    },
+    {
+      "upstream": { "id": "tests/lexer.js:1", "file": "tests/lexer.js", "test": "should parse template data" },
+      "status": "adapted",
+      "reason": "Arbitrary template data is preserved through exact rendered output because Nunjitsu does not expose a lexer token stream.",
+      "cases": ["compiler-static-text"]
+    },
+    {
+      "upstream": { "id": "tests/lexer.js:2", "file": "tests/lexer.js", "test": "should keep track of whitespace" },
+      "status": "not applicable",
+      "reason": "Individual whitespace tokens are part of the replaced Nunjucks lexer API; observable template whitespace is covered by render assertions."
+    },
+    {
+      "upstream": { "id": "tests/lexer.js:3", "file": "tests/lexer.js", "test": "should trim blocks" },
+      "status": "adapted",
+      "reason": "Environment-level trimBlocks behavior is verified through exact rendered LF output in the runtime suite."
+    },
+    {
+      "upstream": { "id": "tests/lexer.js:4", "file": "tests/lexer.js", "test": "should trim windows-style CRLF line endings after blocks" },
+      "status": "adapted",
+      "reason": "Environment-level trimBlocks behavior is verified through exact rendered CRLF output in the runtime suite."
+    },
+    {
+      "upstream": { "id": "tests/lexer.js:5", "file": "tests/lexer.js", "test": "should not trim CR after blocks" },
+      "status": "adapted",
+      "reason": "The runtime suite verifies that trimBlocks preserves a lone CR while still trimming only LF and CRLF."
+    },
+    {
+      "upstream": { "id": "tests/lexer.js:6", "file": "tests/lexer.js", "test": "should lstrip and trim blocks" },
+      "status": "adapted",
+      "reason": "Combined lstripBlocks and trimBlocks behavior is verified through exact rendered output in the runtime suite."
+    },
+    {
+      "upstream": { "id": "tests/lexer.js:7", "file": "tests/lexer.js", "test": "should lstrip and not collapse whitespace between blocks" },
+      "status": "adapted",
+      "reason": "The runtime suite verifies that lstripBlocks removes line indentation without collapsing data whitespace between adjacent blocks."
+    },
+    {
+      "upstream": { "id": "tests/lexer.js:8", "file": "tests/lexer.js", "test": "should parse variable start and end" },
+      "status": "adapted",
+      "reason": "Interpolation delimiters and surrounding template data are exercised through rendered output.",
+      "cases": ["compiler-interpolation"]
+    },
+    {
+      "upstream": { "id": "tests/lexer.js:9", "file": "tests/lexer.js", "test": "should treat the non-breaking space as valid whitespace" },
+      "status": "adapted",
+      "reason": "A U+00A0 separator before a symbol is accepted and rendered through the public engine.",
+      "cases": ["lexer-nonbreaking-space"]
+    },
+    {
+      "upstream": { "id": "tests/lexer.js:10", "file": "tests/lexer.js", "test": "should parse block start and end" },
+      "status": "adapted",
+      "reason": "Block delimiters are exercised by built-in control flow and declarative custom-tag rendering rather than lexer tokens.",
+      "cases": ["compiler-custom-inline-tag"]
+    },
+    {
+      "upstream": { "id": "tests/lexer.js:11", "file": "tests/lexer.js", "test": "should parse basic types" },
+      "status": "adapted",
+      "reason": "Integer, float, boolean, none, symbol, string, and regex literals are rendered through the public engine.",
+      "cases": ["parser-basic-types"]
+    },
+    {
+      "upstream": { "id": "tests/lexer.js:12", "file": "tests/lexer.js", "test": "should parse function calls" },
+      "status": "adapted",
+      "reason": "Parenthesized callable syntax is exercised through explicit global capabilities and macros rather than lexer tokens.",
+      "cases": ["compiler-callable-global", "compiler-macro-basic"]
+    },
+    {
+      "upstream": { "id": "tests/lexer.js:13", "file": "tests/lexer.js", "test": "should parse groups" },
+      "status": "adapted",
+      "reason": "Comma-separated parenthesized groups are evaluated as Nunjucks tuple arrays and verified through a filter.",
+      "cases": ["parser-group-tuple"]
+    },
+    {
+      "upstream": { "id": "tests/lexer.js:14", "file": "tests/lexer.js", "test": "should parse arrays" },
+      "status": "adapted",
+      "reason": "Array literal delimiters and comma-separated values are exercised through loop and destructuring output.",
+      "cases": ["compiler-three-value-loop-destructuring"]
+    },
+    {
+      "upstream": { "id": "tests/lexer.js:15", "file": "tests/lexer.js", "test": "should parse dicts" },
+      "status": "adapted",
+      "reason": "Record literal braces, keys, colons, and comma-separated values are exercised through iteration output.",
+      "cases": ["compiler-loop-literal-record"]
+    },
+    {
+      "upstream": { "id": "tests/lexer.js:16", "file": "tests/lexer.js", "test": "should parse blocks without whitespace" },
+      "status": "adapted",
+      "reason": "Adjacent data, interpolation, and block delimiters without padding whitespace are rendered exactly.",
+      "cases": ["lexer-no-delimiter-whitespace"]
+    },
+    {
+      "upstream": { "id": "tests/lexer.js:17", "file": "tests/lexer.js", "test": "should parse filters" },
+      "status": "adapted",
+      "reason": "Pipe tokens and filter names are exercised throughout the built-in filter rendering corpus."
+    },
+    {
+      "upstream": { "id": "tests/lexer.js:18", "file": "tests/lexer.js", "test": "should parse operators" },
+      "status": "adapted",
+      "reason": "Arithmetic, power, floor-division, and comparison operators are verified through evaluated output.",
+      "cases": ["compiler-basic-arithmetic", "compiler-exponentiation", "compiler-floor-division", "compiler-comparison-operators"]
+    },
+    {
+      "upstream": { "id": "tests/lexer.js:19", "file": "tests/lexer.js", "test": "should parse comments" },
+      "status": "adapted",
+      "reason": "Template comments are omitted while adjacent data is preserved, verified through buffered and streaming runtime output."
+    },
+    {
+      "upstream": { "id": "tests/lexer.js:20", "file": "tests/lexer.js", "test": "should allow changing the variable start and end" },
+      "status": "not applicable",
+      "reason": "Custom delimiter configuration belongs to the replaced Nunjucks lexer/environment API; Nunjitsu intentionally fixes the Nunjucks template delimiters."
+    },
+    {
+      "upstream": { "id": "tests/lexer.js:21", "file": "tests/lexer.js", "test": "should allow changing the block start and end" },
+      "status": "not applicable",
+      "reason": "Custom delimiter configuration belongs to the replaced Nunjucks lexer/environment API; Nunjitsu intentionally fixes the Nunjucks template delimiters."
+    },
+    {
+      "upstream": { "id": "tests/lexer.js:22", "file": "tests/lexer.js", "test": "should allow changing the variable start and end" },
+      "status": "not applicable",
+      "reason": "Custom delimiter configuration belongs to the replaced Nunjucks lexer/environment API; Nunjitsu intentionally fixes the Nunjucks template delimiters."
+    },
+    {
+      "upstream": { "id": "tests/lexer.js:23", "file": "tests/lexer.js", "test": "should allow changing the comment start and end" },
+      "status": "not applicable",
+      "reason": "Custom delimiter configuration belongs to the replaced Nunjucks lexer/environment API; Nunjitsu intentionally fixes the Nunjucks template delimiters."
+    },
+    {
+      "upstream": { "id": "tests/lexer.js:24", "file": "tests/lexer.js", "test": "should have individual lexer tag settings for each environment" },
+      "status": "not applicable",
+      "reason": "Nunjitsu exposes no mutable lexer settings; engine configuration is immutable and custom delimiter configuration is outside the documented API."
+    },
+    {
+      "upstream": { "id": "tests/lexer.js:25", "file": "tests/lexer.js", "test": "should parse regular expressions" },
+      "status": "adapted",
+      "reason": "Spaces, character classes, escaped slashes, and v3.2.4 flags in regex literals are executed through replace; an unsupported v flag rejects even though modern Node recognizes it.",
+      "cases": ["lexer-complex-regex-literals", "compiler-regex-flags"]
+    },
+    {
+      "upstream": { "id": "tests/lexer.js:26", "file": "tests/lexer.js", "test": "should keep track of token positions" },
+      "status": "not applicable",
+      "reason": "Nunjitsu exposes no lexer token-position API, and exact upstream source-location diagnostics are outside the compatibility contract."
     },
     {
       "upstream": { "id": "tests/compiler.js:1", "file": "tests/compiler.js", "test": "should compile templates" },
