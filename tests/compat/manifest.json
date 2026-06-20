@@ -941,6 +941,95 @@
       "upstream": { "id": "tests/filters.js:54", "file": "tests/filters.js", "test": "sort" },
       "status": "adapted",
       "reason": "All copied-value sort assertions are ported. Exact throwOnUndefined diagnostics are outside the documented exception-format contract."
+    },
+    {
+      "upstream": { "id": "tests/filters.js:21", "file": "tests/filters.js", "test": "groupby" },
+      "status": "adapted",
+      "reason": "All copied-value grouping assertions, including nested and undefined attributes, are ported. Exact throwOnUndefined diagnostics are outside the documented exception-format contract."
+    },
+    {
+      "upstream": { "id": "tests/filters.js:25", "file": "tests/filters.js", "test": "should return length of a list literal" },
+      "status": "ported"
+    },
+    {
+      "upstream": { "id": "tests/filters.js:26", "file": "tests/filters.js", "test": "should output 0 for a missing context variable" },
+      "status": "ported"
+    },
+    {
+      "upstream": { "id": "tests/filters.js:27", "file": "tests/filters.js", "test": "should output string length for string variables" },
+      "status": "ported"
+    },
+    {
+      "upstream": { "id": "tests/filters.js:28", "file": "tests/filters.js", "test": "should output string length for a SafeString variable" },
+      "status": "ported"
+    },
+    {
+      "upstream": { "id": "tests/filters.js:29", "file": "tests/filters.js", "test": "should output the correct length of a string created with new String()" },
+      "status": "not applicable",
+      "reason": "Nunjitsu accepts primitive strings and SafeString values; exotic JavaScript wrapper objects are rejected at the copied-value boundary."
+    },
+    {
+      "upstream": { "id": "tests/filters.js:30", "file": "tests/filters.js", "test": "should output 0 for a literal \"undefined\"" },
+      "status": "ported"
+    },
+    {
+      "upstream": { "id": "tests/filters.js:31", "file": "tests/filters.js", "test": "should output 0 for a literal \"null\"" },
+      "status": "ported"
+    },
+    {
+      "upstream": { "id": "tests/filters.js:32", "file": "tests/filters.js", "test": "should output 0 for an Object with no properties" },
+      "status": "ported"
+    },
+    {
+      "upstream": { "id": "tests/filters.js:33", "file": "tests/filters.js", "test": "should output 1 for an Object with 1 property" },
+      "status": "ported"
+    },
+    {
+      "upstream": { "id": "tests/filters.js:34", "file": "tests/filters.js", "test": "should output the number of properties for a plain Object, not the value of its length property" },
+      "status": "ported"
+    },
+    {
+      "upstream": { "id": "tests/filters.js:35", "file": "tests/filters.js", "test": "should output the length of an array" },
+      "status": "ported"
+    },
+    {
+      "upstream": { "id": "tests/filters.js:36", "file": "tests/filters.js", "test": "should output the full length of a sparse array" },
+      "status": "ported"
+    },
+    {
+      "upstream": { "id": "tests/filters.js:37", "file": "tests/filters.js", "test": "should output the length of an array created with \"new Array\"" },
+      "status": "ported"
+    },
+    {
+      "upstream": { "id": "tests/filters.js:38", "file": "tests/filters.js", "test": "should output the length of an array created with \"new Array\" with user-defined properties" },
+      "status": "not applicable",
+      "reason": "Nunjitsu rejects arrays with custom properties at the copied-value boundary rather than exposing ambient JavaScript object state to Wasm."
+    },
+    {
+      "upstream": { "id": "tests/filters.js:39", "file": "tests/filters.js", "test": "should output the length of a Map" },
+      "status": "not applicable",
+      "reason": "JavaScript Map instances are outside the documented copied TemplateValue contract."
+    },
+    {
+      "upstream": { "id": "tests/filters.js:40", "file": "tests/filters.js", "test": "should output the length of a Set" },
+      "status": "not applicable",
+      "reason": "JavaScript Set instances are outside the documented copied TemplateValue contract."
+    },
+    {
+      "upstream": { "id": "tests/filters.js:45", "file": "tests/filters.js", "test": "reject" },
+      "status": "ported"
+    },
+    {
+      "upstream": { "id": "tests/filters.js:46", "file": "tests/filters.js", "test": "rejectattr" },
+      "status": "ported"
+    },
+    {
+      "upstream": { "id": "tests/filters.js:47", "file": "tests/filters.js", "test": "select" },
+      "status": "ported"
+    },
+    {
+      "upstream": { "id": "tests/filters.js:48", "file": "tests/filters.js", "test": "selectattr" },
+      "status": "ported"
     }
   ]
 }

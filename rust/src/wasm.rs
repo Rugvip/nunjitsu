@@ -3220,6 +3220,12 @@ fn apply_builtin_filter(
                 write_computed_number(number)?
             }
         }
+        b"groupby" => {
+            require_argument_count(call, 1)?;
+            let attribute = call_positional_argument(state_offset, call, 0)?
+                .ok_or(ERROR_INVALID_EXPRESSION)?;
+            groupby_value(input_offset, attribute)?
+        }
         b"int" => {
             if argument_count(call)? > 2 {
                 return Err(ERROR_INVALID_EXPRESSION);
@@ -3272,6 +3278,22 @@ fn apply_builtin_filter(
         b"reverse" => {
             require_argument_count(call, 0)?;
             reverse_value(input)?
+        }
+        b"reject" | b"select" => select_or_reject_value(
+            state_offset,
+            input_offset,
+            call,
+            call.name == b"select",
+        )?,
+        b"rejectattr" | b"selectattr" => {
+            require_argument_count(call, 1)?;
+            let attribute = call_positional_argument(state_offset, call, 0)?
+                .ok_or(ERROR_INVALID_EXPRESSION)?;
+            select_or_reject_attribute_value(
+                input_offset,
+                attribute,
+                call.name == b"selectattr",
+            )?
         }
         b"upper" => {
             require_argument_count(call, 0)?;
@@ -3835,6 +3857,124 @@ fn list_value(value_offset: u32) -> Result<u32, u32> {
     }
 }
 
+fn selection_source(value_offset: u32) -> Result<Array, u32> {
+    match Value::at(value_offset)? {
+        Value::Array(array) => Ok(array),
+        Value::String(_) | Value::SafeString(_) | Value::Record(_) => {
+            let listed = list_value(value_offset)?;
+            let Value::Array(array) = Value::at(listed)? else {
+                return Err(ERROR_INVALID_ARENA);
+            };
+            Ok(array)
+        }
+        Value::Undefined | Value::Null => {
+            let empty = allocate_value_array(0)?;
+            let Value::Array(array) = Value::at(empty)? else {
+                return Err(ERROR_INVALID_ARENA);
+            };
+            Ok(array)
+        }
+        _ => Err(ERROR_INVALID_EXPRESSION),
+    }
+}
+
+fn selection_test_call<'a>(
+    state_offset: u32,
+    call: Call<'a>,
+) -> Result<Call<'a>, u32> {
+    let Some(argument) = next_macro_argument(call.arguments, 0)
+        .map_err(|_| ERROR_INVALID_EXPRESSION)?
+    else {
+        return Ok(Call {
+            name: b"truthy",
+            arguments: b"",
+        });
+    };
+    if argument.name.is_some() {
+        return Err(ERROR_INVALID_EXPRESSION);
+    }
+    let name_offset = resolve_atom(state_offset, argument.value)?;
+    let name = Value::at(name_offset)?
+        .string_bytes()
+        .ok_or(ERROR_INVALID_EXPRESSION)?;
+    Ok(Call {
+        name,
+        arguments: &call.arguments[argument.next_cursor..],
+    })
+}
+
+fn select_or_reject_value(
+    state_offset: u32,
+    value_offset: u32,
+    call: Call<'_>,
+    expected: bool,
+) -> Result<u32, u32> {
+    let array = selection_source(value_offset)?;
+    let test_call = selection_test_call(state_offset, call)?;
+    if resolve_capability(state_field(state_offset, STATE_TESTS)?, test_call.name)?.is_some() {
+        return Err(ERROR_UNKNOWN_CAPABILITY);
+    }
+    let mut count = 0usize;
+    for index in 0..array.count {
+        let item = read_u32(array.payload, 4 + index * 4)?;
+        let result = apply_builtin_test(state_offset, test_call, item)?
+            .ok_or(ERROR_UNKNOWN_CAPABILITY)?;
+        if result == expected {
+            count = count.checked_add(1).ok_or(ERROR_RESOURCE_LIMIT)?;
+        }
+    }
+    let output = allocate_value_array(count)?;
+    let mut output_index = 0usize;
+    for index in 0..array.count {
+        let item = read_u32(array.payload, 4 + index * 4)?;
+        let result = apply_builtin_test(state_offset, test_call, item)?
+            .ok_or(ERROR_UNKNOWN_CAPABILITY)?;
+        if result == expected {
+            write_u32(
+                mutable_record_at(output, TAG_ARRAY)?,
+                4 + output_index * 4,
+                item,
+            )?;
+            output_index += 1;
+        }
+    }
+    Ok(output)
+}
+
+fn select_or_reject_attribute_value(
+    value_offset: u32,
+    attribute_offset: u32,
+    expected: bool,
+) -> Result<u32, u32> {
+    let array = selection_source(value_offset)?;
+    let path = rendered_value(attribute_offset)?.bytes;
+    let mut count = 0usize;
+    for index in 0..array.count {
+        let item = read_u32(array.payload, 4 + index * 4)?;
+        let selected = lookup_value_path(item, path)?;
+        let result = selected.is_some_and(|offset| Value::at(offset).is_ok_and(Value::truthy));
+        if result == expected {
+            count = count.checked_add(1).ok_or(ERROR_RESOURCE_LIMIT)?;
+        }
+    }
+    let output = allocate_value_array(count)?;
+    let mut output_index = 0usize;
+    for index in 0..array.count {
+        let item = read_u32(array.payload, 4 + index * 4)?;
+        let selected = lookup_value_path(item, path)?;
+        let result = selected.is_some_and(|offset| Value::at(offset).is_ok_and(Value::truthy));
+        if result == expected {
+            write_u32(
+                mutable_record_at(output, TAG_ARRAY)?,
+                4 + output_index * 4,
+                item,
+            )?;
+            output_index += 1;
+        }
+    }
+    Ok(output)
+}
+
 fn compare_filter_values(
     left_offset: u32,
     right_offset: u32,
@@ -3932,6 +4072,157 @@ fn dictsort_value(value_offset: u32, case_sensitive: bool, by_value: bool) -> Re
         )?;
     }
     Ok(output)
+}
+
+fn groupby_value(value_offset: u32, attribute_offset: u32) -> Result<u32, u32> {
+    let Value::Array(array) = Value::at(value_offset)? else {
+        return Err(ERROR_INVALID_EXPRESSION);
+    };
+    let path = rendered_value(attribute_offset)?.bytes;
+    let keys_offset = allocate_value_array(array.count)?;
+    for index in 0..array.count {
+        let item = read_u32(array.payload, 4 + index * 4)?;
+        let selected = if path.is_empty() {
+            None
+        } else {
+            match lookup_value_path(item, path) {
+                Ok(selected) => selected,
+                Err(ERROR_INVALID_EXPRESSION) => None,
+                Err(error) => return Err(error),
+            }
+        };
+        let key = property_key_value(selected)?;
+        write_u32(
+            mutable_record_at(keys_offset, TAG_ARRAY)?,
+            4 + index * 4,
+            key,
+        )?;
+    }
+    let Value::Array(keys) = Value::at(keys_offset)? else {
+        return Err(ERROR_INVALID_ARENA);
+    };
+    let mut group_count = 0usize;
+    for index in 0..keys.count {
+        if first_key_index(keys, index)? == index {
+            group_count = group_count
+                .checked_add(1)
+                .ok_or(ERROR_RESOURCE_LIMIT)?;
+        }
+    }
+    let output = allocate_value_array(group_count)?;
+    for rank in 0..group_count {
+        let key_index = group_key_index_at_rank(keys, rank)?.ok_or(ERROR_INVALID_ARENA)?;
+        let key = read_u32(keys.payload, 4 + key_index * 4)?;
+        let key_bytes = record_at(key, TAG_STRING)?;
+        let mut item_count = 0usize;
+        for index in 0..keys.count {
+            let candidate = read_u32(keys.payload, 4 + index * 4)?;
+            if record_at(candidate, TAG_STRING)? == key_bytes {
+                item_count = item_count
+                    .checked_add(1)
+                    .ok_or(ERROR_RESOURCE_LIMIT)?;
+            }
+        }
+        let items = allocate_value_array(item_count)?;
+        let mut item_index = 0usize;
+        for index in 0..keys.count {
+            let candidate = read_u32(keys.payload, 4 + index * 4)?;
+            if record_at(candidate, TAG_STRING)? == key_bytes {
+                write_u32(
+                    mutable_record_at(items, TAG_ARRAY)?,
+                    4 + item_index * 4,
+                    read_u32(array.payload, 4 + index * 4)?,
+                )?;
+                item_index += 1;
+            }
+        }
+        let pair = allocate_value_array(2)?;
+        write_u32(mutable_record_at(pair, TAG_ARRAY)?, 4, key)?;
+        write_u32(mutable_record_at(pair, TAG_ARRAY)?, 8, items)?;
+        write_u32(
+            mutable_record_at(output, TAG_ARRAY)?,
+            4 + rank * 4,
+            pair,
+        )?;
+    }
+    Ok(output)
+}
+
+fn property_key_value(value_offset: Option<u32>) -> Result<u32, u32> {
+    let Some(value_offset) = value_offset else {
+        return write_bytes_record(TAG_STRING, b"undefined");
+    };
+    match Value::at(value_offset)? {
+        Value::Undefined => write_bytes_record(TAG_STRING, b"undefined"),
+        Value::Null => write_bytes_record(TAG_STRING, b"null"),
+        _ => write_bytes_record(TAG_STRING, rendered_value(value_offset)?.bytes),
+    }
+}
+
+fn first_key_index(keys: Array, candidate: usize) -> Result<usize, u32> {
+    let key = record_at(
+        read_u32(keys.payload, 4 + candidate * 4)?,
+        TAG_STRING,
+    )?;
+    for index in 0..candidate {
+        let existing = record_at(read_u32(keys.payload, 4 + index * 4)?, TAG_STRING)?;
+        if existing == key {
+            return Ok(index);
+        }
+    }
+    Ok(candidate)
+}
+
+fn group_key_index_at_rank(keys: Array, requested_rank: usize) -> Result<Option<usize>, u32> {
+    for candidate in 0..keys.count {
+        if first_key_index(keys, candidate)? != candidate {
+            continue;
+        }
+        let key = record_at(
+            read_u32(keys.payload, 4 + candidate * 4)?,
+            TAG_STRING,
+        )?;
+        let numeric = property_index(key);
+        let mut rank = 0usize;
+        for other in 0..keys.count {
+            if first_key_index(keys, other)? != other || other == candidate {
+                continue;
+            }
+            let other_key = record_at(read_u32(keys.payload, 4 + other * 4)?, TAG_STRING)?;
+            let other_numeric = property_index(other_key);
+            let precedes = match (numeric, other_numeric) {
+                (Some(candidate), Some(other)) => other < candidate,
+                (None, Some(_)) => true,
+                (None, None) => other < candidate,
+                (Some(_), None) => false,
+            };
+            if precedes {
+                rank += 1;
+            }
+        }
+        if rank == requested_rank {
+            return Ok(Some(candidate));
+        }
+    }
+    Ok(None)
+}
+
+fn property_index(bytes: &[u8]) -> Option<u32> {
+    if bytes.is_empty() || (bytes.len() > 1 && bytes[0] == b'0') {
+        return None;
+    }
+    let mut value = 0u64;
+    for byte in bytes {
+        if !byte.is_ascii_digit() {
+            return None;
+        }
+        value = value.checked_mul(10)?.checked_add((byte - b'0') as u64)?;
+    }
+    if value < u32::MAX as u64 {
+        Some(value as u32)
+    } else {
+        None
+    }
 }
 
 fn slice_value(value_offset: u32, slices: usize, fill: Option<u32>) -> Result<u32, u32> {

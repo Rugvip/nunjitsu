@@ -546,10 +546,122 @@ test('matches scalar, numeric, and text filter edge semantics', async () => {
       },
       'fredjohnjames',
     ],
+    ['{{ [1,2,3] | length }}', {}, '3'],
+    ['{{ missing | length }}', {}, '0'],
+    ['{{ value | length }}', { value: 'blah' }, '4'],
+    ['{{ value | length }}', { value: markSafe('<blah>') }, '6'],
+    ['{{ undefined | length }}|{{ null | length }}', {}, '0|0'],
+    ['{{ value | length }}', { value: {} }, '0'],
+    ['{{ value | length }}', { value: { key: 'value' } }, '1'],
+    ['{{ value | length }}', { value: { key: 'value', length: 5 } }, '2'],
+    ['{{ value | length }}', { value: [0, 1] }, '2'],
+    ['{{ value | length }}', { value: [0, , 2] }, '3'],
+    ['{{ value | length }}', { value: new Array(0, 1) }, '2'],
+    [
+      '{% for type, items in items | groupby("type") %}:{{ type }}:{% for item in items %}{{ item.name }}{% endfor %}{% endfor %}',
+      {
+        items: [
+          { name: 'james', type: 'green' },
+          { name: 'john', type: 'blue' },
+          { name: 'jim', type: 'blue' },
+          { name: 'jessie', type: 'green' },
+        ],
+      },
+      ':green:jamesjessie:blue:johnjim',
+    ],
+    [
+      '{% for type, items in items | groupby("type") %}:{{ type }}:{% for item in items %}{{ item.name }}{% endfor %}{% endfor %}',
+      {
+        items: [
+          { name: 'james', type: 'green' },
+          { name: 'john', type: 'blue' },
+          { name: 'jim', type: 'blue' },
+          { name: 'jessie', color: 'green' },
+        ],
+      },
+      ':green:james:blue:johnjim:undefined:jessie',
+    ],
+    [
+      '{% for year, posts in posts | groupby("date.year") %}:{{ year }}:{% for post in posts %}{{ post.title }}{% endfor %}{% endfor %}',
+      {
+        posts: [
+          { date: { year: 2019 }, title: 'Post 1' },
+          { date: { year: 2018 }, title: 'Post 2' },
+          { date: { year: 2019 }, title: 'Post 3' },
+        ],
+      },
+      ':2018:Post 2:2019:Post 1Post 3',
+    ],
+    [
+      '{% for year, posts in posts | groupby("date.year") %}:{{ year }}:{% for post in posts %}{{ post.title }}{% endfor %}{% endfor %}',
+      {
+        posts: [
+          { date: { year: 2019 }, title: 'Post 1' },
+          { date: { year: 2018 }, title: 'Post 2' },
+          { meta: { month: 2 }, title: 'Post 3' },
+        ],
+      },
+      ':2018:Post 2:2019:Post 1:undefined:Post 3',
+    ],
+    [
+      '{% for type, items in items | groupby({}) %}:{{ type }}:{% for item in items %}{{ item.name }}{% endfor %}{% endfor %}',
+      {
+        items: [
+          { name: 'james', type: 'green' },
+          { name: 'john', type: 'blue' },
+          { name: 'jim', type: 'blue' },
+          { name: 'jessie', type: 'green' },
+        ],
+      },
+      ':undefined:jamesjohnjimjessie',
+    ],
+    ['{{ numbers | reject("odd") | join }}', { numbers: [0, 1, 2, 3, 4, 5] }, '024'],
+    ['{{ numbers | reject("even") | join }}', { numbers: [0, 1, 2, 3, 4, 5] }, '135'],
+    [
+      '{{ numbers | reject("divisibleby", 3) | join }}',
+      { numbers: [0, 1, 2, 3, 4, 5] },
+      '1245',
+    ],
+    ['{{ numbers | reject() | join }}', { numbers: [0, 1, 2, 3, 4, 5] }, '0'],
+    ['{{ numbers | select("odd") | join }}', { numbers: [0, 1, 2, 3, 4, 5] }, '135'],
+    ['{{ numbers | select("even") | join }}', { numbers: [0, 1, 2, 3, 4, 5] }, '024'],
+    [
+      '{{ numbers | select("divisibleby", 3) | join }}',
+      { numbers: [0, 1, 2, 3, 4, 5] },
+      '03',
+    ],
+    ['{{ numbers | select() | join }}', { numbers: [0, 1, 2, 3, 4, 5] }, '12345'],
+    [
+      '{{ foods | rejectattr("tasty") | length }}',
+      { foods: [{ tasty: true }, { tasty: false }, { tasty: true }] },
+      '1',
+    ],
+    [
+      '{{ foods | selectattr("tasty") | length }}',
+      { foods: [{ tasty: true }, { tasty: false }, { tasty: true }] },
+      '2',
+    ],
   ];
   try {
     for (const [source, context, expected] of cases) {
       assert.equal(await engine.render({ source }, context), expected, source);
+    }
+    const customArray = Object.assign([0, 1], { key: 'value' });
+    await assert.rejects(
+      engine.render(
+        { source: '{{ value | length }}' },
+        { value: customArray } as unknown as TemplateContext,
+      ),
+      /cannot have custom properties/,
+    );
+    for (const value of [new String('blah'), new Map(), new Set()]) {
+      await assert.rejects(
+        engine.render(
+          { source: '{{ value | length }}' },
+          { value } as unknown as TemplateContext,
+        ),
+        /Only plain records/,
+      );
     }
   } finally {
     await engine.dispose();
