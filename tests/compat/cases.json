@@ -546,6 +546,15 @@
       "expected": "<ul><li>a</li><li>b</li></ul>"
     },
     {
+      "id": "compiler-call-block-imported-macro",
+      "template": "{% import \"import.njk\" as imp %}{% call imp.wrap(\"span\") %}Hey{% endcall %}",
+      "templates": { "import.njk": "{% macro foo() %}Here's a macro{% endmacro %}\n\n{% set bar = 'baz' %}\n\n{% macro wrap(el) %}<{{ el }}>{{ caller() }}</{{ el }}>{% endmacro %}" },
+      "nativeRender": false,
+      "context": {},
+      "autoescape": false,
+      "expected": "<span>Hey</span>"
+    },
+    {
       "id": "compiler-block-set-inside-macro",
       "template": "{%- macro foo(bar) -%}{%- set test -%}foo{%- endset -%}{{ bar }}{{ test }}{%- endmacro -%}{{ foo(\"bar\") }}",
       "nativeRender": false,

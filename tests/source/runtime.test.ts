@@ -977,6 +977,24 @@ test('resolves inherited blocks through bounded one-shot frames', async () => {
   }
 });
 
+test('loads imported macro namespaces without rendering module text', async () => {
+  const engine = await createEngine({
+    loaders: [memoryLoader({
+      'macros.njk': 'ignored{% macro value() %}macro{% endmacro %}ignored',
+    })],
+  });
+  try {
+    assert.equal(
+      await engine.render({
+        source: 'before{% import "macros.njk" as macros %}{{ macros.value() }}after',
+      }),
+      'beforemacroafter',
+    );
+  } finally {
+    await engine.dispose();
+  }
+});
+
 test('cancels a render while its worker is suspended on an include loader', async () => {
   let markLoadStarted: (() => void) | undefined;
   const loadStarted = new Promise<void>(resolve => {

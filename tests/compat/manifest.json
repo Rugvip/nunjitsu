@@ -247,6 +247,11 @@
       "upstream": { "id": "tests/compiler.js:83", "file": "tests/compiler.js", "test": "should compile call blocks with args" },
       "status": "ported",
       "cases": ["compiler-call-block-arguments"]
+    },
+    {
+      "upstream": { "id": "tests/compiler.js:84", "file": "tests/compiler.js", "test": "should compile call blocks using imported macros" },
+      "status": "ported",
+      "cases": ["compiler-call-block-imported-macro"]
     }
   ]
 }

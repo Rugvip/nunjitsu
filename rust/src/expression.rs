@@ -173,6 +173,17 @@ pub struct CallBlock<'a> {
     pub call: Call<'a>,
 }
 
+/// One `{% import expression as name %}` clause.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct ImportClause<'a> {
+    /// Template-name expression resolved through configured loaders.
+    pub template: &'a [u8],
+    /// Local namespace binding populated by the import.
+    pub alias: &'a [u8],
+    /// Whether the imported template receives the caller context.
+    pub with_context: bool,
+}
+
 /// Parses the base atom, its unary negation, and the following operation cursor.
 pub fn parse_base(expression: &[u8]) -> Result<(Atom<'_>, usize, bool), ExpressionError> {
     if let Some(atom) = parse_inline_if(expression)? {
@@ -671,6 +682,49 @@ pub fn parse_call_block(source: &[u8]) -> Result<CallBlock<'_>, ExpressionError>
     Ok(CallBlock { bindings, call })
 }
 
+/// Parses `template-expression as namespace [with|without context]`.
+pub fn parse_import_clause(source: &[u8]) -> Result<ImportClause<'_>, ExpressionError> {
+    let start = skip_whitespace(source, 0);
+    let (_, expression_end) = parse_atom(source, start)?;
+    let template = trim_whitespace(&source[start..expression_end]);
+    let mut cursor = skip_whitespace(source, expression_end);
+    if !has_keyword(source, cursor, b"as") {
+        return Err(ExpressionError);
+    }
+    cursor = skip_whitespace(source, cursor + 2);
+    let alias_start = cursor;
+    cursor = parse_identifier(source, cursor)?;
+    let alias = &source[alias_start..cursor];
+    cursor = skip_whitespace(source, cursor);
+    let with_context = if cursor == source.len() {
+        false
+    } else if has_keyword(source, cursor, b"with") {
+        cursor = skip_whitespace(source, cursor + 4);
+        if !has_keyword(source, cursor, b"context") {
+            return Err(ExpressionError);
+        }
+        cursor = skip_whitespace(source, cursor + 7);
+        true
+    } else if has_keyword(source, cursor, b"without") {
+        cursor = skip_whitespace(source, cursor + 7);
+        if !has_keyword(source, cursor, b"context") {
+            return Err(ExpressionError);
+        }
+        cursor = skip_whitespace(source, cursor + 7);
+        false
+    } else {
+        return Err(ExpressionError);
+    };
+    if cursor != source.len() {
+        return Err(ExpressionError);
+    }
+    Ok(ImportClause {
+        template,
+        alias,
+        with_context,
+    })
+}
+
 /// Parses one identifier from a validated comma-separated binding list.
 pub fn next_binding(
     bindings: &[u8],
@@ -789,9 +843,6 @@ fn parse_atom(bytes: &[u8], cursor: usize) -> Result<(Atom<'_>, usize), Expressi
     let name = &bytes[start..cursor];
     let following = skip_whitespace(bytes, cursor);
     if bytes.get(following) == Some(&b'(') {
-        if name.contains(&b'.') {
-            return Err(ExpressionError);
-        }
         let (arguments, end) = parse_parenthesized(bytes, following)?;
         return Ok((Atom::Call(Call { name, arguments }), end));
     }
@@ -919,7 +970,10 @@ fn trim_whitespace(bytes: &[u8]) -> &[u8] {
 
 fn parse_named_call(bytes: &[u8], cursor: usize) -> Result<(Call<'_>, usize), ExpressionError> {
     let start = cursor;
-    let cursor = parse_identifier(bytes, cursor)?;
+    let mut cursor = parse_identifier(bytes, cursor)?;
+    while bytes.get(cursor) == Some(&b'.') {
+        cursor = parse_identifier(bytes, cursor + 1)?;
+    }
     let name = &bytes[start..cursor];
     let following = skip_whitespace(bytes, cursor);
     if bytes.get(following) == Some(&b'(') {
@@ -1166,6 +1220,25 @@ mod tests {
         assert_eq!(
             parse_call_block(b"(item,) list(values)"),
             Err(ExpressionError)
+        );
+        assert_eq!(
+            parse_import_clause(br#" "import.njk" as imp with context "#),
+            Ok(ImportClause {
+                template: br#""import.njk""#,
+                alias: b"imp",
+                with_context: true,
+            }),
+        );
+        assert_eq!(
+            parse_base(b"imp.wrap(\"span\")"),
+            Ok((
+                Atom::Call(Call {
+                    name: b"imp.wrap",
+                    arguments: b"\"span\"",
+                }),
+                16,
+                false,
+            )),
         );
         assert_eq!(next_macro_parameter(b"value=", 0), Err(ExpressionError));
         assert_eq!(next_macro_argument(b"value=", 0), Err(ExpressionError));
