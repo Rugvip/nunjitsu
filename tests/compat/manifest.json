@@ -81,6 +81,46 @@
       "reason": "The runtime suite verifies ordered fallthrough when loaders return null and a terminal TemplateNotFoundError when none match."
     },
     {
+      "upstream": { "id": "tests/runtime.js:1", "file": "tests/runtime.js", "test": "should report the failed function calls to symbols" },
+      "status": "adapted",
+      "reason": "Calling an undefined symbol rejects with Nunjitsu's structured render error; exact Nunjucks diagnostic text is outside the compatibility contract."
+    },
+    {
+      "upstream": { "id": "tests/runtime.js:2", "file": "tests/runtime.js", "test": "should report the failed function calls to lookups" },
+      "status": "adapted",
+      "reason": "Calling an undefined bracket lookup rejects semantically; exact rendered function paths in diagnostic text are outside the compatibility contract."
+    },
+    {
+      "upstream": { "id": "tests/runtime.js:3", "file": "tests/runtime.js", "test": "should report the failed function calls to calls" },
+      "status": "adapted",
+      "reason": "Calling an undefined dotted lookup rejects semantically; exact rendered function paths in diagnostic text are outside the compatibility contract."
+    },
+    {
+      "upstream": { "id": "tests/runtime.js:4", "file": "tests/runtime.js", "test": "should report full function name in error" },
+      "status": "adapted",
+      "reason": "Long undefined lookup calls reject without truncation affecting evaluation; Nunjitsu does not claim compatibility for exact diagnostic formatting."
+    },
+    {
+      "upstream": { "id": "tests/runtime.js:5", "file": "tests/runtime.js", "test": "should report the failed function calls w/multiple args" },
+      "status": "adapted",
+      "reason": "Undefined dotted and bracket calls reject with multiple arguments as they do with one; exact diagnostic paths are outside the compatibility contract."
+    },
+    {
+      "upstream": { "id": "tests/runtime.js:6", "file": "tests/runtime.js", "test": "should allow for undefined macro arguments in the last position" },
+      "status": "ported",
+      "cases": ["runtime-undefined-trailing-macro-argument"]
+    },
+    {
+      "upstream": { "id": "tests/runtime.js:7", "file": "tests/runtime.js", "test": "should allow for objects without a prototype macro arguments in the last position" },
+      "status": "adapted",
+      "reason": "The runtime suite passes the same null-prototype record as the final macro argument through Nunjitsu's copied safe-value boundary and verifies its property output."
+    },
+    {
+      "upstream": { "id": "tests/runtime.js:8", "file": "tests/runtime.js", "test": "should not read variables property from Object.prototype" },
+      "status": "adapted",
+      "reason": "Nunjitsu intentionally copies own properties only and renders a polluted inherited property as undefined, enforcing the documented safe-value boundary instead of exposing prototype data."
+    },
+    {
       "upstream": { "id": "tests/compiler.js:1", "file": "tests/compiler.js", "test": "should compile templates" },
       "status": "ported",
       "cases": [

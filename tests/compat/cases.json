@@ -1760,6 +1760,14 @@
       "context": {},
       "autoescape": true,
       "expected": "FooTest3BazFizzle"
+    },
+    {
+      "id": "runtime-undefined-trailing-macro-argument",
+      "template": "{% macro foo(bar, baz) %}{{ bar }} {{ baz }}{% endmacro %}{{ foo(\"hello\", nosuchvar) }}",
+      "nativeRender": false,
+      "context": {},
+      "autoescape": true,
+      "expected": "hello "
     }
   ]
 }

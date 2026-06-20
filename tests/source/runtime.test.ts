@@ -1903,6 +1903,12 @@ test('rejects invalid expressions and calls across deferred template frames', as
   });
   try {
     for (const [source, context] of [
+      ['{{ foo("cvan") }}', {}],
+      ['{{ foo["bar"]("cvan") }}', {}],
+      ['{{ foo.bar("second call") }}', {}],
+      ['{{ foo.barThatIsLongerThanTen() }}', {}],
+      ['{{ foo.bar("multiple", "args") }}', {}],
+      ['{{ foo["bar"]["zip"]("multiple", "args") }}', {}],
       ['{% call foo() %}{% endcall %}', { foo: 'bar' }],
       ['{% include "undefined-macro.njk" %}', {}],
       ['{% if true %}{% include "undefined-macro.njk" %}{% endif %}', {}],
@@ -1918,6 +1924,52 @@ test('rejects invalid expressions and calls across deferred template frames', as
     }
   } finally {
     await engine.dispose();
+  }
+});
+
+test('handles trailing macro values through the safe record boundary', async () => {
+  const noPrototype = Object.assign(Object.create(null) as Record<string, string>, {
+    qux: 'world',
+  });
+  const inheritedName = '__nunjitsuInheritedRuntimeValue__';
+  const previousDescriptor = Object.getOwnPropertyDescriptor(Object.prototype, inheritedName);
+  Object.defineProperty(Object.prototype, inheritedName, {
+    configurable: true,
+    enumerable: true,
+    value: 'function(){ return 1+2; }()',
+  });
+  const engine = await createEngine();
+
+  try {
+    assert.equal(
+      await engine.render({
+        source: [
+          '{% macro foo(bar, baz) %}{{ bar }} {{ baz }}{% endmacro %}',
+          '{{ foo("hello", nosuchvar) }}',
+        ].join(''),
+      }),
+      'hello ',
+    );
+    assert.equal(
+      await engine.render({
+        source: [
+          '{% macro foo(bar, baz) %}{{ bar }} {{ baz.qux }}{% endmacro %}',
+          '{{ foo("hello", noPrototype) }}',
+        ].join(''),
+      }, { noPrototype }),
+      'hello world',
+    );
+    assert.equal(
+      await engine.render({ source: `{{ ${inheritedName} }}` }, {}),
+      '',
+    );
+  } finally {
+    await engine.dispose();
+    if (previousDescriptor) {
+      Object.defineProperty(Object.prototype, inheritedName, previousDescriptor);
+    } else {
+      delete (Object.prototype as Record<string, unknown>)[inheritedName];
+    }
   }
 });
 
