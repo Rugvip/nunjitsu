@@ -75,8 +75,9 @@ async function start(port: MessagePort): Promise<void> {
         throw new Error('Nunjitsu worker received overlapping render commands');
       }
       activeRenderId = command.id;
-      if (exports.arenaSetCursor(command.cursor) !== 1) {
-        finishWithError(port, command.id, 1, exports);
+      const cursorState = exports.arenaSetCursor(command.cursor);
+      if (cursorState !== 1) {
+        finishWithError(port, command.id, cursorState === 2 ? 7 : 1, exports);
         activeRenderId = undefined;
         return;
       }
@@ -97,8 +98,9 @@ async function start(port: MessagePort): Promise<void> {
     if (activeRenderId !== command.id) {
       throw new Error('Nunjitsu worker received a stale loader response');
     }
-    if (exports.arenaSetCursor(command.cursor) !== 1) {
-      finishWithError(port, command.id, 1, exports);
+    const cursorState = exports.arenaSetCursor(command.cursor);
+    if (cursorState !== 1) {
+      finishWithError(port, command.id, cursorState === 2 ? 7 : 1, exports);
       activeRenderId = undefined;
       return;
     }

@@ -4,7 +4,7 @@ use core::mem::{align_of, size_of};
 use core::ptr::{addr_of, addr_of_mut, read_unaligned, write_unaligned};
 use core::slice;
 
-const ABI_VERSION: u32 = 4;
+const ABI_VERSION: u32 = 5;
 const PAGE_SIZE: usize = 65_536;
 const RECORD_ALIGNMENT: u32 = 8;
 const RECORD_HEADER_LENGTH: usize = 8;
@@ -36,8 +36,9 @@ const ERROR_UNCLOSED_INTERPOLATION: u32 = 3;
 const ERROR_OUTPUT_TOO_LARGE: u32 = 4;
 const ERROR_UNSUPPORTED_TAG: u32 = 5;
 const ERROR_INCLUDE_CYCLE: u32 = 6;
+const ERROR_RESOURCE_LIMIT: u32 = 7;
 
-const RENDER_STATE_LENGTH: u32 = 28;
+const RENDER_STATE_LENGTH: u32 = 60;
 const STATE_CONTEXT: usize = 0;
 const STATE_FLAGS: usize = 4;
 const STATE_CURRENT_FRAME: usize = 8;
@@ -45,6 +46,14 @@ const STATE_FIRST_CHUNK: usize = 12;
 const STATE_LAST_CHUNK: usize = 16;
 const STATE_OUTPUT_LENGTH: usize = 20;
 const STATE_PENDING_NAME: usize = 24;
+const STATE_WORK_UNITS: usize = 28;
+const STATE_LIMIT_WORK_UNITS: usize = 32;
+const STATE_LIMIT_INCLUDE_DEPTH: usize = 36;
+const STATE_LIMIT_OUTPUT_BYTES: usize = 40;
+const STATE_LIMIT_ARENA_BYTES: usize = 44;
+const STATE_LOADER_CALLS: usize = 48;
+const STATE_LIMIT_LOADER_CALLS: usize = 52;
+const STATE_INCLUDE_DEPTH: usize = 56;
 
 const FRAME_LENGTH: u32 = 16;
 const FRAME_PARENT: usize = 0;
@@ -111,6 +120,12 @@ pub extern "C" fn nunjitsu_arena_set_cursor(cursor: u32) -> u32 {
     {
         return 0;
     }
+    if let Ok(limit) = active_limit(STATE_LIMIT_ARENA_BYTES)
+        && limit != u32::MAX
+        && cursor.saturating_sub(base) > limit
+    {
+        return 2;
+    }
     unsafe {
         ARENA_CURSOR = cursor;
     }
@@ -140,13 +155,18 @@ pub extern "C" fn nunjitsu_resume_include(source_offset: u32, canonical_offset: 
 
 fn start_render(request_offset: u32) -> Result<(), u32> {
     let request = record_at(request_offset, TAG_REQUEST)?;
-    if request.len() != 16 {
+    if request.len() != 36 {
         return Err(ERROR_INVALID_RECORD);
     }
     let source_offset = read_u32(request, 0)?;
     let context_offset = read_u32(request, 4)?;
     let flags = read_u32(request, 8)?;
     let canonical_offset = read_u32(request, 12)?;
+    let limit_work_units = read_u32(request, 16)?;
+    let limit_include_depth = read_u32(request, 20)?;
+    let limit_output_bytes = read_u32(request, 24)?;
+    let limit_arena_bytes = read_u32(request, 28)?;
+    let limit_loader_calls = read_u32(request, 32)?;
     if flags & !1 != 0 {
         return Err(ERROR_INVALID_RECORD);
     }
@@ -155,6 +175,9 @@ fn start_render(request_offset: u32) -> Result<(), u32> {
     if canonical_offset != 0 {
         record_at(canonical_offset, TAG_STRING)?;
     }
+    if limit_include_depth == 0 {
+        return Err(ERROR_RESOURCE_LIMIT);
+    }
 
     let frame_offset = allocate_record(TAG_FRAME, FRAME_LENGTH)?;
     write_frame(frame_offset, 0, source_offset, 0, canonical_offset)?;
@@ -162,9 +185,16 @@ fn start_render(request_offset: u32) -> Result<(), u32> {
     set_state_field(state_offset, STATE_CONTEXT, context_offset)?;
     set_state_field(state_offset, STATE_FLAGS, flags)?;
     set_state_field(state_offset, STATE_CURRENT_FRAME, frame_offset)?;
+    set_state_field(state_offset, STATE_LIMIT_WORK_UNITS, limit_work_units)?;
+    set_state_field(state_offset, STATE_LIMIT_INCLUDE_DEPTH, limit_include_depth)?;
+    set_state_field(state_offset, STATE_LIMIT_OUTPUT_BYTES, limit_output_bytes)?;
+    set_state_field(state_offset, STATE_LIMIT_ARENA_BYTES, limit_arena_bytes)?;
+    set_state_field(state_offset, STATE_LIMIT_LOADER_CALLS, limit_loader_calls)?;
+    set_state_field(state_offset, STATE_INCLUDE_DEPTH, 1)?;
     unsafe {
         ACTIVE_RENDER = state_offset;
     }
+    enforce_arena_limit(state_offset, unsafe { ARENA_CURSOR })?;
     Ok(())
 }
 
@@ -180,10 +210,17 @@ fn resume_include(source_offset: u32, canonical_offset: u32) -> Result<(), u32> 
     if include_cycle(parent, canonical_offset)? {
         return Err(ERROR_INCLUDE_CYCLE);
     }
+    let depth = state_field(state_offset, STATE_INCLUDE_DEPTH)?;
+    let next_depth = depth.checked_add(1).ok_or(ERROR_RESOURCE_LIMIT)?;
+    enforce_limit(
+        next_depth,
+        state_field(state_offset, STATE_LIMIT_INCLUDE_DEPTH)?,
+    )?;
     let frame_offset = allocate_record(TAG_FRAME, FRAME_LENGTH)?;
     write_frame(frame_offset, parent, source_offset, 0, canonical_offset)?;
     set_state_field(state_offset, STATE_CURRENT_FRAME, frame_offset)?;
     set_state_field(state_offset, STATE_PENDING_NAME, 0)?;
+    set_state_field(state_offset, STATE_INCLUDE_DEPTH, next_depth)?;
     Ok(())
 }
 
@@ -204,6 +241,15 @@ fn run_active_render() -> Result<u32, u32> {
         let cursor = read_u32(frame, FRAME_CURSOR)? as usize;
         let source = record_at(source_offset, TAG_SOURCE)?;
         let (item, next_cursor) = next_item(source, cursor).map_err(render_error_code)?;
+        let work = match item {
+            TemplateItem::Text(bytes)
+            | TemplateItem::Expression(bytes)
+            | TemplateItem::Include(bytes) => 1u32
+                .checked_add(bytes.len() as u32)
+                .ok_or(ERROR_RESOURCE_LIMIT)?,
+            TemplateItem::End => 1,
+        };
+        charge_counter(state_offset, STATE_WORK_UNITS, STATE_LIMIT_WORK_UNITS, work)?;
         set_frame_field(frame_offset, FRAME_CURSOR, next_cursor as u32)?;
 
         match item {
@@ -225,6 +271,12 @@ fn run_active_render() -> Result<u32, u32> {
                 }
             }
             TemplateItem::Include(name) => {
+                charge_counter(
+                    state_offset,
+                    STATE_LOADER_CALLS,
+                    STATE_LIMIT_LOADER_CALLS,
+                    1,
+                )?;
                 let name_offset = write_bytes_record(TAG_STRING, name)?;
                 set_state_field(state_offset, STATE_PENDING_NAME, name_offset)?;
                 set_control(
@@ -237,6 +289,8 @@ fn run_active_render() -> Result<u32, u32> {
             }
             TemplateItem::End => {
                 set_state_field(state_offset, STATE_CURRENT_FRAME, parent)?;
+                let depth = state_field(state_offset, STATE_INCLUDE_DEPTH)?;
+                set_state_field(state_offset, STATE_INCLUDE_DEPTH, depth.saturating_sub(1))?;
             }
         }
     }
@@ -283,6 +337,10 @@ fn append_output(state_offset: u32, bytes: &[u8]) -> Result<(), u32> {
     let next_length = output_length
         .checked_add(bytes.len() as u32)
         .ok_or(ERROR_OUTPUT_TOO_LARGE)?;
+    enforce_limit(
+        next_length,
+        state_field(state_offset, STATE_LIMIT_OUTPUT_BYTES)?,
+    )?;
     let chunk_offset = allocate_record(
         TAG_OUTPUT_CHUNK,
         4u32.checked_add(bytes.len() as u32)
@@ -363,6 +421,40 @@ fn active_state() -> Result<u32, u32> {
         return Err(ERROR_INVALID_ARENA);
     }
     Ok(offset)
+}
+
+fn active_limit(field: usize) -> Result<u32, u32> {
+    let state_offset = unsafe { ACTIVE_RENDER };
+    if state_offset == 0 {
+        return Err(ERROR_INVALID_ARENA);
+    }
+    state_field(state_offset, field)
+}
+
+fn charge_counter(
+    state_offset: u32,
+    counter_field: usize,
+    limit_field: usize,
+    amount: u32,
+) -> Result<(), u32> {
+    let value = state_field(state_offset, counter_field)?;
+    let next = value.checked_add(amount).ok_or(ERROR_RESOURCE_LIMIT)?;
+    enforce_limit(next, state_field(state_offset, limit_field)?)?;
+    set_state_field(state_offset, counter_field, next)
+}
+
+fn enforce_limit(value: u32, limit: u32) -> Result<(), u32> {
+    if limit != u32::MAX && value > limit {
+        return Err(ERROR_RESOURCE_LIMIT);
+    }
+    Ok(())
+}
+
+fn enforce_arena_limit(state_offset: u32, cursor: u32) -> Result<(), u32> {
+    let used = cursor
+        .checked_sub(nunjitsu_arena_base())
+        .ok_or(ERROR_INVALID_ARENA)?;
+    enforce_limit(used, state_field(state_offset, STATE_LIMIT_ARENA_BYTES)?)
 }
 
 fn fail(error: u32) -> u32 {
@@ -660,6 +752,12 @@ fn arena_alloc(length: u32, alignment: u32) -> Result<u32, u32> {
     let start = align_up(cursor, alignment).ok_or(ERROR_INVALID_ARENA)?;
     let end = start.checked_add(length).ok_or(ERROR_OUTPUT_TOO_LARGE)?;
     let aligned_end = align_up(end, RECORD_ALIGNMENT).ok_or(ERROR_OUTPUT_TOO_LARGE)?;
+    if let Ok(limit) = active_limit(STATE_LIMIT_ARENA_BYTES) {
+        let used = aligned_end
+            .checked_sub(nunjitsu_arena_base())
+            .ok_or(ERROR_INVALID_ARENA)?;
+        enforce_limit(used, limit)?;
+    }
     ensure_memory(aligned_end as usize)?;
     unsafe {
         ARENA_CURSOR = aligned_end;

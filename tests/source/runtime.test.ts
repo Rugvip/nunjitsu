@@ -9,6 +9,7 @@ import {
   fileSystemLoader,
   markSafe,
   memoryLoader,
+  NunjitsuLimitError,
   NunjitsuRenderError,
   TemplateLoaderError,
   type TemplateContext,
@@ -218,6 +219,49 @@ test('cancels a render while its worker is suspended on an include loader', asyn
     controller.abort();
     await assert.rejects(rendering, error => error instanceof Error && error.name === 'AbortError');
     assert.equal(await engine.render({ source: 'clean' }), 'clean');
+  } finally {
+    await engine.dispose();
+  }
+});
+
+test('enforces finite per-render limits and permits explicit unlimited values', async () => {
+  const engine = await createEngine({
+    loaders: [
+      memoryLoader({
+        'entry.njk': 'before {% include "partial.njk" %} after',
+        'partial.njk': 'partial',
+      }),
+    ],
+  });
+  try {
+    for (const [template, limits] of [
+      [{ source: 'output' }, { outputBytes: 3 }],
+      [{ source: 'work' }, { workUnits: 1 }],
+      [{ source: '{{ value }}' }, { arenaBytes: 64 }],
+      [{ name: 'entry.njk' }, { includeDepth: 1 }],
+      [{ name: 'entry.njk' }, { loaderCalls: 1 }],
+    ] as const) {
+      await assert.rejects(
+        engine.render(template, { value: 'large input' }, { limits }),
+        error => error instanceof NunjitsuLimitError,
+      );
+      assert.equal(await engine.render({ source: 'clean' }), 'clean');
+    }
+
+    assert.equal(
+      await engine.render(
+        { source: 'unlimited output' },
+        {},
+        {
+          limits: {
+            workUnits: Number.POSITIVE_INFINITY,
+            outputBytes: Number.POSITIVE_INFINITY,
+            arenaBytes: Number.POSITIVE_INFINITY,
+          },
+        },
+      ),
+      'unlimited output',
+    );
   } finally {
     await engine.dispose();
   }

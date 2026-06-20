@@ -2,6 +2,12 @@ import { availableParallelism } from 'node:os';
 import { Worker } from 'node:worker_threads';
 
 import { loadTemplate, type LoadedTemplate, type TemplateLoader } from './loaders.ts';
+import {
+  NunjitsuLimitError,
+  normalizeRenderLimits,
+  type NormalizedRenderLimits,
+  type RenderLimits,
+} from './limits.ts';
 import { ArenaWriter, decodeOutput } from './protocol.ts';
 import type { TemplateContext } from './values.ts';
 
@@ -56,6 +62,8 @@ export type TemplateInput = InlineTemplate | NamedTemplate;
 export interface RenderOptions {
   /** Cancels queued or active rendering. Active cancellation recycles its worker. */
   signal?: AbortSignal;
+  /** Finite defaults may be tightened or explicitly set to `Infinity`. */
+  limits?: Partial<RenderLimits>;
 }
 
 /** An initialized asynchronous Nunjitsu engine. */
@@ -149,6 +157,7 @@ interface CachedLoadedTemplate {
 interface ResolvedTemplate {
   source: string;
   canonicalName?: string;
+  loaderCalls: number;
 }
 
 /** Message sent after a worker instantiates the Wasm module. */
@@ -230,13 +239,22 @@ class EngineImplementation implements Engine {
       throw abortError();
     }
 
-    const resolved = await this.#resolveTemplate(template, options.signal);
+    const limits = normalizeRenderLimits(options.limits);
+    const resolved = await this.#resolveTemplate(template, limits, options.signal);
+    const workerLimits: NormalizedRenderLimits = Object.freeze({
+      ...limits,
+      loaderCalls:
+        limits.loaderCalls === Number.POSITIVE_INFINITY
+          ? limits.loaderCalls
+          : limits.loaderCalls - resolved.loaderCalls,
+    });
     const slot = await this.#acquire(options.signal);
     try {
       return await slot.render(
         resolved,
         context,
         this.#autoescape,
+        workerLimits,
         name => loadTemplate(this.#loaders, name, options.signal),
         options.signal,
       );
@@ -381,6 +399,7 @@ class EngineImplementation implements Engine {
 
   async #resolveTemplate(
     template: TemplateInput,
+    limits: NormalizedRenderLimits,
     signal: AbortSignal | undefined,
   ): Promise<ResolvedTemplate> {
     const hasSource = 'source' in template && typeof template.source === 'string';
@@ -389,10 +408,16 @@ class EngineImplementation implements Engine {
       throw new TypeError('A template must provide exactly one string source or name');
     }
     if (hasSource) {
-      return { source: template.source };
+      return { source: template.source, loaderCalls: 0 };
     }
     if (hasName) {
-      return await loadTemplate(this.#loaders, template.name, signal);
+      if (limits.loaderCalls === 0) {
+        throw new NunjitsuLimitError('loaderCalls');
+      }
+      return {
+        ...(await loadTemplate(this.#loaders, template.name, signal)),
+        loaderCalls: 1,
+      };
     }
     throw new TypeError('Invalid template input');
   }
@@ -441,6 +466,7 @@ class WorkerSlot {
     template: ResolvedTemplate,
     context: TemplateContext,
     autoescape: boolean,
+    limits: NormalizedRenderLimits,
     load: (name: string) => Promise<LoadedTemplate>,
     signal: AbortSignal | undefined,
   ): Promise<string> {
@@ -460,9 +486,16 @@ class WorkerSlot {
       context,
       {
         autoescape,
+        limits,
         ...(template.canonicalName ? { canonicalName: template.canonicalName } : {}),
       },
     );
+    if (
+      limits.arenaBytes !== Number.POSITIVE_INFINITY &&
+      encoded.cursor - this.#arenaBase > limits.arenaBytes
+    ) {
+      throw new NunjitsuLimitError('arenaBytes');
+    }
     const id = this.#nextRenderId++;
     return await new Promise<string>((resolve, reject) => {
       const pending: PendingRender = {
@@ -516,7 +549,7 @@ class WorkerSlot {
       return;
     }
     if (value.type === 'ready') {
-      if (value.abiVersion !== 4 || value.arenaBase <= 0) {
+      if (value.abiVersion !== 5 || value.arenaBase <= 0) {
         this.#fail(new Error('Nunjitsu worker reported an incompatible Wasm ABI'));
         return;
       }
@@ -554,7 +587,11 @@ class WorkerSlot {
         pending.reject(asError(error));
       }
     } else {
-      pending.reject(new NunjitsuRenderError(value.errorCode));
+      pending.reject(
+        value.errorCode === 7
+          ? new NunjitsuLimitError()
+          : new NunjitsuRenderError(value.errorCode),
+      );
     }
   }
 

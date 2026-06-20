@@ -22,6 +22,7 @@ export {
   type LoadedTemplate,
   type TemplateLoader,
 } from './loaders.ts';
+export { NunjitsuLimitError, type RenderLimits } from './limits.ts';
 export {
   markSafe,
   SafeString,

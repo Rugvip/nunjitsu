@@ -1,4 +1,8 @@
 import { SafeString, type TemplateContext, type TemplateValue } from './values.ts';
+import {
+  encodeRenderLimit,
+  type NormalizedRenderLimits,
+} from './limits.ts';
 
 const recordHeaderLength = 8;
 const recordAlignment = 8;
@@ -53,7 +57,11 @@ export class ArenaWriter {
   encodeRender(
     source: string,
     context: TemplateContext,
-    options: { autoescape: boolean; canonicalName?: string },
+    options: {
+      autoescape: boolean;
+      canonicalName?: string;
+      limits: NormalizedRenderLimits;
+    },
   ): EncodedRenderRequest {
     const sourceOffset = this.#writeTextRecord(recordTag.source, source);
     const contextOffset = this.#writeValue(context, new Set());
@@ -61,12 +69,17 @@ export class ArenaWriter {
     const canonicalOffset = options.canonicalName
       ? this.#writeTextRecord(recordTag.string, options.canonicalName)
       : 0;
-    const requestPayload = new ArrayBuffer(16);
+    const requestPayload = new ArrayBuffer(36);
     const requestView = new DataView(requestPayload);
     requestView.setUint32(0, sourceOffset, true);
     requestView.setUint32(4, contextOffset, true);
     requestView.setUint32(8, options.autoescape ? 1 : 0, true);
     requestView.setUint32(12, canonicalOffset, true);
+    requestView.setUint32(16, encodeRenderLimit(options.limits.workUnits), true);
+    requestView.setUint32(20, encodeRenderLimit(options.limits.includeDepth), true);
+    requestView.setUint32(24, encodeRenderLimit(options.limits.outputBytes), true);
+    requestView.setUint32(28, encodeRenderLimit(options.limits.arenaBytes), true);
+    requestView.setUint32(32, encodeRenderLimit(options.limits.loaderCalls), true);
     const requestOffset = this.#writeRecord(recordTag.request, new Uint8Array(requestPayload));
 
     return { requestOffset, cursor: this.#cursor };
