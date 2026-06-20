@@ -1014,6 +1014,12 @@ test('loads imported macro namespaces without rendering module text', async () =
       }),
       'beforemacroafter',
     );
+    await assert.rejects(
+      engine.render({
+        source: '{% from "macros.njk" import absent %}',
+      }),
+      error => error instanceof NunjitsuRenderError && error.code === 9,
+    );
   } finally {
     await engine.dispose();
   }

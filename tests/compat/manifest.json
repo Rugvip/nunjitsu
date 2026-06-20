@@ -371,6 +371,21 @@
       "upstream": { "id": "tests/compiler.js:112", "file": "tests/compiler.js", "test": "should allow blocks in for loops" },
       "status": "ported",
       "cases": ["compiler-inheritance-block-inside-loop"]
+    },
+    {
+      "upstream": { "id": "tests/compiler.js:113", "file": "tests/compiler.js", "test": "should make includes inherit scope" },
+      "status": "ported",
+      "cases": ["compiler-include-inherits-loop-scope"]
+    },
+    {
+      "upstream": { "id": "tests/compiler.js:118", "file": "tests/compiler.js", "test": "should compile block-set wrapping an inherited block" },
+      "status": "ported",
+      "cases": ["compiler-block-set-wraps-inherited-block"]
+    },
+    {
+      "upstream": { "id": "tests/compiler.js:119", "file": "tests/compiler.js", "test": "should throw errors" },
+      "status": "adapted",
+      "reason": "The TypeScript runtime test asserts the numeric invalid-expression render error used by the new API for a missing imported name."
     }
   ]
 }

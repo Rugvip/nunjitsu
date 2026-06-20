@@ -904,6 +904,24 @@
       "expected": "hello1hello2"
     },
     {
+      "id": "compiler-include-inherits-loop-scope",
+      "template": "{% for item in [1,2] %}{% include \"item.njk\" %}{% endfor %}",
+      "templates": { "item.njk": "showing {{ item }}" },
+      "nativeRender": false,
+      "context": {},
+      "autoescape": false,
+      "expected": "showing 1showing 2"
+    },
+    {
+      "id": "compiler-block-set-wraps-inherited-block",
+      "template": "{% extends \"base-set-wraps-block.njk\" %}{% block somevar %}foo{% endblock %}",
+      "templates": { "base-set-wraps-block.njk": "{% set somevar %}{% block somevar %}{% endblock %}{% endset %}{{ somevar }}\n" },
+      "nativeRender": false,
+      "context": {},
+      "autoescape": false,
+      "expected": "foo\n"
+    },
+    {
       "id": "compiler-block-set-inside-macro",
       "template": "{%- macro foo(bar) -%}{%- set test -%}foo{%- endset -%}{{ bar }}{{ test }}{%- endmacro -%}{{ foo(\"bar\") }}",
       "nativeRender": false,
