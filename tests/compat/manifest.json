@@ -434,6 +434,37 @@
       "status": "adapted",
       "reason": "Nunjitsu requires the trusted declarative tag renderer to return markSafe output instead of exposing a mutable extension autoescape flag.",
       "cases": ["compiler-autoescape-disabled-tag-output"]
+    },
+    {
+      "upstream": { "id": "tests/compiler.js:131", "file": "tests/compiler.js", "test": "should pass context as this to filters" },
+      "status": "adapted",
+      "reason": "The output is preserved with an explicitly configured filter, but Nunjitsu callbacks use typed arguments and do not emulate Nunjucks's mutable JavaScript this receiver.",
+      "cases": ["compiler-filter-explicit-context-dependency"]
+    },
+    {
+      "upstream": { "id": "tests/compiler.js:132", "file": "tests/compiler.js", "test": "should render regexs" },
+      "status": "ported",
+      "cases": ["compiler-regex-literal", "compiler-regex-flags"]
+    },
+    {
+      "upstream": { "id": "tests/compiler.js:133", "file": "tests/compiler.js", "test": "should throw an error when {% call %} is passed an object that is not a function" },
+      "status": "adapted",
+      "reason": "The TypeScript runtime test asserts Nunjitsu's structured render failure instead of the upstream JavaScript error text."
+    },
+    {
+      "upstream": { "id": "tests/compiler.js:134", "file": "tests/compiler.js", "test": "should throw an error when including a file that calls an undefined macro" },
+      "status": "adapted",
+      "reason": "The TypeScript runtime test asserts Nunjitsu's structured render failure instead of the upstream JavaScript error text."
+    },
+    {
+      "upstream": { "id": "tests/compiler.js:135", "file": "tests/compiler.js", "test": "should throw an error when including a file that calls an undefined macro even inside {% if %} tag" },
+      "status": "adapted",
+      "reason": "The TypeScript runtime test asserts Nunjitsu's structured render failure instead of the upstream JavaScript error text."
+    },
+    {
+      "upstream": { "id": "tests/compiler.js:136", "file": "tests/compiler.js", "test": "should throw an error when including a file that imports macro that calls an undefined macro" },
+      "status": "adapted",
+      "reason": "The TypeScript runtime test asserts Nunjitsu's structured render failure instead of the upstream JavaScript error text."
     }
   ]
 }

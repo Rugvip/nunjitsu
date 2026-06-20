@@ -3478,6 +3478,7 @@ fn resolve_atom(state_offset: u32, atom: Atom<'_>) -> Result<u32, u32> {
         }
         Atom::String(value) => write_bytes_record(TAG_STRING, value),
         Atom::Number(value) => write_number(value),
+        Atom::Regex(value) => write_bytes_record(TAG_STRING, value),
         Atom::Boolean(value) => write_boolean(value),
         Atom::Null => allocate_record(TAG_NULL, 0),
         Atom::Undefined => allocate_record(TAG_UNDEFINED, 0),

@@ -206,6 +206,15 @@ function capabilityFixture(name: string | undefined): TemplateCapabilities {
       },
     };
   }
+  if (name === 'compiler-context-filter') {
+    return {
+      filters: {
+        hallo(input) {
+          return Number(input) + 2;
+        },
+      },
+    };
+  }
   throw new Error(`Unknown compatibility capability fixture: ${name}`);
 }
 

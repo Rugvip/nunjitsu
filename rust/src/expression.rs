@@ -16,6 +16,8 @@ pub enum Atom<'a> {
     String(&'a [u8]),
     /// A decimal numeric literal retained in source form.
     Number(&'a [u8]),
+    /// A Nunjucks regular-expression literal retained in rendered `/.../flags` form.
+    Regex(&'a [u8]),
     /// A boolean literal.
     Boolean(bool),
     /// The null/none literal.
@@ -937,6 +939,9 @@ pub fn parse_set_clause(source: &[u8]) -> Result<SetClause<'_>, ExpressionError>
 
 fn parse_atom(bytes: &[u8], cursor: usize) -> Result<(Atom<'_>, usize), ExpressionError> {
     let byte = *bytes.get(cursor).ok_or(ExpressionError)?;
+    if byte == b'r' && bytes.get(cursor + 1) == Some(&b'/') {
+        return parse_regex(bytes, cursor);
+    }
     if byte == b'(' {
         let (expression, cursor) = parse_parenthesized(bytes, cursor)?;
         return Ok((Atom::Group(expression), cursor));
@@ -985,6 +990,26 @@ fn parse_atom(bytes: &[u8], cursor: usize) -> Result<(Atom<'_>, usize), Expressi
     Ok((atom, cursor))
 }
 
+fn parse_regex(bytes: &[u8], start: usize) -> Result<(Atom<'_>, usize), ExpressionError> {
+    let mut cursor = start + 2;
+    loop {
+        match bytes.get(cursor).copied() {
+            Some(b'\\') => {
+                cursor = cursor.checked_add(2).ok_or(ExpressionError)?;
+            }
+            Some(b'/') => {
+                cursor += 1;
+                while bytes.get(cursor).is_some_and(u8::is_ascii_alphabetic) {
+                    cursor += 1;
+                }
+                return Ok((Atom::Regex(&bytes[start + 1..cursor]), cursor));
+            }
+            Some(_) => cursor += 1,
+            None => return Err(ExpressionError),
+        }
+    }
+}
+
 fn parse_operand(bytes: &[u8], cursor: usize) -> Result<(Operand<'_>, usize), ExpressionError> {
     let mut cursor = skip_whitespace(bytes, cursor);
     let negated = has_keyword(bytes, cursor, b"not");
@@ -993,7 +1018,8 @@ fn parse_operand(bytes: &[u8], cursor: usize) -> Result<(Operand<'_>, usize), Ex
     }
     let end = arithmetic_operand_end(bytes, cursor)?;
     let arithmetic = trim_whitespace(&bytes[cursor..end]);
-    let (atom, cursor) = if split_binary_expression(arithmetic)?.is_some() {
+    let is_regex = bytes.get(cursor) == Some(&b'r') && bytes.get(cursor + 1) == Some(&b'/');
+    let (atom, cursor) = if !is_regex && split_binary_expression(arithmetic)?.is_some() {
         (Atom::Arithmetic(arithmetic), end)
     } else {
         parse_atom(bytes, cursor)?

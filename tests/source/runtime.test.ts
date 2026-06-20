@@ -1093,6 +1093,38 @@ test('loads imported macro namespaces without rendering module text', async () =
   }
 });
 
+test('rejects non-callable and undefined macros across deferred template frames', async () => {
+  const engine = await createEngine({
+    loaders: [memoryLoader({
+      'undefined-macro.njk': '{{ undef() }}',
+      'macro-call-undefined-macro.njk': [
+        '{% macro defined_macro(useless) %}',
+        '{% include "undefined-macro.njk" %}',
+        '{% endmacro %}',
+      ].join(''),
+      'import-macro-call-undefined-macro.njk': [
+        '{% import "macro-call-undefined-macro.njk" as t %}',
+        '{% for el in list %}{{ t.defined_macro() }}{% endfor %}',
+      ].join(''),
+    })],
+  });
+  try {
+    for (const [source, context] of [
+      ['{% call foo() %}{% endcall %}', { foo: 'bar' }],
+      ['{% include "undefined-macro.njk" %}', {}],
+      ['{% if true %}{% include "undefined-macro.njk" %}{% endif %}', {}],
+      ['{% include "import-macro-call-undefined-macro.njk" %}', { list: [1, 2, 3] }],
+    ] as const) {
+      await assert.rejects(
+        engine.render({ source }, context),
+        error => error instanceof NunjitsuRenderError && [8, 9].includes(error.code),
+      );
+    }
+  } finally {
+    await engine.dispose();
+  }
+});
+
 test('cancels a render while its worker is suspended on an include loader', async () => {
   let markLoadStarted: (() => void) | undefined;
   const loadStarted = new Promise<void>(resolve => {

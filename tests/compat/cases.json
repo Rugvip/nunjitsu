@@ -1102,6 +1102,31 @@
       "context": {},
       "autoescape": false,
       "expected": "bizra"
+    },
+    {
+      "id": "compiler-filter-explicit-context-dependency",
+      "template": "{{ foo | hallo }}",
+      "capabilityFixture": "compiler-context-filter",
+      "nativeRender": false,
+      "context": { "foo": 1, "bar": 2 },
+      "autoescape": true,
+      "expected": "3"
+    },
+    {
+      "id": "compiler-regex-literal",
+      "template": "{{ r/name [0-9] \\// }}",
+      "nativeRender": false,
+      "context": {},
+      "autoescape": false,
+      "expected": "/name [0-9] \\//"
+    },
+    {
+      "id": "compiler-regex-flags",
+      "template": "{{ r/x/gi }}",
+      "nativeRender": false,
+      "context": {},
+      "autoescape": true,
+      "expected": "/x/gi"
     }
   ]
 }
