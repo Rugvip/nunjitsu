@@ -6,16 +6,16 @@ use crate::expression::{
     split_binary_expression,
 };
 use crate::template::{
-    ConditionalBoundary, ParseOptions, RenderError, RenderedValue, TemplateItem, directive_keyword,
-    emit_escaped, find_block_end, find_call_end, find_conditional_boundary, find_loop_boundaries,
-    find_macro_end, next_item_with_options,
+    ConditionalBoundary, ParseOptions, RenderError, RenderedValue, TemplateItem, contains_extends,
+    directive_keyword, emit_escaped, find_block_end, find_call_end, find_conditional_boundary,
+    find_loop_boundaries, find_macro_end, is_endblock, next_item_with_options,
 };
 use core::arch::wasm32::{memory_grow, memory_size};
 use core::mem::{align_of, size_of};
 use core::ptr::{addr_of, addr_of_mut, read_unaligned, write_unaligned};
 use core::slice;
 
-const ABI_VERSION: u32 = 18;
+const ABI_VERSION: u32 = 19;
 const PAGE_SIZE: usize = 65_536;
 const STREAM_CHUNK_BYTES: u32 = 64 * 1024;
 const RECORD_ALIGNMENT: u32 = 8;
@@ -65,7 +65,7 @@ const ERROR_RESOURCE_LIMIT: u32 = 7;
 const ERROR_UNKNOWN_CAPABILITY: u32 = 8;
 const ERROR_INVALID_EXPRESSION: u32 = 9;
 
-const RENDER_STATE_LENGTH: u32 = 160;
+const RENDER_STATE_LENGTH: u32 = 164;
 const STATE_CONTEXT: usize = 0;
 const STATE_FLAGS: usize = 4;
 const STATE_CURRENT_FRAME: usize = 8;
@@ -106,6 +106,7 @@ const STATE_CURRENT_BLOCK_DEFINITION: usize = 144;
 const STATE_PENDING_IMPORT_ALIAS: usize = 148;
 const STATE_IMPORT_WITH_CONTEXT: usize = 152;
 const STATE_PENDING_IMPORT_BINDINGS: usize = 156;
+const STATE_EXTENDS_CAPTURE: usize = 160;
 
 const EXPRESSION_OUTPUT: u32 = 0;
 const EXPRESSION_IF: u32 = 1;
@@ -392,6 +393,20 @@ fn start_render(request_offset: u32) -> Result<(), u32> {
     unsafe {
         ACTIVE_RENDER = state_offset;
     }
+    if matches!(
+        contains_extends(
+            record_at(source_offset, TAG_SOURCE)?,
+            parse_options(state_offset)?,
+        ),
+        Ok(true)
+    ) {
+        begin_capture(state_offset, 0)?;
+        set_state_field(
+            state_offset,
+            STATE_EXTENDS_CAPTURE,
+            state_field(state_offset, STATE_CURRENT_CAPTURE)?,
+        )?;
+    }
     set_state_field(state_offset, STATE_TRANSIENT_BASE, unsafe { ARENA_CURSOR })?;
     enforce_arena_limit(state_offset, unsafe { ARENA_CURSOR })?;
     Ok(())
@@ -452,6 +467,22 @@ fn resume_include(source_offset: u32, canonical_offset: u32) -> Result<(), u32> 
     set_state_field(state_offset, STATE_PENDING_NAME, 0)?;
     set_state_field(state_offset, STATE_PENDING_LOAD_KIND, LOAD_INCLUDE)?;
     set_state_field(state_offset, STATE_INCLUDE_DEPTH, next_depth)?;
+    if load_kind == LOAD_EXTENDS
+        && matches!(
+            contains_extends(
+                record_at(source_offset, TAG_SOURCE)?,
+                parse_options(state_offset)?,
+            ),
+            Ok(true)
+        )
+    {
+        begin_capture(state_offset, 0)?;
+        set_state_field(
+            state_offset,
+            STATE_EXTENDS_CAPTURE,
+            state_field(state_offset, STATE_CURRENT_CAPTURE)?,
+        )?;
+    }
     set_state_field(state_offset, STATE_TRANSIENT_BASE, unsafe { ARENA_CURSOR })?;
     Ok(())
 }
@@ -611,6 +642,15 @@ fn run_active_render() -> Result<u32, u32> {
                 }
             }
             TemplateItem::End => {
+                let extends_capture = state_field(state_offset, STATE_EXTENDS_CAPTURE)?;
+                if extends_capture != 0
+                    && extends_capture == state_field(state_offset, STATE_CURRENT_CAPTURE)?
+                    && capture_field(extends_capture, CAPTURE_FRAME)? == frame_offset
+                {
+                    let output = finish_output_capture(state_offset, TAG_SAFE_STRING)?;
+                    set_state_field(state_offset, STATE_EXTENDS_CAPTURE, 0)?;
+                    emit_value(state_offset, output)?;
+                }
                 let capture_offset = state_field(state_offset, STATE_CURRENT_CAPTURE)?;
                 if capture_offset != 0
                     && capture_field(capture_offset, CAPTURE_FRAME)? == frame_offset
@@ -703,6 +743,7 @@ fn handle_tag(state_offset: u32, directive: &[u8]) -> Result<Option<u32>, u32> {
         return start_expression(state_offset, clause.template, EXPRESSION_IMPORT);
     }
     if let Some(expression) = directive_keyword(directive, b"extends") {
+        discard_extends_output(state_offset)?;
         prepare_extending_template(state_offset)?;
         set_state_field(state_offset, STATE_PENDING_LOAD_KIND, LOAD_EXTENDS)?;
         return start_expression(state_offset, expression, EXPRESSION_EXTENDS);
@@ -711,7 +752,7 @@ fn handle_tag(state_offset: u32, directive: &[u8]) -> Result<Option<u32>, u32> {
         start_block(state_offset, name)?;
         return Ok(None);
     }
-    if directive == b"endblock" {
+    if is_endblock(directive) {
         return Ok(None);
     }
     if let Some(clause) = directive_keyword(directive, b"call").or_else(|| {
@@ -800,7 +841,7 @@ fn prepare_extending_template(state_offset: u32) -> Result<(), u32> {
                         next_cursor as u32,
                     )?;
                     block_depth = block_depth.checked_add(1).ok_or(ERROR_RESOURCE_LIMIT)?;
-                } else if directive == b"endblock" {
+                } else if is_endblock(directive) {
                     block_depth = block_depth.saturating_sub(1);
                 } else if let Some(signature) = directive_keyword(directive, b"macro") {
                     let end_cursor = if block_depth == 0 {
@@ -847,7 +888,7 @@ fn write_import_namespace(
                     || directive_keyword(directive, b"if").is_some()
                 {
                     nested_depth = nested_depth.checked_add(1).ok_or(ERROR_RESOURCE_LIMIT)?;
-                } else if matches!(directive, b"endblock" | b"endfor" | b"endif") {
+                } else if is_endblock(directive) || matches!(directive, b"endfor" | b"endif") {
                     nested_depth = nested_depth.saturating_sub(1);
                 } else if directive_keyword(directive, b"macro").is_some() {
                     let end_cursor =
@@ -905,7 +946,7 @@ fn write_import_namespace(
                     || directive_keyword(directive, b"if").is_some()
                 {
                     nested_depth = nested_depth.checked_add(1).ok_or(ERROR_RESOURCE_LIMIT)?;
-                } else if matches!(directive, b"endblock" | b"endfor" | b"endif") {
+                } else if is_endblock(directive) || matches!(directive, b"endfor" | b"endif") {
                     nested_depth = nested_depth.saturating_sub(1);
                 } else if directive_keyword(directive, b"macro").is_some() {
                     cursor = find_macro_end(source, next_cursor, parse_options(state_offset)?)
@@ -974,7 +1015,7 @@ fn write_import_namespace(
                     || directive_keyword(directive, b"if").is_some()
                 {
                     nested_depth = nested_depth.checked_add(1).ok_or(ERROR_RESOURCE_LIMIT)?;
-                } else if matches!(directive, b"endblock" | b"endfor" | b"endif") {
+                } else if is_endblock(directive) || matches!(directive, b"endfor" | b"endif") {
                     nested_depth = nested_depth.saturating_sub(1);
                 } else if let Some(signature) = directive_keyword(directive, b"macro") {
                     let end_cursor =
@@ -1072,6 +1113,18 @@ fn register_block_definition(
         parse_options(state_offset)?,
     )
     .map_err(render_error_code)? as u32;
+    let mut existing_definition = state_field(state_offset, STATE_CURRENT_BLOCK_DEFINITION)?;
+    while existing_definition != 0 {
+        if block_definition_field(existing_definition, BLOCK_DEFINITION_FRAME)? == frame_offset
+            && record_at(
+                block_definition_field(existing_definition, BLOCK_DEFINITION_NAME)?,
+                TAG_STRING,
+            )? == block.name
+        {
+            return Err(ERROR_UNSUPPORTED_TAG);
+        }
+        existing_definition = block_definition_field(existing_definition, BLOCK_DEFINITION_PARENT)?;
+    }
     let name_offset = write_bytes_record(TAG_STRING, block.name)?;
     let definition_offset = allocate_record(TAG_BLOCK_DEFINITION, BLOCK_DEFINITION_LENGTH)?;
     let definition = mutable_record_at(definition_offset, TAG_BLOCK_DEFINITION)?;
@@ -1882,6 +1935,48 @@ fn finish_output_capture(state_offset: u32, tag: u32) -> Result<u32, u32> {
         read_u32(capture, CAPTURE_PARENT)?,
     )?;
     Ok(value_offset)
+}
+
+fn discard_extends_output(state_offset: u32) -> Result<(), u32> {
+    let capture_offset = state_field(state_offset, STATE_EXTENDS_CAPTURE)?;
+    if capture_offset == 0 {
+        return Ok(());
+    }
+    if capture_offset != state_field(state_offset, STATE_CURRENT_CAPTURE)? {
+        return Err(ERROR_UNSUPPORTED_TAG);
+    }
+    let capture = record_at(capture_offset, TAG_CAPTURE)?;
+    if capture.len() != CAPTURE_LENGTH as usize
+        || read_u32(capture, CAPTURE_FRAME)? != state_field(state_offset, STATE_CURRENT_FRAME)?
+    {
+        return Err(ERROR_UNSUPPORTED_TAG);
+    }
+    set_state_field(
+        state_offset,
+        STATE_FIRST_CHUNK,
+        read_u32(capture, CAPTURE_FIRST_CHUNK)?,
+    )?;
+    set_state_field(
+        state_offset,
+        STATE_LAST_CHUNK,
+        read_u32(capture, CAPTURE_LAST_CHUNK)?,
+    )?;
+    set_state_field(
+        state_offset,
+        STATE_OUTPUT_LENGTH,
+        read_u32(capture, CAPTURE_OUTPUT_LENGTH)?,
+    )?;
+    set_state_field(
+        state_offset,
+        STATE_TOTAL_OUTPUT_LENGTH,
+        read_u32(capture, CAPTURE_TOTAL_OUTPUT_LENGTH)?,
+    )?;
+    set_state_field(
+        state_offset,
+        STATE_CURRENT_CAPTURE,
+        read_u32(capture, CAPTURE_PARENT)?,
+    )?;
+    set_state_field(state_offset, STATE_EXTENDS_CAPTURE, 0)
 }
 
 fn advance_for(state_offset: u32) -> Result<(), u32> {

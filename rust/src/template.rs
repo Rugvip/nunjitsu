@@ -310,7 +310,7 @@ pub(crate) fn find_block_end(
         if let TemplateItem::Tag(directive) = item {
             if directive_keyword(directive, b"block").is_some() {
                 depth = depth.checked_add(1).ok_or(RenderError::OutputTooLarge)?;
-            } else if directive == b"endblock" {
+            } else if is_endblock(directive) {
                 if depth == 0 {
                     return Ok(next_cursor);
                 }
@@ -351,6 +351,28 @@ pub(crate) fn find_call_end(
         }
         cursor = next_cursor;
     }
+}
+
+/// Reports whether a source contains an inheritance directive outside raw text.
+#[cfg(any(target_arch = "wasm32", test))]
+pub(crate) fn contains_extends(source: &[u8], options: ParseOptions) -> Result<bool, RenderError> {
+    let mut cursor = 0usize;
+    loop {
+        let (item, next_cursor) = next_item_with_options(source, cursor, options)?;
+        match item {
+            TemplateItem::Tag(directive) if directive_keyword(directive, b"extends").is_some() => {
+                return Ok(true);
+            }
+            TemplateItem::End => return Ok(false),
+            _ => cursor = next_cursor,
+        }
+    }
+}
+
+/// Reports whether a directive closes a block, with an optional repeated name.
+#[cfg(any(target_arch = "wasm32", test))]
+pub(crate) fn is_endblock(directive: &[u8]) -> bool {
+    directive == b"endblock" || directive_keyword(directive, b"endblock").is_some()
 }
 
 /// Returns a non-empty directive remainder after an exact keyword and whitespace.
@@ -818,6 +840,20 @@ mod tests {
         assert_eq!(
             find_call_end(call_source, 0, ParseOptions::default()),
             Ok(57),
+        );
+        assert_eq!(
+            contains_extends(
+                b"before{% if enabled %}{% extends parent %}{% endif %}",
+                ParseOptions::default(),
+            ),
+            Ok(true),
+        );
+        assert_eq!(
+            contains_extends(
+                b"{% raw %}{% extends hidden %}{% endraw %}",
+                ParseOptions::default(),
+            ),
+            Ok(false),
         );
     }
 

@@ -272,6 +272,30 @@
       "upstream": { "id": "tests/compiler.js:88", "file": "tests/compiler.js", "test": "should default to importing without context" },
       "status": "ported",
       "cases": ["compiler-import-defaults-without-context", "compiler-from-import-defaults-without-context"]
+    },
+    {
+      "upstream": { "id": "tests/compiler.js:89", "file": "tests/compiler.js", "test": "should inherit templates" },
+      "status": "ported",
+      "cases": ["compiler-inheritance-default-blocks", "compiler-inheritance-discards-child-output", "compiler-inheritance-one-override", "compiler-inheritance-multiple-overrides", "compiler-inheritance-dynamic-parent"]
+    },
+    {
+      "upstream": { "id": "tests/compiler.js:90", "file": "tests/compiler.js", "test": "should not call blocks not defined from template inheritance" },
+      "status": "adapted",
+      "cases": ["compiler-inheritance-unused-block-skipped"]
+    },
+    {
+      "upstream": { "id": "tests/compiler.js:91", "file": "tests/compiler.js", "test": "should conditionally inherit templates" },
+      "status": "ported",
+      "cases": ["compiler-inheritance-conditional-false", "compiler-inheritance-conditional-true", "compiler-inheritance-conditional-first-parent", "compiler-inheritance-conditional-second-parent"]
+    },
+    {
+      "upstream": { "id": "tests/compiler.js:92", "file": "tests/compiler.js", "test": "should error if same block is defined multiple times" },
+      "status": "adapted"
+    },
+    {
+      "upstream": { "id": "tests/compiler.js:93", "file": "tests/compiler.js", "test": "should render nested blocks in child template" },
+      "status": "ported",
+      "cases": ["compiler-inheritance-nested-child-block"]
     }
   ]
 }

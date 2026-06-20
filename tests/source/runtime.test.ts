@@ -957,6 +957,7 @@ test('resolves inherited blocks through bounded one-shot frames', async () => {
         '{% block content %}middle{% endblock %}',
         '{% block footer %}middle footer{% endblock %}',
       ].join(''),
+      'simple-base.njk': '{% block test %}base{% endblock test %}',
     })],
   });
   try {
@@ -971,6 +972,20 @@ test('resolves inherited blocks through bounded one-shot frames', async () => {
         source: '{% extends "base.njk" %}{% block content %}streamed{% endblock %}',
       }))).join(''),
       'AstreamedBbase footerC',
+    );
+    assert.equal(
+      await engine.render({ source: '{% extends "simple-base.njk" %}' }),
+      'base',
+    );
+    await assert.rejects(
+      engine.render({
+        source: [
+          '{% extends "simple-base.njk" %}',
+          '{% block test %}first{% endblock %}',
+          '{% block test %}second{% endblock %}',
+        ].join(''),
+      }),
+      error => error instanceof NunjitsuRenderError && error.code === 5,
     );
   } finally {
     await engine.dispose();

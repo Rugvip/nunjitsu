@@ -672,6 +672,105 @@
       "expected": "Here's "
     },
     {
+      "id": "compiler-inheritance-default-blocks",
+      "template": "{% extends \"base.njk\" %}",
+      "templates": { "base.njk": "Foo{% block block1 %}Bar{% endblock %}{% block block2 %}Baz{% endblock %}Fizzle" },
+      "nativeRender": false,
+      "context": {},
+      "autoescape": false,
+      "expected": "FooBarBazFizzle"
+    },
+    {
+      "id": "compiler-inheritance-discards-child-output",
+      "template": "hola {% extends \"base.njk\" %} hizzle mumble",
+      "templates": { "base.njk": "Foo{% block block1 %}Bar{% endblock %}{% block block2 %}Baz{% endblock %}Fizzle" },
+      "nativeRender": false,
+      "context": {},
+      "autoescape": false,
+      "expected": "FooBarBazFizzle"
+    },
+    {
+      "id": "compiler-inheritance-one-override",
+      "template": "{% extends \"base.njk\" %}{% block block1 %}BAR{% endblock %}",
+      "templates": { "base.njk": "Foo{% block block1 %}Bar{% endblock %}{% block block2 %}Baz{% endblock %}Fizzle" },
+      "nativeRender": false,
+      "context": {},
+      "autoescape": false,
+      "expected": "FooBARBazFizzle"
+    },
+    {
+      "id": "compiler-inheritance-multiple-overrides",
+      "template": "{% extends \"base.njk\" %}{% block block1 %}BAR{% endblock %}{% block block2 %}BAZ{% endblock %}",
+      "templates": { "base.njk": "Foo{% block block1 %}Bar{% endblock %}{% block block2 %}Baz{% endblock %}Fizzle" },
+      "nativeRender": false,
+      "context": {},
+      "autoescape": false,
+      "expected": "FooBARBAZFizzle"
+    },
+    {
+      "id": "compiler-inheritance-dynamic-parent",
+      "template": "hola {% extends tmpl %} hizzle mumble",
+      "templates": { "base.njk": "Foo{% block block1 %}Bar{% endblock %}{% block block2 %}Baz{% endblock %}Fizzle" },
+      "nativeRender": false,
+      "context": { "tmpl": "base.njk" },
+      "autoescape": false,
+      "expected": "FooBarBazFizzle"
+    },
+    {
+      "id": "compiler-inheritance-unused-block-skipped",
+      "template": "{% extends \"base.njk\" %}{% block notReal %}{{ missing() }}{% endblock %}",
+      "templates": { "base.njk": "Foo{% block block1 %}Bar{% endblock %}{% block block2 %}Baz{% endblock %}Fizzle" },
+      "nativeRender": false,
+      "context": {},
+      "autoescape": false,
+      "expected": "FooBarBazFizzle"
+    },
+    {
+      "id": "compiler-inheritance-conditional-false",
+      "template": "{% if false %}{% extends \"base.njk\" %}{% endif %}{% block block1 %}BAR{% endblock %}",
+      "templates": { "base.njk": "Foo{% block block1 %}Bar{% endblock %}{% block block2 %}Baz{% endblock %}Fizzle" },
+      "nativeRender": false,
+      "context": {},
+      "autoescape": false,
+      "expected": "BAR"
+    },
+    {
+      "id": "compiler-inheritance-conditional-true",
+      "template": "{% if true %}{% extends \"base.njk\" %}{% endif %}{% block block1 %}BAR{% endblock %}",
+      "templates": { "base.njk": "Foo{% block block1 %}Bar{% endblock %}{% block block2 %}Baz{% endblock %}Fizzle" },
+      "nativeRender": false,
+      "context": {},
+      "autoescape": false,
+      "expected": "FooBARBazFizzle"
+    },
+    {
+      "id": "compiler-inheritance-conditional-first-parent",
+      "template": "{% if true %}{% extends \"base.njk\" %}{% else %}{% extends \"base2.njk\" %}{% endif %}{% block block1 %}HELLO{% endblock %}",
+      "templates": { "base.njk": "Foo{% block block1 %}Bar{% endblock %}{% block block2 %}Baz{% endblock %}Fizzle", "base2.njk": "{% for item in [1,2] %}{% block item %}{{ item }}{% endblock %}{% endfor %}" },
+      "nativeRender": false,
+      "context": {},
+      "autoescape": false,
+      "expected": "FooHELLOBazFizzle"
+    },
+    {
+      "id": "compiler-inheritance-conditional-second-parent",
+      "template": "{% if false %}{% extends \"base.njk\" %}{% else %}{% extends \"base2.njk\" %}{% endif %}{% block item %}hello{{ item }}{% endblock %}",
+      "templates": { "base.njk": "Foo{% block block1 %}Bar{% endblock %}{% block block2 %}Baz{% endblock %}Fizzle", "base2.njk": "{% for item in [1,2] %}{% block item %}{{ item }}{% endblock %}{% endfor %}" },
+      "nativeRender": false,
+      "context": {},
+      "autoescape": false,
+      "expected": "hello1hello2"
+    },
+    {
+      "id": "compiler-inheritance-nested-child-block",
+      "template": "{% extends \"base.njk\" %}{% block block1 %}{% block nested %}BAR{% endblock %}{% endblock %}",
+      "templates": { "base.njk": "Foo{% block block1 %}Bar{% endblock %}{% block block2 %}Baz{% endblock %}Fizzle" },
+      "nativeRender": false,
+      "context": {},
+      "autoescape": false,
+      "expected": "FooBARBazFizzle"
+    },
+    {
       "id": "compiler-block-set-inside-macro",
       "template": "{%- macro foo(bar) -%}{%- set test -%}foo{%- endset -%}{{ bar }}{{ test }}{%- endmacro -%}{{ foo(\"bar\") }}",
       "nativeRender": false,
