@@ -199,6 +199,11 @@
       "cases": ["compiler-macro-overridden-defaults"]
     },
     {
+      "upstream": { "id": "tests/compiler.js:75", "file": "tests/compiler.js", "test": "should compile macros defined in one block and called in another" },
+      "status": "ported",
+      "cases": ["compiler-macro-defined-across-blocks"]
+    },
+    {
       "upstream": { "id": "tests/compiler.js:76", "file": "tests/compiler.js", "test": "should compile macros that include other templates" },
       "status": "ported",
       "cases": ["compiler-macro-include"]

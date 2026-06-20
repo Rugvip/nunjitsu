@@ -456,6 +456,14 @@
       "expected": "11020"
     },
     {
+      "id": "compiler-macro-defined-across-blocks",
+      "template": "{% block bar %}{% macro foo(x, y=2, z=5) %}{{ x }}{{ y }}{{ z }}{% endmacro %}{% endblock %}{% block baz %}{{ foo(1) }}{% endblock %}",
+      "nativeRender": false,
+      "context": {},
+      "autoescape": false,
+      "expected": "125"
+    },
+    {
       "id": "compiler-macro-argument-filter",
       "template": "{% macro foo(x) %}{{ x|title }}{% endmacro %}{{ foo(\"foo\") }}",
       "nativeRender": false,

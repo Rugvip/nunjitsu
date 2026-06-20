@@ -608,6 +608,16 @@ fn start_expression(state_offset: u32, expression: &[u8], action: u32) -> Result
 }
 
 fn handle_tag(state_offset: u32, directive: &[u8]) -> Result<Option<u32>, u32> {
+    if let Some(name) = directive_keyword(directive, b"block") {
+        let block = parse_tag_call(name).map_err(|_| ERROR_UNSUPPORTED_TAG)?;
+        if !block.arguments.is_empty() {
+            return Err(ERROR_UNSUPPORTED_TAG);
+        }
+        return Ok(None);
+    }
+    if directive == b"endblock" {
+        return Ok(None);
+    }
     if let Some(signature) = directive_keyword(directive, b"macro") {
         define_macro(state_offset, signature)?;
         return Ok(None);
