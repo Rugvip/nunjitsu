@@ -886,6 +886,59 @@ test('keeps resumable assignments scoped across loops and includes', async () =>
   }
 });
 
+test('executes deferred macros in isolated captured scopes', async () => {
+  const engine = await createEngine({
+    autoescape: true,
+    loaders: [memoryLoader({ 'macro-include.njk': 'included {{ value }}' })],
+  });
+  try {
+    assert.equal(
+      await engine.render(
+        {
+          source: [
+            '{% macro wrap(value) %}<b>{{ value }}</b>{% endmacro %}',
+            '{% macro optional(x, y) %}{{ x }}:{{ y }}{% endmacro %}',
+            '{{ wrap(input) }}|{{ optional("first") }}',
+          ].join(''),
+        },
+        { input: '<unsafe>' },
+      ),
+      '<b>&lt;unsafe&gt;</b>|first:',
+    );
+    assert.equal(
+      await engine.render({
+        source: [
+          '{% macro inner() %}inner{% endmacro %}',
+          '{% macro outer() %}',
+          '{% set local %}captured{% endset %}',
+          '{% include "macro-include.njk" %}:{{ inner() }}:{{ local }}',
+          '{% endmacro %}',
+          '{{ outer() }}|{{ local }}',
+        ].join(''),
+      }, { value: 'value' }),
+      'included value:inner:captured|',
+    );
+    assert.equal(
+      await engine.render({
+        source: [
+          '{% macro one(value) %}{{ two() }}{% endmacro %}',
+          '{% macro two() %}{{ value }}{% endmacro %}',
+          '{{ one("hidden") }}',
+        ].join(''),
+      }),
+      '',
+    );
+    assert.deepEqual(
+      await Array.fromAsync(engine.renderStream({
+        source: 'before{% macro value() %}macro{% endmacro %}{{ value() }}after',
+      })),
+      ['before', 'macroafter'],
+    );
+  } finally {
+    await engine.dispose();
+  }
+});
+
 test('cancels a render while its worker is suspended on an include loader', async () => {
   let markLoadStarted: (() => void) | undefined;
   const loadStarted = new Promise<void>(resolve => {

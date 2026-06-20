@@ -271,6 +271,32 @@ pub(crate) fn find_loop_boundaries(
     }
 }
 
+/// Finds the cursor immediately after the matching `endmacro` tag.
+#[cfg(any(target_arch = "wasm32", test))]
+pub(crate) fn find_macro_end(
+    source: &[u8],
+    mut cursor: usize,
+    options: ParseOptions,
+) -> Result<usize, RenderError> {
+    let mut depth = 0usize;
+    loop {
+        let (item, next_cursor) = next_item_with_options(source, cursor, options)?;
+        if let TemplateItem::Tag(directive) = item {
+            if directive_keyword(directive, b"macro").is_some() {
+                depth = depth.checked_add(1).ok_or(RenderError::OutputTooLarge)?;
+            } else if directive == b"endmacro" {
+                if depth == 0 {
+                    return Ok(next_cursor);
+                }
+                depth -= 1;
+            }
+        } else if item == TemplateItem::End {
+            return Err(RenderError::UnclosedBlockTag);
+        }
+        cursor = next_cursor;
+    }
+}
+
 /// Returns a non-empty directive remainder after an exact keyword and whitespace.
 #[cfg(any(target_arch = "wasm32", test))]
 pub(crate) fn directive_keyword<'a>(directive: &'a [u8], keyword: &[u8]) -> Option<&'a [u8]> {
@@ -718,6 +744,12 @@ mod tests {
                 else_cursor: Some(58),
                 end_cursor: loop_source.len(),
             }),
+        );
+
+        let macro_source = b"body{% macro nested() %}nested{% endmacro %}tail{% endmacro %}after";
+        assert_eq!(
+            find_macro_end(macro_source, 0, ParseOptions::default()),
+            Ok(62),
         );
     }
 

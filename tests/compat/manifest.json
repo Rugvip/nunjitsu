@@ -140,10 +140,53 @@
     },
     {
       "upstream": { "id": "tests/compiler.js:117", "file": "tests/compiler.js", "test": "should compile block-set" },
-      "status": "partial",
-      "reason": "All direct, nested, loop, include, and multi-target captures are ported; the macro-contained regression requires macro support.",
-      "removalCondition": "Implement macros and port the remaining macro-contained assertion.",
-      "cases": ["compiler-block-set-empty-and-text", "compiler-block-set-loop-include", "compiler-block-set-nested", "compiler-block-set-multiple-targets"]
+      "status": "ported",
+      "cases": ["compiler-block-set-empty-and-text", "compiler-block-set-loop-include", "compiler-block-set-nested", "compiler-block-set-multiple-targets", "compiler-block-set-inside-macro"]
+    },
+    {
+      "upstream": { "id": "tests/compiler.js:63", "file": "tests/compiler.js", "test": "should compile macros" },
+      "status": "ported",
+      "cases": ["compiler-macro-basic"]
+    },
+    {
+      "upstream": { "id": "tests/compiler.js:64", "file": "tests/compiler.js", "test": "should compile macros with optional args" },
+      "status": "ported",
+      "cases": ["compiler-macro-optional-positional"]
+    },
+    {
+      "upstream": { "id": "tests/compiler.js:65", "file": "tests/compiler.js", "test": "should compile macros with args that can be passed to filters" },
+      "status": "ported",
+      "cases": ["compiler-macro-argument-filter"]
+    },
+    {
+      "upstream": { "id": "tests/compiler.js:66", "file": "tests/compiler.js", "test": "should compile macros with positional args" },
+      "status": "ported",
+      "cases": ["compiler-macro-optional-positional"]
+    },
+    {
+      "upstream": { "id": "tests/compiler.js:76", "file": "tests/compiler.js", "test": "should compile macros that include other templates" },
+      "status": "ported",
+      "cases": ["compiler-macro-include"]
+    },
+    {
+      "upstream": { "id": "tests/compiler.js:77", "file": "tests/compiler.js", "test": "should compile macros that set vars" },
+      "status": "ported",
+      "cases": ["compiler-macro-local-set"]
+    },
+    {
+      "upstream": { "id": "tests/compiler.js:78", "file": "tests/compiler.js", "test": "should not leak variables set in macro to calling scope" },
+      "status": "ported",
+      "cases": ["compiler-macro-nested-call-scope"]
+    },
+    {
+      "upstream": { "id": "tests/compiler.js:79", "file": "tests/compiler.js", "test": "should not leak variables set in nested scope within macro out to calling scope" },
+      "status": "ported",
+      "cases": ["compiler-macro-nested-loop-scope"]
+    },
+    {
+      "upstream": { "id": "tests/compiler.js:81", "file": "tests/compiler.js", "test": "should compile macros that cannot see variables in caller scope" },
+      "status": "ported",
+      "cases": ["compiler-macro-no-caller-scope"]
     }
   ]
 }

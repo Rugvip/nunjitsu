@@ -5,14 +5,15 @@ use crate::expression::{
 };
 use crate::template::{
     ConditionalBoundary, ParseOptions, RenderError, RenderedValue, TemplateItem, directive_keyword,
-    emit_escaped, find_conditional_boundary, find_loop_boundaries, next_item_with_options,
+    emit_escaped, find_conditional_boundary, find_loop_boundaries, find_macro_end,
+    next_item_with_options,
 };
 use core::arch::wasm32::{memory_grow, memory_size};
 use core::mem::{align_of, size_of};
 use core::ptr::{addr_of, addr_of_mut, read_unaligned, write_unaligned};
 use core::slice;
 
-const ABI_VERSION: u32 = 14;
+const ABI_VERSION: u32 = 15;
 const PAGE_SIZE: usize = 65_536;
 const STREAM_CHUNK_BYTES: u32 = 64 * 1024;
 const RECORD_ALIGNMENT: u32 = 8;
@@ -38,6 +39,9 @@ const TAG_LOOP_STATE: u32 = 18;
 const TAG_SCOPE: u32 = 19;
 const TAG_BINDINGS: u32 = 20;
 const TAG_CAPTURE: u32 = 21;
+const TAG_MACRO_DEFINITION: u32 = 22;
+const TAG_MACRO_CALL: u32 = 23;
+const TAG_MACRO_ARGUMENTS: u32 = 24;
 
 const STATE_IDLE: u32 = 0;
 const STATE_COMPLETE: u32 = 1;
@@ -58,7 +62,7 @@ const ERROR_RESOURCE_LIMIT: u32 = 7;
 const ERROR_UNKNOWN_CAPABILITY: u32 = 8;
 const ERROR_INVALID_EXPRESSION: u32 = 9;
 
-const RENDER_STATE_LENGTH: u32 = 136;
+const RENDER_STATE_LENGTH: u32 = 144;
 const STATE_CONTEXT: usize = 0;
 const STATE_FLAGS: usize = 4;
 const STATE_CURRENT_FRAME: usize = 8;
@@ -93,6 +97,8 @@ const STATE_CURRENT_SCOPE: usize = 120;
 const STATE_PENDING_SET_BINDINGS: usize = 124;
 const STATE_INCLUDE_IGNORE_MISSING: usize = 128;
 const STATE_CURRENT_CAPTURE: usize = 132;
+const STATE_CURRENT_MACRO_DEFINITION: usize = 136;
+const STATE_CURRENT_MACRO_CALL: usize = 140;
 
 const EXPRESSION_OUTPUT: u32 = 0;
 const EXPRESSION_IF: u32 = 1;
@@ -136,6 +142,30 @@ const CAPTURE_FIRST_CHUNK: usize = 12;
 const CAPTURE_LAST_CHUNK: usize = 16;
 const CAPTURE_OUTPUT_LENGTH: usize = 20;
 const CAPTURE_TOTAL_OUTPUT_LENGTH: usize = 24;
+
+const MACRO_DEFINITION_LENGTH: u32 = 28;
+const MACRO_DEFINITION_PARENT: usize = 0;
+const MACRO_DEFINITION_NAME: usize = 4;
+const MACRO_DEFINITION_SOURCE: usize = 8;
+const MACRO_DEFINITION_BODY_CURSOR: usize = 12;
+const MACRO_DEFINITION_PARAMETERS: usize = 16;
+const MACRO_DEFINITION_SCOPE: usize = 20;
+const MACRO_DEFINITION_FRAME: usize = 24;
+
+const MACRO_CALL_LENGTH: u32 = 52;
+const MACRO_CALL_PARENT: usize = 0;
+const MACRO_CALL_FRAME: usize = 4;
+const MACRO_CALL_PENDING_EXPRESSION: usize = 8;
+const MACRO_CALL_EXPRESSION_CURSOR: usize = 12;
+const MACRO_CALL_EXPRESSION_ACTION: usize = 16;
+const MACRO_CALL_CURRENT_VALUE: usize = 20;
+const MACRO_CALL_PENDING_SET_BINDINGS: usize = 24;
+const MACRO_CALL_INCLUDE_IGNORE_MISSING: usize = 28;
+const MACRO_CALL_PENDING_NAME: usize = 32;
+const MACRO_CALL_NEGATE_RESULT: usize = 36;
+const MACRO_CALL_SCOPE: usize = 40;
+const MACRO_CALL_LOOP: usize = 44;
+const MACRO_CALL_TRANSIENT_BASE: usize = 48;
 
 const SCOPE_LENGTH: u32 = 12;
 const SCOPE_PARENT: usize = 0;
@@ -550,6 +580,10 @@ fn start_expression(state_offset: u32, expression: &[u8], action: u32) -> Result
     set_state_field(state_offset, STATE_EXPRESSION_ACTION, action)?;
 
     if let Atom::Call(call) = base {
+        if let Some(definition_offset) = resolve_macro(state_offset, call.name)? {
+            start_macro_call(state_offset, definition_offset, call, negated)?;
+            return Ok(None);
+        }
         return issue_capability(
             state_offset,
             CAPABILITY_GLOBAL,
@@ -573,6 +607,13 @@ fn start_expression(state_offset: u32, expression: &[u8], action: u32) -> Result
 }
 
 fn handle_tag(state_offset: u32, directive: &[u8]) -> Result<Option<u32>, u32> {
+    if let Some(signature) = directive_keyword(directive, b"macro") {
+        define_macro(state_offset, signature)?;
+        return Ok(None);
+    }
+    if directive == b"endmacro" {
+        return finish_macro_call(state_offset);
+    }
     if let Some(condition) = directive_keyword(directive, b"if") {
         return start_expression(state_offset, condition, EXPRESSION_IF);
     }
@@ -613,6 +654,332 @@ fn handle_tag(state_offset: u32, directive: &[u8]) -> Result<Option<u32>, u32> {
         return Ok(None);
     }
     start_tag(state_offset, directive).map(Some)
+}
+
+fn define_macro(state_offset: u32, signature: &[u8]) -> Result<(), u32> {
+    let macro_signature = parse_tag_call(signature).map_err(|_| ERROR_UNSUPPORTED_TAG)?;
+    let mut parameter_cursor = 0usize;
+    while let Some((_, next)) = next_binding(macro_signature.arguments, parameter_cursor)
+        .map_err(|_| ERROR_UNSUPPORTED_TAG)?
+    {
+        parameter_cursor = next;
+    }
+
+    let frame_offset = state_field(state_offset, STATE_CURRENT_FRAME)?;
+    let frame = record_at(frame_offset, TAG_FRAME)?;
+    let source_offset = read_u32(frame, FRAME_SOURCE)?;
+    let body_cursor = read_u32(frame, FRAME_CURSOR)?;
+    let source = record_at(source_offset, TAG_SOURCE)?;
+    let end_cursor = find_macro_end(source, body_cursor as usize, parse_options(state_offset)?)
+        .map_err(render_error_code)?;
+
+    let name_offset = write_bytes_record(TAG_STRING, macro_signature.name)?;
+    let parameters_offset = write_bytes_record(TAG_STRING, macro_signature.arguments)?;
+    let definition_offset = allocate_record(TAG_MACRO_DEFINITION, MACRO_DEFINITION_LENGTH)?;
+    let definition = mutable_record_at(definition_offset, TAG_MACRO_DEFINITION)?;
+    write_u32(
+        definition,
+        MACRO_DEFINITION_PARENT,
+        state_field(state_offset, STATE_CURRENT_MACRO_DEFINITION)?,
+    )?;
+    write_u32(definition, MACRO_DEFINITION_NAME, name_offset)?;
+    write_u32(definition, MACRO_DEFINITION_SOURCE, source_offset)?;
+    write_u32(definition, MACRO_DEFINITION_BODY_CURSOR, body_cursor)?;
+    write_u32(definition, MACRO_DEFINITION_PARAMETERS, parameters_offset)?;
+    write_u32(
+        definition,
+        MACRO_DEFINITION_SCOPE,
+        state_field(state_offset, STATE_CURRENT_SCOPE)?,
+    )?;
+    write_u32(definition, MACRO_DEFINITION_FRAME, frame_offset)?;
+    set_state_field(
+        state_offset,
+        STATE_CURRENT_MACRO_DEFINITION,
+        definition_offset,
+    )?;
+    set_frame_field(frame_offset, FRAME_CURSOR, end_cursor as u32)
+}
+
+fn resolve_macro(state_offset: u32, name: &[u8]) -> Result<Option<u32>, u32> {
+    let current_frame = state_field(state_offset, STATE_CURRENT_FRAME)?;
+    let mut definition_offset = state_field(state_offset, STATE_CURRENT_MACRO_DEFINITION)?;
+    while definition_offset != 0 {
+        let definition = record_at(definition_offset, TAG_MACRO_DEFINITION)?;
+        if definition.len() != MACRO_DEFINITION_LENGTH as usize {
+            return Err(ERROR_INVALID_RECORD);
+        }
+        if frame_is_ancestor(current_frame, read_u32(definition, MACRO_DEFINITION_FRAME)?)?
+            && record_at(read_u32(definition, MACRO_DEFINITION_NAME)?, TAG_STRING)? == name
+        {
+            return Ok(Some(definition_offset));
+        }
+        definition_offset = read_u32(definition, MACRO_DEFINITION_PARENT)?;
+    }
+    Ok(None)
+}
+
+fn frame_is_ancestor(mut frame_offset: u32, expected: u32) -> Result<bool, u32> {
+    while frame_offset != 0 {
+        if frame_offset == expected {
+            return Ok(true);
+        }
+        let frame = record_at(frame_offset, TAG_FRAME)?;
+        if frame.len() != FRAME_LENGTH as usize {
+            return Err(ERROR_INVALID_RECORD);
+        }
+        frame_offset = read_u32(frame, FRAME_PARENT)?;
+    }
+    Ok(false)
+}
+
+fn write_macro_arguments(
+    state_offset: u32,
+    definition_offset: u32,
+    call: Call<'_>,
+) -> Result<u32, u32> {
+    let parameters = record_at(
+        macro_definition_field(definition_offset, MACRO_DEFINITION_PARAMETERS)?,
+        TAG_STRING,
+    )?;
+    let mut count = 0usize;
+    let mut parameter_cursor = 0usize;
+    while let Some((_, next)) =
+        next_binding(parameters, parameter_cursor).map_err(|_| ERROR_INVALID_EXPRESSION)?
+    {
+        count = count.checked_add(1).ok_or(ERROR_RESOURCE_LIMIT)?;
+        parameter_cursor = next;
+    }
+    let payload_length = 4u32
+        .checked_add((count as u32).checked_mul(8).ok_or(ERROR_RESOURCE_LIMIT)?)
+        .ok_or(ERROR_RESOURCE_LIMIT)?;
+    let arguments_offset = allocate_record(TAG_MACRO_ARGUMENTS, payload_length)?;
+    write_u32(
+        mutable_record_at(arguments_offset, TAG_MACRO_ARGUMENTS)?,
+        0,
+        count as u32,
+    )?;
+
+    parameter_cursor = 0;
+    let mut argument_cursor = 0usize;
+    let mut index = 0usize;
+    while let Some((parameter, next_parameter)) =
+        next_binding(parameters, parameter_cursor).map_err(|_| ERROR_INVALID_EXPRESSION)?
+    {
+        let value_offset = if let Some((argument, next_argument_cursor)) =
+            next_argument(call.arguments, argument_cursor).map_err(|_| ERROR_INVALID_EXPRESSION)?
+        {
+            argument_cursor = next_argument_cursor;
+            resolve_atom(state_offset, argument)?
+        } else {
+            allocate_record(TAG_UNDEFINED, 0)?
+        };
+        let name_offset = write_bytes_record(TAG_STRING, parameter)?;
+        let arguments = mutable_record_at(arguments_offset, TAG_MACRO_ARGUMENTS)?;
+        write_u32(arguments, 4 + index * 8, name_offset)?;
+        write_u32(arguments, 8 + index * 8, value_offset)?;
+        index += 1;
+        parameter_cursor = next_parameter;
+    }
+    if next_argument(call.arguments, argument_cursor)
+        .map_err(|_| ERROR_INVALID_EXPRESSION)?
+        .is_some()
+    {
+        return Err(ERROR_INVALID_EXPRESSION);
+    }
+    Ok(arguments_offset)
+}
+
+fn start_macro_call(
+    state_offset: u32,
+    definition_offset: u32,
+    call: Call<'_>,
+    negated: bool,
+) -> Result<(), u32> {
+    let transient_base = state_field(state_offset, STATE_TRANSIENT_BASE)?;
+    let arguments_offset = write_macro_arguments(state_offset, definition_offset, call)?;
+    let caller_frame = state_field(state_offset, STATE_CURRENT_FRAME)?;
+    let macro_frame = allocate_record(TAG_FRAME, FRAME_LENGTH)?;
+    write_frame(
+        macro_frame,
+        caller_frame,
+        macro_definition_field(definition_offset, MACRO_DEFINITION_SOURCE)?,
+        macro_definition_field(definition_offset, MACRO_DEFINITION_BODY_CURSOR)?,
+        0,
+        macro_definition_field(definition_offset, MACRO_DEFINITION_SCOPE)?,
+    )?;
+    let call_offset = allocate_record(TAG_MACRO_CALL, MACRO_CALL_LENGTH)?;
+    let call_record = mutable_record_at(call_offset, TAG_MACRO_CALL)?;
+    write_u32(
+        call_record,
+        MACRO_CALL_PARENT,
+        state_field(state_offset, STATE_CURRENT_MACRO_CALL)?,
+    )?;
+    write_u32(call_record, MACRO_CALL_FRAME, macro_frame)?;
+    write_u32(
+        call_record,
+        MACRO_CALL_PENDING_EXPRESSION,
+        state_field(state_offset, STATE_PENDING_EXPRESSION)?,
+    )?;
+    write_u32(
+        call_record,
+        MACRO_CALL_EXPRESSION_CURSOR,
+        state_field(state_offset, STATE_EXPRESSION_CURSOR)?,
+    )?;
+    write_u32(
+        call_record,
+        MACRO_CALL_EXPRESSION_ACTION,
+        state_field(state_offset, STATE_EXPRESSION_ACTION)?,
+    )?;
+    write_u32(
+        call_record,
+        MACRO_CALL_CURRENT_VALUE,
+        state_field(state_offset, STATE_CURRENT_VALUE)?,
+    )?;
+    write_u32(
+        call_record,
+        MACRO_CALL_PENDING_SET_BINDINGS,
+        state_field(state_offset, STATE_PENDING_SET_BINDINGS)?,
+    )?;
+    write_u32(
+        call_record,
+        MACRO_CALL_INCLUDE_IGNORE_MISSING,
+        state_field(state_offset, STATE_INCLUDE_IGNORE_MISSING)?,
+    )?;
+    write_u32(
+        call_record,
+        MACRO_CALL_PENDING_NAME,
+        state_field(state_offset, STATE_PENDING_NAME)?,
+    )?;
+    write_u32(
+        call_record,
+        MACRO_CALL_NEGATE_RESULT,
+        if negated {
+            NEGATE_TRUTHINESS
+        } else {
+            NEGATE_NONE
+        },
+    )?;
+    write_u32(
+        call_record,
+        MACRO_CALL_SCOPE,
+        state_field(state_offset, STATE_CURRENT_SCOPE)?,
+    )?;
+    write_u32(
+        call_record,
+        MACRO_CALL_LOOP,
+        state_field(state_offset, STATE_CURRENT_LOOP)?,
+    )?;
+    write_u32(call_record, MACRO_CALL_TRANSIENT_BASE, transient_base)?;
+
+    set_state_field(state_offset, STATE_CURRENT_MACRO_CALL, call_offset)?;
+    set_state_field(state_offset, STATE_CURRENT_FRAME, macro_frame)?;
+    set_state_field(
+        state_offset,
+        STATE_CURRENT_SCOPE,
+        macro_definition_field(definition_offset, MACRO_DEFINITION_SCOPE)?,
+    )?;
+    set_state_field(state_offset, STATE_CURRENT_LOOP, 0)?;
+    set_state_field(state_offset, STATE_PENDING_EXPRESSION, 0)?;
+    set_state_field(state_offset, STATE_EXPRESSION_CURSOR, 0)?;
+    set_state_field(state_offset, STATE_CURRENT_VALUE, 0)?;
+    set_state_field(state_offset, STATE_EXPRESSION_ACTION, EXPRESSION_OUTPUT)?;
+    set_state_field(state_offset, STATE_PENDING_SET_BINDINGS, 0)?;
+    set_state_field(state_offset, STATE_INCLUDE_IGNORE_MISSING, 0)?;
+    set_state_field(state_offset, STATE_PENDING_NAME, 0)?;
+    set_state_field(state_offset, STATE_NEGATE_RESULT, NEGATE_NONE)?;
+    begin_capture(state_offset, 0)?;
+
+    let arguments = record_at(arguments_offset, TAG_MACRO_ARGUMENTS)?;
+    let count = collection_count(arguments, 8)?;
+    for index in 0..count {
+        assign_scope(
+            state_offset,
+            read_u32(arguments, 4 + index * 8)?,
+            read_u32(arguments, 8 + index * 8)?,
+        )?;
+    }
+    Ok(())
+}
+
+fn finish_macro_call(state_offset: u32) -> Result<Option<u32>, u32> {
+    let call_offset = state_field(state_offset, STATE_CURRENT_MACRO_CALL)?;
+    if call_offset == 0 {
+        return Err(ERROR_UNSUPPORTED_TAG);
+    }
+    let macro_frame = macro_call_field(call_offset, MACRO_CALL_FRAME)?;
+    if macro_frame != state_field(state_offset, STATE_CURRENT_FRAME)? {
+        return Err(ERROR_UNSUPPORTED_TAG);
+    }
+    let capture_offset = state_field(state_offset, STATE_CURRENT_CAPTURE)?;
+    if capture_field(capture_offset, CAPTURE_FRAME)? != macro_frame
+        || capture_field(capture_offset, CAPTURE_BINDINGS)? != 0
+    {
+        return Err(ERROR_UNSUPPORTED_TAG);
+    }
+    let result_offset = finish_output_capture(state_offset, TAG_SAFE_STRING)?;
+    let macro_frame_record = record_at(macro_frame, TAG_FRAME)?;
+    let caller_frame = read_u32(macro_frame_record, FRAME_PARENT)?;
+
+    set_state_field(
+        state_offset,
+        STATE_CURRENT_MACRO_CALL,
+        macro_call_field(call_offset, MACRO_CALL_PARENT)?,
+    )?;
+    set_state_field(state_offset, STATE_CURRENT_FRAME, caller_frame)?;
+    set_state_field(
+        state_offset,
+        STATE_CURRENT_SCOPE,
+        macro_call_field(call_offset, MACRO_CALL_SCOPE)?,
+    )?;
+    set_state_field(
+        state_offset,
+        STATE_CURRENT_LOOP,
+        macro_call_field(call_offset, MACRO_CALL_LOOP)?,
+    )?;
+    set_state_field(
+        state_offset,
+        STATE_PENDING_EXPRESSION,
+        macro_call_field(call_offset, MACRO_CALL_PENDING_EXPRESSION)?,
+    )?;
+    set_state_field(
+        state_offset,
+        STATE_EXPRESSION_CURSOR,
+        macro_call_field(call_offset, MACRO_CALL_EXPRESSION_CURSOR)?,
+    )?;
+    set_state_field(
+        state_offset,
+        STATE_EXPRESSION_ACTION,
+        macro_call_field(call_offset, MACRO_CALL_EXPRESSION_ACTION)?,
+    )?;
+    set_state_field(
+        state_offset,
+        STATE_PENDING_SET_BINDINGS,
+        macro_call_field(call_offset, MACRO_CALL_PENDING_SET_BINDINGS)?,
+    )?;
+    set_state_field(
+        state_offset,
+        STATE_INCLUDE_IGNORE_MISSING,
+        macro_call_field(call_offset, MACRO_CALL_INCLUDE_IGNORE_MISSING)?,
+    )?;
+    set_state_field(
+        state_offset,
+        STATE_PENDING_NAME,
+        macro_call_field(call_offset, MACRO_CALL_PENDING_NAME)?,
+    )?;
+    set_state_field(
+        state_offset,
+        STATE_TRANSIENT_BASE,
+        macro_call_field(call_offset, MACRO_CALL_TRANSIENT_BASE)?,
+    )?;
+    let result_offset =
+        if macro_call_field(call_offset, MACRO_CALL_NEGATE_RESULT)? == NEGATE_TRUTHINESS {
+            write_boolean(!Value::at(result_offset)?.truthy())?
+        } else {
+            result_offset
+        };
+    set_state_field(state_offset, STATE_NEGATE_RESULT, NEGATE_NONE)?;
+    set_state_field(state_offset, STATE_CURRENT_VALUE, result_offset)?;
+    continue_expression(state_offset)
 }
 
 fn start_for(state_offset: u32, source: &[u8]) -> Result<(), u32> {
@@ -709,7 +1076,9 @@ fn assign_bindings(state_offset: u32, bindings_offset: u32, value_offset: u32) -
 }
 
 fn begin_capture(state_offset: u32, bindings_offset: u32) -> Result<(), u32> {
-    record_at(bindings_offset, TAG_BINDINGS)?;
+    if bindings_offset != 0 {
+        record_at(bindings_offset, TAG_BINDINGS)?;
+    }
     let capture_offset = allocate_record(TAG_CAPTURE, CAPTURE_LENGTH)?;
     let capture = mutable_record_at(capture_offset, TAG_CAPTURE)?;
     write_u32(
@@ -755,13 +1124,26 @@ fn finish_capture(state_offset: u32) -> Result<(), u32> {
     if capture_offset == 0 {
         return Err(ERROR_UNSUPPORTED_TAG);
     }
+    let bindings = capture_field(capture_offset, CAPTURE_BINDINGS)?;
+    if bindings == 0 {
+        return Err(ERROR_UNSUPPORTED_TAG);
+    }
+    let value_offset = finish_output_capture(state_offset, TAG_STRING)?;
+    assign_bindings(state_offset, bindings, value_offset)
+}
+
+fn finish_output_capture(state_offset: u32, tag: u32) -> Result<u32, u32> {
+    let capture_offset = state_field(state_offset, STATE_CURRENT_CAPTURE)?;
+    if capture_offset == 0 {
+        return Err(ERROR_UNSUPPORTED_TAG);
+    }
     let capture = record_at(capture_offset, TAG_CAPTURE)?;
     if capture.len() != CAPTURE_LENGTH as usize
         || read_u32(capture, CAPTURE_FRAME)? != state_field(state_offset, STATE_CURRENT_FRAME)?
     {
         return Err(ERROR_UNSUPPORTED_TAG);
     }
-    let value_offset = materialize_output_as(state_offset, TAG_STRING)?.0;
+    let value_offset = materialize_output_as(state_offset, tag)?.0;
     set_state_field(
         state_offset,
         STATE_FIRST_CHUNK,
@@ -787,11 +1169,7 @@ fn finish_capture(state_offset: u32) -> Result<(), u32> {
         STATE_CURRENT_CAPTURE,
         read_u32(capture, CAPTURE_PARENT)?,
     )?;
-    assign_bindings(
-        state_offset,
-        read_u32(capture, CAPTURE_BINDINGS)?,
-        value_offset,
-    )
+    Ok(value_offset)
 }
 
 fn advance_for(state_offset: u32) -> Result<(), u32> {
@@ -1246,7 +1624,7 @@ fn apply_builtin_filter(
             require_argument_count(call, 0)?;
             ascii_case_value(input, false, false)?
         }
-        b"capitalize" => {
+        b"capitalize" | b"title" => {
             require_argument_count(call, 0)?;
             ascii_case_value(input, false, true)?
         }
@@ -2127,6 +2505,22 @@ fn capture_field(offset: u32, field: usize) -> Result<u32, u32> {
         return Err(ERROR_INVALID_RECORD);
     }
     read_u32(capture, field)
+}
+
+fn macro_definition_field(offset: u32, field: usize) -> Result<u32, u32> {
+    let definition = record_at(offset, TAG_MACRO_DEFINITION)?;
+    if definition.len() != MACRO_DEFINITION_LENGTH as usize {
+        return Err(ERROR_INVALID_RECORD);
+    }
+    read_u32(definition, field)
+}
+
+fn macro_call_field(offset: u32, field: usize) -> Result<u32, u32> {
+    let call = record_at(offset, TAG_MACRO_CALL)?;
+    if call.len() != MACRO_CALL_LENGTH as usize {
+        return Err(ERROR_INVALID_RECORD);
+    }
+    read_u32(call, field)
 }
 
 fn iterable_length(offset: u32) -> Result<u32, u32> {

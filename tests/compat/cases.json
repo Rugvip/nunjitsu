@@ -382,6 +382,79 @@
       "context": {},
       "autoescape": false,
       "expected": "cool cool cool"
+    },
+    {
+      "id": "compiler-macro-basic",
+      "template": "{% macro foo() %}This is a macro{% endmacro %}{{ foo() }}",
+      "nativeRender": false,
+      "context": {},
+      "autoescape": false,
+      "expected": "This is a macro"
+    },
+    {
+      "id": "compiler-macro-optional-positional",
+      "template": "{% macro foo(x, y) %}{{ y }}{% endmacro %}[{{ foo(1) }}]|{{ foo(1, 2) }}",
+      "nativeRender": false,
+      "context": {},
+      "autoescape": false,
+      "expected": "[]|2"
+    },
+    {
+      "id": "compiler-macro-argument-filter",
+      "template": "{% macro foo(x) %}{{ x|title }}{% endmacro %}{{ foo(\"foo\") }}",
+      "nativeRender": false,
+      "context": {},
+      "autoescape": false,
+      "expected": "Foo"
+    },
+    {
+      "id": "compiler-macro-include",
+      "template": "{% macro foo() %}{% include \"include.njk\" %}{% endmacro %}{{ foo() }}",
+      "templates": { "include.njk": "FooInclude {{ name }}" },
+      "nativeRender": false,
+      "context": { "name": "james" },
+      "autoescape": false,
+      "expected": "FooInclude james"
+    },
+    {
+      "id": "compiler-macro-local-set",
+      "template": "{% macro foo() %}{% set x = \"foo\"%}{{ x }}{% endmacro %}{% set x = \"bar\" %}{{ x }}{{ foo() }}{{ x }}",
+      "nativeRender": false,
+      "context": {},
+      "autoescape": false,
+      "expected": "barfoobar"
+    },
+    {
+      "id": "compiler-macro-nested-call-scope",
+      "template": "{% macro setFoo() %}{% set x = \"foo\" %}{{ x }}{% endmacro %}{% macro display() %}{% set x = \"bar\" %}{{ setFoo() }}{{ x }}{% endmacro %}{{ display() }}",
+      "nativeRender": false,
+      "context": {},
+      "autoescape": false,
+      "expected": "foobar"
+    },
+    {
+      "id": "compiler-macro-nested-loop-scope",
+      "template": "{% macro setFoo() %}{% for y in [1] %}{% set x = \"foo\" %}{{ x }}{% endfor %}{% endmacro %}{% macro display() %}{% set x = \"bar\" %}{{ setFoo() }}{{ x }}{% endmacro %}{{ display() }}",
+      "nativeRender": false,
+      "context": {},
+      "autoescape": false,
+      "expected": "foobar"
+    },
+    {
+      "id": "compiler-macro-no-caller-scope",
+      "template": "{% macro one(var) %}{{ two() }}{% endmacro %}{% macro two() %}{{ var }}{% endmacro %}{{ one(\"foo\") }}",
+      "nativeRender": false,
+      "context": {},
+      "autoescape": false,
+      "expected": ""
+    },
+    {
+      "id": "compiler-block-set-inside-macro",
+      "template": "{%- macro foo(bar) -%}{%- set test -%}foo{%- endset -%}{{ bar }}{{ test }}{%- endmacro -%}{{ foo(\"bar\") }}",
+      "nativeRender": false,
+      "context": {},
+      "autoescape": false,
+      "expected": "barfoo"
     }
   ]
 }
