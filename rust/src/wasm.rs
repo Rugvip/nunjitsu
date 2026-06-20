@@ -1,7 +1,7 @@
 use crate::expression::{
-    Atom, BinaryOperator, Call, Comparison, Operand, Operation, next_argument, next_lookup_segment,
-    next_operation, next_record_entry, parse_base, parse_for_clause, parse_set_clause,
-    parse_tag_call, split_binary_expression,
+    Atom, BinaryOperator, Call, Comparison, Operand, Operation, next_argument, next_binding,
+    next_lookup_segment, next_operation, next_record_entry, parse_base, parse_for_clause,
+    parse_set_clause, parse_tag_call, split_binary_expression,
 };
 use crate::template::{
     ConditionalBoundary, ParseOptions, RenderError, RenderedValue, TemplateItem, directive_keyword,
@@ -36,6 +36,7 @@ const TAG_CAPABILITY_REGISTRY: u32 = 16;
 const TAG_CAPABILITY_REQUEST: u32 = 17;
 const TAG_LOOP_STATE: u32 = 18;
 const TAG_SCOPE: u32 = 19;
+const TAG_LOOP_BINDINGS: u32 = 20;
 
 const STATE_IDLE: u32 = 0;
 const STATE_COMPLETE: u32 = 1;
@@ -112,7 +113,7 @@ const FRAME_CURSOR: usize = 8;
 const FRAME_CANONICAL_NAME: usize = 12;
 const FRAME_SCOPE_BASE: usize = 16;
 
-const LOOP_STATE_LENGTH: u32 = 44;
+const LOOP_STATE_LENGTH: u32 = 40;
 const LOOP_PARENT: usize = 0;
 const LOOP_FRAME: usize = 4;
 const LOOP_BODY_CURSOR: usize = 8;
@@ -121,9 +122,8 @@ const LOOP_END_CURSOR: usize = 16;
 const LOOP_ITERABLE: usize = 20;
 const LOOP_INDEX: usize = 24;
 const LOOP_LENGTH: usize = 28;
-const LOOP_FIRST_NAME: usize = 32;
-const LOOP_SECOND_NAME: usize = 36;
-const LOOP_SCOPE_BASE: usize = 40;
+const LOOP_BINDINGS: usize = 32;
+const LOOP_SCOPE_BASE: usize = 36;
 
 const SCOPE_LENGTH: u32 = 12;
 const SCOPE_PARENT: usize = 0;
@@ -608,12 +608,7 @@ fn start_for(state_offset: u32, source: &[u8]) -> Result<(), u32> {
         return Ok(());
     }
 
-    let first_name = write_bytes_record(TAG_STRING, clause.first)?;
-    let second_name = clause
-        .second
-        .map(|name| write_bytes_record(TAG_STRING, name))
-        .transpose()?
-        .unwrap_or(0);
+    let bindings = write_loop_bindings(clause.bindings)?;
     let loop_offset = allocate_record(TAG_LOOP_STATE, LOOP_STATE_LENGTH)?;
     let parent = state_field(state_offset, STATE_CURRENT_LOOP)?;
     let scope_base = state_field(state_offset, STATE_CURRENT_SCOPE)?;
@@ -630,8 +625,7 @@ fn start_for(state_offset: u32, source: &[u8]) -> Result<(), u32> {
     write_u32(loop_state, LOOP_ITERABLE, iterable_offset)?;
     write_u32(loop_state, LOOP_INDEX, 0)?;
     write_u32(loop_state, LOOP_LENGTH, length)?;
-    write_u32(loop_state, LOOP_FIRST_NAME, first_name)?;
-    write_u32(loop_state, LOOP_SECOND_NAME, second_name)?;
+    write_u32(loop_state, LOOP_BINDINGS, bindings)?;
     write_u32(loop_state, LOOP_SCOPE_BASE, scope_base)?;
     set_state_field(state_offset, STATE_CURRENT_LOOP, loop_offset)?;
     if length == 0 {
@@ -642,6 +636,42 @@ fn start_for(state_offset: u32, source: &[u8]) -> Result<(), u32> {
         )?;
     }
     Ok(())
+}
+
+fn write_loop_bindings(bindings: &[u8]) -> Result<u32, u32> {
+    let mut count = 0usize;
+    let mut cursor = 0usize;
+    while let Some((_, next)) = next_binding(bindings, cursor).map_err(|_| ERROR_UNSUPPORTED_TAG)? {
+        count = count.checked_add(1).ok_or(ERROR_RESOURCE_LIMIT)?;
+        cursor = next;
+    }
+    if count == 0 {
+        return Err(ERROR_UNSUPPORTED_TAG);
+    }
+    let payload_length = 4u32
+        .checked_add((count as u32).checked_mul(4).ok_or(ERROR_RESOURCE_LIMIT)?)
+        .ok_or(ERROR_RESOURCE_LIMIT)?;
+    let offset = allocate_record(TAG_LOOP_BINDINGS, payload_length)?;
+    write_u32(
+        mutable_record_at(offset, TAG_LOOP_BINDINGS)?,
+        0,
+        count as u32,
+    )?;
+    cursor = 0;
+    let mut index = 0usize;
+    while let Some((name, next)) =
+        next_binding(bindings, cursor).map_err(|_| ERROR_UNSUPPORTED_TAG)?
+    {
+        let name_offset = write_bytes_record(TAG_STRING, name)?;
+        write_u32(
+            mutable_record_at(offset, TAG_LOOP_BINDINGS)?,
+            4 + index * 4,
+            name_offset,
+        )?;
+        index += 1;
+        cursor = next;
+    }
+    Ok(offset)
 }
 
 fn advance_for(state_offset: u32) -> Result<(), u32> {
@@ -2054,14 +2084,17 @@ impl Context {
     fn lookup_local(&self, name: &[u8]) -> Option<u32> {
         let mut loop_offset = state_field(self.state_offset, STATE_CURRENT_LOOP).ok()?;
         while loop_offset != 0 {
-            let first_name =
-                record_at(loop_field(loop_offset, LOOP_FIRST_NAME).ok()?, TAG_STRING).ok()?;
-            if first_name == name {
-                return loop_binding(loop_offset, false).ok().flatten();
-            }
-            let second_name_offset = loop_field(loop_offset, LOOP_SECOND_NAME).ok()?;
-            if second_name_offset != 0 && record_at(second_name_offset, TAG_STRING).ok()? == name {
-                return loop_binding(loop_offset, true).ok().flatten();
+            let bindings = record_at(
+                loop_field(loop_offset, LOOP_BINDINGS).ok()?,
+                TAG_LOOP_BINDINGS,
+            )
+            .ok()?;
+            let count = collection_count(bindings, 4).ok()?;
+            for index in 0..count {
+                let name_offset = read_u32(bindings, 4 + index * 4).ok()?;
+                if record_at(name_offset, TAG_STRING).ok()? == name {
+                    return loop_binding(loop_offset, index, count).ok();
+                }
             }
             loop_offset = loop_field(loop_offset, LOOP_PARENT).ok()?;
         }
@@ -2089,36 +2122,33 @@ fn loop_metadata_offset(state_offset: u32, name: &[u8]) -> Result<Option<u32>, u
     Ok(Some(value))
 }
 
-fn loop_binding(loop_offset: u32, second: bool) -> Result<Option<u32>, u32> {
+fn loop_binding(loop_offset: u32, binding_index: usize, binding_count: usize) -> Result<u32, u32> {
     let iterable = Value::at(loop_field(loop_offset, LOOP_ITERABLE)?)?;
     let index = loop_field(loop_offset, LOOP_INDEX)? as usize;
-    let has_second = loop_field(loop_offset, LOOP_SECOND_NAME)? != 0;
     match iterable {
         Value::Array(array) => {
             let element_offset = read_u32(array.payload, 4 + index * 4)?;
-            if !has_second {
-                return Ok(Some(element_offset));
+            if binding_count == 1 {
+                return Ok(element_offset);
             }
             let Value::Array(element) = Value::at(element_offset)? else {
-                return Ok((!second).then_some(element_offset));
+                return allocate_record(TAG_UNDEFINED, 0);
             };
-            if usize::from(second) >= element.count {
-                Ok(None)
+            if binding_index >= element.count {
+                allocate_record(TAG_UNDEFINED, 0)
             } else {
-                Ok(Some(read_u32(
-                    element.payload,
-                    4 + usize::from(second) * 4,
-                )?))
+                read_u32(element.payload, 4 + binding_index * 4)
             }
         }
         Value::Record(record) => {
             let entry = 4 + index * 8;
-            Ok(Some(read_u32(
-                record.payload,
-                entry + if second { 4 } else { 0 },
-            )?))
+            if binding_index < 2 {
+                read_u32(record.payload, entry + binding_index * 4)
+            } else {
+                allocate_record(TAG_UNDEFINED, 0)
+            }
         }
-        _ => Ok(None),
+        _ => allocate_record(TAG_UNDEFINED, 0),
     }
 }
 

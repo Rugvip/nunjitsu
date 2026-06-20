@@ -108,6 +108,20 @@
       "upstream": { "id": "tests/compiler.js:52", "file": "tests/compiler.js", "test": "should compile python-style ternary operators" },
       "status": "ported",
       "cases": ["compiler-python-style-ternary-tests"]
+    },
+    {
+      "upstream": { "id": "tests/compiler.js:20", "file": "tests/compiler.js", "test": "should support destructured looping" },
+      "status": "partial",
+      "reason": "The for-tag behavior is ported; the same upstream helper also registers asyncEach and asyncAll variants.",
+      "removalCondition": "Implement and port the asyncEach and asyncAll variants.",
+      "cases": ["compiler-three-value-loop-destructuring"]
+    },
+    {
+      "upstream": { "id": "tests/compiler.js:33", "file": "tests/compiler.js", "test": "should loop over four-dimensional arrays" },
+      "status": "partial",
+      "reason": "The for-tag behavior is ported; the same upstream helper also registers asyncEach and asyncAll variants.",
+      "removalCondition": "Implement and port the asyncEach and asyncAll variants.",
+      "cases": ["compiler-four-value-loop-destructuring"]
     }
   ]
 }

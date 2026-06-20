@@ -252,6 +252,22 @@
       "context": {},
       "autoescape": false,
       "expected": "yes|yes|no|no"
+    },
+    {
+      "id": "compiler-three-value-loop-destructuring",
+      "template": "{% for a, b, c in arr %}{{ a }},{{ b }},{{ c }}.{% endfor %}",
+      "nativeRender": false,
+      "context": { "arr": [["x", "y", "z"], ["1", "2", "3"]] },
+      "autoescape": false,
+      "expected": "x,y,z.1,2,3."
+    },
+    {
+      "id": "compiler-four-value-loop-destructuring",
+      "template": "{% for a, b, c, d in arr %}[{{ a }},{{ b }},{{ c }},{{ d }}]{% endfor %}",
+      "nativeRender": false,
+      "context": { "arr": [[1, 2, 3, 4], [5, 6, 7, 8]] },
+      "autoescape": false,
+      "expected": "[1,2,3,4][5,6,7,8]"
     }
   ]
 }

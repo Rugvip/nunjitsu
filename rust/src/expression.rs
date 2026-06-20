@@ -116,10 +116,8 @@ pub struct ExpressionError;
 /// Parsed variable binding and iterable expression for a `for` directive.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct ForClause<'a> {
-    /// First item or key binding.
-    pub first: &'a [u8],
-    /// Optional second binding used for destructuring or object values.
-    pub second: Option<&'a [u8]>,
+    /// Comma-separated ordered binding identifiers.
+    pub bindings: &'a [u8],
     /// Iterable expression after the `in` keyword.
     pub iterable: &'a [u8],
 }
@@ -541,23 +539,45 @@ pub fn parse_tag_call(directive: &[u8]) -> Result<Call<'_>, ExpressionError> {
     Ok(call)
 }
 
-/// Parses `name [ , name ] in expression` without evaluating the iterable.
+/// Parses one identifier from a validated comma-separated binding list.
+pub fn next_binding(
+    bindings: &[u8],
+    cursor: usize,
+) -> Result<Option<(&[u8], usize)>, ExpressionError> {
+    let cursor = skip_whitespace(bindings, cursor);
+    if cursor == bindings.len() {
+        return Ok(None);
+    }
+    let start = cursor;
+    let mut cursor = parse_identifier(bindings, cursor)?;
+    let name = &bindings[start..cursor];
+    cursor = skip_whitespace(bindings, cursor);
+    if cursor == bindings.len() {
+        return Ok(Some((name, cursor)));
+    }
+    if bindings.get(cursor) != Some(&b',') {
+        return Err(ExpressionError);
+    }
+    cursor = skip_whitespace(bindings, cursor + 1);
+    if cursor == bindings.len() {
+        return Err(ExpressionError);
+    }
+    Ok(Some((name, cursor)))
+}
+
+/// Parses `name [ , name ... ] in expression` without evaluating the iterable.
 pub fn parse_for_clause(source: &[u8]) -> Result<ForClause<'_>, ExpressionError> {
     let mut cursor = skip_whitespace(source, 0);
-    let first_start = cursor;
-    cursor = parse_identifier(source, cursor)?;
-    let first = &source[first_start..cursor];
-    cursor = skip_whitespace(source, cursor);
-    let second = if source.get(cursor) == Some(&b',') {
-        cursor = skip_whitespace(source, cursor + 1);
-        let start = cursor;
+    let bindings_start = cursor;
+    loop {
         cursor = parse_identifier(source, cursor)?;
-        let second = &source[start..cursor];
         cursor = skip_whitespace(source, cursor);
-        Some(second)
-    } else {
-        None
-    };
+        if source.get(cursor) != Some(&b',') {
+            break;
+        }
+        cursor = skip_whitespace(source, cursor + 1);
+    }
+    let bindings = trim_whitespace(&source[bindings_start..cursor]);
     if !has_keyword(source, cursor, b"in") {
         return Err(ExpressionError);
     }
@@ -565,11 +585,7 @@ pub fn parse_for_clause(source: &[u8]) -> Result<ForClause<'_>, ExpressionError>
     if iterable.is_empty() {
         return Err(ExpressionError);
     }
-    Ok(ForClause {
-        first,
-        second,
-        iterable,
-    })
+    Ok(ForClause { bindings, iterable })
 }
 
 /// Parses `name = expression` for a value assignment.
@@ -1039,11 +1055,18 @@ mod tests {
         assert_eq!(
             parse_for_clause(b" key, value in items | entries "),
             Ok(ForClause {
-                first: b"key",
-                second: Some(b"value"),
+                bindings: b"key, value",
                 iterable: b"items | entries ",
             }),
         );
+        let clause = parse_for_clause(b" a, b, c, d in values ").unwrap();
+        assert_eq!(clause.bindings, b"a, b, c, d");
+        let (first, cursor) = next_binding(clause.bindings, 0).unwrap().unwrap();
+        let (second, cursor) = next_binding(clause.bindings, cursor).unwrap().unwrap();
+        let (third, cursor) = next_binding(clause.bindings, cursor).unwrap().unwrap();
+        let (fourth, cursor) = next_binding(clause.bindings, cursor).unwrap().unwrap();
+        assert_eq!([first, second, third, fourth], [b"a", b"b", b"c", b"d"]);
+        assert_eq!(next_binding(clause.bindings, cursor), Ok(None));
         assert_eq!(
             parse_set_clause(b" value = source | default('fallback') "),
             Ok(SetClause {

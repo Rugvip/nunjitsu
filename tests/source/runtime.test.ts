@@ -745,6 +745,13 @@ test('iterates arena-backed arrays and records with nested local scopes', async 
     );
     assert.equal(
       await engine.render(
+        { source: '{% for a, b, c in values %}{{ a }}{{ b }}{{ c }}{% endfor %}' },
+        { values: [['x', 'y']], c: 'must not leak' },
+      ),
+      'xy',
+    );
+    assert.equal(
+      await engine.render(
         { source: '{% for key, value in values %}{{ key }}={{ value }};{% endfor %}' },
         { values: { first: 1, second: 2 } },
       ),
