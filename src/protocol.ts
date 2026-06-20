@@ -59,6 +59,7 @@ export class ArenaWriter {
     context: TemplateContext,
     options: {
       autoescape: boolean;
+      streaming: boolean;
       canonicalName?: string;
       limits: NormalizedRenderLimits;
     },
@@ -73,7 +74,11 @@ export class ArenaWriter {
     const requestView = new DataView(requestPayload);
     requestView.setUint32(0, sourceOffset, true);
     requestView.setUint32(4, contextOffset, true);
-    requestView.setUint32(8, options.autoescape ? 1 : 0, true);
+    requestView.setUint32(
+      8,
+      (options.autoescape ? 1 : 0) | (options.streaming ? 2 : 0),
+      true,
+    );
     requestView.setUint32(12, canonicalOffset, true);
     requestView.setUint32(16, encodeRenderLimit(options.limits.workUnits), true);
     requestView.setUint32(20, encodeRenderLimit(options.limits.includeDepth), true);

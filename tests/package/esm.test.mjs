@@ -16,6 +16,12 @@ test('renders through the ESM package entry', async () => {
       await engine.render({ name: 'entry.njk' }, { value: markSafe('<b>works</b>') }),
       'ESM <b>works</b>',
     );
+    assert.equal(
+      (await Array.fromAsync(
+        engine.renderStream({ source: 'stream {{ value }}' }, { value: 'works' }),
+      )).join(''),
+      'stream works',
+    );
   } finally {
     await engine.dispose();
   }

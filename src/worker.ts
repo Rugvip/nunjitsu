@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { parentPort, workerData, type MessagePort } from 'node:worker_threads';
 
-import { decodeStringRecord } from './protocol.ts';
+import { decodeOutput, decodeStringRecord } from './protocol.ts';
 
 /** Data supplied by the engine when a worker starts. */
 interface NunjitsuWorkerData {
@@ -26,8 +26,14 @@ interface ResumeLoadCommand {
   cursor: number;
 }
 
+/** Pull command accepted while streaming output is suspended. */
+interface ResumeOutputCommand {
+  type: 'resumeOutput';
+  id: number;
+}
+
 /** Command accepted by the worker protocol. */
-type WorkerCommand = RenderCommand | ResumeLoadCommand;
+type WorkerCommand = RenderCommand | ResumeLoadCommand | ResumeOutputCommand;
 
 /** Numeric exports in the Nunjitsu raw Wasm ABI. */
 interface NunjitsuExports {
@@ -39,6 +45,7 @@ interface NunjitsuExports {
   controlOffset: () => number;
   render: (requestOffset: number) => number;
   resumeInclude: (sourceOffset: number, canonicalOffset: number) => number;
+  resumeOutput: () => number;
 }
 
 if (!parentPort) {
@@ -96,7 +103,21 @@ async function start(port: MessagePort): Promise<void> {
     }
 
     if (activeRenderId !== command.id) {
-      throw new Error('Nunjitsu worker received a stale loader response');
+      throw new Error('Nunjitsu worker received a stale resume command');
+    }
+    if (command.type === 'resumeOutput') {
+      const state = exports.resumeOutput();
+      activeRenderId = reportState(
+        port,
+        data.memory,
+        exports,
+        controlOffset,
+        command.id,
+        state,
+      )
+        ? command.id
+        : undefined;
+      return;
     }
     const cursorState = exports.arenaSetCursor(command.cursor);
     if (cursorState !== 1) {
@@ -153,6 +174,16 @@ function reportState(
     });
     return true;
   }
+  if (state === 4) {
+    const outputOffset = control.getUint32(4, true);
+    const outputLength = control.getUint32(8, true);
+    port.postMessage({
+      type: 'chunk',
+      id,
+      chunk: decodeOutput(memory, outputOffset, outputLength),
+    });
+    return true;
+  }
   finishWithError(port, id, control.getUint32(12, true), exports);
   return false;
 }
@@ -195,13 +226,16 @@ function parseCommand(value: unknown): WorkerCommand {
     throw new Error('Nunjitsu worker received an invalid command');
   }
   const candidate = value as Record<string, unknown>;
-  if (
-    typeof candidate.id !== 'number' ||
-    typeof candidate.cursor !== 'number'
-  ) {
+  if (typeof candidate.id !== 'number') {
     throw new Error('Nunjitsu worker received an invalid command envelope');
   }
+  if (candidate.type === 'resumeOutput') {
+    return { type: 'resumeOutput', id: candidate.id };
+  }
   if (candidate.type === 'render' && typeof candidate.requestOffset === 'number') {
+    if (typeof candidate.cursor !== 'number') {
+      throw new Error('Nunjitsu worker received an invalid render cursor');
+    }
     return {
       type: 'render',
       id: candidate.id,
@@ -212,7 +246,8 @@ function parseCommand(value: unknown): WorkerCommand {
   if (
     candidate.type === 'resumeLoad' &&
     typeof candidate.sourceOffset === 'number' &&
-    typeof candidate.canonicalOffset === 'number'
+    typeof candidate.canonicalOffset === 'number' &&
+    typeof candidate.cursor === 'number'
   ) {
     return {
       type: 'resumeLoad',
@@ -235,6 +270,7 @@ function parseExports(value: WebAssembly.Exports): NunjitsuExports {
     controlOffset: exportedFunction(value, 'nunjitsu_control_offset'),
     render: exportedFunction(value, 'nunjitsu_render'),
     resumeInclude: exportedFunction(value, 'nunjitsu_resume_include'),
+    resumeOutput: exportedFunction(value, 'nunjitsu_resume_output'),
   };
 }
 

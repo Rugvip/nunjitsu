@@ -75,7 +75,10 @@ export interface Engine {
     options?: RenderOptions,
   ): Promise<string>;
 
-  /** Compiles and renders an inline or explicitly loaded template through a Web stream. */
+  /**
+   * Compiles and renders through a pull-driven Web stream. UTF-8-safe chunks are at most 64 KiB,
+   * and a later failure may reject the stream after earlier chunks were consumed.
+   */
   renderStream(
     template: TemplateInput,
     context?: TemplateContext,
@@ -135,17 +138,43 @@ interface WorkerWaiter {
   abort: (() => void) | undefined;
 }
 
-/** One response expected from the worker for an active render. */
-interface PendingRender {
+/** State shared by buffered and streaming renders assigned to one worker. */
+interface PendingRenderBase {
   id: number;
-  resolve: (output: string) => void;
-  reject: (error: Error) => void;
   abort: (() => void) | undefined;
   load: (name: string) => Promise<LoadedTemplate>;
   loading: boolean;
   loadedByName: Map<string, CachedLoadedTemplate>;
   loadedByCanonicalName: Map<string, CachedLoadedTemplate>;
 }
+
+/** Buffered render waiting for one terminal output value. */
+interface PendingBufferedRender extends PendingRenderBase {
+  kind: 'buffered';
+  resolve: (output: string) => void;
+  reject: (error: Error) => void;
+}
+
+/** Resolver for one consumer pull against a suspended streaming render. */
+interface StreamWaiter {
+  resolve: (result: IteratorResult<string>) => void;
+  reject: (error: Error) => void;
+}
+
+/** Streaming render retained while output is suspended on backpressure. */
+interface PendingStreamingRender extends PendingRenderBase {
+  kind: 'streaming';
+  chunk: string | undefined;
+  needsResume: boolean;
+  done: boolean;
+  error: Error | undefined;
+  waiter: StreamWaiter | undefined;
+  resolveFinished: () => void;
+  rejectFinished: (error: Error) => void;
+}
+
+/** One active render assigned to a worker. */
+type PendingRender = PendingBufferedRender | PendingStreamingRender;
 
 /** Immutable arena offsets for a source already loaded during this render. */
 interface CachedLoadedTemplate {
@@ -167,7 +196,7 @@ interface ReadyMessage {
   arenaBase: number;
 }
 
-/** Successful response for a buffered render. */
+/** Successful terminal response for a render. */
 interface ResultMessage {
   type: 'result';
   id: number;
@@ -192,8 +221,15 @@ interface LoadMessage {
   cursor: number;
 }
 
+/** Output chunk yielded while a streaming evaluator is suspended. */
+interface ChunkMessage {
+  type: 'chunk';
+  id: number;
+  chunk: string;
+}
+
 /** Worker response accepted by the host protocol. */
-type WorkerMessage = ReadyMessage | ResultMessage | ErrorMessage | LoadMessage;
+type WorkerMessage = ReadyMessage | ResultMessage | ErrorMessage | LoadMessage | ChunkMessage;
 
 class EngineImplementation implements Engine {
   readonly #runtime: RuntimeAssets;
@@ -268,21 +304,78 @@ class EngineImplementation implements Engine {
     context: TemplateContext = {},
     options: RenderOptions = {},
   ): ReadableStream<string> {
-    let started = false;
+    const cancellation = new AbortController();
+    const signal = options.signal
+      ? AbortSignal.any([options.signal, cancellation.signal])
+      : cancellation.signal;
+    let sessionPromise: Promise<WorkerStreamSession> | undefined;
+    const getSession = () => {
+      sessionPromise ??= this.#startStreaming(template, context, options.limits, signal);
+      return sessionPromise;
+    };
+
     return new ReadableStream<string>({
       pull: async controller => {
-        if (started) {
-          return;
-        }
-        started = true;
         try {
-          controller.enqueue(await this.render(template, context, options));
-          controller.close();
+          const result = await (await getSession()).next();
+          if (result.done) {
+            controller.close();
+          } else {
+            controller.enqueue(result.value);
+          }
         } catch (error) {
           controller.error(error);
         }
       },
+      cancel: async () => {
+        cancellation.abort();
+        if (sessionPromise) {
+          const session = await sessionPromise.catch(() => undefined);
+          session?.cancel();
+        }
+      },
     });
+  }
+
+  async #startStreaming(
+    template: TemplateInput,
+    context: TemplateContext,
+    requestedLimits: Partial<RenderLimits> | undefined,
+    signal: AbortSignal,
+  ): Promise<WorkerStreamSession> {
+    this.#assertActive();
+    if (signal.aborted) {
+      throw abortError();
+    }
+
+    const limits = normalizeRenderLimits(requestedLimits);
+    const resolved = await this.#resolveTemplate(template, limits, signal);
+    const workerLimits: NormalizedRenderLimits = Object.freeze({
+      ...limits,
+      loaderCalls:
+        limits.loaderCalls === Number.POSITIVE_INFINITY
+          ? limits.loaderCalls
+          : limits.loaderCalls - resolved.loaderCalls,
+    });
+    const slot = await this.#acquire(signal);
+    try {
+      const session = await slot.renderStream(
+        resolved,
+        context,
+        this.#autoescape,
+        workerLimits,
+        name => loadTemplate(this.#loaders, name, signal),
+        signal,
+      );
+      void session.finished.then(
+        () => this.#release(slot),
+        () => this.#release(slot),
+      );
+      return session;
+    } catch (error) {
+      this.#release(slot);
+      throw error;
+    }
   }
 
   async dispose(): Promise<void> {
@@ -423,6 +516,31 @@ class EngineImplementation implements Engine {
   }
 }
 
+/** Pull-facing handle for one worker-resident streaming render. */
+class WorkerStreamSession {
+  readonly finished: Promise<void>;
+  readonly #slot: WorkerSlot;
+  readonly #pending: PendingStreamingRender;
+
+  constructor(
+    slot: WorkerSlot,
+    pending: PendingStreamingRender,
+    finished: Promise<void>,
+  ) {
+    this.#slot = slot;
+    this.#pending = pending;
+    this.finished = finished;
+  }
+
+  next(): Promise<IteratorResult<string>> {
+    return this.#slot.nextStream(this.#pending);
+  }
+
+  cancel(): void {
+    this.#slot.cancelStream(this.#pending);
+  }
+}
+
 class WorkerSlot {
   readonly memory: WebAssembly.Memory;
   readonly ready: Promise<void>;
@@ -486,6 +604,7 @@ class WorkerSlot {
       context,
       {
         autoescape,
+        streaming: false,
         limits,
         ...(template.canonicalName ? { canonicalName: template.canonicalName } : {}),
       },
@@ -498,7 +617,8 @@ class WorkerSlot {
     }
     const id = this.#nextRenderId++;
     return await new Promise<string>((resolve, reject) => {
-      const pending: PendingRender = {
+      const pending: PendingBufferedRender = {
+        kind: 'buffered',
         id,
         resolve,
         reject,
@@ -510,11 +630,7 @@ class WorkerSlot {
       };
       if (signal) {
         const onAbort = () => {
-          pending.abort?.();
-          this.#pending = undefined;
-          this.failed = true;
-          void this.#worker.terminate();
-          reject(abortError());
+          this.#abortRender(pending, abortError());
         };
         pending.abort = () => signal.removeEventListener('abort', onAbort);
         signal.addEventListener('abort', onAbort, { once: true });
@@ -529,6 +645,112 @@ class WorkerSlot {
     });
   }
 
+  async renderStream(
+    template: ResolvedTemplate,
+    context: TemplateContext,
+    autoescape: boolean,
+    limits: NormalizedRenderLimits,
+    load: (name: string) => Promise<LoadedTemplate>,
+    signal: AbortSignal | undefined,
+  ): Promise<WorkerStreamSession> {
+    await this.ready;
+    if (this.failed || this.#closed) {
+      throw new Error('The Nunjitsu worker is unavailable');
+    }
+    if (signal?.aborted) {
+      throw abortError();
+    }
+    if (this.#pending) {
+      throw new Error('The Nunjitsu worker already has an active render');
+    }
+
+    const encoded = new ArenaWriter(this.memory, this.#arenaBase).encodeRender(
+      template.source,
+      context,
+      {
+        autoescape,
+        streaming: true,
+        limits,
+        ...(template.canonicalName ? { canonicalName: template.canonicalName } : {}),
+      },
+    );
+    if (
+      limits.arenaBytes !== Number.POSITIVE_INFINITY &&
+      encoded.cursor - this.#arenaBase > limits.arenaBytes
+    ) {
+      throw new NunjitsuLimitError('arenaBytes');
+    }
+
+    let resolveFinished: () => void = () => undefined;
+    let rejectFinished: (error: Error) => void = () => undefined;
+    const finished = new Promise<void>((resolve, reject) => {
+      resolveFinished = resolve;
+      rejectFinished = reject;
+    });
+    const pending: PendingStreamingRender = {
+      kind: 'streaming',
+      id: this.#nextRenderId++,
+      abort: undefined,
+      load,
+      loading: false,
+      loadedByName: new Map(),
+      loadedByCanonicalName: new Map(),
+      chunk: undefined,
+      needsResume: false,
+      done: false,
+      error: undefined,
+      waiter: undefined,
+      resolveFinished,
+      rejectFinished,
+    };
+    if (signal) {
+      const onAbort = () => {
+        this.#abortRender(pending, abortError());
+      };
+      pending.abort = () => signal.removeEventListener('abort', onAbort);
+      signal.addEventListener('abort', onAbort, { once: true });
+    }
+    this.#pending = pending;
+    this.#worker.postMessage({
+      type: 'render',
+      id: pending.id,
+      requestOffset: encoded.requestOffset,
+      cursor: encoded.cursor,
+    });
+    return new WorkerStreamSession(this, pending, finished);
+  }
+
+  nextStream(pending: PendingStreamingRender): Promise<IteratorResult<string>> {
+    if (pending.error) {
+      return Promise.reject(pending.error);
+    }
+    if (pending.chunk !== undefined) {
+      const chunk = pending.chunk;
+      pending.chunk = undefined;
+      return Promise.resolve({ value: chunk, done: false });
+    }
+    if (pending.done) {
+      return Promise.resolve({ value: undefined, done: true });
+    }
+    if (pending.waiter) {
+      return Promise.reject(new Error('Concurrent pulls are not supported'));
+    }
+
+    return new Promise<IteratorResult<string>>((resolve, reject) => {
+      pending.waiter = { resolve, reject };
+      if (pending.needsResume) {
+        pending.needsResume = false;
+        this.#worker.postMessage({ type: 'resumeOutput', id: pending.id });
+      }
+    });
+  }
+
+  cancelStream(pending: PendingStreamingRender): void {
+    if (!pending.done && !pending.error) {
+      this.#abortRender(pending, abortError());
+    }
+  }
+
   async terminate(): Promise<void> {
     if (this.#closed) {
       return;
@@ -537,8 +759,9 @@ class WorkerSlot {
     this.failed = true;
     const error = new Error('The Nunjitsu worker was terminated');
     this.#rejectReady?.(error);
-    this.#pending?.abort?.();
-    this.#pending?.reject(error);
+    if (this.#pending) {
+      this.#rejectPending(this.#pending, error);
+    }
     this.#pending = undefined;
     await this.#worker.terminate();
   }
@@ -549,7 +772,7 @@ class WorkerSlot {
       return;
     }
     if (value.type === 'ready') {
-      if (value.abiVersion !== 5 || value.arenaBase <= 0) {
+      if (value.abiVersion !== 6 || value.arenaBase <= 0) {
         this.#fail(new Error('Nunjitsu worker reported an incompatible Wasm ABI'));
         return;
       }
@@ -578,16 +801,45 @@ class WorkerSlot {
       void this.#resumeLoad(pending, value);
       return;
     }
-    pending.abort?.();
-    this.#pending = undefined;
+    if (value.type === 'chunk') {
+      if (pending.kind !== 'streaming' || pending.chunk !== undefined || pending.needsResume) {
+        this.#fail(new Error('Nunjitsu worker yielded an unexpected output chunk'));
+        return;
+      }
+      pending.chunk = value.chunk;
+      pending.needsResume = true;
+      this.#notifyStream(pending);
+      return;
+    }
+
     if (value.state === 1) {
-      try {
-        pending.resolve(decodeOutput(this.memory, value.outputOffset, value.outputLength));
-      } catch (error) {
-        pending.reject(asError(error));
+      pending.abort?.();
+      pending.abort = undefined;
+      this.#pending = undefined;
+      if (pending.kind === 'streaming') {
+        if (value.outputOffset !== 0 || value.outputLength !== 0) {
+          this.#rejectPending(
+            pending,
+            new Error('Nunjitsu streaming render returned buffered output'),
+          );
+          this.failed = true;
+          void this.#worker.terminate();
+          return;
+        }
+        pending.done = true;
+        pending.resolveFinished();
+        this.#notifyStream(pending);
+      } else {
+        try {
+          pending.resolve(decodeOutput(this.memory, value.outputOffset, value.outputLength));
+        } catch (error) {
+          pending.reject(asError(error));
+        }
       }
     } else {
-      pending.reject(
+      this.#pending = undefined;
+      this.#rejectPending(
+        pending,
         value.errorCode === 7
           ? new NunjitsuLimitError()
           : new NunjitsuRenderError(value.errorCode),
@@ -600,8 +852,9 @@ class WorkerSlot {
     this.#rejectReady?.(error);
     this.#rejectReady = undefined;
     this.#resolveReady = undefined;
-    this.#pending?.abort?.();
-    this.#pending?.reject(error);
+    if (this.#pending) {
+      this.#rejectPending(this.#pending, error);
+    }
     this.#pending = undefined;
   }
 
@@ -641,11 +894,58 @@ class WorkerSlot {
       if (this.#pending !== pending) {
         return;
       }
-      pending.abort?.();
       this.#pending = undefined;
       this.failed = true;
       void this.#worker.terminate();
-      pending.reject(asError(error));
+      this.#rejectPending(pending, asError(error));
+    }
+  }
+
+  #abortRender(pending: PendingRender, error: Error): void {
+    if (this.#pending !== pending) {
+      return;
+    }
+    this.#pending = undefined;
+    this.failed = true;
+    this.#rejectPending(pending, error);
+    void this.#worker.terminate();
+  }
+
+  #rejectPending(pending: PendingRender, error: Error): void {
+    pending.abort?.();
+    pending.abort = undefined;
+    if (pending.kind === 'buffered') {
+      pending.reject(error);
+      return;
+    }
+    if (pending.done || pending.error) {
+      return;
+    }
+    pending.error = error;
+    pending.rejectFinished(error);
+    this.#notifyStream(pending);
+  }
+
+  #notifyStream(pending: PendingStreamingRender): void {
+    const waiter = pending.waiter;
+    if (!waiter) {
+      return;
+    }
+    if (pending.error) {
+      pending.waiter = undefined;
+      waiter.reject(pending.error);
+      return;
+    }
+    if (pending.chunk !== undefined) {
+      const chunk = pending.chunk;
+      pending.chunk = undefined;
+      pending.waiter = undefined;
+      waiter.resolve({ value: chunk, done: false });
+      return;
+    }
+    if (pending.done) {
+      pending.waiter = undefined;
+      waiter.resolve({ value: undefined, done: true });
     }
   }
 }
@@ -676,6 +976,9 @@ function isWorkerMessage(value: unknown): value is WorkerMessage {
       typeof message.name === 'string' &&
       typeof message.cursor === 'number'
     );
+  }
+  if (message.type === 'chunk') {
+    return typeof message.id === 'number' && typeof message.chunk === 'string';
   }
   if (message.type !== 'result' || typeof message.id !== 'number') {
     return false;

@@ -4,8 +4,9 @@ use core::mem::{align_of, size_of};
 use core::ptr::{addr_of, addr_of_mut, read_unaligned, write_unaligned};
 use core::slice;
 
-const ABI_VERSION: u32 = 5;
+const ABI_VERSION: u32 = 6;
 const PAGE_SIZE: usize = 65_536;
+const STREAM_CHUNK_BYTES: u32 = 64 * 1024;
 const RECORD_ALIGNMENT: u32 = 8;
 const RECORD_HEADER_LENGTH: usize = 8;
 
@@ -28,6 +29,7 @@ const STATE_IDLE: u32 = 0;
 const STATE_COMPLETE: u32 = 1;
 const STATE_ERROR: u32 = 2;
 const STATE_LOAD_TEMPLATE: u32 = 3;
+const STATE_OUTPUT_AVAILABLE: u32 = 4;
 
 const ERROR_NONE: u32 = 0;
 const ERROR_INVALID_ARENA: u32 = 1;
@@ -38,7 +40,7 @@ const ERROR_UNSUPPORTED_TAG: u32 = 5;
 const ERROR_INCLUDE_CYCLE: u32 = 6;
 const ERROR_RESOURCE_LIMIT: u32 = 7;
 
-const RENDER_STATE_LENGTH: u32 = 60;
+const RENDER_STATE_LENGTH: u32 = 72;
 const STATE_CONTEXT: usize = 0;
 const STATE_FLAGS: usize = 4;
 const STATE_CURRENT_FRAME: usize = 8;
@@ -54,6 +56,9 @@ const STATE_LIMIT_ARENA_BYTES: usize = 44;
 const STATE_LOADER_CALLS: usize = 48;
 const STATE_LIMIT_LOADER_CALLS: usize = 52;
 const STATE_INCLUDE_DEPTH: usize = 56;
+const STATE_TRANSIENT_BASE: usize = 60;
+const STATE_TOTAL_OUTPUT_LENGTH: usize = 64;
+const STATE_MATERIALIZATION_BASE: usize = 68;
 
 const FRAME_LENGTH: u32 = 16;
 const FRAME_PARENT: usize = 0;
@@ -153,6 +158,18 @@ pub extern "C" fn nunjitsu_resume_include(source_offset: u32, canonical_offset: 
     }
 }
 
+#[unsafe(no_mangle)]
+pub extern "C" fn nunjitsu_resume_output() -> u32 {
+    if unsafe { CONTROL.state } != STATE_OUTPUT_AVAILABLE {
+        return fail(ERROR_INVALID_ARENA);
+    }
+    set_control(STATE_IDLE, 0, 0, ERROR_NONE);
+    match resume_output().and_then(|()| run_active_render()) {
+        Ok(state) => state,
+        Err(error) => fail(error),
+    }
+}
+
 fn start_render(request_offset: u32) -> Result<(), u32> {
     let request = record_at(request_offset, TAG_REQUEST)?;
     if request.len() != 36 {
@@ -167,7 +184,7 @@ fn start_render(request_offset: u32) -> Result<(), u32> {
     let limit_output_bytes = read_u32(request, 24)?;
     let limit_arena_bytes = read_u32(request, 28)?;
     let limit_loader_calls = read_u32(request, 32)?;
-    if flags & !1 != 0 {
+    if flags & !3 != 0 {
         return Err(ERROR_INVALID_RECORD);
     }
     record_at(source_offset, TAG_SOURCE)?;
@@ -194,6 +211,7 @@ fn start_render(request_offset: u32) -> Result<(), u32> {
     unsafe {
         ACTIVE_RENDER = state_offset;
     }
+    set_state_field(state_offset, STATE_TRANSIENT_BASE, unsafe { ARENA_CURSOR })?;
     enforce_arena_limit(state_offset, unsafe { ARENA_CURSOR })?;
     Ok(())
 }
@@ -221,11 +239,45 @@ fn resume_include(source_offset: u32, canonical_offset: u32) -> Result<(), u32> 
     set_state_field(state_offset, STATE_CURRENT_FRAME, frame_offset)?;
     set_state_field(state_offset, STATE_PENDING_NAME, 0)?;
     set_state_field(state_offset, STATE_INCLUDE_DEPTH, next_depth)?;
+    set_state_field(state_offset, STATE_TRANSIENT_BASE, unsafe { ARENA_CURSOR })?;
     Ok(())
+}
+
+fn resume_output() -> Result<(), u32> {
+    let state_offset = active_state()?;
+    if !is_streaming(state_offset)? {
+        return Err(ERROR_INVALID_ARENA);
+    }
+    let materialization_base = state_field(state_offset, STATE_MATERIALIZATION_BASE)?;
+    if materialization_base < nunjitsu_arena_base()
+        || materialization_base > unsafe { ARENA_CURSOR }
+    {
+        return Err(ERROR_INVALID_ARENA);
+    }
+    unsafe {
+        ARENA_CURSOR = materialization_base;
+    }
+    if state_field(state_offset, STATE_OUTPUT_LENGTH)? != 0 {
+        return Ok(());
+    }
+
+    let transient_base = state_field(state_offset, STATE_TRANSIENT_BASE)?;
+    if transient_base > materialization_base {
+        return Err(ERROR_INVALID_ARENA);
+    }
+    unsafe {
+        ARENA_CURSOR = transient_base;
+    }
+    set_state_field(state_offset, STATE_FIRST_CHUNK, 0)?;
+    set_state_field(state_offset, STATE_LAST_CHUNK, 0)?;
+    set_state_field(state_offset, STATE_MATERIALIZATION_BASE, 0)
 }
 
 fn run_active_render() -> Result<u32, u32> {
     let state_offset = active_state()?;
+    if is_streaming(state_offset)? && state_field(state_offset, STATE_OUTPUT_LENGTH)? != 0 {
+        return yield_output(state_offset);
+    }
     loop {
         let frame_offset = state_field(state_offset, STATE_CURRENT_FRAME)?;
         if frame_offset == 0 {
@@ -253,7 +305,12 @@ fn run_active_render() -> Result<u32, u32> {
         set_frame_field(frame_offset, FRAME_CURSOR, next_cursor as u32)?;
 
         match item {
-            TemplateItem::Text(text) => append_output(state_offset, text)?,
+            TemplateItem::Text(text) => {
+                append_output(state_offset, text)?;
+                if is_streaming(state_offset)? && !text.is_empty() {
+                    return yield_output(state_offset);
+                }
+            }
             TemplateItem::Expression(expression) => {
                 let context_offset = state_field(state_offset, STATE_CONTEXT)?;
                 let context = Context::new(record_at(context_offset, TAG_RECORD)?)?;
@@ -268,6 +325,11 @@ fn run_active_render() -> Result<u32, u32> {
                     } else {
                         append_output(state_offset, value.bytes)?;
                     }
+                }
+                if is_streaming(state_offset)?
+                    && state_field(state_offset, STATE_OUTPUT_LENGTH)? != 0
+                {
+                    return yield_output(state_offset);
                 }
             }
             TemplateItem::Include(name) => {
@@ -297,6 +359,93 @@ fn run_active_render() -> Result<u32, u32> {
 }
 
 fn complete_render(state_offset: u32) -> Result<u32, u32> {
+    if is_streaming(state_offset)? {
+        if state_field(state_offset, STATE_OUTPUT_LENGTH)? != 0 {
+            return yield_output(state_offset);
+        }
+        set_control(STATE_COMPLETE, 0, 0, ERROR_NONE);
+        return Ok(STATE_COMPLETE);
+    }
+    let (output_offset, output_length) = materialize_output(state_offset)?;
+    set_control(STATE_COMPLETE, output_offset, output_length, ERROR_NONE);
+    Ok(STATE_COMPLETE)
+}
+
+fn yield_output(state_offset: u32) -> Result<u32, u32> {
+    set_state_field(state_offset, STATE_MATERIALIZATION_BASE, unsafe {
+        ARENA_CURSOR
+    })?;
+    let (output_offset, output_length) = materialize_stream_output(state_offset)?;
+    if output_length == 0 {
+        return Err(ERROR_INVALID_ARENA);
+    }
+    set_control(
+        STATE_OUTPUT_AVAILABLE,
+        output_offset,
+        output_length,
+        ERROR_NONE,
+    );
+    Ok(STATE_OUTPUT_AVAILABLE)
+}
+
+fn materialize_stream_output(state_offset: u32) -> Result<(u32, u32), u32> {
+    let pending_length = state_field(state_offset, STATE_OUTPUT_LENGTH)?;
+    let mut output_length = 0u32;
+    let mut chunk_offset = state_field(state_offset, STATE_FIRST_CHUNK)?;
+    let mut next_first = chunk_offset;
+    while chunk_offset != 0 {
+        let chunk = record_at(chunk_offset, TAG_OUTPUT_CHUNK)?;
+        if chunk.len() < 4 {
+            return Err(ERROR_INVALID_RECORD);
+        }
+        let data_length = (chunk.len() - 4) as u32;
+        if output_length != 0 && output_length.saturating_add(data_length) > STREAM_CHUNK_BYTES {
+            break;
+        }
+        output_length = output_length
+            .checked_add(data_length)
+            .ok_or(ERROR_OUTPUT_TOO_LARGE)?;
+        next_first = read_u32(chunk, 0)?;
+        chunk_offset = next_first;
+    }
+    if output_length == 0 || output_length > pending_length {
+        return Err(ERROR_INVALID_RECORD);
+    }
+
+    let output_offset = allocate_record(TAG_OUTPUT, output_length)?;
+    let output_payload_offset = output_offset
+        .checked_add(RECORD_HEADER_LENGTH as u32)
+        .ok_or(ERROR_OUTPUT_TOO_LARGE)?;
+    let output = mutable_memory(output_payload_offset, output_length)?;
+    let mut output_cursor = 0usize;
+    chunk_offset = state_field(state_offset, STATE_FIRST_CHUNK)?;
+    while chunk_offset != next_first {
+        let chunk = record_at(chunk_offset, TAG_OUTPUT_CHUNK)?;
+        let next = read_u32(chunk, 0)?;
+        let data = &chunk[4..];
+        let end = output_cursor
+            .checked_add(data.len())
+            .ok_or(ERROR_OUTPUT_TOO_LARGE)?;
+        output[output_cursor..end].copy_from_slice(data);
+        output_cursor = end;
+        chunk_offset = next;
+    }
+    if output_cursor != output.len() {
+        return Err(ERROR_INVALID_RECORD);
+    }
+    set_state_field(state_offset, STATE_FIRST_CHUNK, next_first)?;
+    if next_first == 0 {
+        set_state_field(state_offset, STATE_LAST_CHUNK, 0)?;
+    }
+    set_state_field(
+        state_offset,
+        STATE_OUTPUT_LENGTH,
+        pending_length - output_length,
+    )?;
+    Ok((output_offset, output_length))
+}
+
+fn materialize_output(state_offset: u32) -> Result<(u32, u32), u32> {
     let output_length = state_field(state_offset, STATE_OUTPUT_LENGTH)?;
     let output_offset = allocate_record(TAG_OUTPUT, output_length)?;
     let output_payload_offset = output_offset
@@ -325,22 +474,36 @@ fn complete_render(state_offset: u32) -> Result<u32, u32> {
     if output_cursor != output.len() {
         return Err(ERROR_INVALID_RECORD);
     }
-    set_control(STATE_COMPLETE, output_offset, output_length, ERROR_NONE);
-    Ok(STATE_COMPLETE)
+    Ok((output_offset, output_length))
 }
 
 fn append_output(state_offset: u32, bytes: &[u8]) -> Result<(), u32> {
     if bytes.is_empty() {
         return Ok(());
     }
-    let output_length = state_field(state_offset, STATE_OUTPUT_LENGTH)?;
-    let next_length = output_length
+    let pending_length = state_field(state_offset, STATE_OUTPUT_LENGTH)?;
+    let next_pending_length = pending_length
+        .checked_add(bytes.len() as u32)
+        .ok_or(ERROR_OUTPUT_TOO_LARGE)?;
+    let total_length = state_field(state_offset, STATE_TOTAL_OUTPUT_LENGTH)?;
+    let next_total_length = total_length
         .checked_add(bytes.len() as u32)
         .ok_or(ERROR_OUTPUT_TOO_LARGE)?;
     enforce_limit(
-        next_length,
+        next_total_length,
         state_field(state_offset, STATE_LIMIT_OUTPUT_BYTES)?,
     )?;
+    let mut cursor = 0usize;
+    while cursor < bytes.len() {
+        let end = utf8_chunk_end(bytes, cursor);
+        append_output_chunk(state_offset, &bytes[cursor..end])?;
+        cursor = end;
+    }
+    set_state_field(state_offset, STATE_OUTPUT_LENGTH, next_pending_length)?;
+    set_state_field(state_offset, STATE_TOTAL_OUTPUT_LENGTH, next_total_length)
+}
+
+fn append_output_chunk(state_offset: u32, bytes: &[u8]) -> Result<(), u32> {
     let chunk_offset = allocate_record(
         TAG_OUTPUT_CHUNK,
         4u32.checked_add(bytes.len() as u32)
@@ -357,8 +520,25 @@ fn append_output(state_offset: u32, bytes: &[u8]) -> Result<(), u32> {
         let previous = mutable_record_at(last_chunk, TAG_OUTPUT_CHUNK)?;
         write_u32(previous, 0, chunk_offset)?;
     }
-    set_state_field(state_offset, STATE_LAST_CHUNK, chunk_offset)?;
-    set_state_field(state_offset, STATE_OUTPUT_LENGTH, next_length)
+    set_state_field(state_offset, STATE_LAST_CHUNK, chunk_offset)
+}
+
+fn utf8_chunk_end(bytes: &[u8], start: usize) -> usize {
+    let mut end = start
+        .saturating_add(STREAM_CHUNK_BYTES as usize)
+        .min(bytes.len());
+    while end < bytes.len() && end > start && bytes[end] & 0b1100_0000 == 0b1000_0000 {
+        end -= 1;
+    }
+    if end == start {
+        bytes.len().min(start + 4)
+    } else {
+        end
+    }
+}
+
+fn is_streaming(state_offset: u32) -> Result<bool, u32> {
+    Ok(state_field(state_offset, STATE_FLAGS)? & 2 == 2)
 }
 
 fn include_cycle(mut frame_offset: u32, canonical_offset: u32) -> Result<bool, u32> {

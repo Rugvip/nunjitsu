@@ -130,6 +130,75 @@ test('renders through reusable shared-memory workers', async () => {
   await assert.rejects(engine.render({ source: 'disposed' }), /disposed/);
 });
 
+test('streams evaluator chunks with backpressure and preserves partial failure semantics', async () => {
+  let includeLoads = 0;
+  let markIncludeStarted: (() => void) | undefined;
+  const includeStarted = new Promise<void>(resolve => {
+    markIncludeStarted = resolve;
+  });
+  const engine = await createEngine({
+    loaders: [{
+      async load(name) {
+        if (name !== 'partial.njk') {
+          return null;
+        }
+        includeLoads += 1;
+        markIncludeStarted?.();
+        return { source: 'partial', canonicalName: 'memory:partial.njk' };
+      },
+    }],
+    workerPool: { minWorkers: 1, maxWorkers: 1 },
+  });
+
+  try {
+    const reader = engine.renderStream(
+      { source: 'first{{ value }}{% include "partial.njk" %}last' },
+      { value: 'second' },
+    ).getReader();
+    assert.deepEqual(await reader.read(), { value: 'first', done: false });
+    await new Promise<void>(resolve => setImmediate(resolve));
+    assert.equal(includeLoads, 0);
+
+    assert.deepEqual(await reader.read(), { value: 'second', done: false });
+    await includeStarted;
+    const remaining: string[] = [];
+    for (;;) {
+      const result = await reader.read();
+      if (result.done) {
+        break;
+      }
+      remaining.push(result.value);
+    }
+    assert.deepEqual(remaining, ['partial', 'last']);
+
+    const largeValue = `${'a'.repeat(65_535)}💥${'b'.repeat(65_536)}`;
+    const largeChunks: string[] = [];
+    for await (const chunk of engine.renderStream({ source: '{{ value }}' }, { value: largeValue })) {
+      largeChunks.push(chunk);
+    }
+    assert.equal(largeChunks.join(''), largeValue);
+    assert.ok(largeChunks.length >= 3);
+    assert.ok(largeChunks.every(chunk => Buffer.byteLength(chunk) <= 64 * 1024));
+
+    const invalid = engine.renderStream({ source: 'visible{{ unclosed' }).getReader();
+    assert.deepEqual(await invalid.read(), { value: 'visible', done: false });
+    await assert.rejects(
+      invalid.read(),
+      error => error instanceof NunjitsuRenderError && error.code === 3,
+    );
+
+    const limited = engine.renderStream(
+      { source: 'ab{{ value }}' },
+      { value: 'cd' },
+      { limits: { outputBytes: 3 } },
+    ).getReader();
+    assert.deepEqual(await limited.read(), { value: 'ab', done: false });
+    await assert.rejects(limited.read(), error => error instanceof NunjitsuLimitError);
+  } finally {
+    await engine.dispose();
+  }
+});
+
 test('filesystem loading stays within explicit canonical roots', async () => {
   const sandbox = await mkdtemp(join(tmpdir(), 'nunjitsu-'));
   const root = join(sandbox, 'templates');
@@ -218,6 +287,50 @@ test('cancels a render while its worker is suspended on an include loader', asyn
     await loadStarted;
     controller.abort();
     await assert.rejects(rendering, error => error instanceof Error && error.name === 'AbortError');
+    assert.equal(await engine.render({ source: 'clean' }), 'clean');
+  } finally {
+    await engine.dispose();
+  }
+});
+
+test('cancels a partially consumed stream and recycles its reserved worker', async () => {
+  let markLoadStarted: (() => void) | undefined;
+  const loadStarted = new Promise<void>(resolve => {
+    markLoadStarted = resolve;
+  });
+  const delayedLoader: TemplateLoader = {
+    async load(name, signal) {
+      if (name !== 'delayed.njk') {
+        return null;
+      }
+      markLoadStarted?.();
+      return await new Promise<never>((_resolve, reject) => {
+        const rejectAborted = () => {
+          const error = new Error('delayed loader aborted');
+          error.name = 'AbortError';
+          reject(error);
+        };
+        if (signal?.aborted) {
+          rejectAborted();
+        } else {
+          signal?.addEventListener('abort', rejectAborted, { once: true });
+        }
+      });
+    },
+  };
+  const engine = await createEngine({
+    loaders: [delayedLoader],
+    workerPool: { minWorkers: 1, maxWorkers: 1 },
+  });
+  try {
+    const reader = engine.renderStream(
+      { source: 'before{{ value }}{% include "delayed.njk" %} after' },
+      { value: 'yield' },
+    ).getReader();
+    assert.deepEqual(await reader.read(), { value: 'before', done: false });
+    assert.deepEqual(await reader.read(), { value: 'yield', done: false });
+    await loadStarted;
+    await reader.cancel();
     assert.equal(await engine.render({ source: 'clean' }), 'clean');
   } finally {
     await engine.dispose();
