@@ -507,6 +507,69 @@ test('evaluates nested and resumable if branches without rendering inactive bodi
   }
 });
 
+test('iterates arena-backed arrays and records with nested local scopes', async () => {
+  const engine = await createEngine({
+    loaders: [memoryLoader({ 'item.njk': '<{{ item }}>' })],
+  });
+  try {
+    const list = { source: '{% for item in items %}[{{ item }}]{% else %}empty{% endfor %}' };
+    assert.equal(await engine.render(list, { items: ['a', 'b', 'c'] }), '[a][b][c]');
+    assert.equal(await engine.render(list, { items: [] }), 'empty');
+    assert.equal(await engine.render(list, {}), 'empty');
+    assert.equal(
+      await engine.render(
+        {
+          source: [
+            '{% for row in rows %}',
+            '{% for item in row %}{{ item }}{% endfor %}',
+            ':{{ row.0 }};',
+            '{% endfor %}',
+          ].join(''),
+        },
+        { rows: [['a', 'b'], ['c']] },
+      ),
+      'ab:a;c:c;',
+    );
+    assert.equal(
+      await engine.render(
+        { source: '{% for key, value in pairs %}{{ key }}={{ value }};{% endfor %}' },
+        { pairs: [['a', 1], ['b', 2]] },
+      ),
+      'a=1;b=2;',
+    );
+    assert.equal(
+      await engine.render(
+        { source: '{% for key, value in values %}{{ key }}={{ value }};{% endfor %}' },
+        { values: { first: 1, second: 2 } },
+      ),
+      'first=1;second=2;',
+    );
+    assert.equal(
+      await engine.render(
+        {
+          source: [
+            '{% for item in items %}',
+            '{{ loop.index }}/{{ loop.index0 }}/{{ loop.revindex }}/{{ loop.revindex0 }}/',
+            '{{ loop.first }}/{{ loop.last }}/{{ loop.length }}:{{ item }};',
+            '{% endfor %}',
+          ].join(''),
+        },
+        { items: ['a', 'b'] },
+      ),
+      '1/0/2/1/true/false/2:a;2/1/1/0/false/true/2:b;',
+    );
+    assert.equal(
+      (await Array.fromAsync(engine.renderStream(
+        { source: '{% for item in items %}{% include "item.njk" %}{% endfor %}' },
+        { items: ['x', 'y'] },
+      ))).join(''),
+      '<x><y>',
+    );
+  } finally {
+    await engine.dispose();
+  }
+});
+
 test('cancels a render while its worker is suspended on an include loader', async () => {
   let markLoadStarted: (() => void) | undefined;
   const loadStarted = new Promise<void>(resolve => {

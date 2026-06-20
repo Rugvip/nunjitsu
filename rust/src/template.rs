@@ -51,6 +51,16 @@ pub(crate) enum ConditionalBoundary<'a> {
     EndIf(usize),
 }
 
+/// Body boundaries for one `for` directive at the current nesting depth.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[cfg(any(target_arch = "wasm32", test))]
+pub(crate) struct LoopBoundaries {
+    /// Cursor immediately after the optional loop `else` directive.
+    pub else_cursor: Option<usize>,
+    /// Cursor immediately after the matching `endfor` directive.
+    pub end_cursor: usize,
+}
+
 /// Returns the next streaming parser event and its following source cursor.
 pub fn next_item(source: &[u8], cursor: usize) -> Result<(TemplateItem<'_>, usize), RenderError> {
     if cursor >= source.len() {
@@ -100,6 +110,7 @@ pub(crate) fn find_conditional_boundary(
     include_else: bool,
 ) -> Result<ConditionalBoundary<'_>, RenderError> {
     let mut depth = 0usize;
+    let mut loop_depth = 0usize;
     loop {
         let (item, next_cursor) = next_item(source, cursor)?;
         if let TemplateItem::Tag(directive) = item {
@@ -110,14 +121,65 @@ pub(crate) fn find_conditional_boundary(
                     return Ok(ConditionalBoundary::EndIf(next_cursor));
                 }
                 depth -= 1;
-            } else if include_else && depth == 0 && directive == b"else" {
+            } else if directive_keyword(directive, b"for").is_some() {
+                loop_depth = loop_depth
+                    .checked_add(1)
+                    .ok_or(RenderError::OutputTooLarge)?;
+            } else if directive == b"endfor" && loop_depth != 0 {
+                loop_depth -= 1;
+            } else if include_else && depth == 0 && loop_depth == 0 && directive == b"else" {
                 return Ok(ConditionalBoundary::Else(next_cursor));
             } else if include_else
                 && depth == 0
+                && loop_depth == 0
                 && let Some(expression) = directive_keyword(directive, b"elif")
                     .or_else(|| directive_keyword(directive, b"elseif"))
             {
                 return Ok(ConditionalBoundary::ElseIf(expression, next_cursor));
+            }
+        } else if item == TemplateItem::End {
+            return Err(RenderError::UnclosedBlockTag);
+        }
+        cursor = next_cursor;
+    }
+}
+
+/// Finds the optional `else` and required `endfor` for one loop body.
+#[cfg(any(target_arch = "wasm32", test))]
+pub(crate) fn find_loop_boundaries(
+    source: &[u8],
+    mut cursor: usize,
+) -> Result<LoopBoundaries, RenderError> {
+    let mut loop_depth = 0usize;
+    let mut conditional_depth = 0usize;
+    let mut else_cursor = None;
+    loop {
+        let (item, next_cursor) = next_item(source, cursor)?;
+        if let TemplateItem::Tag(directive) = item {
+            if directive_keyword(directive, b"for").is_some() {
+                loop_depth = loop_depth
+                    .checked_add(1)
+                    .ok_or(RenderError::OutputTooLarge)?;
+            } else if directive == b"endfor" {
+                if loop_depth == 0 && conditional_depth == 0 {
+                    return Ok(LoopBoundaries {
+                        else_cursor,
+                        end_cursor: next_cursor,
+                    });
+                }
+                loop_depth = loop_depth.saturating_sub(1);
+            } else if directive_keyword(directive, b"if").is_some() {
+                conditional_depth = conditional_depth
+                    .checked_add(1)
+                    .ok_or(RenderError::OutputTooLarge)?;
+            } else if directive == b"endif" && conditional_depth != 0 {
+                conditional_depth -= 1;
+            } else if directive == b"else"
+                && loop_depth == 0
+                && conditional_depth == 0
+                && else_cursor.is_none()
+            {
+                else_cursor = Some(next_cursor);
             }
         } else if item == TemplateItem::End {
             return Err(RenderError::UnclosedBlockTag);
@@ -380,6 +442,16 @@ mod tests {
         assert_eq!(
             find_conditional_boundary(source, 70, false),
             Ok(ConditionalBoundary::EndIf(source.len())),
+        );
+
+        let loop_source =
+            b"item{% if condition %}yes{% else %}no{% endif %}{% else %}empty{% endfor %}";
+        assert_eq!(
+            find_loop_boundaries(loop_source, 0),
+            Ok(LoopBoundaries {
+                else_cursor: Some(58),
+                end_cursor: loop_source.len(),
+            }),
         );
     }
 }

@@ -1,17 +1,17 @@
 use crate::expression::{
     Atom, Call, Comparison, Operand, Operation, next_argument, next_lookup_segment, next_operation,
-    parse_base, parse_tag_call,
+    parse_base, parse_for_clause, parse_tag_call,
 };
 use crate::template::{
     ConditionalBoundary, RenderError, RenderedValue, TemplateItem, directive_keyword, emit_escaped,
-    find_conditional_boundary, next_item,
+    find_conditional_boundary, find_loop_boundaries, next_item,
 };
 use core::arch::wasm32::{memory_grow, memory_size};
 use core::mem::{align_of, size_of};
 use core::ptr::{addr_of, addr_of_mut, read_unaligned, write_unaligned};
 use core::slice;
 
-const ABI_VERSION: u32 = 9;
+const ABI_VERSION: u32 = 10;
 const PAGE_SIZE: usize = 65_536;
 const STREAM_CHUNK_BYTES: u32 = 64 * 1024;
 const RECORD_ALIGNMENT: u32 = 8;
@@ -33,6 +33,7 @@ const TAG_FRAME: u32 = 14;
 const TAG_OUTPUT_CHUNK: u32 = 15;
 const TAG_CAPABILITY_REGISTRY: u32 = 16;
 const TAG_CAPABILITY_REQUEST: u32 = 17;
+const TAG_LOOP_STATE: u32 = 18;
 
 const STATE_IDLE: u32 = 0;
 const STATE_COMPLETE: u32 = 1;
@@ -52,7 +53,7 @@ const ERROR_RESOURCE_LIMIT: u32 = 7;
 const ERROR_UNKNOWN_CAPABILITY: u32 = 8;
 const ERROR_INVALID_EXPRESSION: u32 = 9;
 
-const RENDER_STATE_LENGTH: u32 = 116;
+const RENDER_STATE_LENGTH: u32 = 120;
 const STATE_CONTEXT: usize = 0;
 const STATE_FLAGS: usize = 4;
 const STATE_CURRENT_FRAME: usize = 8;
@@ -82,6 +83,7 @@ const STATE_CURRENT_VALUE: usize = 100;
 const STATE_NEGATE_RESULT: usize = 104;
 const STATE_TAGS: usize = 108;
 const STATE_EXPRESSION_ACTION: usize = 112;
+const STATE_CURRENT_LOOP: usize = 116;
 
 const EXPRESSION_OUTPUT: u32 = 0;
 const EXPRESSION_IF: u32 = 1;
@@ -100,6 +102,18 @@ const FRAME_PARENT: usize = 0;
 const FRAME_SOURCE: usize = 4;
 const FRAME_CURSOR: usize = 8;
 const FRAME_CANONICAL_NAME: usize = 12;
+
+const LOOP_STATE_LENGTH: u32 = 40;
+const LOOP_PARENT: usize = 0;
+const LOOP_FRAME: usize = 4;
+const LOOP_BODY_CURSOR: usize = 8;
+const LOOP_ELSE_CURSOR: usize = 12;
+const LOOP_END_CURSOR: usize = 16;
+const LOOP_ITERABLE: usize = 20;
+const LOOP_INDEX: usize = 24;
+const LOOP_LENGTH: usize = 28;
+const LOOP_FIRST_NAME: usize = 32;
+const LOOP_SECOND_NAME: usize = 36;
 
 #[repr(C)]
 struct Control {
@@ -488,17 +502,132 @@ fn handle_tag(state_offset: u32, directive: &[u8]) -> Result<Option<u32>, u32> {
     if let Some(condition) = directive_keyword(directive, b"if") {
         return start_expression(state_offset, condition, EXPRESSION_IF);
     }
+    if let Some(clause) = directive_keyword(directive, b"for") {
+        start_for(state_offset, clause)?;
+        return Ok(None);
+    }
+    if directive == b"endfor" {
+        advance_for(state_offset)?;
+        return Ok(None);
+    }
     if directive == b"else"
         || directive_keyword(directive, b"elif").is_some()
         || directive_keyword(directive, b"elseif").is_some()
     {
-        skip_active_conditional(state_offset)?;
+        if directive == b"else" && is_current_loop_else(state_offset)? {
+            advance_for(state_offset)?;
+        } else {
+            skip_active_conditional(state_offset)?;
+        }
         return Ok(None);
     }
     if directive == b"endif" {
         return Ok(None);
     }
     start_tag(state_offset, directive).map(Some)
+}
+
+fn start_for(state_offset: u32, source: &[u8]) -> Result<(), u32> {
+    let clause = parse_for_clause(source).map_err(|_| ERROR_UNSUPPORTED_TAG)?;
+    let frame_offset = state_field(state_offset, STATE_CURRENT_FRAME)?;
+    let frame = record_at(frame_offset, TAG_FRAME)?;
+    let source_offset = read_u32(frame, FRAME_SOURCE)?;
+    let body_cursor = read_u32(frame, FRAME_CURSOR)?;
+    let template = record_at(source_offset, TAG_SOURCE)?;
+    let boundaries =
+        find_loop_boundaries(template, body_cursor as usize).map_err(render_error_code)?;
+    let iterable_offset = evaluate_sync_expression(state_offset, clause.iterable)?;
+    let length = iterable_length(iterable_offset)?;
+    if length == 0 && boundaries.else_cursor.is_none() {
+        set_frame_field(frame_offset, FRAME_CURSOR, boundaries.end_cursor as u32)?;
+        return Ok(());
+    }
+
+    let first_name = write_bytes_record(TAG_STRING, clause.first)?;
+    let second_name = clause
+        .second
+        .map(|name| write_bytes_record(TAG_STRING, name))
+        .transpose()?
+        .unwrap_or(0);
+    let loop_offset = allocate_record(TAG_LOOP_STATE, LOOP_STATE_LENGTH)?;
+    let parent = state_field(state_offset, STATE_CURRENT_LOOP)?;
+    let loop_state = mutable_record_at(loop_offset, TAG_LOOP_STATE)?;
+    write_u32(loop_state, LOOP_PARENT, parent)?;
+    write_u32(loop_state, LOOP_FRAME, frame_offset)?;
+    write_u32(loop_state, LOOP_BODY_CURSOR, body_cursor)?;
+    write_u32(
+        loop_state,
+        LOOP_ELSE_CURSOR,
+        boundaries.else_cursor.unwrap_or(0) as u32,
+    )?;
+    write_u32(loop_state, LOOP_END_CURSOR, boundaries.end_cursor as u32)?;
+    write_u32(loop_state, LOOP_ITERABLE, iterable_offset)?;
+    write_u32(loop_state, LOOP_INDEX, 0)?;
+    write_u32(loop_state, LOOP_LENGTH, length)?;
+    write_u32(loop_state, LOOP_FIRST_NAME, first_name)?;
+    write_u32(loop_state, LOOP_SECOND_NAME, second_name)?;
+    set_state_field(state_offset, STATE_CURRENT_LOOP, loop_offset)?;
+    if length == 0 {
+        set_frame_field(
+            frame_offset,
+            FRAME_CURSOR,
+            boundaries.else_cursor.ok_or(ERROR_INVALID_ARENA)? as u32,
+        )?;
+    }
+    Ok(())
+}
+
+fn advance_for(state_offset: u32) -> Result<(), u32> {
+    let loop_offset = state_field(state_offset, STATE_CURRENT_LOOP)?;
+    if loop_offset == 0 {
+        return Err(ERROR_UNSUPPORTED_TAG);
+    }
+    let frame_offset = state_field(state_offset, STATE_CURRENT_FRAME)?;
+    if loop_field(loop_offset, LOOP_FRAME)? != frame_offset {
+        return Err(ERROR_UNSUPPORTED_TAG);
+    }
+    let frame = record_at(frame_offset, TAG_FRAME)?;
+    let cursor = read_u32(frame, FRAME_CURSOR)?;
+    let else_cursor = loop_field(loop_offset, LOOP_ELSE_CURSOR)?;
+    let end_cursor = loop_field(loop_offset, LOOP_END_CURSOR)?;
+    if cursor != end_cursor && (else_cursor == 0 || cursor != else_cursor) {
+        return Err(ERROR_UNSUPPORTED_TAG);
+    }
+    let index = loop_field(loop_offset, LOOP_INDEX)?;
+    let length = loop_field(loop_offset, LOOP_LENGTH)?;
+    if index + 1 < length {
+        set_loop_field(loop_offset, LOOP_INDEX, index + 1)?;
+        set_frame_field(
+            frame_offset,
+            FRAME_CURSOR,
+            loop_field(loop_offset, LOOP_BODY_CURSOR)?,
+        )
+    } else {
+        if cursor == else_cursor {
+            set_frame_field(frame_offset, FRAME_CURSOR, end_cursor)?;
+        }
+        pop_for(state_offset, loop_offset)
+    }
+}
+
+fn is_current_loop_else(state_offset: u32) -> Result<bool, u32> {
+    let loop_offset = state_field(state_offset, STATE_CURRENT_LOOP)?;
+    if loop_offset == 0 {
+        return Ok(false);
+    }
+    let frame_offset = state_field(state_offset, STATE_CURRENT_FRAME)?;
+    let frame = record_at(frame_offset, TAG_FRAME)?;
+    Ok(loop_field(loop_offset, LOOP_FRAME)? == frame_offset
+        && loop_field(loop_offset, LOOP_ELSE_CURSOR)? != 0
+        && loop_field(loop_offset, LOOP_ELSE_CURSOR)? == read_u32(frame, FRAME_CURSOR)?)
+}
+
+fn pop_for(state_offset: u32, loop_offset: u32) -> Result<(), u32> {
+    set_state_field(
+        state_offset,
+        STATE_CURRENT_LOOP,
+        loop_field(loop_offset, LOOP_PARENT)?,
+    )
 }
 
 fn start_tag(state_offset: u32, directive: &[u8]) -> Result<u32, u32> {
@@ -866,7 +995,7 @@ fn resolve_atom(state_offset: u32, atom: Atom<'_>) -> Result<u32, u32> {
     match atom {
         Atom::Lookup(path) => {
             let context_offset = state_field(state_offset, STATE_CONTEXT)?;
-            let context = Context::new(record_at(context_offset, TAG_RECORD)?)?;
+            let context = Context::new(record_at(context_offset, TAG_RECORD)?, state_offset)?;
             context
                 .lookup_offset(path)
                 .map_or_else(|| allocate_record(TAG_UNDEFINED, 0), Ok)
@@ -1144,6 +1273,31 @@ fn set_frame_field(offset: u32, field: usize, value: u32) -> Result<(), u32> {
     write_u32(frame, field, value)
 }
 
+fn loop_field(offset: u32, field: usize) -> Result<u32, u32> {
+    let state = record_at(offset, TAG_LOOP_STATE)?;
+    if state.len() != LOOP_STATE_LENGTH as usize {
+        return Err(ERROR_INVALID_RECORD);
+    }
+    read_u32(state, field)
+}
+
+fn set_loop_field(offset: u32, field: usize, value: u32) -> Result<(), u32> {
+    let state = mutable_record_at(offset, TAG_LOOP_STATE)?;
+    if state.len() != LOOP_STATE_LENGTH as usize {
+        return Err(ERROR_INVALID_RECORD);
+    }
+    write_u32(state, field, value)
+}
+
+fn iterable_length(offset: u32) -> Result<u32, u32> {
+    match Value::at(offset)? {
+        Value::Undefined | Value::Null => Ok(0),
+        Value::Array(array) => Ok(array.count as u32),
+        Value::Record(record) => Ok(record.count as u32),
+        _ => Err(ERROR_INVALID_EXPRESSION),
+    }
+}
+
 fn state_field(offset: u32, field: usize) -> Result<u32, u32> {
     let state = record_at(offset, TAG_RENDER_STATE)?;
     if state.len() != RENDER_STATE_LENGTH as usize {
@@ -1209,23 +1363,109 @@ fn fail(error: u32) -> u32 {
 
 struct Context {
     root: Record,
+    state_offset: u32,
 }
 
 impl Context {
-    fn new(payload: &'static [u8]) -> Result<Self, u32> {
+    fn new(payload: &'static [u8], state_offset: u32) -> Result<Self, u32> {
         Ok(Self {
             root: Record::new(payload)?,
+            state_offset,
         })
     }
 
     fn lookup_offset(&self, path: &[u8]) -> Option<u32> {
         let (first, mut cursor) = next_lookup_segment(path, 0).ok()??;
-        let mut offset = self.root.get_offset(first)?;
+        if first == b"loop" {
+            let (metadata, next) = next_lookup_segment(path, cursor).ok()??;
+            let mut offset = loop_metadata_offset(self.state_offset, metadata)
+                .ok()
+                .flatten()?;
+            cursor = next;
+            while let Some((segment, next)) = next_lookup_segment(path, cursor).ok()? {
+                offset = Value::at(offset).ok()?.get_offset(segment)?;
+                cursor = next;
+            }
+            return Some(offset);
+        }
+        let mut offset = self
+            .lookup_local(first)
+            .or_else(|| self.root.get_offset(first))?;
         while let Some((segment, next)) = next_lookup_segment(path, cursor).ok()? {
             offset = Value::at(offset).ok()?.get_offset(segment)?;
             cursor = next;
         }
         Some(offset)
+    }
+
+    fn lookup_local(&self, name: &[u8]) -> Option<u32> {
+        let mut loop_offset = state_field(self.state_offset, STATE_CURRENT_LOOP).ok()?;
+        while loop_offset != 0 {
+            let first_name =
+                record_at(loop_field(loop_offset, LOOP_FIRST_NAME).ok()?, TAG_STRING).ok()?;
+            if first_name == name {
+                return loop_binding(loop_offset, false).ok().flatten();
+            }
+            let second_name_offset = loop_field(loop_offset, LOOP_SECOND_NAME).ok()?;
+            if second_name_offset != 0 && record_at(second_name_offset, TAG_STRING).ok()? == name {
+                return loop_binding(loop_offset, true).ok().flatten();
+            }
+            loop_offset = loop_field(loop_offset, LOOP_PARENT).ok()?;
+        }
+        None
+    }
+}
+
+fn loop_metadata_offset(state_offset: u32, name: &[u8]) -> Result<Option<u32>, u32> {
+    let loop_offset = state_field(state_offset, STATE_CURRENT_LOOP)?;
+    if loop_offset == 0 {
+        return Ok(None);
+    }
+    let index = loop_field(loop_offset, LOOP_INDEX)?;
+    let length = loop_field(loop_offset, LOOP_LENGTH)?;
+    let value = match name {
+        b"index" => write_u32_number(index + 1)?,
+        b"index0" => write_u32_number(index)?,
+        b"revindex" => write_u32_number(length - index)?,
+        b"revindex0" => write_u32_number(length - index - 1)?,
+        b"first" => write_boolean(index == 0)?,
+        b"last" => write_boolean(index + 1 == length)?,
+        b"length" => write_u32_number(length)?,
+        _ => return Ok(None),
+    };
+    Ok(Some(value))
+}
+
+fn loop_binding(loop_offset: u32, second: bool) -> Result<Option<u32>, u32> {
+    let iterable = Value::at(loop_field(loop_offset, LOOP_ITERABLE)?)?;
+    let index = loop_field(loop_offset, LOOP_INDEX)? as usize;
+    let has_second = loop_field(loop_offset, LOOP_SECOND_NAME)? != 0;
+    match iterable {
+        Value::Array(array) => {
+            let element_offset = read_u32(array.payload, 4 + index * 4)?;
+            if !has_second {
+                return Ok(Some(element_offset));
+            }
+            let Value::Array(element) = Value::at(element_offset)? else {
+                return Ok((!second).then_some(element_offset));
+            };
+            if usize::from(second) >= element.count {
+                Ok(None)
+            } else {
+                Ok(Some(read_u32(
+                    element.payload,
+                    4 + usize::from(second) * 4,
+                )?))
+            }
+        }
+        Value::Record(record) => {
+            let entry = 4 + index * 8;
+            Ok(Some(read_u32(
+                record.payload,
+                entry + if second { 4 } else { 0 },
+            )?))
+        }
+        _ => Ok(None),
     }
 }
 
@@ -1432,6 +1672,21 @@ fn write_number(source: &[u8]) -> Result<u32, u32> {
     payload[..8].copy_from_slice(&value.to_le_bytes());
     payload[8..].copy_from_slice(source);
     Ok(offset)
+}
+
+fn write_u32_number(value: u32) -> Result<u32, u32> {
+    let mut bytes = [0u8; 10];
+    let mut cursor = bytes.len();
+    let mut remaining = value;
+    loop {
+        cursor -= 1;
+        bytes[cursor] = b'0' + (remaining % 10) as u8;
+        remaining /= 10;
+        if remaining == 0 {
+            break;
+        }
+    }
+    write_number(&bytes[cursor..])
 }
 
 fn record_at(offset: u32, expected_tag: u32) -> Result<&'static [u8], u32> {

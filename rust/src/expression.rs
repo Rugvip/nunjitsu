@@ -74,6 +74,17 @@ pub enum Operation<'a> {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct ExpressionError;
 
+/// Parsed variable binding and iterable expression for a `for` directive.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct ForClause<'a> {
+    /// First item or key binding.
+    pub first: &'a [u8],
+    /// Optional second binding used for destructuring or object values.
+    pub second: Option<&'a [u8]>,
+    /// Iterable expression after the `in` keyword.
+    pub iterable: &'a [u8],
+}
+
 /// Parses the base atom, its unary negation, and the following operation cursor.
 pub fn parse_base(expression: &[u8]) -> Result<(Atom<'_>, usize, bool), ExpressionError> {
     let (operand, cursor) = parse_operand(expression, 0)?;
@@ -240,6 +251,37 @@ pub fn parse_tag_call(directive: &[u8]) -> Result<Call<'_>, ExpressionError> {
         return Err(ExpressionError);
     }
     Ok(call)
+}
+
+/// Parses `name [ , name ] in expression` without evaluating the iterable.
+pub fn parse_for_clause(source: &[u8]) -> Result<ForClause<'_>, ExpressionError> {
+    let mut cursor = skip_whitespace(source, 0);
+    let first_start = cursor;
+    cursor = parse_identifier(source, cursor)?;
+    let first = &source[first_start..cursor];
+    cursor = skip_whitespace(source, cursor);
+    let second = if source.get(cursor) == Some(&b',') {
+        cursor = skip_whitespace(source, cursor + 1);
+        let start = cursor;
+        cursor = parse_identifier(source, cursor)?;
+        let second = &source[start..cursor];
+        cursor = skip_whitespace(source, cursor);
+        Some(second)
+    } else {
+        None
+    };
+    if !has_keyword(source, cursor, b"in") {
+        return Err(ExpressionError);
+    }
+    let iterable = &source[skip_whitespace(source, cursor + 2)..];
+    if iterable.is_empty() {
+        return Err(ExpressionError);
+    }
+    Ok(ForClause {
+        first,
+        second,
+        iterable,
+    })
 }
 
 fn parse_atom(bytes: &[u8], cursor: usize) -> Result<(Atom<'_>, usize), ExpressionError> {
@@ -556,5 +598,13 @@ mod tests {
             },
         );
         assert_eq!(next_operation(expression, cursor), Ok(None));
+        assert_eq!(
+            parse_for_clause(b" key, value in items | entries "),
+            Ok(ForClause {
+                first: b"key",
+                second: Some(b"value"),
+                iterable: b"items | entries ",
+            }),
+        );
     }
 }
