@@ -1030,6 +1030,26 @@
     {
       "upstream": { "id": "tests/filters.js:48", "file": "tests/filters.js", "test": "selectattr" },
       "status": "ported"
+    },
+    {
+      "upstream": { "id": "tests/filters.js:6", "file": "tests/filters.js", "test": "dump" },
+      "status": "ported"
+    },
+    {
+      "upstream": { "id": "tests/filters.js:56", "file": "tests/filters.js", "test": "striptags" },
+      "status": "ported"
+    },
+    {
+      "upstream": { "id": "tests/filters.js:59", "file": "tests/filters.js", "test": "truncate" },
+      "status": "ported"
+    },
+    {
+      "upstream": { "id": "tests/filters.js:61", "file": "tests/filters.js", "test": "urlencode" },
+      "status": "ported"
+    },
+    {
+      "upstream": { "id": "tests/filters.js:62", "file": "tests/filters.js", "test": "urlencode - object without prototype" },
+      "status": "ported"
     }
   ]
 }

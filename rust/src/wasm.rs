@@ -3208,6 +3208,12 @@ fn apply_builtin_filter(
             };
             dictsort_value(input_offset, case_sensitive, by_value)?
         }
+        b"dump" => {
+            if argument_count(call)? > 1 {
+                return Err(ERROR_INVALID_EXPRESSION);
+            }
+            dump_value(input_offset, call_positional_argument(state_offset, call, 0)?)?
+        }
         b"float" => {
             if argument_count(call)? > 1 {
                 return Err(ERROR_INVALID_EXPRESSION);
@@ -3377,6 +3383,14 @@ fn apply_builtin_filter(
                 rendered.bytes,
             )?
         }
+        b"striptags" => {
+            if argument_count(call)? > 1 {
+                return Err(ERROR_INVALID_EXPRESSION);
+            }
+            let preserve_linebreaks = call_positional_argument(state_offset, call, 0)?
+                .is_some_and(|value| Value::at(value).is_ok_and(Value::truthy));
+            striptags_value(input_offset, preserve_linebreaks)?
+        }
         b"sum" => {
             if argument_count(call)? > 2 {
                 return Err(ERROR_INVALID_EXPRESSION);
@@ -3399,6 +3413,21 @@ fn apply_builtin_filter(
                 if rendered.safe { TAG_SAFE_STRING } else { TAG_STRING },
                 trim_ascii_whitespace(rendered.bytes),
             )?
+        }
+        b"truncate" => {
+            if argument_count(call)? > 3 {
+                return Err(ERROR_INVALID_EXPRESSION);
+            }
+            truncate_value(
+                input_offset,
+                call_positional_argument(state_offset, call, 0)?,
+                call_positional_argument(state_offset, call, 1)?,
+                call_positional_argument(state_offset, call, 2)?,
+            )?
+        }
+        b"urlencode" => {
+            require_argument_count(call, 0)?;
+            urlencode_value(input_offset)?
         }
         b"wordcount" => {
             require_argument_count(call, 0)?;
@@ -4686,6 +4715,657 @@ fn replace_value(
     }
     output[output_cursor..].copy_from_slice(&input.bytes[input_cursor..]);
     Ok(offset)
+}
+
+fn dump_value(value_offset: u32, spaces_offset: Option<u32>) -> Result<u32, u32> {
+    if matches!(Value::at(value_offset)?, Value::Undefined | Value::Macro) {
+        return allocate_record(TAG_UNDEFINED, 0);
+    }
+    let indent_offset = dump_indent(spaces_offset)?;
+    let indent = record_at(indent_offset, TAG_STRING)?;
+    let length = json_value_length(value_offset, indent, 0)?;
+    let output_offset = allocate_record(
+        TAG_STRING,
+        u32::try_from(length).map_err(|_| ERROR_RESOURCE_LIMIT)?,
+    )?;
+    let output = mutable_record_at(output_offset, TAG_STRING)?;
+    let mut cursor = 0usize;
+    write_json_value(value_offset, indent, 0, output, &mut cursor)?;
+    if cursor != output.len() {
+        return Err(ERROR_INVALID_ARENA);
+    }
+    Ok(output_offset)
+}
+
+fn dump_indent(spaces_offset: Option<u32>) -> Result<u32, u32> {
+    let Some(spaces_offset) = spaces_offset else {
+        return write_bytes_record(TAG_STRING, b"");
+    };
+    match Value::at(spaces_offset)? {
+        Value::Number { numeric, .. } => {
+            let count = if numeric.is_nan() || numeric <= 0.0 {
+                0
+            } else {
+                libm::trunc(numeric).min(10.0) as usize
+            };
+            let offset = allocate_record(TAG_STRING, count as u32)?;
+            mutable_record_at(offset, TAG_STRING)?.fill(b' ');
+            Ok(offset)
+        }
+        Value::String(bytes) | Value::SafeString(bytes) => {
+            let text = core::str::from_utf8(bytes).map_err(|_| ERROR_INVALID_RECORD)?;
+            let end = text
+                .char_indices()
+                .nth(10)
+                .map_or(bytes.len(), |(index, _)| index);
+            write_bytes_record(TAG_STRING, &bytes[..end])
+        }
+        _ => write_bytes_record(TAG_STRING, b""),
+    }
+}
+
+fn json_value_length(value_offset: u32, indent: &[u8], depth: usize) -> Result<usize, u32> {
+    match Value::at(value_offset)? {
+        Value::Undefined | Value::Null | Value::Macro => Ok(4),
+        Value::Boolean(false) => Ok(5),
+        Value::Boolean(true) => Ok(4),
+        Value::Number { numeric, rendered } => {
+            if numeric.is_finite() {
+                Ok(rendered.len())
+            } else {
+                Ok(4)
+            }
+        }
+        Value::String(bytes) | Value::SafeString(bytes) => json_string_length(bytes),
+        Value::Array(array) => {
+            if array.count == 0 {
+                return Ok(2);
+            }
+            let pretty = !indent.is_empty();
+            let mut length = 2usize
+                .checked_add(array.count.saturating_sub(1))
+                .ok_or(ERROR_RESOURCE_LIMIT)?;
+            if pretty {
+                length = length
+                    .checked_add(json_pretty_overhead(
+                        indent.len(),
+                        depth,
+                        array.count,
+                    )?)
+                    .ok_or(ERROR_RESOURCE_LIMIT)?;
+            }
+            let child_depth = depth.checked_add(1).ok_or(ERROR_RESOURCE_LIMIT)?;
+            for index in 0..array.count {
+                length = length
+                    .checked_add(json_value_length(
+                        read_u32(array.payload, 4 + index * 4)?,
+                        indent,
+                        child_depth,
+                    )?)
+                    .ok_or(ERROR_RESOURCE_LIMIT)?;
+            }
+            Ok(length)
+        }
+        Value::Record(record) => {
+            let included = json_record_entry_count(record)?;
+            if included == 0 {
+                return Ok(2);
+            }
+            let pretty = !indent.is_empty();
+            let mut length = 2usize
+                .checked_add(included.saturating_sub(1))
+                .ok_or(ERROR_RESOURCE_LIMIT)?;
+            if pretty {
+                length = length
+                    .checked_add(json_pretty_overhead(indent.len(), depth, included)?)
+                    .ok_or(ERROR_RESOURCE_LIMIT)?;
+            }
+            let child_depth = depth.checked_add(1).ok_or(ERROR_RESOURCE_LIMIT)?;
+            for index in 0..record.count {
+                let value = read_u32(record.payload, 8 + index * 8)?;
+                if matches!(Value::at(value)?, Value::Undefined | Value::Macro) {
+                    continue;
+                }
+                let key = record_at(read_u32(record.payload, 4 + index * 8)?, TAG_STRING)?;
+                let value_length = json_value_length(value, indent, child_depth)?;
+                length = length
+                    .checked_add(json_string_length(key)?)
+                    .and_then(|current| current.checked_add(if pretty { 2 } else { 1 }))
+                    .and_then(|current| current.checked_add(value_length))
+                    .ok_or(ERROR_RESOURCE_LIMIT)?;
+            }
+            Ok(length)
+        }
+    }
+}
+
+fn json_pretty_overhead(
+    indent_length: usize,
+    depth: usize,
+    entries: usize,
+) -> Result<usize, u32> {
+    let child_depth = depth.checked_add(1).ok_or(ERROR_RESOURCE_LIMIT)?;
+    let indentation = child_depth
+        .checked_mul(entries)
+        .and_then(|value| value.checked_add(depth))
+        .and_then(|value| value.checked_mul(indent_length))
+        .ok_or(ERROR_RESOURCE_LIMIT)?;
+    entries
+        .checked_add(1)
+        .and_then(|value| value.checked_add(indentation))
+        .ok_or(ERROR_RESOURCE_LIMIT)
+}
+
+fn json_record_entry_count(record: Record) -> Result<usize, u32> {
+    let mut count = 0usize;
+    for index in 0..record.count {
+        let value = read_u32(record.payload, 8 + index * 8)?;
+        if !matches!(Value::at(value)?, Value::Undefined | Value::Macro) {
+            count = count.checked_add(1).ok_or(ERROR_RESOURCE_LIMIT)?;
+        }
+    }
+    Ok(count)
+}
+
+fn json_string_length(bytes: &[u8]) -> Result<usize, u32> {
+    let mut length = 2usize;
+    for byte in bytes.iter().copied() {
+        length = length
+            .checked_add(match byte {
+                b'"' | b'\\' | 0x08 | 0x09 | 0x0a | 0x0c | 0x0d => 2,
+                0x00..=0x1f => 6,
+                _ => 1,
+            })
+            .ok_or(ERROR_RESOURCE_LIMIT)?;
+    }
+    Ok(length)
+}
+
+fn write_json_value(
+    value_offset: u32,
+    indent: &[u8],
+    depth: usize,
+    output: &mut [u8],
+    cursor: &mut usize,
+) -> Result<(), u32> {
+    match Value::at(value_offset)? {
+        Value::Undefined | Value::Null | Value::Macro => {
+            write_coerced_bytes(output, cursor, b"null")
+        }
+        Value::Boolean(false) => write_coerced_bytes(output, cursor, b"false"),
+        Value::Boolean(true) => write_coerced_bytes(output, cursor, b"true"),
+        Value::Number { numeric, rendered } => {
+            write_coerced_bytes(output, cursor, if numeric.is_finite() { rendered } else { b"null" })
+        }
+        Value::String(bytes) | Value::SafeString(bytes) => {
+            write_json_string(bytes, output, cursor)
+        }
+        Value::Array(array) => {
+            let child_depth = depth.checked_add(1).ok_or(ERROR_RESOURCE_LIMIT)?;
+            write_coerced_bytes(output, cursor, b"[")?;
+            for index in 0..array.count {
+                if index != 0 {
+                    write_coerced_bytes(output, cursor, b",")?;
+                }
+                if !indent.is_empty() {
+                    write_coerced_bytes(output, cursor, b"\n")?;
+                    write_json_indent(output, cursor, indent, child_depth)?;
+                }
+                write_json_value(
+                    read_u32(array.payload, 4 + index * 4)?,
+                    indent,
+                    child_depth,
+                    output,
+                    cursor,
+                )?;
+            }
+            if array.count != 0 && !indent.is_empty() {
+                write_coerced_bytes(output, cursor, b"\n")?;
+                write_json_indent(output, cursor, indent, depth)?;
+            }
+            write_coerced_bytes(output, cursor, b"]")
+        }
+        Value::Record(record) => {
+            let child_depth = depth.checked_add(1).ok_or(ERROR_RESOURCE_LIMIT)?;
+            write_coerced_bytes(output, cursor, b"{")?;
+            let mut written = 0usize;
+            for index in 0..record.count {
+                let value = read_u32(record.payload, 8 + index * 8)?;
+                if matches!(Value::at(value)?, Value::Undefined | Value::Macro) {
+                    continue;
+                }
+                if written != 0 {
+                    write_coerced_bytes(output, cursor, b",")?;
+                }
+                if !indent.is_empty() {
+                    write_coerced_bytes(output, cursor, b"\n")?;
+                    write_json_indent(output, cursor, indent, child_depth)?;
+                }
+                let key = record_at(read_u32(record.payload, 4 + index * 8)?, TAG_STRING)?;
+                write_json_string(key, output, cursor)?;
+                write_coerced_bytes(
+                    output,
+                    cursor,
+                    if indent.is_empty() { b":" } else { b": " },
+                )?;
+                write_json_value(value, indent, child_depth, output, cursor)?;
+                written += 1;
+            }
+            if written != 0 && !indent.is_empty() {
+                write_coerced_bytes(output, cursor, b"\n")?;
+                write_json_indent(output, cursor, indent, depth)?;
+            }
+            write_coerced_bytes(output, cursor, b"}")
+        }
+    }
+}
+
+fn write_json_indent(
+    output: &mut [u8],
+    cursor: &mut usize,
+    indent: &[u8],
+    depth: usize,
+) -> Result<(), u32> {
+    for _ in 0..depth {
+        write_coerced_bytes(output, cursor, indent)?;
+    }
+    Ok(())
+}
+
+fn write_json_string(bytes: &[u8], output: &mut [u8], cursor: &mut usize) -> Result<(), u32> {
+    write_coerced_bytes(output, cursor, b"\"")?;
+    for byte in bytes.iter().copied() {
+        match byte {
+            b'"' => write_coerced_bytes(output, cursor, b"\\\"")?,
+            b'\\' => write_coerced_bytes(output, cursor, b"\\\\")?,
+            0x08 => write_coerced_bytes(output, cursor, b"\\b")?,
+            0x09 => write_coerced_bytes(output, cursor, b"\\t")?,
+            0x0a => write_coerced_bytes(output, cursor, b"\\n")?,
+            0x0c => write_coerced_bytes(output, cursor, b"\\f")?,
+            0x0d => write_coerced_bytes(output, cursor, b"\\r")?,
+            0x00..=0x1f => {
+                const HEX: &[u8; 16] = b"0123456789abcdef";
+                let escaped = [b'\\', b'u', b'0', b'0', HEX[(byte >> 4) as usize], HEX[(byte & 15) as usize]];
+                write_coerced_bytes(output, cursor, &escaped)?;
+            }
+            _ => write_coerced_bytes(output, cursor, &[byte])?,
+        }
+    }
+    write_coerced_bytes(output, cursor, b"\"")
+}
+
+fn striptags_value(value_offset: u32, preserve_linebreaks: bool) -> Result<u32, u32> {
+    let rendered = rendered_value(value_offset)?;
+    let mut stripped_length = 0usize;
+    strip_tags_emit(rendered.bytes, &mut |segment| {
+        stripped_length = stripped_length
+            .checked_add(segment.len())
+            .ok_or(ERROR_RESOURCE_LIMIT)?;
+        Ok(())
+    })?;
+    let stripped_offset = allocate_record(
+        TAG_STRING,
+        u32::try_from(stripped_length).map_err(|_| ERROR_RESOURCE_LIMIT)?,
+    )?;
+    let stripped = mutable_record_at(stripped_offset, TAG_STRING)?;
+    let mut stripped_cursor = 0usize;
+    strip_tags_emit(rendered.bytes, &mut |segment| {
+        write_coerced_bytes(stripped, &mut stripped_cursor, segment)
+    })?;
+    let stripped = trim_ascii_whitespace(record_at(stripped_offset, TAG_STRING)?);
+    let mut length = 0usize;
+    normalize_stripped_emit(stripped, preserve_linebreaks, &mut |segment| {
+        length = length
+            .checked_add(segment.len())
+            .ok_or(ERROR_RESOURCE_LIMIT)?;
+        Ok(())
+    })?;
+    let tag = if rendered.safe { TAG_SAFE_STRING } else { TAG_STRING };
+    let output_offset = allocate_record(
+        tag,
+        u32::try_from(length).map_err(|_| ERROR_RESOURCE_LIMIT)?,
+    )?;
+    let output = mutable_record_at(output_offset, tag)?;
+    let mut cursor = 0usize;
+    normalize_stripped_emit(stripped, preserve_linebreaks, &mut |segment| {
+        write_coerced_bytes(output, &mut cursor, segment)
+    })?;
+    Ok(output_offset)
+}
+
+fn strip_tags_emit(
+    input: &[u8],
+    emit: &mut impl FnMut(&[u8]) -> Result<(), u32>,
+) -> Result<(), u32> {
+    let mut cursor = 0usize;
+    while cursor < input.len() {
+        let Some(relative) = input[cursor..].iter().position(|byte| *byte == b'<') else {
+            emit(&input[cursor..])?;
+            break;
+        };
+        let tag_start = cursor + relative;
+        emit(&input[cursor..tag_start])?;
+        if let Some(end) = html_tag_end(input, tag_start) {
+            cursor = end;
+        } else {
+            emit(&input[tag_start..tag_start + 1])?;
+            cursor = tag_start + 1;
+        }
+    }
+    Ok(())
+}
+
+fn html_tag_end(input: &[u8], start: usize) -> Option<usize> {
+    if input.get(start..start + 4) == Some(b"<!--") {
+        let relative = input[start + 4..]
+            .windows(3)
+            .position(|window| window == b"-->")?;
+        return Some(start + 4 + relative + 3);
+    }
+    let mut cursor = start + 1;
+    if input.get(cursor) == Some(&b'/') {
+        cursor += 1;
+    }
+    if !input.get(cursor).is_some_and(u8::is_ascii_alphabetic) {
+        return None;
+    }
+    cursor += 1;
+    while input.get(cursor).is_some_and(u8::is_ascii_alphanumeric) {
+        cursor += 1;
+    }
+    if input
+        .get(cursor)
+        .is_some_and(|byte| byte.is_ascii_alphanumeric() || *byte == b'_')
+    {
+        return None;
+    }
+    input[cursor..]
+        .iter()
+        .position(|byte| *byte == b'>')
+        .map(|relative| cursor + relative + 1)
+}
+
+fn normalize_stripped_emit(
+    input: &[u8],
+    preserve_linebreaks: bool,
+    emit: &mut impl FnMut(&[u8]) -> Result<(), u32>,
+) -> Result<(), u32> {
+    if !preserve_linebreaks {
+        let mut cursor = 0usize;
+        while cursor < input.len() {
+            if input[cursor].is_ascii_whitespace() {
+                while cursor < input.len() && input[cursor].is_ascii_whitespace() {
+                    cursor += 1;
+                }
+                if cursor < input.len() {
+                    emit(b" ")?;
+                }
+            } else {
+                let start = cursor;
+                while cursor < input.len() && !input[cursor].is_ascii_whitespace() {
+                    cursor += 1;
+                }
+                emit(&input[start..cursor])?;
+            }
+        }
+        return Ok(());
+    }
+    let mut cursor = 0usize;
+    let mut pending_newlines = 0usize;
+    let mut line_start = true;
+    while cursor < input.len() {
+        let newline_width = if input[cursor] == b'\n' {
+            1
+        } else if input[cursor] == b'\r' && input.get(cursor + 1) == Some(&b'\n') {
+            2
+        } else {
+            0
+        };
+        if newline_width != 0 {
+            pending_newlines = pending_newlines.saturating_add(1);
+            line_start = true;
+            cursor += newline_width;
+            continue;
+        }
+        if input[cursor] == b' ' {
+            while cursor < input.len() && input[cursor] == b' ' {
+                cursor += 1;
+            }
+            let followed_by_newline = input.get(cursor) == Some(&b'\n')
+                || (input.get(cursor) == Some(&b'\r')
+                    && input.get(cursor + 1) == Some(&b'\n'));
+            if !line_start && cursor < input.len() && !followed_by_newline {
+                emit(b" ")?;
+            }
+            continue;
+        }
+        for _ in 0..pending_newlines.min(2) {
+            emit(b"\n")?;
+        }
+        pending_newlines = 0;
+        line_start = false;
+        let start = cursor;
+        while cursor < input.len()
+            && input[cursor] != b' '
+            && input[cursor] != b'\n'
+            && !(input[cursor] == b'\r' && input.get(cursor + 1) == Some(&b'\n'))
+        {
+            cursor += 1;
+        }
+        emit(&input[start..cursor])?;
+    }
+    Ok(())
+}
+
+fn truncate_value(
+    value_offset: u32,
+    length_offset: Option<u32>,
+    killwords_offset: Option<u32>,
+    end_offset: Option<u32>,
+) -> Result<u32, u32> {
+    let rendered = rendered_value(value_offset)?;
+    let text = core::str::from_utf8(rendered.bytes).map_err(|_| ERROR_INVALID_RECORD)?;
+    let requested = if let Some(length_offset) = length_offset {
+        let number = Value::at(length_offset)?.as_number();
+        if number.is_nan() || number == 0.0 {
+            255
+        } else if number < 0.0 {
+            0
+        } else {
+            libm::trunc(number).min(usize::MAX as f64) as usize
+        }
+    } else {
+        255
+    };
+    if text.chars().count() <= requested {
+        let tag = if rendered.safe { TAG_SAFE_STRING } else { TAG_STRING };
+        return write_bytes_record(tag, rendered.bytes);
+    }
+    let killwords = killwords_offset
+        .is_some_and(|offset| Value::at(offset).is_ok_and(Value::truthy));
+    let mut end = utf8_prefix_length(text, requested);
+    if !killwords {
+        let mut last_space = None;
+        for (character, (index, value)) in text.char_indices().enumerate() {
+            if character > requested {
+                break;
+            }
+            if value == ' ' {
+                last_space = Some(index);
+            }
+        }
+        if let Some(space) = last_space {
+            end = space;
+        }
+    }
+    let suffix = match end_offset {
+        Some(offset) if !matches!(Value::at(offset)?, Value::Undefined | Value::Null) => {
+            rendered_value(offset)?.bytes
+        }
+        _ => b"...",
+    };
+    let length = end
+        .checked_add(suffix.len())
+        .ok_or(ERROR_RESOURCE_LIMIT)?;
+    let tag = if rendered.safe { TAG_SAFE_STRING } else { TAG_STRING };
+    let output_offset = allocate_record(
+        tag,
+        u32::try_from(length).map_err(|_| ERROR_RESOURCE_LIMIT)?,
+    )?;
+    let output = mutable_record_at(output_offset, tag)?;
+    output[..end].copy_from_slice(&rendered.bytes[..end]);
+    output[end..].copy_from_slice(suffix);
+    Ok(output_offset)
+}
+
+fn utf8_prefix_length(text: &str, characters: usize) -> usize {
+    text.char_indices()
+        .nth(characters)
+        .map_or(text.len(), |(index, _)| index)
+}
+
+fn urlencode_value(value_offset: u32) -> Result<u32, u32> {
+    match Value::at(value_offset)? {
+        Value::String(bytes) | Value::SafeString(bytes) => encode_url_component(bytes),
+        Value::Array(array) => urlencode_array(array),
+        Value::Record(record) => urlencode_record(record),
+        _ => Err(ERROR_INVALID_EXPRESSION),
+    }
+}
+
+fn urlencode_array(array: Array) -> Result<u32, u32> {
+    let mut length = array.count.saturating_sub(1);
+    for index in 0..array.count {
+        let pair_offset = read_u32(array.payload, 4 + index * 4)?;
+        let Value::Array(pair) = Value::at(pair_offset)? else {
+            return Err(ERROR_INVALID_EXPRESSION);
+        };
+        if pair.count < 2 {
+            return Err(ERROR_INVALID_EXPRESSION);
+        }
+        let key_length = encoded_value_length(read_u32(pair.payload, 4)?)?;
+        let value_length = encoded_value_length(read_u32(pair.payload, 8)?)?;
+        length = length
+            .checked_add(key_length)
+            .and_then(|value| value.checked_add(1))
+            .and_then(|value| value.checked_add(value_length))
+            .ok_or(ERROR_RESOURCE_LIMIT)?;
+    }
+    let output_offset = allocate_record(
+        TAG_STRING,
+        u32::try_from(length).map_err(|_| ERROR_RESOURCE_LIMIT)?,
+    )?;
+    let output = mutable_record_at(output_offset, TAG_STRING)?;
+    let mut cursor = 0usize;
+    for index in 0..array.count {
+        if index != 0 {
+            write_coerced_bytes(output, &mut cursor, b"&")?;
+        }
+        let pair_offset = read_u32(array.payload, 4 + index * 4)?;
+        let Value::Array(pair) = Value::at(pair_offset)? else {
+            return Err(ERROR_INVALID_EXPRESSION);
+        };
+        write_encoded_value(read_u32(pair.payload, 4)?, output, &mut cursor)?;
+        write_coerced_bytes(output, &mut cursor, b"=")?;
+        write_encoded_value(read_u32(pair.payload, 8)?, output, &mut cursor)?;
+    }
+    Ok(output_offset)
+}
+
+fn urlencode_record(record: Record) -> Result<u32, u32> {
+    let mut length = record.count.saturating_sub(1);
+    for index in 0..record.count {
+        let key = record_at(read_u32(record.payload, 4 + index * 8)?, TAG_STRING)?;
+        let value_length = encoded_value_length(read_u32(record.payload, 8 + index * 8)?)?;
+        length = length
+            .checked_add(encoded_bytes_length(key)?)
+            .and_then(|value| value.checked_add(1))
+            .and_then(|value| value.checked_add(value_length))
+            .ok_or(ERROR_RESOURCE_LIMIT)?;
+    }
+    let output_offset = allocate_record(
+        TAG_STRING,
+        u32::try_from(length).map_err(|_| ERROR_RESOURCE_LIMIT)?,
+    )?;
+    let output = mutable_record_at(output_offset, TAG_STRING)?;
+    let mut cursor = 0usize;
+    for index in 0..record.count {
+        if index != 0 {
+            write_coerced_bytes(output, &mut cursor, b"&")?;
+        }
+        let key = record_at(read_u32(record.payload, 4 + index * 8)?, TAG_STRING)?;
+        write_encoded_bytes(key, output, &mut cursor)?;
+        write_coerced_bytes(output, &mut cursor, b"=")?;
+        write_encoded_value(
+            read_u32(record.payload, 8 + index * 8)?,
+            output,
+            &mut cursor,
+        )?;
+    }
+    Ok(output_offset)
+}
+
+fn encode_url_component(bytes: &[u8]) -> Result<u32, u32> {
+    let length = encoded_bytes_length(bytes)?;
+    let output_offset = allocate_record(
+        TAG_STRING,
+        u32::try_from(length).map_err(|_| ERROR_RESOURCE_LIMIT)?,
+    )?;
+    let output = mutable_record_at(output_offset, TAG_STRING)?;
+    let mut cursor = 0usize;
+    write_encoded_bytes(bytes, output, &mut cursor)?;
+    Ok(output_offset)
+}
+
+fn encoded_value_length(value_offset: u32) -> Result<usize, u32> {
+    encoded_bytes_length(url_value_bytes(value_offset)?)
+}
+
+fn write_encoded_value(
+    value_offset: u32,
+    output: &mut [u8],
+    cursor: &mut usize,
+) -> Result<(), u32> {
+    write_encoded_bytes(url_value_bytes(value_offset)?, output, cursor)
+}
+
+fn url_value_bytes(value_offset: u32) -> Result<&'static [u8], u32> {
+    match Value::at(value_offset)? {
+        Value::Undefined => Ok(b"undefined"),
+        Value::Null => Ok(b"null"),
+        _ => Ok(rendered_value(value_offset)?.bytes),
+    }
+}
+
+fn encoded_bytes_length(bytes: &[u8]) -> Result<usize, u32> {
+    let mut length = 0usize;
+    for byte in bytes.iter().copied() {
+        length = length
+            .checked_add(if url_component_unescaped(byte) { 1 } else { 3 })
+            .ok_or(ERROR_RESOURCE_LIMIT)?;
+    }
+    Ok(length)
+}
+
+fn write_encoded_bytes(
+    bytes: &[u8],
+    output: &mut [u8],
+    cursor: &mut usize,
+) -> Result<(), u32> {
+    const HEX: &[u8; 16] = b"0123456789ABCDEF";
+    for byte in bytes.iter().copied() {
+        if url_component_unescaped(byte) {
+            write_coerced_bytes(output, cursor, &[byte])?;
+        } else {
+            let encoded = [b'%', HEX[(byte >> 4) as usize], HEX[(byte & 15) as usize]];
+            write_coerced_bytes(output, cursor, &encoded)?;
+        }
+    }
+    Ok(())
+}
+
+fn url_component_unescaped(byte: u8) -> bool {
+    byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.' | b'!' | b'~' | b'*' | b'\'' | b'(' | b')')
 }
 
 fn edge_value(value: Value, last: bool) -> Result<u32, u32> {

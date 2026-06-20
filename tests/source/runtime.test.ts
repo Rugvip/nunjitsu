@@ -641,11 +641,67 @@ test('matches scalar, numeric, and text filter edge semantics', async () => {
       { foods: [{ tasty: true }, { tasty: false }, { tasty: true }] },
       '2',
     ],
+    [
+      '{{ ["a", 1, {b: true}] | dump }}',
+      {},
+      '[&quot;a&quot;,1,{&quot;b&quot;:true}]',
+    ],
+    [
+      '{{ ["a", 1, {b: true}] | dump(2) }}',
+      {},
+      '[\n  &quot;a&quot;,\n  1,\n  {\n    &quot;b&quot;: true\n  }\n]',
+    ],
+    [
+      '{{ ["a", 1, {b: true}] | dump(4) }}',
+      {},
+      '[\n    &quot;a&quot;,\n    1,\n    {\n        &quot;b&quot;: true\n    }\n]',
+    ],
+    [
+      '{{ ["a", 1, {b: true}] | dump("\t") }}',
+      {},
+      '[\n\t&quot;a&quot;,\n\t1,\n\t{\n\t\t&quot;b&quot;: true\n\t}\n]',
+    ],
+    ['{{ html | striptags }}', { html: '<foo>bar' }, 'bar'],
+    [
+      '{{ html | striptags }}',
+      {
+        html: '  <p>an  \n <a href="#">example</a> link</p>\n<p>to a webpage</p> <!-- <p>and some comments</p> -->',
+      },
+      'an example link to a webpage',
+    ],
+    ['{{ undefined | striptags }}|{{ null | striptags }}', {}, '|'],
+    [
+      '{{ html | striptags(true) }}',
+      {
+        html: '<div>\n  row1\nrow2  \n  <strong>row3</strong>\n</div>\n\n HEADER \n\n<ul>\n  <li>option  1</li>\n<li>option  2</li>\n</ul>',
+      },
+      'row1\nrow2\nrow3\n\nHEADER\n\noption 1\noption 2',
+    ],
+    ['{{ "foo bar" | truncate(3) }}', {}, 'foo...'],
+    ['{{ "foo bar baz" | truncate(6) }}', {}, 'foo...'],
+    ['{{ "foo bar baz" | truncate(7) }}', {}, 'foo bar...'],
+    ['{{ "foo bar baz" | truncate(5, true) }}', {}, 'foo b...'],
+    ['{{ "foo bar baz" | truncate(6, true, "?") }}', {}, 'foo ba?'],
+    ['{{ undefined | truncate(3) }}|{{ null | truncate(3) }}', {}, '|'],
+    ['{{ "&" | urlencode }}', {}, '%26'],
+    ['{{ value | urlencode | safe }}', { value: [[1, 2], ['&1', '&2']] }, '1=2&%261=%262'],
+    ['{{ value | urlencode | safe }}', { value: { 1: 2, '&1': '&2' } }, '1=2&%261=%262'],
   ];
   try {
     for (const [source, context, expected] of cases) {
       assert.equal(await engine.render({ source }, context), expected, source);
     }
+    const prototypeFreeUrlValues = Object.assign(Object.create(null) as Record<string, number | string>, {
+      1: 2,
+      '&1': '&2',
+    });
+    assert.equal(
+      await engine.render(
+        { source: '{{ value | urlencode | safe }}' },
+        { value: prototypeFreeUrlValues },
+      ),
+      '1=2&%261=%262',
+    );
     const customArray = Object.assign([0, 1], { key: 'value' });
     await assert.rejects(
       engine.render(
