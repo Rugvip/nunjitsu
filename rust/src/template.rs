@@ -251,6 +251,7 @@ pub fn emit_escaped(
             b'\'' => b"&#39;".as_slice(),
             b'<' => b"&lt;".as_slice(),
             b'>' => b"&gt;".as_slice(),
+            b'\\' => b"&#92;".as_slice(),
             _ => continue,
         };
         emit(&value[cursor..index])?;

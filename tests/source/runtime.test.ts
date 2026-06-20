@@ -250,6 +250,77 @@ test('autoescaping requires an explicit safe string to bypass', async () => {
   }
 });
 
+test('evaluates Rust-native filters and tests without host capability calls', async () => {
+  const engine = await createEngine({ autoescape: true });
+  try {
+    assert.equal(
+      await engine.render(
+        {
+          source: [
+            '{{ unsafe | escape }}',
+            '{{ safe | forceescape }}',
+            '{{ "foo" | upper }}',
+            '{{ "FOO" | lower }}',
+            '{{ "fOO" | capitalize }}',
+            '{{ missing | default("fallback") }}',
+            '{{ false | default("fallback", true) }}',
+            '{{ values | reverse | first }}',
+            '{{ word | reverse }}',
+            '{{ values | length }}',
+          ].join('|'),
+        },
+        {
+          unsafe: '<html>\\',
+          safe: markSafe('<safe>'),
+          values: ['a', 'b', 'c'],
+          word: 'a💥b',
+        },
+      ),
+      '&lt;html&gt;&#92;|&lt;safe&gt;|FOO|foo|Foo|fallback|fallback|c|b💥a|3',
+    );
+    assert.equal(
+      await engine.render(
+        {
+          source: [
+            '{{ missing is defined }}',
+            '{{ missing is undefined }}',
+            '{{ none is null }}',
+            '{{ 3 is odd }}',
+            '{{ 4 is even }}',
+            '{{ "6" is divisibleby(3) }}',
+            '{{ safe is escaped }}',
+            '{{ values is iterable }}',
+            '{{ record is mapping }}',
+            '{{ "foo" is lower }}',
+            '{{ 5 is greaterthan(4) }}',
+          ].join('|'),
+        },
+        {
+          safe: markSafe('<safe>'),
+          values: [],
+          record: {},
+        },
+      ),
+      'false|true|true|true|true|true|true|true|true|true|true',
+    );
+  } finally {
+    await engine.dispose();
+  }
+
+  const overriding = await createEngine({
+    filters: {
+      upper() {
+        return 'overridden';
+      },
+    },
+  });
+  try {
+    assert.equal(await overriding.render({ source: '{{ "value" | upper }}' }), 'overridden');
+  } finally {
+    await overriding.dispose();
+  }
+});
+
 test('dispatches immutable async filters, tests, and globals through safe copied values', async () => {
   let markBlockingCallStarted: (() => void) | undefined;
   const blockingCallStarted = new Promise<void>(resolve => {

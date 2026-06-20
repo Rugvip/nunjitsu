@@ -690,24 +690,47 @@ fn continue_expression(state_offset: u32) -> Result<Option<u32>, u32> {
 
     let input = state_field(state_offset, STATE_CURRENT_VALUE)?;
     match operation {
-        Operation::Filter(call) => issue_capability(
-            state_offset,
-            CAPABILITY_FILTER,
-            call,
-            Some(input),
-            next_cursor,
-            NEGATE_NONE,
-        )
-        .map(Some),
-        Operation::Test { call, negated } => issue_capability(
-            state_offset,
-            CAPABILITY_TEST,
-            call,
-            Some(input),
-            next_cursor,
-            if negated { NEGATE_BOOLEAN } else { NEGATE_NONE },
-        )
-        .map(Some),
+        Operation::Filter(call) => {
+            let registered =
+                resolve_capability(state_field(state_offset, STATE_FILTERS)?, call.name)?.is_some();
+            if !registered
+                && let Some(value_offset) = apply_builtin_filter(state_offset, call, input)?
+            {
+                set_state_field(state_offset, STATE_CURRENT_VALUE, value_offset)?;
+                set_state_field(state_offset, STATE_EXPRESSION_CURSOR, next_cursor as u32)?;
+                continue_expression(state_offset)
+            } else {
+                issue_capability(
+                    state_offset,
+                    CAPABILITY_FILTER,
+                    call,
+                    Some(input),
+                    next_cursor,
+                    NEGATE_NONE,
+                )
+                .map(Some)
+            }
+        }
+        Operation::Test { call, negated } => {
+            let registered =
+                resolve_capability(state_field(state_offset, STATE_TESTS)?, call.name)?.is_some();
+            if !registered && let Some(result) = apply_builtin_test(state_offset, call, input)? {
+                let value_offset = write_boolean(if negated { !result } else { result })?;
+                set_state_field(state_offset, STATE_CURRENT_VALUE, value_offset)?;
+                set_state_field(state_offset, STATE_EXPRESSION_CURSOR, next_cursor as u32)?;
+                continue_expression(state_offset)
+            } else {
+                issue_capability(
+                    state_offset,
+                    CAPABILITY_TEST,
+                    call,
+                    Some(input),
+                    next_cursor,
+                    if negated { NEGATE_BOOLEAN } else { NEGATE_NONE },
+                )
+                .map(Some)
+            }
+        }
         Operation::Compare { operator, operand } => {
             let right = resolve_operand(state_offset, operand)?;
             let value_offset = write_boolean(compare_values(input, operator, right)?)?;
@@ -867,6 +890,356 @@ fn resolve_operand(state_offset: u32, operand: Operand<'_>) -> Result<u32, u32> 
     Ok(value_offset)
 }
 
+fn apply_builtin_filter(
+    state_offset: u32,
+    call: Call<'_>,
+    input_offset: u32,
+) -> Result<Option<u32>, u32> {
+    let input = Value::at(input_offset)?;
+    let output = match call.name {
+        b"safe" => {
+            require_argument_count(call, 0)?;
+            let rendered = input.rendered().ok_or(ERROR_INVALID_EXPRESSION)?;
+            write_bytes_record(TAG_SAFE_STRING, rendered.bytes)?
+        }
+        b"escape" | b"e" => {
+            require_argument_count(call, 0)?;
+            if matches!(input, Value::SafeString(_)) {
+                input_offset
+            } else {
+                write_escaped_string(input.rendered().ok_or(ERROR_INVALID_EXPRESSION)?.bytes)?
+            }
+        }
+        b"forceescape" => {
+            require_argument_count(call, 0)?;
+            write_escaped_string(input.rendered().ok_or(ERROR_INVALID_EXPRESSION)?.bytes)?
+        }
+        b"default" | b"d" => {
+            let count = argument_count(call)?;
+            if !(1..=2).contains(&count) {
+                return Err(ERROR_INVALID_EXPRESSION);
+            }
+            let use_falsy = if count == 2 {
+                Value::at(call_argument(state_offset, call, 1)?.ok_or(ERROR_INVALID_EXPRESSION)?)?
+                    .truthy()
+            } else {
+                false
+            };
+            if matches!(input, Value::Undefined) || (use_falsy && !input.truthy()) {
+                call_argument(state_offset, call, 0)?.ok_or(ERROR_INVALID_EXPRESSION)?
+            } else {
+                input_offset
+            }
+        }
+        b"reverse" => {
+            require_argument_count(call, 0)?;
+            reverse_value(input)?
+        }
+        b"upper" => {
+            require_argument_count(call, 0)?;
+            ascii_case_value(input, true, false)?
+        }
+        b"lower" => {
+            require_argument_count(call, 0)?;
+            ascii_case_value(input, false, false)?
+        }
+        b"capitalize" => {
+            require_argument_count(call, 0)?;
+            ascii_case_value(input, false, true)?
+        }
+        b"length" => {
+            require_argument_count(call, 0)?;
+            let length = match input {
+                Value::Undefined | Value::Null => 0,
+                Value::String(value) | Value::SafeString(value) => core::str::from_utf8(value)
+                    .map_err(|_| ERROR_INVALID_RECORD)?
+                    .chars()
+                    .count()
+                    as u32,
+                Value::Array(array) => array.count as u32,
+                Value::Record(record) => record.count as u32,
+                _ => 0,
+            };
+            write_u32_number(length)?
+        }
+        b"first" => {
+            require_argument_count(call, 0)?;
+            edge_value(input, false)?
+        }
+        b"last" => {
+            require_argument_count(call, 0)?;
+            edge_value(input, true)?
+        }
+        _ => return Ok(None),
+    };
+    Ok(Some(output))
+}
+
+fn apply_builtin_test(
+    state_offset: u32,
+    call: Call<'_>,
+    input_offset: u32,
+) -> Result<Option<bool>, u32> {
+    let input = Value::at(input_offset)?;
+    let result = match call.name {
+        b"defined" => {
+            require_argument_count(call, 0)?;
+            !matches!(input, Value::Undefined)
+        }
+        b"undefined" => {
+            require_argument_count(call, 0)?;
+            matches!(input, Value::Undefined)
+        }
+        b"none" | b"null" => {
+            require_argument_count(call, 0)?;
+            matches!(input, Value::Null)
+        }
+        b"truthy" => {
+            require_argument_count(call, 0)?;
+            input.truthy()
+        }
+        b"falsy" => {
+            require_argument_count(call, 0)?;
+            !input.truthy()
+        }
+        b"boolean" => {
+            require_argument_count(call, 0)?;
+            matches!(input, Value::Boolean(_))
+        }
+        b"number" => {
+            require_argument_count(call, 0)?;
+            matches!(input, Value::Number { .. })
+        }
+        b"string" => {
+            require_argument_count(call, 0)?;
+            matches!(input, Value::String(_) | Value::SafeString(_))
+        }
+        b"mapping" => {
+            require_argument_count(call, 0)?;
+            matches!(input, Value::Record(_))
+        }
+        b"iterable" => {
+            require_argument_count(call, 0)?;
+            matches!(
+                input,
+                Value::Array(_) | Value::String(_) | Value::SafeString(_)
+            )
+        }
+        b"escaped" => {
+            require_argument_count(call, 0)?;
+            matches!(input, Value::SafeString(_))
+        }
+        b"even" | b"odd" => {
+            require_argument_count(call, 0)?;
+            let number = input.as_number();
+            let even = number.is_finite() && number % 2.0 == 0.0;
+            if call.name == b"even" {
+                even
+            } else {
+                !even && number.is_finite()
+            }
+        }
+        b"divisibleby" => {
+            require_argument_count(call, 1)?;
+            let divisor =
+                Value::at(call_argument(state_offset, call, 0)?.ok_or(ERROR_INVALID_EXPRESSION)?)?
+                    .as_number();
+            divisor != 0.0 && input.as_number() % divisor == 0.0
+        }
+        b"sameas" => {
+            require_argument_count(call, 1)?;
+            values_equal(
+                input_offset,
+                call_argument(state_offset, call, 0)?.ok_or(ERROR_INVALID_EXPRESSION)?,
+                true,
+            )?
+        }
+        b"eq" | b"equalto" | b"ne" | b"lt" | b"lessthan" | b"le" | b"lteq" | b"gt"
+        | b"greaterthan" | b"ge" | b"gteq" => {
+            require_argument_count(call, 1)?;
+            let right = call_argument(state_offset, call, 0)?.ok_or(ERROR_INVALID_EXPRESSION)?;
+            let operator = match call.name {
+                b"eq" | b"equalto" => Comparison::Equal,
+                b"ne" => Comparison::NotEqual,
+                b"lt" | b"lessthan" => Comparison::Less,
+                b"le" | b"lteq" => Comparison::LessOrEqual,
+                b"gt" | b"greaterthan" => Comparison::Greater,
+                _ => Comparison::GreaterOrEqual,
+            };
+            compare_values(input_offset, operator, right)?
+        }
+        b"lower" | b"upper" => {
+            require_argument_count(call, 0)?;
+            let Some(value) = input.string_bytes() else {
+                return Ok(Some(false));
+            };
+            let has_cased = value.iter().any(u8::is_ascii_alphabetic);
+            has_cased
+                && if call.name == b"lower" {
+                    !value.iter().any(u8::is_ascii_uppercase)
+                } else {
+                    !value.iter().any(u8::is_ascii_lowercase)
+                }
+        }
+        _ => return Ok(None),
+    };
+    Ok(Some(result))
+}
+
+fn argument_count(call: Call<'_>) -> Result<usize, u32> {
+    let mut count = 0usize;
+    let mut cursor = 0usize;
+    while let Some((_, next)) =
+        next_argument(call.arguments, cursor).map_err(|_| ERROR_INVALID_EXPRESSION)?
+    {
+        count = count.checked_add(1).ok_or(ERROR_RESOURCE_LIMIT)?;
+        cursor = next;
+    }
+    Ok(count)
+}
+
+fn require_argument_count(call: Call<'_>, expected: usize) -> Result<(), u32> {
+    if argument_count(call)? == expected {
+        Ok(())
+    } else {
+        Err(ERROR_INVALID_EXPRESSION)
+    }
+}
+
+fn call_argument(state_offset: u32, call: Call<'_>, requested: usize) -> Result<Option<u32>, u32> {
+    let mut index = 0usize;
+    let mut cursor = 0usize;
+    while let Some((atom, next)) =
+        next_argument(call.arguments, cursor).map_err(|_| ERROR_INVALID_EXPRESSION)?
+    {
+        if index == requested {
+            return resolve_atom(state_offset, atom).map(Some);
+        }
+        index += 1;
+        cursor = next;
+    }
+    Ok(None)
+}
+
+fn write_escaped_string(value: &[u8]) -> Result<u32, u32> {
+    let mut length = 0usize;
+    emit_escaped(value, &mut |segment| {
+        length = length
+            .checked_add(segment.len())
+            .ok_or(RenderError::OutputTooLarge)?;
+        Ok(())
+    })
+    .map_err(render_error_code)?;
+    let offset = allocate_record(TAG_SAFE_STRING, length as u32)?;
+    let output = mutable_record_at(offset, TAG_SAFE_STRING)?;
+    let mut cursor = 0usize;
+    emit_escaped(value, &mut |segment| {
+        let end = cursor
+            .checked_add(segment.len())
+            .ok_or(RenderError::OutputTooLarge)?;
+        output[cursor..end].copy_from_slice(segment);
+        cursor = end;
+        Ok(())
+    })
+    .map_err(render_error_code)?;
+    Ok(offset)
+}
+
+fn reverse_value(value: Value) -> Result<u32, u32> {
+    match value {
+        Value::String(bytes) | Value::SafeString(bytes) => {
+            let text = core::str::from_utf8(bytes).map_err(|_| ERROR_INVALID_RECORD)?;
+            let tag = if matches!(value, Value::SafeString(_)) {
+                TAG_SAFE_STRING
+            } else {
+                TAG_STRING
+            };
+            let offset = allocate_record(tag, bytes.len() as u32)?;
+            let output = mutable_record_at(offset, tag)?;
+            let mut cursor = 0usize;
+            for character in text.chars().rev() {
+                let mut encoded = [0u8; 4];
+                let encoded = character.encode_utf8(&mut encoded).as_bytes();
+                let end = cursor + encoded.len();
+                output[cursor..end].copy_from_slice(encoded);
+                cursor = end;
+            }
+            Ok(offset)
+        }
+        Value::Array(array) => {
+            let payload_length = 4u32
+                .checked_add(
+                    (array.count as u32)
+                        .checked_mul(4)
+                        .ok_or(ERROR_RESOURCE_LIMIT)?,
+                )
+                .ok_or(ERROR_RESOURCE_LIMIT)?;
+            let offset = allocate_record(TAG_ARRAY, payload_length)?;
+            let output = mutable_record_at(offset, TAG_ARRAY)?;
+            write_u32(output, 0, array.count as u32)?;
+            for index in 0..array.count {
+                write_u32(
+                    output,
+                    4 + index * 4,
+                    read_u32(array.payload, 4 + (array.count - index - 1) * 4)?,
+                )?;
+            }
+            Ok(offset)
+        }
+        _ => Err(ERROR_INVALID_EXPRESSION),
+    }
+}
+
+fn ascii_case_value(value: Value, uppercase: bool, capitalize: bool) -> Result<u32, u32> {
+    let rendered = value.rendered().ok_or(ERROR_INVALID_EXPRESSION)?;
+    let tag = if rendered.safe {
+        TAG_SAFE_STRING
+    } else {
+        TAG_STRING
+    };
+    let offset = allocate_record(tag, rendered.bytes.len() as u32)?;
+    let output = mutable_record_at(offset, tag)?;
+    for (index, byte) in rendered.bytes.iter().copied().enumerate() {
+        output[index] = if uppercase || (capitalize && index == 0) {
+            byte.to_ascii_uppercase()
+        } else {
+            byte.to_ascii_lowercase()
+        };
+    }
+    Ok(offset)
+}
+
+fn edge_value(value: Value, last: bool) -> Result<u32, u32> {
+    match value {
+        Value::Array(array) if array.count != 0 => {
+            let index = if last { array.count - 1 } else { 0 };
+            read_u32(array.payload, 4 + index * 4)
+        }
+        Value::String(bytes) | Value::SafeString(bytes) if !bytes.is_empty() => {
+            let text = core::str::from_utf8(bytes).map_err(|_| ERROR_INVALID_RECORD)?;
+            let character = if last {
+                text.chars().next_back()
+            } else {
+                text.chars().next()
+            }
+            .ok_or(ERROR_INVALID_EXPRESSION)?;
+            let start = if last {
+                bytes.len() - character.len_utf8()
+            } else {
+                0
+            };
+            let tag = if matches!(value, Value::SafeString(_)) {
+                TAG_SAFE_STRING
+            } else {
+                TAG_STRING
+            };
+            write_bytes_record(tag, &bytes[start..start + character.len_utf8()])
+        }
+        Value::Undefined | Value::Null | Value::Array(_) => allocate_record(TAG_UNDEFINED, 0),
+        _ => Err(ERROR_INVALID_EXPRESSION),
+    }
+}
+
 fn evaluate_sync_expression(state_offset: u32, expression: &[u8]) -> Result<u32, u32> {
     let (atom, mut cursor, negated) =
         parse_base(expression).map_err(|_| ERROR_INVALID_EXPRESSION)?;
@@ -895,8 +1268,12 @@ fn evaluate_sync_expression(state_offset: u32, expression: &[u8]) -> Result<u32,
                 }
                 resolve_operand(state_offset, operand)?
             }
-            Operation::Filter(_) | Operation::Test { .. } => {
-                return Err(ERROR_INVALID_EXPRESSION);
+            Operation::Filter(call) => apply_builtin_filter(state_offset, call, current)?
+                .ok_or(ERROR_INVALID_EXPRESSION)?,
+            Operation::Test { call, negated } => {
+                let result = apply_builtin_test(state_offset, call, current)?
+                    .ok_or(ERROR_INVALID_EXPRESSION)?;
+                write_boolean(if negated { !result } else { result })?
             }
         };
         cursor = next_cursor;
