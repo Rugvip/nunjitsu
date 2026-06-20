@@ -928,6 +928,15 @@ test('executes deferred macros in isolated captured scopes', async () => {
       }),
       '',
     );
+    assert.equal(
+      await engine.render({
+        source: [
+          '{% macro values(x, y=2, z=y) %}{{ x }}{{ y }}{{ z }}{% endmacro %}',
+          '{{ values(1, z=3) }}|{{ values(x=1, y=4) }}|{{ values(1, 10, 20) }}',
+        ].join(''),
+      }),
+      '123|144|11020',
+    );
     assert.deepEqual(
       await Array.fromAsync(engine.renderStream({
         source: 'before{% macro value() %}macro{% endmacro %}{{ value() }}after',

@@ -1,7 +1,8 @@
 use crate::expression::{
     Atom, BinaryOperator, Call, Comparison, Operand, Operation, next_argument, next_binding,
-    next_lookup_segment, next_operation, next_record_entry, parse_base, parse_for_clause,
-    parse_set_clause, parse_tag_call, split_binary_expression,
+    next_lookup_segment, next_macro_argument, next_macro_parameter, next_operation,
+    next_record_entry, parse_base, parse_for_clause, parse_set_clause, parse_tag_call,
+    split_binary_expression,
 };
 use crate::template::{
     ConditionalBoundary, ParseOptions, RenderError, RenderedValue, TemplateItem, directive_keyword,
@@ -659,10 +660,10 @@ fn handle_tag(state_offset: u32, directive: &[u8]) -> Result<Option<u32>, u32> {
 fn define_macro(state_offset: u32, signature: &[u8]) -> Result<(), u32> {
     let macro_signature = parse_tag_call(signature).map_err(|_| ERROR_UNSUPPORTED_TAG)?;
     let mut parameter_cursor = 0usize;
-    while let Some((_, next)) = next_binding(macro_signature.arguments, parameter_cursor)
+    while let Some(parameter) = next_macro_parameter(macro_signature.arguments, parameter_cursor)
         .map_err(|_| ERROR_UNSUPPORTED_TAG)?
     {
-        parameter_cursor = next;
+        parameter_cursor = parameter.next_cursor;
     }
 
     let frame_offset = state_field(state_offset, STATE_CURRENT_FRAME)?;
@@ -743,12 +744,13 @@ fn write_macro_arguments(
     )?;
     let mut count = 0usize;
     let mut parameter_cursor = 0usize;
-    while let Some((_, next)) =
-        next_binding(parameters, parameter_cursor).map_err(|_| ERROR_INVALID_EXPRESSION)?
+    while let Some(parameter) =
+        next_macro_parameter(parameters, parameter_cursor).map_err(|_| ERROR_INVALID_EXPRESSION)?
     {
         count = count.checked_add(1).ok_or(ERROR_RESOURCE_LIMIT)?;
-        parameter_cursor = next;
+        parameter_cursor = parameter.next_cursor;
     }
+    validate_macro_arguments(parameters, call.arguments, count)?;
     let payload_length = 4u32
         .checked_add((count as u32).checked_mul(8).ok_or(ERROR_RESOURCE_LIMIT)?)
         .ok_or(ERROR_RESOURCE_LIMIT)?;
@@ -760,33 +762,109 @@ fn write_macro_arguments(
     )?;
 
     parameter_cursor = 0;
-    let mut argument_cursor = 0usize;
     let mut index = 0usize;
-    while let Some((parameter, next_parameter)) =
-        next_binding(parameters, parameter_cursor).map_err(|_| ERROR_INVALID_EXPRESSION)?
+    while let Some(parameter) =
+        next_macro_parameter(parameters, parameter_cursor).map_err(|_| ERROR_INVALID_EXPRESSION)?
     {
-        let value_offset = if let Some((argument, next_argument_cursor)) =
-            next_argument(call.arguments, argument_cursor).map_err(|_| ERROR_INVALID_EXPRESSION)?
+        let value_offset = if let Some(argument) =
+            macro_argument_for_parameter(call.arguments, index, parameter.name)?
         {
-            argument_cursor = next_argument_cursor;
             resolve_atom(state_offset, argument)?
         } else {
-            allocate_record(TAG_UNDEFINED, 0)?
+            0
         };
-        let name_offset = write_bytes_record(TAG_STRING, parameter)?;
+        let name_offset = write_bytes_record(TAG_STRING, parameter.name)?;
         let arguments = mutable_record_at(arguments_offset, TAG_MACRO_ARGUMENTS)?;
         write_u32(arguments, 4 + index * 8, name_offset)?;
         write_u32(arguments, 8 + index * 8, value_offset)?;
         index += 1;
-        parameter_cursor = next_parameter;
-    }
-    if next_argument(call.arguments, argument_cursor)
-        .map_err(|_| ERROR_INVALID_EXPRESSION)?
-        .is_some()
-    {
-        return Err(ERROR_INVALID_EXPRESSION);
+        parameter_cursor = parameter.next_cursor;
     }
     Ok(arguments_offset)
+}
+
+fn validate_macro_arguments(
+    parameters: &[u8],
+    arguments: &[u8],
+    parameter_count: usize,
+) -> Result<(), u32> {
+    let mut cursor = 0usize;
+    let mut positional_count = 0usize;
+    let mut saw_keyword = false;
+    while let Some(argument) =
+        next_macro_argument(arguments, cursor).map_err(|_| ERROR_INVALID_EXPRESSION)?
+    {
+        if let Some(name) = argument.name {
+            saw_keyword = true;
+            let parameter_index =
+                macro_parameter_index(parameters, name)?.ok_or(ERROR_INVALID_EXPRESSION)?;
+            if parameter_index < positional_count {
+                return Err(ERROR_INVALID_EXPRESSION);
+            }
+            let mut previous_cursor = 0usize;
+            while previous_cursor < cursor {
+                let previous = next_macro_argument(arguments, previous_cursor)
+                    .map_err(|_| ERROR_INVALID_EXPRESSION)?
+                    .ok_or(ERROR_INVALID_EXPRESSION)?;
+                if previous.name == Some(name) {
+                    return Err(ERROR_INVALID_EXPRESSION);
+                }
+                previous_cursor = previous.next_cursor;
+            }
+        } else {
+            if saw_keyword {
+                return Err(ERROR_INVALID_EXPRESSION);
+            }
+            positional_count = positional_count
+                .checked_add(1)
+                .ok_or(ERROR_RESOURCE_LIMIT)?;
+            if positional_count > parameter_count {
+                return Err(ERROR_INVALID_EXPRESSION);
+            }
+        }
+        cursor = argument.next_cursor;
+    }
+    Ok(())
+}
+
+fn macro_parameter_index(parameters: &[u8], name: &[u8]) -> Result<Option<usize>, u32> {
+    let mut cursor = 0usize;
+    let mut index = 0usize;
+    while let Some(parameter) =
+        next_macro_parameter(parameters, cursor).map_err(|_| ERROR_INVALID_EXPRESSION)?
+    {
+        if parameter.name == name {
+            return Ok(Some(index));
+        }
+        index = index.checked_add(1).ok_or(ERROR_RESOURCE_LIMIT)?;
+        cursor = parameter.next_cursor;
+    }
+    Ok(None)
+}
+
+fn macro_argument_for_parameter<'a>(
+    arguments: &'a [u8],
+    parameter_index: usize,
+    parameter_name: &[u8],
+) -> Result<Option<Atom<'a>>, u32> {
+    let mut cursor = 0usize;
+    let mut positional_index = 0usize;
+    while let Some(argument) =
+        next_macro_argument(arguments, cursor).map_err(|_| ERROR_INVALID_EXPRESSION)?
+    {
+        match argument.name {
+            Some(name) if name == parameter_name => return Ok(Some(argument.value)),
+            None if positional_index == parameter_index => return Ok(Some(argument.value)),
+            None => {
+                positional_index = positional_index
+                    .checked_add(1)
+                    .ok_or(ERROR_RESOURCE_LIMIT)?
+            }
+            Some(_) => {}
+        }
+        cursor = argument.next_cursor;
+    }
+    Ok(None)
 }
 
 fn start_macro_call(
@@ -889,14 +967,26 @@ fn start_macro_call(
     set_state_field(state_offset, STATE_NEGATE_RESULT, NEGATE_NONE)?;
     begin_capture(state_offset, 0)?;
 
-    let arguments = record_at(arguments_offset, TAG_MACRO_ARGUMENTS)?;
-    let count = collection_count(arguments, 8)?;
+    let count = collection_count(record_at(arguments_offset, TAG_MACRO_ARGUMENTS)?, 8)?;
+    let parameters_offset = macro_definition_field(definition_offset, MACRO_DEFINITION_PARAMETERS)?;
+    let mut parameter_cursor = 0usize;
     for index in 0..count {
-        assign_scope(
-            state_offset,
-            read_u32(arguments, 4 + index * 8)?,
-            read_u32(arguments, 8 + index * 8)?,
-        )?;
+        let parameter =
+            next_macro_parameter(record_at(parameters_offset, TAG_STRING)?, parameter_cursor)
+                .map_err(|_| ERROR_INVALID_EXPRESSION)?
+                .ok_or(ERROR_INVALID_EXPRESSION)?;
+        let arguments = record_at(arguments_offset, TAG_MACRO_ARGUMENTS)?;
+        let name_offset = read_u32(arguments, 4 + index * 8)?;
+        let supplied_value = read_u32(arguments, 8 + index * 8)?;
+        let value_offset = if supplied_value != 0 {
+            supplied_value
+        } else if let Some(default) = parameter.default {
+            resolve_atom(state_offset, default)?
+        } else {
+            allocate_record(TAG_UNDEFINED, 0)?
+        };
+        assign_scope(state_offset, name_offset, value_offset)?;
+        parameter_cursor = parameter.next_cursor;
     }
     Ok(())
 }

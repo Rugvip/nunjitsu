@@ -142,6 +142,28 @@ pub struct SetClause<'a> {
     pub expression: Option<&'a [u8]>,
 }
 
+/// One macro definition parameter and optional default atom.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct MacroParameter<'a> {
+    /// Template-visible parameter name.
+    pub name: &'a [u8],
+    /// Default value evaluated when the call does not supply this parameter.
+    pub default: Option<Atom<'a>>,
+    /// Cursor of the following parameter.
+    pub next_cursor: usize,
+}
+
+/// One positional or named macro call argument.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct MacroArgument<'a> {
+    /// Explicit target parameter for a keyword argument.
+    pub name: Option<&'a [u8]>,
+    /// Argument value atom evaluated in caller scope.
+    pub value: Atom<'a>,
+    /// Cursor of the following argument.
+    pub next_cursor: usize,
+}
+
 /// Parses the base atom, its unary negation, and the following operation cursor.
 pub fn parse_base(expression: &[u8]) -> Result<(Atom<'_>, usize, bool), ExpressionError> {
     if let Some(atom) = parse_inline_if(expression)? {
@@ -471,6 +493,86 @@ pub fn next_argument(
         return Err(ExpressionError);
     }
     Ok(Some((atom, cursor)))
+}
+
+/// Parses one macro definition parameter from a comma-separated signature.
+pub fn next_macro_parameter(
+    parameters: &[u8],
+    cursor: usize,
+) -> Result<Option<MacroParameter<'_>>, ExpressionError> {
+    let cursor = skip_whitespace(parameters, cursor);
+    if cursor == parameters.len() {
+        return Ok(None);
+    }
+    let start = cursor;
+    let mut cursor = parse_identifier(parameters, cursor)?;
+    let name = &parameters[start..cursor];
+    cursor = skip_whitespace(parameters, cursor);
+    let default =
+        if parameters.get(cursor) == Some(&b'=') && parameters.get(cursor + 1) != Some(&b'=') {
+            cursor = skip_whitespace(parameters, cursor + 1);
+            let (default, next) = parse_atom(parameters, cursor)?;
+            cursor = skip_whitespace(parameters, next);
+            Some(default)
+        } else {
+            None
+        };
+    let next_cursor = next_list_cursor(parameters, cursor)?;
+    Ok(Some(MacroParameter {
+        name,
+        default,
+        next_cursor,
+    }))
+}
+
+/// Parses one positional or keyword macro call argument.
+pub fn next_macro_argument(
+    arguments: &[u8],
+    cursor: usize,
+) -> Result<Option<MacroArgument<'_>>, ExpressionError> {
+    let cursor = skip_whitespace(arguments, cursor);
+    if cursor == arguments.len() {
+        return Ok(None);
+    }
+    let mut value_cursor = cursor;
+    let name = if arguments
+        .get(cursor)
+        .copied()
+        .is_some_and(is_identifier_start)
+    {
+        let end = parse_identifier(arguments, cursor)?;
+        let following = skip_whitespace(arguments, end);
+        if arguments.get(following) == Some(&b'=') && arguments.get(following + 1) != Some(&b'=') {
+            value_cursor = skip_whitespace(arguments, following + 1);
+            Some(&arguments[cursor..end])
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+    let (value, cursor) = parse_atom(arguments, value_cursor)?;
+    let cursor = skip_whitespace(arguments, cursor);
+    let next_cursor = next_list_cursor(arguments, cursor)?;
+    Ok(Some(MacroArgument {
+        name,
+        value,
+        next_cursor,
+    }))
+}
+
+fn next_list_cursor(bytes: &[u8], cursor: usize) -> Result<usize, ExpressionError> {
+    if cursor == bytes.len() {
+        return Ok(cursor);
+    }
+    if bytes.get(cursor) != Some(&b',') {
+        return Err(ExpressionError);
+    }
+    let cursor = skip_whitespace(bytes, cursor + 1);
+    if cursor == bytes.len() {
+        return Err(ExpressionError);
+    }
+    Ok(cursor)
 }
 
 /// Parses one object-literal entry from a comma-separated entry slice.
@@ -1011,6 +1113,8 @@ mod tests {
             }),
         );
         assert_eq!(parse_tag_call(b"badge trailing"), Err(ExpressionError));
+        assert_eq!(next_macro_parameter(b"value=", 0), Err(ExpressionError));
+        assert_eq!(next_macro_argument(b"value=", 0), Err(ExpressionError));
         assert_eq!(
             parse_base(br#"not user["profile"].flags[0]"#),
             Ok((Atom::Lookup(br#"user["profile"].flags[0]"#), 28, true)),
@@ -1096,6 +1200,36 @@ mod tests {
                 expression: None,
             }),
         );
+
+        let parameters = br#"x, y=2, z="value""#;
+        let first = next_macro_parameter(parameters, 0).unwrap().unwrap();
+        assert_eq!(first.name, b"x");
+        assert_eq!(first.default, None);
+        let second = next_macro_parameter(parameters, first.next_cursor)
+            .unwrap()
+            .unwrap();
+        assert_eq!(second.name, b"y");
+        assert_eq!(second.default, Some(Atom::Number(b"2")));
+        let third = next_macro_parameter(parameters, second.next_cursor)
+            .unwrap()
+            .unwrap();
+        assert_eq!(third.name, b"z");
+        assert_eq!(third.default, Some(Atom::String(b"value")));
+        assert_eq!(
+            next_macro_parameter(parameters, third.next_cursor),
+            Ok(None),
+        );
+
+        let arguments = b"1, z=3";
+        let first = next_macro_argument(arguments, 0).unwrap().unwrap();
+        assert_eq!(first.name, None);
+        assert_eq!(first.value, Atom::Number(b"1"));
+        let second = next_macro_argument(arguments, first.next_cursor)
+            .unwrap()
+            .unwrap();
+        assert_eq!(second.name, Some(b"z".as_slice()));
+        assert_eq!(second.value, Atom::Number(b"3"));
+        assert_eq!(next_macro_argument(arguments, second.next_cursor), Ok(None));
 
         let expression = b"3 + 4 - 5 * 6 / 10";
         assert_eq!(
