@@ -465,6 +465,36 @@
       "upstream": { "id": "tests/compiler.js:136", "file": "tests/compiler.js", "test": "should throw an error when including a file that imports macro that calls an undefined macro" },
       "status": "adapted",
       "reason": "The TypeScript runtime test asserts Nunjitsu's structured render failure instead of the upstream JavaScript error text."
+    },
+    {
+      "upstream": { "id": "tests/compiler.js:137", "file": "tests/compiler.js", "test": "should control whitespaces correctly" },
+      "status": "ported",
+      "cases": ["compiler-block-right-trim", "compiler-nested-block-right-trim", "compiler-comment-after-right-trim"]
+    },
+    {
+      "upstream": { "id": "tests/compiler.js:138", "file": "tests/compiler.js", "test": "should control expression whitespaces correctly" },
+      "status": "ported",
+      "cases": ["compiler-expression-both-trim", "compiler-expression-preserves-whitespace", "compiler-expression-left-trim-negative-adjacent", "compiler-expression-negative-with-space", "compiler-expression-right-trim"]
+    },
+    {
+      "upstream": { "id": "tests/compiler.js:139", "file": "tests/compiler.js", "test": "should get right value when macro parameter conflict with global macro name" },
+      "status": "ported",
+      "cases": ["compiler-macro-parameter-shadows-macro"]
+    },
+    {
+      "upstream": { "id": "tests/compiler.js:140", "file": "tests/compiler.js", "test": "should get right value when macro include macro" },
+      "status": "ported",
+      "cases": ["compiler-macro-calls-visible-macro"]
+    },
+    {
+      "upstream": { "id": "tests/compiler.js:141", "file": "tests/compiler.js", "test": "should allow access to outer scope in call blocks" },
+      "status": "ported",
+      "cases": ["compiler-call-block-accesses-outer-macro-scope"]
+    },
+    {
+      "upstream": { "id": "tests/compiler.js:142", "file": "tests/compiler.js", "test": "should not leak scope from call blocks to parent" },
+      "status": "ported",
+      "cases": ["compiler-call-block-scope-does-not-leak"]
     }
   ]
 }

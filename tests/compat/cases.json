@@ -1127,6 +1127,102 @@
       "context": {},
       "autoescape": true,
       "expected": "/x/gi"
+    },
+    {
+      "id": "compiler-block-right-trim",
+      "template": "{% if true -%}{{\"hello\"}} {{\"world\"}}{% endif %}",
+      "nativeRender": false,
+      "context": {},
+      "autoescape": true,
+      "expected": "hello world"
+    },
+    {
+      "id": "compiler-nested-block-right-trim",
+      "template": "{% if true -%}{% if true %} {{\"hello\"}} {{\"world\"}}{% endif %}{% endif %}",
+      "nativeRender": false,
+      "context": {},
+      "autoescape": true,
+      "expected": " hello world"
+    },
+    {
+      "id": "compiler-comment-after-right-trim",
+      "template": "{% if true -%}{# comment #} {{\"hello\"}}{% endif %}",
+      "nativeRender": false,
+      "context": {},
+      "autoescape": true,
+      "expected": " hello"
+    },
+    {
+      "id": "compiler-expression-both-trim",
+      "template": "Well, {{- ' hello, ' -}} my friend",
+      "nativeRender": false,
+      "context": {},
+      "autoescape": true,
+      "expected": "Well, hello, my friend"
+    },
+    {
+      "id": "compiler-expression-preserves-whitespace",
+      "template": " {{ 2 + 2 }} ",
+      "nativeRender": false,
+      "context": {},
+      "autoescape": true,
+      "expected": " 4 "
+    },
+    {
+      "id": "compiler-expression-left-trim-negative-adjacent",
+      "template": " {{-2 + 2 }} ",
+      "nativeRender": false,
+      "context": {},
+      "autoescape": true,
+      "expected": "4 "
+    },
+    {
+      "id": "compiler-expression-negative-with-space",
+      "template": " {{ -2 + 2 }} ",
+      "nativeRender": false,
+      "context": {},
+      "autoescape": true,
+      "expected": " 0 "
+    },
+    {
+      "id": "compiler-expression-right-trim",
+      "template": " {{ 2 + 2 -}} ",
+      "nativeRender": false,
+      "context": {},
+      "autoescape": true,
+      "expected": " 4"
+    },
+    {
+      "id": "compiler-macro-parameter-shadows-macro",
+      "template": "{# macro1 and macro2 definition #}{% macro macro1() %}{% endmacro %}{% macro macro2(macro1=\"default\") %}{{macro1}}{% endmacro %}{{macro2(\"this should be outputted\") }}",
+      "nativeRender": false,
+      "context": {},
+      "autoescape": true,
+      "expected": "this should be outputted"
+    },
+    {
+      "id": "compiler-macro-calls-visible-macro",
+      "template": "{# macro1 and macro2 definition #}{% macro macro1() %} foo{% endmacro %}{% macro macro2(text=\"default\") %}{{macro1()}}{% endmacro %}{{macro2(\"this should not be outputted\") }}",
+      "nativeRender": false,
+      "context": {},
+      "autoescape": true,
+      "expected": " foo"
+    },
+    {
+      "id": "compiler-call-block-accesses-outer-macro-scope",
+      "template": "{% macro inside() %}{{ caller() }}{% endmacro %}{% macro outside(var) %}{{ var }}\n{% call inside() %}{{ var }}{% endcall %}{% endmacro %}{{ outside(\"foobar\") }}",
+      "nativeRender": false,
+      "context": {},
+      "autoescape": true,
+      "expected": "foobar\nfoobar"
+    },
+    {
+      "id": "compiler-call-block-scope-does-not-leak",
+      "template": "{% set var = \"expected\" %}{% macro inside() %}{% set var = \"incorrect-value\" %}{{ caller() }}{% endmacro %}{% macro outside() %}{% call inside() %}{% endcall %}{% endmacro %}{{ outside() }}{{ var }}",
+      "nativeRender": false,
+      "context": {},
+      "autoescape": true,
+      "expected": "expected"
     }
   ]
 }
