@@ -398,6 +398,12 @@ test('evaluates Rust-native filters and tests without host capability calls', as
       ),
       'false|true|true|true|true|true|true|true|true|true|true',
     );
+    assert.equal(
+      await engine.render({
+        source: '{{ (3 + 4 == 7) }}|{% if 1 < 2 + 3 %}yes{% endif %}',
+      }),
+      'true|yes',
+    );
   } finally {
     await engine.dispose();
   }

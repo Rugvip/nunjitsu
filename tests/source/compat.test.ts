@@ -20,6 +20,7 @@ interface CompatibilityCase {
   id: string;
   template: string;
   templates?: Record<string, string>;
+  nativeRender?: boolean;
   context: Record<string, CompatibilityJson>;
   autoescape: boolean;
   expected: string;

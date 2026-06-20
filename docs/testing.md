@@ -22,6 +22,11 @@ Avoid duplicating the full compatibility suite in each layer. Shared cases are
 the behavioral source; layer-specific tests should concentrate on that layer's
 boundary and failure modes.
 
+Cases that require the production Wasm evaluator or an asynchronous host mark
+`nativeRender: false`. They still execute through Rust/Wasm in the TypeScript
+host harness; the small native renderer runs the remaining portable subset
+directly.
+
 ## Compatibility corpus
 
 The `tests/compat/` directory owns:

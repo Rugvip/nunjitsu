@@ -58,6 +58,36 @@
       "upstream": { "id": "tests/compiler.js:107", "file": "tests/compiler.js", "test": "should include templates dynamically based on an object attr" },
       "status": "ported",
       "cases": ["compiler-dynamic-include-attribute"]
+    },
+    {
+      "upstream": { "id": "tests/compiler.js:46", "file": "tests/compiler.js", "test": "should compile basic arithmetic operators" },
+      "status": "ported",
+      "cases": ["compiler-basic-arithmetic"]
+    },
+    {
+      "upstream": { "id": "tests/compiler.js:47", "file": "tests/compiler.js", "test": "should compile the exponentiation (**) operator" },
+      "status": "ported",
+      "cases": ["compiler-exponentiation"]
+    },
+    {
+      "upstream": { "id": "tests/compiler.js:48", "file": "tests/compiler.js", "test": "should compile the integer division (//) operator" },
+      "status": "ported",
+      "cases": ["compiler-floor-division"]
+    },
+    {
+      "upstream": { "id": "tests/compiler.js:49", "file": "tests/compiler.js", "test": "should compile the modulus operator" },
+      "status": "ported",
+      "cases": ["compiler-modulus"]
+    },
+    {
+      "upstream": { "id": "tests/compiler.js:50", "file": "tests/compiler.js", "test": "should compile numeric negation operator" },
+      "status": "ported",
+      "cases": ["compiler-numeric-negation"]
+    },
+    {
+      "upstream": { "id": "tests/compiler.js:62", "file": "tests/compiler.js", "test": "should compile string concatenations with tilde" },
+      "status": "ported",
+      "cases": ["compiler-string-concatenation"]
     }
   ]
 }

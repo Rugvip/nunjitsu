@@ -84,6 +84,7 @@
       "id": "compiler-dynamic-include-context",
       "template": "hello world {% include tmpl %}",
       "templates": { "include.njk": "FooInclude {{ name }}" },
+      "nativeRender": false,
       "context": { "name": "thedude", "tmpl": "include.njk" },
       "autoescape": false,
       "expected": "hello world FooInclude thedude"
@@ -92,6 +93,7 @@
       "id": "compiler-dynamic-include-set",
       "template": "hello world {% set tmpl = \"include.njk\" %}{% include tmpl %}",
       "templates": { "include.njk": "FooInclude {{ name }}" },
+      "nativeRender": false,
       "context": { "name": "thedude" },
       "autoescape": false,
       "expected": "hello world FooInclude thedude"
@@ -100,9 +102,58 @@
       "id": "compiler-dynamic-include-attribute",
       "template": "hello world {% include data.tmpl %}",
       "templates": { "include.njk": "FooInclude {{ name }}" },
+      "nativeRender": false,
       "context": { "name": "thedude", "data": { "tmpl": "include.njk" } },
       "autoescape": false,
       "expected": "hello world FooInclude thedude"
+    },
+    {
+      "id": "compiler-basic-arithmetic",
+      "template": "{{ 3 + 4 - 5 * 6 / 10 }}",
+      "nativeRender": false,
+      "context": {},
+      "autoescape": false,
+      "expected": "4"
+    },
+    {
+      "id": "compiler-exponentiation",
+      "template": "{{ 4**5 }}",
+      "nativeRender": false,
+      "context": {},
+      "autoescape": false,
+      "expected": "1024"
+    },
+    {
+      "id": "compiler-floor-division",
+      "template": "{{ 9//5 }}",
+      "nativeRender": false,
+      "context": {},
+      "autoescape": false,
+      "expected": "1"
+    },
+    {
+      "id": "compiler-modulus",
+      "template": "{{ 9%5 }}",
+      "nativeRender": false,
+      "context": {},
+      "autoescape": false,
+      "expected": "4"
+    },
+    {
+      "id": "compiler-numeric-negation",
+      "template": "{{ -5 }}",
+      "nativeRender": false,
+      "context": {},
+      "autoescape": false,
+      "expected": "-5"
+    },
+    {
+      "id": "compiler-string-concatenation",
+      "template": "{{ 4 ~ 'hello' }}|{{ 4 ~ 5 }}|{{ 'a' ~ 'b' ~ 5 }}",
+      "nativeRender": false,
+      "context": {},
+      "autoescape": false,
+      "expected": "4hello|45|ab5"
     }
   ]
 }

@@ -30,6 +30,32 @@ pub enum Atom<'a> {
     Array(&'a [u8]),
     /// An object literal's comma-separated entry source.
     Record(&'a [u8]),
+    /// An arithmetic or concatenation expression evaluated with precedence.
+    Arithmetic(&'a [u8]),
+}
+
+/// One binary arithmetic or string-concatenation operator.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum BinaryOperator {
+    Concat,
+    Add,
+    Subtract,
+    Multiply,
+    Divide,
+    FloorDivide,
+    Remainder,
+    Power,
+}
+
+/// One lowest-precedence binary split of an expression.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct BinaryExpression<'a> {
+    /// Source to the left of the selected operator.
+    pub left: &'a [u8],
+    /// Selected lowest-precedence operator.
+    pub operator: BinaryOperator,
+    /// Source to the right of the selected operator.
+    pub right: &'a [u8],
 }
 
 /// One atom with an optional unary `not` operator.
@@ -113,6 +139,102 @@ pub struct SetClause<'a> {
 pub fn parse_base(expression: &[u8]) -> Result<(Atom<'_>, usize, bool), ExpressionError> {
     let (operand, cursor) = parse_operand(expression, 0)?;
     Ok((operand.atom, cursor, operand.negated))
+}
+
+/// Splits an arithmetic expression at its lowest-precedence, rightmost operator.
+pub fn split_binary_expression(
+    expression: &[u8],
+) -> Result<Option<BinaryExpression<'_>>, ExpressionError> {
+    let mut positions = [None; 8];
+    let mut cursor = 0usize;
+    let mut quote = None;
+    let mut parentheses = 0usize;
+    let mut brackets = 0usize;
+    let mut braces = 0usize;
+    while let Some(byte) = expression.get(cursor).copied() {
+        if let Some(active_quote) = quote {
+            if byte == b'\\' {
+                cursor = cursor.checked_add(2).ok_or(ExpressionError)?;
+                continue;
+            }
+            if byte == active_quote {
+                quote = None;
+            }
+            cursor += 1;
+            continue;
+        }
+        if matches!(byte, b'\'' | b'"') {
+            quote = Some(byte);
+            cursor += 1;
+            continue;
+        }
+        match byte {
+            b'(' => parentheses += 1,
+            b'[' => brackets += 1,
+            b'{' => braces += 1,
+            b')' => parentheses = parentheses.checked_sub(1).ok_or(ExpressionError)?,
+            b']' => brackets = brackets.checked_sub(1).ok_or(ExpressionError)?,
+            b'}' => braces = braces.checked_sub(1).ok_or(ExpressionError)?,
+            _ => {}
+        }
+        if parentheses != 0 || brackets != 0 || braces != 0 {
+            cursor += 1;
+            continue;
+        }
+        match byte {
+            b'~' => positions[BinaryOperator::Concat as usize] = Some(cursor),
+            b'+' if !is_unary_sign(expression, cursor) => {
+                positions[BinaryOperator::Add as usize] = Some(cursor);
+            }
+            b'-' if !is_unary_sign(expression, cursor) => {
+                positions[BinaryOperator::Subtract as usize] = Some(cursor);
+            }
+            b'*' if expression.get(cursor + 1) == Some(&b'*') => {
+                positions[BinaryOperator::Power as usize] = Some(cursor);
+                cursor += 1;
+            }
+            b'*' => positions[BinaryOperator::Multiply as usize] = Some(cursor),
+            b'/' if expression.get(cursor + 1) == Some(&b'/') => {
+                positions[BinaryOperator::FloorDivide as usize] = Some(cursor);
+                cursor += 1;
+            }
+            b'/' => positions[BinaryOperator::Divide as usize] = Some(cursor),
+            b'%' => positions[BinaryOperator::Remainder as usize] = Some(cursor),
+            _ => {}
+        }
+        cursor += 1;
+    }
+    if quote.is_some() || parentheses != 0 || brackets != 0 || braces != 0 {
+        return Err(ExpressionError);
+    }
+    for operator in [
+        BinaryOperator::Concat,
+        BinaryOperator::Add,
+        BinaryOperator::Subtract,
+        BinaryOperator::Multiply,
+        BinaryOperator::Divide,
+        BinaryOperator::FloorDivide,
+        BinaryOperator::Remainder,
+        BinaryOperator::Power,
+    ] {
+        if let Some(position) = positions[operator as usize] {
+            let width = usize::from(matches!(
+                operator,
+                BinaryOperator::FloorDivide | BinaryOperator::Power
+            )) + 1;
+            let left = trim_whitespace(&expression[..position]);
+            let right = trim_whitespace(&expression[position + width..]);
+            if left.is_empty() || right.is_empty() {
+                return Err(ExpressionError);
+            }
+            return Ok(Some(BinaryExpression {
+                left,
+                operator,
+                right,
+            }));
+        }
+    }
+    Ok(None)
 }
 
 /// Returns each validated dotted or bracketed lookup segment in order.
@@ -440,8 +562,110 @@ fn parse_operand(bytes: &[u8], cursor: usize) -> Result<(Operand<'_>, usize), Ex
     if negated {
         cursor = skip_whitespace(bytes, cursor + 3);
     }
-    let (atom, cursor) = parse_atom(bytes, cursor)?;
+    let end = arithmetic_operand_end(bytes, cursor)?;
+    let arithmetic = trim_whitespace(&bytes[cursor..end]);
+    let (atom, cursor) = if split_binary_expression(arithmetic)?.is_some() {
+        (Atom::Arithmetic(arithmetic), end)
+    } else {
+        parse_atom(bytes, cursor)?
+    };
     Ok((Operand { atom, negated }, skip_whitespace(bytes, cursor)))
+}
+
+fn arithmetic_operand_end(bytes: &[u8], start: usize) -> Result<usize, ExpressionError> {
+    let mut cursor = start;
+    let mut quote = None;
+    let mut parentheses = 0usize;
+    let mut brackets = 0usize;
+    let mut braces = 0usize;
+    while let Some(byte) = bytes.get(cursor).copied() {
+        if let Some(active_quote) = quote {
+            if byte == b'\\' {
+                cursor = cursor.checked_add(2).ok_or(ExpressionError)?;
+                continue;
+            }
+            if byte == active_quote {
+                quote = None;
+            }
+            cursor += 1;
+            continue;
+        }
+        if matches!(byte, b'\'' | b'"') {
+            quote = Some(byte);
+            cursor += 1;
+            continue;
+        }
+        match byte {
+            b'(' => parentheses += 1,
+            b'[' => brackets += 1,
+            b'{' => braces += 1,
+            b')' => parentheses = parentheses.checked_sub(1).ok_or(ExpressionError)?,
+            b']' => brackets = brackets.checked_sub(1).ok_or(ExpressionError)?,
+            b'}' => braces = braces.checked_sub(1).ok_or(ExpressionError)?,
+            _ => {}
+        }
+        if parentheses == 0
+            && brackets == 0
+            && braces == 0
+            && (matches!(byte, b'=' | b'!' | b'<' | b'>')
+                || keyword_boundary(bytes, start, cursor, b"is")
+                || keyword_boundary(bytes, start, cursor, b"in")
+                || keyword_boundary(bytes, start, cursor, b"and")
+                || keyword_boundary(bytes, start, cursor, b"or")
+                || keyword_boundary(bytes, start, cursor, b"not"))
+        {
+            return Ok(cursor);
+        }
+        cursor += 1;
+    }
+    if quote.is_some() || parentheses != 0 || brackets != 0 || braces != 0 {
+        return Err(ExpressionError);
+    }
+    Ok(bytes.len())
+}
+
+fn keyword_boundary(bytes: &[u8], start: usize, cursor: usize, keyword: &[u8]) -> bool {
+    (cursor == start || bytes[cursor - 1].is_ascii_whitespace())
+        && bytes.get(cursor..cursor + keyword.len()) == Some(keyword)
+        && bytes
+            .get(cursor + keyword.len())
+            .is_some_and(u8::is_ascii_whitespace)
+}
+
+fn is_unary_sign(bytes: &[u8], cursor: usize) -> bool {
+    let Some(previous) = bytes[..cursor]
+        .iter()
+        .rposition(|byte| !byte.is_ascii_whitespace())
+        .map(|index| bytes[index])
+    else {
+        return true;
+    };
+    matches!(
+        previous,
+        b'~' | b'+'
+            | b'-'
+            | b'*'
+            | b'/'
+            | b'%'
+            | b'('
+            | b'['
+            | b'{'
+            | b','
+            | b':'
+            | b'='
+            | b'!'
+            | b'<'
+            | b'>'
+    )
+}
+
+fn trim_whitespace(bytes: &[u8]) -> &[u8] {
+    let start = skip_whitespace(bytes, 0);
+    let mut end = bytes.len();
+    while end > start && bytes[end - 1].is_ascii_whitespace() {
+        end -= 1;
+    }
+    &bytes[start..end]
 }
 
 fn parse_named_call(bytes: &[u8], cursor: usize) -> Result<(Call<'_>, usize), ExpressionError> {
@@ -655,10 +879,11 @@ mod tests {
     }
 
     #[test]
-    fn rejects_trailing_arguments_and_unsupported_operators() {
-        assert!(parse_base(b"value + 1").is_ok());
-        let (_, cursor, _) = parse_base(b"value + 1").unwrap();
-        assert_eq!(next_operation(b"value + 1", cursor), Err(ExpressionError));
+    fn rejects_trailing_arguments_and_invalid_syntax() {
+        let expression = b"value + 1";
+        let (base, cursor, _) = parse_base(expression).unwrap();
+        assert_eq!(base, Atom::Arithmetic(expression));
+        assert_eq!(next_operation(expression, cursor), Ok(None));
         assert_eq!(next_argument(b"value,", 0), Err(ExpressionError));
         assert_eq!(parse_base(br#""escaped\"""#), Err(ExpressionError));
         assert_eq!(
@@ -739,6 +964,52 @@ mod tests {
                 name: b"value",
                 expression: b"source | default('fallback') ",
             }),
+        );
+
+        let expression = b"3 + 4 - 5 * 6 / 10";
+        assert_eq!(
+            parse_base(expression),
+            Ok((Atom::Arithmetic(expression), expression.len(), false)),
+        );
+        assert_eq!(
+            split_binary_expression(expression),
+            Ok(Some(BinaryExpression {
+                left: b"3",
+                operator: BinaryOperator::Add,
+                right: b"4 - 5 * 6 / 10",
+            })),
+        );
+        assert_eq!(
+            split_binary_expression(b"1 + 2 + 3"),
+            Ok(Some(BinaryExpression {
+                left: b"1 + 2",
+                operator: BinaryOperator::Add,
+                right: b"3",
+            })),
+        );
+        assert_eq!(
+            split_binary_expression(br#"(1 + 2) ~ "x~y""#),
+            Ok(Some(BinaryExpression {
+                left: b"(1 + 2)",
+                operator: BinaryOperator::Concat,
+                right: br#""x~y""#,
+            })),
+        );
+        let comparison = b"3 + 4 == 7";
+        let (base, cursor, _) = parse_base(comparison).unwrap();
+        assert_eq!(base, Atom::Arithmetic(b"3 + 4"));
+        assert_eq!(
+            next_operation(comparison, cursor),
+            Ok(Some((
+                Operation::Compare {
+                    operator: Comparison::Equal,
+                    operand: Operand {
+                        atom: Atom::Number(b"7"),
+                        negated: false,
+                    },
+                },
+                comparison.len(),
+            ))),
         );
 
         let (array, cursor, _) = parse_base(br#"[1, "two", { three: 3 }]"#).unwrap();

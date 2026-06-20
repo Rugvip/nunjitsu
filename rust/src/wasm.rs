@@ -1,6 +1,7 @@
 use crate::expression::{
-    Atom, Call, Comparison, Operand, Operation, next_argument, next_lookup_segment, next_operation,
-    next_record_entry, parse_base, parse_for_clause, parse_set_clause, parse_tag_call,
+    Atom, BinaryOperator, Call, Comparison, Operand, Operation, next_argument, next_lookup_segment,
+    next_operation, next_record_entry, parse_base, parse_for_clause, parse_set_clause,
+    parse_tag_call, split_binary_expression,
 };
 use crate::template::{
     ConditionalBoundary, ParseOptions, RenderError, RenderedValue, TemplateItem, directive_keyword,
@@ -1358,6 +1359,57 @@ fn evaluate_sync_expression(state_offset: u32, expression: &[u8]) -> Result<u32,
     Ok(current)
 }
 
+fn evaluate_binary_expression(state_offset: u32, expression: &[u8]) -> Result<u32, u32> {
+    let binary = split_binary_expression(expression)
+        .map_err(|_| ERROR_INVALID_EXPRESSION)?
+        .ok_or(ERROR_INVALID_EXPRESSION)?;
+    let left = evaluate_sync_expression(state_offset, binary.left)?;
+    let right = evaluate_sync_expression(state_offset, binary.right)?;
+    apply_binary_operator(left, binary.operator, right)
+}
+
+fn apply_binary_operator(
+    left_offset: u32,
+    operator: BinaryOperator,
+    right_offset: u32,
+) -> Result<u32, u32> {
+    let left = Value::at(left_offset)?;
+    let right = Value::at(right_offset)?;
+    if operator == BinaryOperator::Concat
+        || (operator == BinaryOperator::Add
+            && (left.string_bytes().is_some() || right.string_bytes().is_some()))
+    {
+        return concatenate_values(left, right);
+    }
+    let left = left.as_number();
+    let right = right.as_number();
+    let result = match operator {
+        BinaryOperator::Add => left + right,
+        BinaryOperator::Subtract => left - right,
+        BinaryOperator::Multiply => left * right,
+        BinaryOperator::Divide => left / right,
+        BinaryOperator::FloorDivide => libm::floor(left / right),
+        BinaryOperator::Remainder => left % right,
+        BinaryOperator::Power => libm::pow(left, right),
+        BinaryOperator::Concat => return Err(ERROR_INVALID_EXPRESSION),
+    };
+    write_computed_number(result)
+}
+
+fn concatenate_values(left: Value, right: Value) -> Result<u32, u32> {
+    let left = left.rendered().ok_or(ERROR_INVALID_EXPRESSION)?.bytes;
+    let right = right.rendered().ok_or(ERROR_INVALID_EXPRESSION)?.bytes;
+    let length = left
+        .len()
+        .checked_add(right.len())
+        .ok_or(ERROR_RESOURCE_LIMIT)?;
+    let offset = allocate_record(TAG_STRING, length as u32)?;
+    let output = mutable_record_at(offset, TAG_STRING)?;
+    output[..left.len()].copy_from_slice(left);
+    output[left.len()..].copy_from_slice(right);
+    Ok(offset)
+}
+
 fn compare_values(left_offset: u32, operator: Comparison, right_offset: u32) -> Result<bool, u32> {
     let result = match operator {
         Comparison::Equal => values_equal(left_offset, right_offset, false)?,
@@ -1463,6 +1515,7 @@ fn resolve_atom(state_offset: u32, atom: Atom<'_>) -> Result<u32, u32> {
         Atom::Group(expression) => evaluate_sync_expression(state_offset, expression),
         Atom::Array(elements) => write_array_literal(state_offset, elements),
         Atom::Record(entries) => write_record_literal(state_offset, entries),
+        Atom::Arithmetic(expression) => evaluate_binary_expression(state_offset, expression),
     }
 }
 
@@ -2208,13 +2261,23 @@ fn write_boolean(value: bool) -> Result<u32, u32> {
 fn write_number(source: &[u8]) -> Result<u32, u32> {
     let text = core::str::from_utf8(source).map_err(|_| ERROR_INVALID_EXPRESSION)?;
     let value = text.parse::<f64>().map_err(|_| ERROR_INVALID_EXPRESSION)?;
+    write_number_value(value, source)
+}
+
+fn write_computed_number(value: f64) -> Result<u32, u32> {
+    let mut buffer = ryu_js::Buffer::new();
+    let rendered = buffer.format(value);
+    write_number_value(value, rendered.as_bytes())
+}
+
+fn write_number_value(value: f64, rendered: &[u8]) -> Result<u32, u32> {
     let payload_length = 8u32
-        .checked_add(source.len() as u32)
+        .checked_add(rendered.len() as u32)
         .ok_or(ERROR_RESOURCE_LIMIT)?;
     let offset = allocate_record(TAG_NUMBER, payload_length)?;
     let payload = mutable_record_at(offset, TAG_NUMBER)?;
     payload[..8].copy_from_slice(&value.to_le_bytes());
-    payload[8..].copy_from_slice(source);
+    payload[8..].copy_from_slice(rendered);
     Ok(offset)
 }
 

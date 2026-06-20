@@ -1,7 +1,6 @@
 use nunjitsu_engine::{RenderedValue, render_template};
 use serde::Deserialize;
 use serde_json::{Map, Value};
-use std::collections::BTreeMap;
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -14,8 +13,8 @@ struct CompatibilityDocument {
 struct CompatibilityCase {
     id: String,
     template: String,
-    #[serde(default)]
-    templates: BTreeMap<String, String>,
+    #[serde(rename = "nativeRender", default = "enabled")]
+    native_render: bool,
     context: Map<String, Value>,
     autoescape: bool,
     expected: String,
@@ -28,8 +27,8 @@ fn renders_shared_compatibility_cases_natively() {
     assert_eq!(document.schema_version, 1);
 
     for case in document.cases {
-        // Loader-backed cases execute the same Rust/Wasm engine through the TypeScript host harness.
-        if !case.templates.is_empty() {
+        // Evaluator and host cases execute the Rust/Wasm engine through the TypeScript harness.
+        if !case.native_render {
             continue;
         }
         let mut output = vec![0; case.expected.len().saturating_mul(6).max(1024)];
@@ -47,6 +46,10 @@ fn renders_shared_compatibility_cases_natively() {
             case.id,
         );
     }
+}
+
+fn enabled() -> bool {
+    true
 }
 
 fn lookup<'a>(context: &'a Map<String, Value>, path: &[u8]) -> Option<RenderedValue<'a>> {
