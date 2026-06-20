@@ -7,6 +7,7 @@ import test from 'node:test';
 import {
   createEngine,
   fileSystemLoader,
+  markSafe,
   memoryLoader,
   NunjitsuRenderError,
   TemplateLoaderError,
@@ -113,5 +114,27 @@ test('filesystem loading stays within explicit canonical roots', async () => {
   } finally {
     await engine.dispose();
     await rm(sandbox, { force: true, recursive: true });
+  }
+});
+
+test('autoescaping requires an explicit safe string to bypass', async () => {
+  const engine = await createEngine({ autoescape: true });
+  try {
+    assert.equal(
+      await engine.render(
+        { source: '<p>{{ unsafe }} {{ safe }}</p>' },
+        {
+          unsafe: '<script>"alert" & \'escape\'</script>',
+          safe: markSafe('<strong>trusted</strong>'),
+        },
+      ),
+      '<p>&lt;script&gt;&quot;alert&quot; &amp; &#39;escape&#39;&lt;/script&gt; <strong>trusted</strong></p>',
+    );
+    assert.equal(
+      await engine.render({ source: '<b>{{ value }}</b>' }, { value: false }),
+      '<b>false</b>',
+    );
+  } finally {
+    await engine.dispose();
   }
 });

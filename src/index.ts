@@ -22,7 +22,13 @@ export {
   type LoadedTemplate,
   type TemplateLoader,
 } from './loaders.ts';
-export type { TemplateContext, TemplatePrimitive, TemplateValue } from './values.ts';
+export {
+  markSafe,
+  SafeString,
+  type TemplateContext,
+  type TemplatePrimitive,
+  type TemplateValue,
+} from './values.ts';
 
 /** Creates a Node.js Nunjitsu engine backed by Rust/Wasm worker threads. */
 export async function createEngine(options: EngineOptions = {}): Promise<Engine> {

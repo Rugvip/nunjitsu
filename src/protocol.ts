@@ -1,3 +1,5 @@
+import { SafeString, type TemplateContext, type TemplateValue } from './values.ts';
+
 const recordHeaderLength = 8;
 const recordAlignment = 8;
 const wasmPageSize = 65_536;
@@ -14,6 +16,7 @@ const recordTag = {
   number: 9,
   array: 10,
   record: 11,
+  safeString: 12,
 } as const;
 
 /** The offsets and cursor for one encoded render request. */
@@ -36,15 +39,20 @@ export class ArenaWriter {
     this.#cursor = align(arenaBase, recordAlignment);
   }
 
-  /** Encodes an inline template and string context into the arena. */
-  encodeRender(source: string, context: TemplateContext): EncodedRenderRequest {
+  /** Encodes an inline template, safe context, and render flags into the arena. */
+  encodeRender(
+    source: string,
+    context: TemplateContext,
+    options: { autoescape: boolean },
+  ): EncodedRenderRequest {
     const sourceOffset = this.#writeTextRecord(recordTag.source, source);
     const contextOffset = this.#writeValue(context, new Set());
 
-    const requestPayload = new ArrayBuffer(8);
+    const requestPayload = new ArrayBuffer(12);
     const requestView = new DataView(requestPayload);
     requestView.setUint32(0, sourceOffset, true);
     requestView.setUint32(4, contextOffset, true);
+    requestView.setUint32(8, options.autoescape ? 1 : 0, true);
     const requestOffset = this.#writeRecord(recordTag.request, new Uint8Array(requestPayload));
 
     return { requestOffset, cursor: this.#cursor };
@@ -73,6 +81,9 @@ export class ArenaWriter {
       new DataView(payload.buffer).setFloat64(0, value, true);
       payload.set(rendered, 8);
       return this.#writeRecord(recordTag.number, payload);
+    }
+    if (value instanceof SafeString) {
+      return this.#writeTextRecord(recordTag.safeString, value.value);
     }
     if (typeof value !== 'object') {
       throw new TypeError(`Unsupported template value of type ${typeof value}`);
@@ -217,4 +228,3 @@ function isArrayIndex(value: string, length: number): boolean {
   const index = Number(value);
   return Number.isSafeInteger(index) && index >= 0 && index < length && String(index) === value;
 }
-import type { TemplateContext, TemplateValue } from './values.ts';

@@ -33,6 +33,8 @@ export interface EngineOptions {
   retainedMemoryBytes?: number;
   /** Trusted template loaders fixed for the lifetime of this engine. */
   loaders?: readonly TemplateLoader[];
+  /** Escapes interpolated strings by default. Matches Nunjucks's default of `false`. */
+  autoescape?: boolean;
 }
 
 /** An inline template accepted by the initial rendering surface. */
@@ -100,7 +102,13 @@ export async function createEngineWithRuntime(
     throw new RangeError('retainedMemoryBytes must be at least the initial Wasm memory size');
   }
 
-  const engine = new EngineImplementation(runtime, pool, retainedMemoryBytes, options.loaders);
+  const engine = new EngineImplementation(
+    runtime,
+    pool,
+    retainedMemoryBytes,
+    options.loaders,
+    options.autoescape ?? false,
+  );
   await engine.initialize();
   return engine;
 }
@@ -159,6 +167,7 @@ class EngineImplementation implements Engine {
   readonly #pool: NormalizedPoolOptions;
   readonly #retainedMemoryBytes: number;
   readonly #loaders: readonly TemplateLoader[];
+  readonly #autoescape: boolean;
   readonly #slots: WorkerSlot[] = [];
   readonly #waiters: WorkerWaiter[] = [];
   #disposed = false;
@@ -168,11 +177,13 @@ class EngineImplementation implements Engine {
     pool: NormalizedPoolOptions,
     retainedMemoryBytes: number,
     loaders: readonly TemplateLoader[] = [],
+    autoescape = false,
   ) {
     this.#runtime = runtime;
     this.#pool = pool;
     this.#retainedMemoryBytes = retainedMemoryBytes;
     this.#loaders = Object.freeze([...loaders]);
+    this.#autoescape = autoescape;
   }
 
   async initialize(): Promise<void> {
@@ -198,7 +209,7 @@ class EngineImplementation implements Engine {
     const source = await this.#resolveTemplate(template, options.signal);
     const slot = await this.#acquire(options.signal);
     try {
-      return await slot.render(source, context, options.signal);
+      return await slot.render(source, context, this.#autoescape, options.signal);
     } finally {
       this.#release(slot);
     }
@@ -396,6 +407,7 @@ class WorkerSlot {
   async render(
     source: string,
     context: TemplateContext,
+    autoescape: boolean,
     signal: AbortSignal | undefined,
   ): Promise<string> {
     await this.ready;
@@ -409,7 +421,9 @@ class WorkerSlot {
       throw new Error('The Nunjitsu worker already has an active render');
     }
 
-    const encoded = new ArenaWriter(this.memory, this.#arenaBase).encodeRender(source, context);
+    const encoded = new ArenaWriter(this.memory, this.#arenaBase).encodeRender(source, context, {
+      autoescape,
+    });
     const id = this.#nextRenderId++;
     return await new Promise<string>((resolve, reject) => {
       const pending: PendingRender = { id, resolve, reject, abort: undefined };
@@ -454,7 +468,7 @@ class WorkerSlot {
       return;
     }
     if (value.type === 'ready') {
-      if (value.abiVersion !== 2 || value.arenaBase <= 0) {
+      if (value.abiVersion !== 3 || value.arenaBase <= 0) {
         this.#fail(new Error('Nunjitsu worker reported an incompatible Wasm ABI'));
         return;
       }

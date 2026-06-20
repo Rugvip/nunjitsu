@@ -1,10 +1,10 @@
-use crate::template::{RenderError, measure_template, render_template};
+use crate::template::{RenderError, RenderedValue, measure_template, render_template};
 use core::arch::wasm32::{memory_grow, memory_size};
 use core::mem::{align_of, size_of};
 use core::ptr::{addr_of, addr_of_mut, read_unaligned, write_unaligned};
 use core::slice;
 
-const ABI_VERSION: u32 = 2;
+const ABI_VERSION: u32 = 3;
 const PAGE_SIZE: usize = 65_536;
 const RECORD_ALIGNMENT: u32 = 8;
 const RECORD_HEADER_LENGTH: usize = 8;
@@ -19,6 +19,7 @@ const TAG_BOOLEAN: u32 = 8;
 const TAG_NUMBER: u32 = 9;
 const TAG_ARRAY: u32 = 10;
 const TAG_RECORD: u32 = 11;
+const TAG_SAFE_STRING: u32 = 12;
 
 const STATE_IDLE: u32 = 0;
 const STATE_COMPLETE: u32 = 1;
@@ -105,16 +106,21 @@ pub extern "C" fn nunjitsu_render(request_offset: u32) -> u32 {
 
 fn render(request_offset: u32) -> Result<(u32, u32), u32> {
     let request = record_at(request_offset, TAG_REQUEST)?;
-    if request.len() != 8 {
+    if request.len() != 12 {
         return Err(ERROR_INVALID_RECORD);
     }
     let source_offset = read_u32(request, 0)?;
     let context_offset = read_u32(request, 4)?;
+    let flags = read_u32(request, 8)?;
+    if flags & !1 != 0 {
+        return Err(ERROR_INVALID_RECORD);
+    }
+    let autoescape = flags & 1 == 1;
     let source = record_at(source_offset, TAG_SOURCE)?;
     let context = Context::new(record_at(context_offset, TAG_RECORD)?)?;
 
-    let output_length =
-        measure_template(source, |name| context.lookup(name)).map_err(render_error_code)?;
+    let output_length = measure_template(source, autoescape, |name| context.lookup(name))
+        .map_err(render_error_code)?;
     let record_length = RECORD_HEADER_LENGTH
         .checked_add(output_length)
         .ok_or(ERROR_OUTPUT_TOO_LARGE)?;
@@ -124,8 +130,8 @@ fn render(request_offset: u32) -> Result<(u32, u32), u32> {
         .checked_add(RECORD_HEADER_LENGTH as u32)
         .ok_or(ERROR_OUTPUT_TOO_LARGE)?;
     let output = mutable_memory(output_payload_offset, output_length as u32)?;
-    let written =
-        render_template(source, |name| context.lookup(name), output).map_err(render_error_code)?;
+    let written = render_template(source, autoescape, |name| context.lookup(name), output)
+        .map_err(render_error_code)?;
 
     Ok((output_offset, written as u32))
 }
@@ -141,7 +147,7 @@ impl Context {
         })
     }
 
-    fn lookup(&self, path: &[u8]) -> Option<&'static [u8]> {
+    fn lookup(&self, path: &[u8]) -> Option<RenderedValue<'static>> {
         let mut segments = path.split(|byte| *byte == b'.');
         let first = trim_ascii_whitespace(segments.next()?);
         if first.is_empty() {
@@ -210,6 +216,7 @@ enum Value {
     Boolean(bool),
     Number(&'static [u8]),
     String(&'static [u8]),
+    SafeString(&'static [u8]),
     Array(Array),
     Record(Record),
 }
@@ -227,6 +234,7 @@ impl Value {
             },
             TAG_NUMBER if payload.len() >= 8 => Ok(Self::Number(&payload[8..])),
             TAG_STRING => Ok(Self::String(payload)),
+            TAG_SAFE_STRING => Ok(Self::SafeString(payload)),
             TAG_ARRAY => Ok(Self::Array(Array::new(payload)?)),
             TAG_RECORD => Ok(Self::Record(Record::new(payload)?)),
             _ => Err(ERROR_INVALID_RECORD),
@@ -241,13 +249,32 @@ impl Value {
         }
     }
 
-    fn rendered(self) -> Option<&'static [u8]> {
+    fn rendered(self) -> Option<RenderedValue<'static>> {
         match self {
-            Self::Undefined | Self::Null => Some(b""),
-            Self::Boolean(false) => Some(b"false"),
-            Self::Boolean(true) => Some(b"true"),
-            Self::Number(value) | Self::String(value) => Some(value),
-            Self::Array(_) | Self::Record(_) => Some(b""),
+            Self::Undefined | Self::Null => Some(RenderedValue {
+                bytes: b"",
+                safe: false,
+            }),
+            Self::Boolean(false) => Some(RenderedValue {
+                bytes: b"false",
+                safe: false,
+            }),
+            Self::Boolean(true) => Some(RenderedValue {
+                bytes: b"true",
+                safe: false,
+            }),
+            Self::Number(value) | Self::String(value) => Some(RenderedValue {
+                bytes: value,
+                safe: false,
+            }),
+            Self::SafeString(value) => Some(RenderedValue {
+                bytes: value,
+                safe: true,
+            }),
+            Self::Array(_) | Self::Record(_) => Some(RenderedValue {
+                bytes: b"",
+                safe: false,
+            }),
         }
     }
 }
