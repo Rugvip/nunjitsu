@@ -595,6 +595,72 @@ test('dispatches immutable async filters, tests, and globals through safe copied
   }
 });
 
+test('renders declarative custom tag bodies and ordered intermediate sections', async () => {
+  const engine = await createEngine({
+    autoescape: true,
+    filters: {
+      async suffix(input, arguments_) {
+        await Promise.resolve();
+        return `${String(input)}${String(arguments_[0])}`;
+      },
+    },
+    tags: {
+      reverse: {
+        type: 'body',
+        intermediateTags: ['intermediate'],
+        async render(invocation) {
+          await Promise.resolve();
+          assert.ok(Object.isFrozen(invocation));
+          assert.ok(Object.isFrozen(invocation.arguments));
+          assert.ok(Object.isFrozen(invocation.keywordArguments));
+          assert.equal(Object.getPrototypeOf(invocation.keywordArguments), null);
+          assert.ok(Object.isFrozen(invocation.sections));
+          assert.equal(Object.getPrototypeOf(invocation.sections), null);
+          const prefix = String(invocation.arguments[0] ?? '');
+          const cutoff = invocation.keywordArguments.cutoff;
+          const reversed = Array.from(invocation.body).reverse().join('');
+          const first = typeof cutoff === 'number' ? reversed.slice(0, cutoff) : reversed;
+          const second = invocation.sections.intermediate === undefined
+            ? ''
+            : Array.from(invocation.sections.intermediate).reverse().join('');
+          return markSafe(`${prefix}${first}${second}`);
+        },
+      },
+    },
+  });
+
+  try {
+    assert.equal(
+      await engine.render({ source: '{% reverse %}123456789{% endreverse %}' }),
+      '987654321',
+    );
+    assert.equal(
+      await engine.render({ source: '{% reverse "prefix:" %}abc{% endreverse %}' }),
+      'prefix:cba',
+    );
+    assert.equal(
+      await engine.render({
+        source: '{% reverse("biz", cutoff=5) %}foo{{ "b" | suffix("ar") }}{% endreverse %}',
+      }),
+      'bizraboo',
+    );
+    assert.equal(
+      await engine.render({
+        source: '{% reverse %}abcdefg{% intermediate %}second half{% endreverse %}',
+      }),
+      'gfedcbaflah dnoces',
+    );
+    assert.equal(
+      await engine.render({
+        source: '{% reverse %}a{% reverse %}bc{% endreverse %}d{% endreverse %}',
+      }),
+      'dbca',
+    );
+  } finally {
+    await engine.dispose();
+  }
+});
+
 test('evaluates nested and resumable if branches without rendering inactive bodies', async () => {
   const engine = await createEngine({
     tests: {

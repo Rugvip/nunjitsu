@@ -3,6 +3,7 @@ import {
   capabilityKind,
   type CapabilityDescriptors,
   type CapabilityKind,
+  type TagCapabilityDescriptor,
 } from './capabilities.ts';
 import {
   encodeRenderLimit,
@@ -28,6 +29,7 @@ const recordTag = {
   safeString: 12,
   capabilityRegistry: 16,
   capabilityRequest: 17,
+  tagRegistry: 26,
 } as const;
 
 /** The offsets and cursor for one encoded render request. */
@@ -101,7 +103,7 @@ export class ArenaWriter {
     const filtersOffset = this.#writeCapabilityRegistry(options.capabilities.filters);
     const testsOffset = this.#writeCapabilityRegistry(options.capabilities.tests);
     const globalsOffset = this.#writeCapabilityRegistry(options.capabilities.globals);
-    const tagsOffset = this.#writeCapabilityRegistry(options.capabilities.tags);
+    const tagsOffset = this.#writeTagRegistry(options.capabilities.tags);
     const requestPayload = new ArrayBuffer(56);
     const requestView = new DataView(requestPayload);
     requestView.setUint32(0, sourceOffset, true);
@@ -161,6 +163,41 @@ export class ArenaWriter {
       view.setUint32(8 + index * 8, entry.nameOffset, true);
     }
     return this.#writeRecord(recordTag.capabilityRegistry, new Uint8Array(payload));
+  }
+
+  #writeTagRegistry(descriptors: readonly TagCapabilityDescriptor[]): number {
+    const entries = descriptors.map(descriptor => ({
+      id: descriptor.id,
+      nameOffset: this.#writeTextRecord(recordTag.string, descriptor.name),
+      type: descriptor.type === 'inline' ? 0 : 1,
+      endTagOffset: descriptor.endTag === undefined
+        ? 0
+        : this.#writeTextRecord(recordTag.string, descriptor.endTag),
+      intermediateOffset: this.#writeStringArray(descriptor.intermediateTags),
+    }));
+    const payload = new ArrayBuffer(4 + entries.length * 20);
+    const view = new DataView(payload);
+    view.setUint32(0, entries.length, true);
+    for (const [index, entry] of entries.entries()) {
+      const offset = 4 + index * 20;
+      view.setUint32(offset, entry.id, true);
+      view.setUint32(offset + 4, entry.nameOffset, true);
+      view.setUint32(offset + 8, entry.type, true);
+      view.setUint32(offset + 12, entry.endTagOffset, true);
+      view.setUint32(offset + 16, entry.intermediateOffset, true);
+    }
+    return this.#writeRecord(recordTag.tagRegistry, new Uint8Array(payload));
+  }
+
+  #writeStringArray(values: readonly string[]): number {
+    const offsets = values.map(value => this.#writeTextRecord(recordTag.string, value));
+    const payload = new ArrayBuffer(4 + offsets.length * 4);
+    const view = new DataView(payload);
+    view.setUint32(0, offsets.length, true);
+    for (const [index, offset] of offsets.entries()) {
+      view.setUint32(4 + index * 4, offset, true);
+    }
+    return this.#writeRecord(recordTag.array, new Uint8Array(payload));
   }
 
   #writeTextRecord(tag: number, value: string): number {

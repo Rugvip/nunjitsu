@@ -673,14 +673,32 @@ pub fn next_record_entry(
     }))
 }
 
-/// Parses a complete custom-tag directive using the inline call grammar.
+/// Parses a complete custom-tag directive using parenthesized or legacy arguments.
 pub fn parse_tag_call(directive: &[u8]) -> Result<Call<'_>, ExpressionError> {
     let cursor = skip_whitespace(directive, 0);
-    let (call, cursor) = parse_named_call(directive, cursor)?;
-    if skip_whitespace(directive, cursor) != directive.len() {
-        return Err(ExpressionError);
+    let name_start = cursor;
+    let name_end = parse_identifier(directive, cursor)?;
+    let name = &directive[name_start..name_end];
+    let cursor = skip_whitespace(directive, name_end);
+    if directive.get(cursor) == Some(&b'(') {
+        let (arguments, cursor) = parse_parenthesized(directive, cursor)?;
+        if skip_whitespace(directive, cursor) != directive.len() {
+            return Err(ExpressionError);
+        }
+        return Ok(Call { name, arguments });
     }
-    Ok(call)
+    Ok(Call {
+        name,
+        arguments: trim_whitespace(&directive[cursor..]),
+    })
+}
+
+/// Returns the leading identifier of a custom-tag directive.
+#[cfg(target_arch = "wasm32")]
+pub fn parse_tag_name(directive: &[u8]) -> Result<&[u8], ExpressionError> {
+    let start = skip_whitespace(directive, 0);
+    let end = parse_identifier(directive, start)?;
+    Ok(&directive[start..end])
 }
 
 /// Parses `(optional, bindings) macro(arguments)` call-block syntax.
@@ -1307,7 +1325,13 @@ mod tests {
                 arguments: br#""new", user.name"#,
             }),
         );
-        assert_eq!(parse_tag_call(b"badge trailing"), Err(ExpressionError));
+        assert_eq!(
+            parse_tag_call(b"badge trailing"),
+            Ok(Call {
+                name: b"badge",
+                arguments: b"trailing",
+            }),
+        );
         assert_eq!(
             parse_call_block(br#"(item, index) list(["a", "b"])"#),
             Ok(CallBlock {

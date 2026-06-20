@@ -7,6 +7,7 @@ import {
   markSafe,
   memoryLoader,
   type TemplateContext,
+  type TemplateCapabilities,
   type TemplateValue,
 } from '../../src/index.ts';
 
@@ -20,6 +21,7 @@ interface CompatibilityCase {
   id: string;
   template: string;
   templates?: Record<string, string>;
+  capabilityFixture?: string;
   nativeRender?: boolean;
   context: Record<string, CompatibilityJson>;
   autoescape: boolean;
@@ -114,6 +116,7 @@ test('shared compatibility cases render through the TypeScript engine', async t 
     await t.test(compatibilityCase.id, async () => {
       const engine = await createEngine({
         autoescape: compatibilityCase.autoescape,
+        ...capabilityFixture(compatibilityCase.capabilityFixture),
         ...(compatibilityCase.templates
           ? { loaders: [memoryLoader(compatibilityCase.templates)] }
           : {}),
@@ -130,6 +133,67 @@ test('shared compatibility cases render through the TypeScript engine', async t 
     });
   }
 });
+
+function capabilityFixture(name: string | undefined): TemplateCapabilities {
+  if (name === undefined) {
+    return {};
+  }
+  if (name === 'compiler-reverse-body-tag') {
+    return {
+      tags: {
+        test: {
+          type: 'body',
+          render(invocation) {
+            return Array.from(invocation.body).reverse().join('');
+          },
+        },
+      },
+    };
+  }
+  if (name === 'compiler-reverse-inline-tag') {
+    return {
+      tags: {
+        test: {
+          type: 'inline',
+          render(arguments_) {
+            return Array.from(String(arguments_[0])).reverse().join('');
+          },
+        },
+      },
+    };
+  }
+  if (name === 'compiler-section-body-tag') {
+    return {
+      tags: {
+        test: {
+          type: 'body',
+          intermediateTags: ['intermediate'],
+          render(invocation) {
+            const intermediate = invocation.sections.intermediate ?? '';
+            return Array.from(invocation.body).join(',') +
+              Array.from(intermediate).reverse().join('');
+          },
+        },
+      },
+    };
+  }
+  if (name === 'compiler-argument-body-tag') {
+    return {
+      tags: {
+        test: {
+          type: 'body',
+          render(invocation) {
+            const prefix = String(invocation.arguments[0] ?? '');
+            const output = prefix + Array.from(invocation.body).reverse().join('');
+            const cutoff = invocation.keywordArguments.cutoff;
+            return typeof cutoff === 'number' ? output.slice(0, cutoff) : output;
+          },
+        },
+      },
+    };
+  }
+  throw new Error(`Unknown compatibility capability fixture: ${name}`);
+}
 
 async function readJson<T>(path: string): Promise<T> {
   return JSON.parse(await readFile(new URL(path, import.meta.url), 'utf8')) as T;

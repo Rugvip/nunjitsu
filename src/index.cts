@@ -17,6 +17,9 @@ export {
   type WorkerPoolOptions,
 } from './engine.ts';
 export type {
+  BodyTemplateTag,
+  BodyTemplateTagInvocation,
+  BodyTemplateTagRenderer,
   CapabilityCallContext,
   InlineTemplateTag,
   TemplateCapabilities,
@@ -24,6 +27,7 @@ export type {
   TemplateGlobal,
   TemplateTest,
   TemplateTagRenderer,
+  TemplateTag,
 } from './capabilities.ts';
 export {
   fileSystemLoader,

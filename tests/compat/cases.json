@@ -928,6 +928,69 @@
       "context": {},
       "autoescape": false,
       "expected": "barfoo"
+    },
+    {
+      "id": "compiler-custom-body-tag",
+      "template": "{% test %}123456789{% endtest %}",
+      "capabilityFixture": "compiler-reverse-body-tag",
+      "nativeRender": false,
+      "context": {},
+      "autoescape": false,
+      "expected": "987654321"
+    },
+    {
+      "id": "compiler-custom-inline-tag",
+      "template": "{% test \"123456\" %}",
+      "capabilityFixture": "compiler-reverse-inline-tag",
+      "nativeRender": false,
+      "context": {},
+      "autoescape": false,
+      "expected": "654321"
+    },
+    {
+      "id": "compiler-custom-section-tag-body-only",
+      "template": "{% test %}abcdefg{% endtest %}",
+      "capabilityFixture": "compiler-section-body-tag",
+      "nativeRender": false,
+      "context": {},
+      "autoescape": false,
+      "expected": "a,b,c,d,e,f,g"
+    },
+    {
+      "id": "compiler-custom-section-tag-intermediate",
+      "template": "{% test %}abcdefg{% intermediate %}second half{% endtest %}",
+      "capabilityFixture": "compiler-section-body-tag",
+      "nativeRender": false,
+      "context": {},
+      "autoescape": false,
+      "expected": "a,b,c,d,e,f,gflah dnoces"
+    },
+    {
+      "id": "compiler-custom-body-tag-no-arguments",
+      "template": "{% test %}foobar{% endtest %}",
+      "capabilityFixture": "compiler-argument-body-tag",
+      "nativeRender": false,
+      "context": {},
+      "autoescape": false,
+      "expected": "raboof"
+    },
+    {
+      "id": "compiler-custom-body-tag-positional-argument",
+      "template": "{% test(\"biz\") %}foobar{% endtest %}",
+      "capabilityFixture": "compiler-argument-body-tag",
+      "nativeRender": false,
+      "context": {},
+      "autoescape": false,
+      "expected": "bizraboof"
+    },
+    {
+      "id": "compiler-custom-body-tag-keyword-argument",
+      "template": "{% test(\"biz\", cutoff=5) %}foobar{% endtest %}",
+      "capabilityFixture": "compiler-argument-body-tag",
+      "nativeRender": false,
+      "context": {},
+      "autoescape": false,
+      "expected": "bizra"
     }
   ]
 }

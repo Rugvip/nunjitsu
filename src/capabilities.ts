@@ -32,6 +32,24 @@ export type TemplateTagRenderer = (
   context: CapabilityCallContext,
 ) => TemplateValue | Promise<TemplateValue>;
 
+/** Copied arguments and rendered sections supplied to a body-tag renderer. */
+export interface BodyTemplateTagInvocation {
+  /** Positional arguments in template order. */
+  arguments: readonly TemplateValue[];
+  /** Named arguments copied into an immutable null-prototype record. */
+  keywordArguments: Readonly<Record<string, TemplateValue>>;
+  /** Rendered content before the first intermediate tag. */
+  body: string;
+  /** Rendered content following each intermediate tag that appeared. */
+  sections: Readonly<Record<string, string>>;
+}
+
+/** Trusted renderer for one declaratively parsed body-tag invocation. */
+export type BodyTemplateTagRenderer = (
+  invocation: BodyTemplateTagInvocation,
+  context: CapabilityCallContext,
+) => TemplateValue | Promise<TemplateValue>;
+
 /** Declarative grammar and renderer for a custom inline block tag. */
 export interface InlineTemplateTag {
   /** Selects the parenthesized argument grammar with no template body. */
@@ -39,6 +57,21 @@ export interface InlineTemplateTag {
   /** Renders the copied arguments after Rust validates the complete tag syntax. */
   render: TemplateTagRenderer;
 }
+
+/** Declarative grammar and renderer for a custom tag with rendered bodies. */
+export interface BodyTemplateTag {
+  /** Selects a body grammar terminated by an explicit or derived end tag. */
+  type: 'body';
+  /** Closing tag name. Defaults to `end${name}`. */
+  endTag?: string;
+  /** Optional ordered section tags accepted between the opening and closing tags. */
+  intermediateTags?: readonly string[];
+  /** Renders copied arguments and body strings after Rust validates the syntax. */
+  render: BodyTemplateTagRenderer;
+}
+
+/** Supported declarative custom-tag schemas. */
+export type TemplateTag = InlineTemplateTag | BodyTemplateTag;
 
 /** Immutable capability names and callbacks configured for an engine. */
 export interface TemplateCapabilities {
@@ -48,8 +81,8 @@ export interface TemplateCapabilities {
   tests?: Readonly<Record<string, TemplateTest>>;
   /** Functions addressable through `name(...)`. */
   globals?: Readonly<Record<string, TemplateGlobal>>;
-  /** Inline tags addressable through `{% name(...) %}`. */
-  tags?: Readonly<Record<string, InlineTemplateTag>>;
+  /** Declarative tags addressable through `{% name(...) %}`. */
+  tags?: Readonly<Record<string, TemplateTag>>;
 }
 
 /** Numeric capability category used by the internal raw ABI. */
@@ -71,6 +104,16 @@ export interface CapabilityDescriptor {
   name: string;
 }
 
+/** Immutable custom-tag descriptor copied into each render arena. */
+export interface TagCapabilityDescriptor extends CapabilityDescriptor {
+  /** Declarative grammar variant. */
+  type: 'inline' | 'body';
+  /** Closing name for a body tag. */
+  endTag?: string;
+  /** Ordered intermediate names for a body tag. */
+  intermediateTags: readonly string[];
+}
+
 /** Immutable descriptors encoded for Rust expression resolution. */
 export interface CapabilityDescriptors {
   /** Registered filter identities. */
@@ -80,7 +123,7 @@ export interface CapabilityDescriptors {
   /** Registered callable-global identities. */
   globals: readonly CapabilityDescriptor[];
   /** Registered declarative custom-tag identities. */
-  tags: readonly CapabilityDescriptor[];
+  tags: readonly TagCapabilityDescriptor[];
 }
 
 /** Engine-owned immutable registry used to dispatch yielded numeric calls. */
@@ -147,7 +190,37 @@ export function createCapabilityRegistry(
         return result;
       }
       if (kind === capabilityKind.tag) {
-        return await (registered.callback as TemplateTagRenderer)(arguments_, context);
+        const descriptor = registered.descriptor as TagCapabilityDescriptor;
+        if (descriptor.type === 'inline') {
+          return await (registered.callback as TemplateTagRenderer)(arguments_, context);
+        }
+        const bodyCount = descriptor.intermediateTags.length + 1;
+        const keywordIndex = arguments_.length - bodyCount - 1;
+        if (keywordIndex < 0) {
+          throw new Error('Wasm returned an invalid body-tag invocation');
+        }
+        const keywordArguments = arguments_[keywordIndex];
+        const body = arguments_[keywordIndex + 1];
+        if (!isTemplateRecord(keywordArguments) || typeof body !== 'string') {
+          throw new Error('Wasm returned an invalid body-tag invocation');
+        }
+        const sections: Record<string, string> = Object.create(null) as Record<string, string>;
+        for (const [index, name] of descriptor.intermediateTags.entries()) {
+          const section = arguments_[keywordIndex + index + 2];
+          if (section !== undefined && typeof section !== 'string') {
+            throw new Error('Wasm returned an invalid body-tag section');
+          }
+          if (section !== undefined) {
+            sections[name] = section;
+          }
+        }
+        const invocation = Object.freeze({
+          arguments: Object.freeze(arguments_.slice(0, keywordIndex)),
+          keywordArguments,
+          body,
+          sections: Object.freeze(sections),
+        });
+        return await (registered.callback as BodyTemplateTagRenderer)(invocation, context);
       }
       return await (registered.callback as TemplateGlobal)(arguments_, context);
     },
@@ -157,29 +230,76 @@ export function createCapabilityRegistry(
 /** One callback paired with its engine-lifetime identity. */
 interface RegisteredCapability {
   kind: CapabilityKind;
-  descriptor: CapabilityDescriptor;
-  callback: TemplateFilter | TemplateTest | TemplateGlobal | TemplateTagRenderer;
+  descriptor: CapabilityDescriptor | TagCapabilityDescriptor;
+  callback:
+    | TemplateFilter
+    | TemplateTest
+    | TemplateGlobal
+    | TemplateTagRenderer
+    | BodyTemplateTagRenderer;
+}
+
+interface RegisteredTagCapability extends RegisteredCapability {
+  descriptor: TagCapabilityDescriptor;
+  callback: TemplateTagRenderer | BodyTemplateTagRenderer;
 }
 
 function copyTagEntries(
-  values: Readonly<Record<string, InlineTemplateTag>> | undefined,
+  values: Readonly<Record<string, TemplateTag>> | undefined,
   nextId: () => number,
-): { registered: RegisteredCapability[] } {
-  const registered: RegisteredCapability[] = [];
+): { registered: RegisteredTagCapability[] } {
+  const registered: RegisteredTagCapability[] = [];
   for (const [name, schema] of Object.entries(values ?? {})) {
     if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) {
       throw new TypeError(`Capability name is not a template identifier: ${name}`);
     }
-    if (!schema || schema.type !== 'inline' || typeof schema.render !== 'function') {
-      throw new TypeError(`Tag ${name} must use the supported inline schema`);
+    if (!schema || !['inline', 'body'].includes(schema.type) || typeof schema.render !== 'function') {
+      throw new TypeError(`Tag ${name} must use a supported declarative schema`);
+    }
+    const intermediateTags = schema.type === 'body'
+      ? copyTagNames(name, schema.intermediateTags ?? [])
+      : Object.freeze([]);
+    const endTag = schema.type === 'body' ? schema.endTag ?? `end${name}` : undefined;
+    if (endTag !== undefined) {
+      assertTagName(name, endTag);
+      if (endTag === name || intermediateTags.includes(endTag)) {
+        throw new TypeError(`Tag ${name} has conflicting grammar names`);
+      }
     }
     registered.push({
       kind: capabilityKind.tag,
-      descriptor: Object.freeze({ id: nextId(), name }),
+      descriptor: Object.freeze({
+        id: nextId(),
+        name,
+        type: schema.type,
+        ...(endTag === undefined ? {} : { endTag }),
+        intermediateTags,
+      }),
       callback: schema.render,
     });
   }
   return { registered };
+}
+
+function copyTagNames(owner: string, values: readonly string[]): readonly string[] {
+  const names = values.map(name => {
+    assertTagName(owner, name);
+    return name;
+  });
+  if (new Set(names).size !== names.length || names.includes(owner)) {
+    throw new TypeError(`Tag ${owner} has conflicting grammar names`);
+  }
+  return Object.freeze(names);
+}
+
+function assertTagName(owner: string, name: string): void {
+  if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) {
+    throw new TypeError(`Tag ${owner} contains an invalid grammar name: ${name}`);
+  }
+}
+
+function isTemplateRecord(value: TemplateValue): value is Readonly<Record<string, TemplateValue>> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 function copyEntries(

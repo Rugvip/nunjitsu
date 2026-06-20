@@ -81,12 +81,18 @@ argument array. Every callback also receives a render-owned `AbortSignal`.
 Returned values cross the same safe-value encoder as context input and are not
 implicitly safe; callbacks must return `markSafe(value)` to bypass escaping.
 
-Custom tags use an explicit schema rather than a parser object. The initial
-`{ type: 'inline', render }` schema accepts `{% name %}` or a parenthesized
-argument list such as `{% name("label", user.id) %}` and has no body. Rust
-validates the complete directive and resolves its numeric identity before the
-host renderer runs. Future body-bearing schemas must extend this discriminated
-schema; they must not add arbitrary JavaScript parser hooks.
+Custom tags use an explicit schema rather than a parser object. The
+`{ type: 'inline', render }` schema accepts `{% name %}`, legacy whitespace
+arguments, or a parenthesized argument list such as
+`{% name("label", user.id) %}` and has no body. The
+`{ type: 'body', endTag?, intermediateTags?, render }` schema declares a closing
+tag (defaulting to `end${name}`) and an ordered set of optional intermediate
+sections. Rust validates the complete directive, renders each body through
+bounded evaluator frames, and resolves the numeric identity before the host
+renderer runs. The body renderer receives immutable positional arguments, a
+null-prototype keyword record, the first rendered body, and a null-prototype
+record of intermediate sections that appeared. Neither schema exposes parser
+hooks or internal syntax records.
 
 Each configured name receives a stable numeric engine-lifetime identity. The
 name tables are copied into each render arena so Rust resolves syntax before it

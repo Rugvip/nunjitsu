@@ -386,6 +386,30 @@
       "upstream": { "id": "tests/compiler.js:119", "file": "tests/compiler.js", "test": "should throw errors" },
       "status": "adapted",
       "reason": "The TypeScript runtime test asserts the numeric invalid-expression render error used by the new API for a missing imported name."
+    },
+    {
+      "upstream": { "id": "tests/compiler.js:120", "file": "tests/compiler.js", "test": "should allow custom tag compilation" },
+      "status": "adapted",
+      "reason": "The template and output are unchanged while the extension is registered through Nunjitsu's declarative body-tag capability API.",
+      "cases": ["compiler-custom-body-tag"]
+    },
+    {
+      "upstream": { "id": "tests/compiler.js:121", "file": "tests/compiler.js", "test": "should allow custom tag compilation without content" },
+      "status": "adapted",
+      "reason": "The template and output are unchanged while the extension is registered through Nunjitsu's declarative inline-tag capability API.",
+      "cases": ["compiler-custom-inline-tag"]
+    },
+    {
+      "upstream": { "id": "tests/compiler.js:122", "file": "tests/compiler.js", "test": "should allow complicated custom tag compilation" },
+      "status": "adapted",
+      "reason": "The templates and outputs are unchanged while the extension's optional body is represented as a declared intermediate section.",
+      "cases": ["compiler-custom-section-tag-body-only", "compiler-custom-section-tag-intermediate"]
+    },
+    {
+      "upstream": { "id": "tests/compiler.js:123", "file": "tests/compiler.js", "test": "should allow custom tag with args compilation" },
+      "status": "adapted",
+      "reason": "The templates and outputs are unchanged while positional and keyword arguments are delivered through a copied declarative invocation.",
+      "cases": ["compiler-custom-body-tag-no-arguments", "compiler-custom-body-tag-positional-argument", "compiler-custom-body-tag-keyword-argument"]
     }
   ]
 }
