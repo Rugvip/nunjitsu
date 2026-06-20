@@ -3126,6 +3126,25 @@ fn apply_builtin_filter(
 ) -> Result<Option<u32>, u32> {
     let input = Value::at(input_offset)?;
     let output = match call.name {
+        b"abs" => {
+            require_argument_count(call, 0)?;
+            let number = input.as_number();
+            if number.is_nan() {
+                return Err(ERROR_INVALID_EXPRESSION);
+            }
+            write_computed_number(libm::fabs(number))?
+        }
+        b"center" => {
+            if argument_count(call)? > 1 {
+                return Err(ERROR_INVALID_EXPRESSION);
+            }
+            let width = if let Some(value) = call_argument(state_offset, call, 0)? {
+                numeric_usize(value)?
+            } else {
+                80
+            };
+            center_value(input_offset, width)?
+        }
         b"safe" => {
             require_argument_count(call, 0)?;
             let rendered = rendered_value(input_offset)?;
@@ -3159,6 +3178,63 @@ fn apply_builtin_filter(
             } else {
                 input_offset
             }
+        }
+        b"float" => {
+            if argument_count(call)? > 1 {
+                return Err(ERROR_INVALID_EXPRESSION);
+            }
+            let number = input.as_number();
+            if number.is_nan() {
+                call_argument(state_offset, call, 0)?
+                    .unwrap_or(write_computed_number(0.0)?)
+            } else {
+                write_computed_number(number)?
+            }
+        }
+        b"int" => {
+            if argument_count(call)? > 2 {
+                return Err(ERROR_INVALID_EXPRESSION);
+            }
+            let base = if let Some(value) = call_named_argument(state_offset, call, b"base")?
+                .or(call_argument(state_offset, call, 1)?)
+            {
+                numeric_usize(value)?
+            } else {
+                10
+            };
+            if let Some(number) = parse_integer(input_offset, base)? {
+                write_computed_number(number as f64)?
+            } else {
+                call_argument(state_offset, call, 0)?
+                    .unwrap_or(write_computed_number(0.0)?)
+            }
+        }
+        b"indent" => {
+            if argument_count(call)? > 2 {
+                return Err(ERROR_INVALID_EXPRESSION);
+            }
+            let width = if let Some(value) = call_argument(state_offset, call, 0)? {
+                numeric_usize(value)?
+            } else {
+                4
+            };
+            let first = call_argument(state_offset, call, 1)?
+                .is_some_and(|value| Value::at(value).is_ok_and(Value::truthy));
+            indent_value(input_offset, width, first)?
+        }
+        b"join" => {
+            if argument_count(call)? > 2 {
+                return Err(ERROR_INVALID_EXPRESSION);
+            }
+            join_value(
+                input_offset,
+                call_argument(state_offset, call, 0)?,
+                call_argument(state_offset, call, 1)?,
+            )?
+        }
+        b"nl2br" => {
+            require_argument_count(call, 0)?;
+            nl2br_value(input_offset)?
         }
         b"reverse" => {
             require_argument_count(call, 0)?;
@@ -3198,6 +3274,63 @@ fn apply_builtin_filter(
                 usize::MAX
             };
             replace_value(input_offset, from, to, limit)?
+        }
+        b"round" => {
+            if argument_count(call)? > 2 {
+                return Err(ERROR_INVALID_EXPRESSION);
+            }
+            let precision = if let Some(value) = call_argument(state_offset, call, 0)? {
+                numeric_usize(value)?
+            } else {
+                0
+            };
+            let method = call_argument(state_offset, call, 1)?;
+            round_value(input_offset, precision, method)?
+        }
+        b"string" => {
+            require_argument_count(call, 0)?;
+            let rendered = rendered_value(input_offset)?;
+            write_bytes_record(
+                if rendered.safe { TAG_SAFE_STRING } else { TAG_STRING },
+                rendered.bytes,
+            )?
+        }
+        b"sum" => {
+            if argument_count(call)? > 2 {
+                return Err(ERROR_INVALID_EXPRESSION);
+            }
+            let start = if let Some(value) = call_argument(state_offset, call, 1)? {
+                Value::at(value)?.as_number()
+            } else {
+                0.0
+            };
+            sum_value(
+                input_offset,
+                call_argument(state_offset, call, 0)?,
+                start,
+            )?
+        }
+        b"trim" => {
+            require_argument_count(call, 0)?;
+            let rendered = rendered_value(input_offset)?;
+            write_bytes_record(
+                if rendered.safe { TAG_SAFE_STRING } else { TAG_STRING },
+                trim_ascii_whitespace(rendered.bytes),
+            )?
+        }
+        b"wordcount" => {
+            require_argument_count(call, 0)?;
+            if matches!(input, Value::Undefined | Value::Null) {
+                write_bytes_record(TAG_STRING, b"")?
+            } else {
+                let rendered = rendered_value(input_offset)?;
+                let count = rendered
+                    .bytes
+                    .split(u8::is_ascii_whitespace)
+                    .filter(|word| !word.is_empty())
+                    .count();
+                write_computed_number(count as f64)?
+            }
         }
         b"length" => {
             require_argument_count(call, 0)?;
@@ -3341,11 +3474,11 @@ fn apply_builtin_test(
 fn argument_count(call: Call<'_>) -> Result<usize, u32> {
     let mut count = 0usize;
     let mut cursor = 0usize;
-    while let Some((_, next)) =
-        next_argument(call.arguments, cursor).map_err(|_| ERROR_INVALID_EXPRESSION)?
+    while let Some(argument) =
+        next_macro_argument(call.arguments, cursor).map_err(|_| ERROR_INVALID_EXPRESSION)?
     {
         count = count.checked_add(1).ok_or(ERROR_RESOURCE_LIMIT)?;
-        cursor = next;
+        cursor = argument.next_cursor;
     }
     Ok(count)
 }
@@ -3361,14 +3494,31 @@ fn require_argument_count(call: Call<'_>, expected: usize) -> Result<(), u32> {
 fn call_argument(state_offset: u32, call: Call<'_>, requested: usize) -> Result<Option<u32>, u32> {
     let mut index = 0usize;
     let mut cursor = 0usize;
-    while let Some((atom, next)) =
-        next_argument(call.arguments, cursor).map_err(|_| ERROR_INVALID_EXPRESSION)?
+    while let Some(argument) =
+        next_macro_argument(call.arguments, cursor).map_err(|_| ERROR_INVALID_EXPRESSION)?
     {
         if index == requested {
-            return resolve_atom(state_offset, atom).map(Some);
+            return resolve_atom(state_offset, argument.value).map(Some);
         }
         index += 1;
-        cursor = next;
+        cursor = argument.next_cursor;
+    }
+    Ok(None)
+}
+
+fn call_named_argument(
+    state_offset: u32,
+    call: Call<'_>,
+    requested: &[u8],
+) -> Result<Option<u32>, u32> {
+    let mut cursor = 0usize;
+    while let Some(argument) =
+        next_macro_argument(call.arguments, cursor).map_err(|_| ERROR_INVALID_EXPRESSION)?
+    {
+        if argument.name == Some(requested) {
+            return resolve_atom(state_offset, argument.value).map(Some);
+        }
+        cursor = argument.next_cursor;
     }
     Ok(None)
 }
@@ -3488,6 +3638,295 @@ fn title_value(value_offset: u32) -> Result<u32, u32> {
     Ok(offset)
 }
 
+fn numeric_usize(value_offset: u32) -> Result<usize, u32> {
+    let number = Value::at(value_offset)?.as_number();
+    if !number.is_finite() || number < 0.0 || number > usize::MAX as f64 {
+        return Err(ERROR_INVALID_EXPRESSION);
+    }
+    Ok(number as usize)
+}
+
+fn center_value(value_offset: u32, width: usize) -> Result<u32, u32> {
+    let rendered = rendered_value(value_offset)?;
+    let padding = width.saturating_sub(rendered.bytes.len());
+    let left = padding / 2;
+    let length = rendered
+        .bytes
+        .len()
+        .checked_add(padding)
+        .ok_or(ERROR_RESOURCE_LIMIT)?;
+    let tag = if rendered.safe { TAG_SAFE_STRING } else { TAG_STRING };
+    let offset = allocate_record(
+        tag,
+        u32::try_from(length).map_err(|_| ERROR_RESOURCE_LIMIT)?,
+    )?;
+    let output = mutable_record_at(offset, tag)?;
+    output.fill(b' ');
+    output[left..left + rendered.bytes.len()].copy_from_slice(rendered.bytes);
+    Ok(offset)
+}
+
+fn parse_integer(value_offset: u32, base: usize) -> Result<Option<i64>, u32> {
+    if base == 10 {
+        let number = Value::at(value_offset)?.as_number();
+        return Ok((number.is_finite()
+            && number >= i64::MIN as f64
+            && number <= i64::MAX as f64)
+            .then(|| libm::trunc(number) as i64));
+    }
+    if !(2..=36).contains(&base) {
+        return Err(ERROR_INVALID_EXPRESSION);
+    }
+    let rendered = rendered_value(value_offset)?;
+    let mut bytes = trim_ascii_whitespace(rendered.bytes);
+    let negative = bytes.first() == Some(&b'-');
+    if matches!(bytes.first(), Some(b'-' | b'+')) {
+        bytes = &bytes[1..];
+    }
+    if base == 16 && bytes.get(..2).is_some_and(|prefix| matches!(prefix, b"0x" | b"0X")) {
+        bytes = &bytes[2..];
+    }
+    if bytes.is_empty() {
+        return Ok(None);
+    }
+    let mut value = 0i64;
+    for byte in bytes.iter().copied() {
+        let digit = match byte {
+            b'0'..=b'9' => usize::from(byte - b'0'),
+            b'a'..=b'z' => usize::from(byte - b'a') + 10,
+            b'A'..=b'Z' => usize::from(byte - b'A') + 10,
+            _ => return Ok(None),
+        };
+        if digit >= base {
+            return Ok(None);
+        }
+        value = value
+            .checked_mul(base as i64)
+            .and_then(|current| current.checked_add(digit as i64))
+            .ok_or(ERROR_RESOURCE_LIMIT)?;
+    }
+    Ok(Some(if negative { -value } else { value }))
+}
+
+fn indent_value(value_offset: u32, width: usize, first: bool) -> Result<u32, u32> {
+    let rendered = rendered_value(value_offset)?;
+    if rendered.bytes.is_empty() {
+        return write_bytes_record(
+            if rendered.safe { TAG_SAFE_STRING } else { TAG_STRING },
+            b"",
+        );
+    }
+    let line_count = rendered.bytes.iter().filter(|byte| **byte == b'\n').count();
+    let indent_count = line_count + usize::from(first);
+    let length = rendered
+        .bytes
+        .len()
+        .checked_add(
+            width
+                .checked_mul(indent_count)
+                .ok_or(ERROR_RESOURCE_LIMIT)?,
+        )
+        .ok_or(ERROR_RESOURCE_LIMIT)?;
+    let tag = if rendered.safe { TAG_SAFE_STRING } else { TAG_STRING };
+    let offset = allocate_record(
+        tag,
+        u32::try_from(length).map_err(|_| ERROR_RESOURCE_LIMIT)?,
+    )?;
+    let output = mutable_record_at(offset, tag)?;
+    let mut output_cursor = 0usize;
+    if first {
+        output[..width].fill(b' ');
+        output_cursor = width;
+    }
+    let mut input_cursor = 0usize;
+    for (index, byte) in rendered.bytes.iter().copied().enumerate() {
+        if byte != b'\n' {
+            continue;
+        }
+        let segment = &rendered.bytes[input_cursor..=index];
+        output[output_cursor..output_cursor + segment.len()].copy_from_slice(segment);
+        output_cursor += segment.len();
+        output[output_cursor..output_cursor + width].fill(b' ');
+        output_cursor += width;
+        input_cursor = index + 1;
+    }
+    output[output_cursor..].copy_from_slice(&rendered.bytes[input_cursor..]);
+    Ok(offset)
+}
+
+fn join_value(
+    value_offset: u32,
+    separator_offset: Option<u32>,
+    attribute_offset: Option<u32>,
+) -> Result<u32, u32> {
+    let Value::Array(array) = Value::at(value_offset)? else {
+        if matches!(Value::at(value_offset)?, Value::Undefined | Value::Null) {
+            return write_bytes_record(TAG_STRING, b"");
+        }
+        return Err(ERROR_INVALID_EXPRESSION);
+    };
+    let separator = if let Some(offset) = separator_offset {
+        rendered_value(offset)?.bytes
+    } else {
+        b""
+    };
+    let attribute = if let Some(offset) = attribute_offset {
+        Some(rendered_value(offset)?.bytes)
+    } else {
+        None
+    };
+    let mut length = separator
+        .len()
+        .checked_mul(array.count.saturating_sub(1))
+        .ok_or(ERROR_RESOURCE_LIMIT)?;
+    for index in 0..array.count {
+        let value = read_u32(array.payload, 4 + index * 4)?;
+        let selected = if let Some(path) = attribute {
+            lookup_value_path(value, path)?
+        } else {
+            Some(value)
+        };
+        if let Some(selected) = selected {
+            length = length
+                .checked_add(coerced_value_length(selected)?)
+                .ok_or(ERROR_RESOURCE_LIMIT)?;
+        }
+    }
+    let offset = allocate_record(
+        TAG_STRING,
+        u32::try_from(length).map_err(|_| ERROR_RESOURCE_LIMIT)?,
+    )?;
+    let output = mutable_record_at(offset, TAG_STRING)?;
+    let mut cursor = 0usize;
+    for index in 0..array.count {
+        if index != 0 {
+            write_coerced_bytes(output, &mut cursor, separator)?;
+        }
+        let value = read_u32(array.payload, 4 + index * 4)?;
+        let selected = if let Some(path) = attribute {
+            lookup_value_path(value, path)?
+        } else {
+            Some(value)
+        };
+        if let Some(selected) = selected {
+            write_coerced_value_into(selected, output, &mut cursor)?;
+        }
+    }
+    Ok(offset)
+}
+
+fn lookup_value_path(mut value_offset: u32, path: &[u8]) -> Result<Option<u32>, u32> {
+    let mut cursor = 0usize;
+    while let Some((segment, next)) =
+        next_lookup_segment(path, cursor).map_err(|_| ERROR_INVALID_EXPRESSION)?
+    {
+        let Some(next_offset) = Value::at(value_offset)?.get_offset(segment) else {
+            return Ok(None);
+        };
+        value_offset = next_offset;
+        cursor = next;
+    }
+    Ok(Some(value_offset))
+}
+
+fn nl2br_value(value_offset: u32) -> Result<u32, u32> {
+    let rendered = rendered_value(value_offset)?;
+    let mut line_breaks = 0usize;
+    let mut cursor = 0usize;
+    while cursor < rendered.bytes.len() {
+        match rendered.bytes[cursor] {
+            b'\r' if rendered.bytes.get(cursor + 1) == Some(&b'\n') => {
+                line_breaks += 1;
+                cursor += 2;
+            }
+            b'\r' | b'\n' => {
+                line_breaks += 1;
+                cursor += 1;
+            }
+            _ => cursor += 1,
+        }
+    }
+    let length = rendered
+        .bytes
+        .len()
+        .checked_add(line_breaks.checked_mul(6).ok_or(ERROR_RESOURCE_LIMIT)?)
+        .and_then(|value| value.checked_sub(rendered.bytes.windows(2).filter(|pair| *pair == b"\r\n").count()))
+        .ok_or(ERROR_RESOURCE_LIMIT)?;
+    let tag = if rendered.safe { TAG_SAFE_STRING } else { TAG_STRING };
+    let offset = allocate_record(
+        tag,
+        u32::try_from(length).map_err(|_| ERROR_RESOURCE_LIMIT)?,
+    )?;
+    let output = mutable_record_at(offset, tag)?;
+    let mut input_cursor = 0usize;
+    let mut output_cursor = 0usize;
+    while input_cursor < rendered.bytes.len() {
+        let line_width = match rendered.bytes[input_cursor] {
+            b'\r' if rendered.bytes.get(input_cursor + 1) == Some(&b'\n') => 2,
+            b'\r' | b'\n' => 1,
+            _ => {
+                output[output_cursor] = rendered.bytes[input_cursor];
+                input_cursor += 1;
+                output_cursor += 1;
+                continue;
+            }
+        };
+        output[output_cursor..output_cursor + 7].copy_from_slice(b"<br />\n");
+        output_cursor += 7;
+        input_cursor += line_width;
+    }
+    Ok(offset)
+}
+
+fn sum_value(value_offset: u32, attribute_offset: Option<u32>, start: f64) -> Result<u32, u32> {
+    let Value::Array(array) = Value::at(value_offset)? else {
+        return Err(ERROR_INVALID_EXPRESSION);
+    };
+    let attribute = if let Some(offset) = attribute_offset {
+        Some(rendered_value(offset)?.bytes)
+    } else {
+        None
+    };
+    let mut total = start;
+    if total.is_nan() {
+        return Err(ERROR_INVALID_EXPRESSION);
+    }
+    for index in 0..array.count {
+        let value = read_u32(array.payload, 4 + index * 4)?;
+        let selected = if let Some(path) = attribute {
+            lookup_value_path(value, path)?.ok_or(ERROR_INVALID_EXPRESSION)?
+        } else {
+            value
+        };
+        let number = Value::at(selected)?.as_number();
+        if number.is_nan() {
+            return Err(ERROR_INVALID_EXPRESSION);
+        }
+        total += number;
+    }
+    write_computed_number(total)
+}
+
+fn round_value(value_offset: u32, precision: usize, method_offset: Option<u32>) -> Result<u32, u32> {
+    let number = Value::at(value_offset)?.as_number();
+    if number.is_nan() || precision > 308 {
+        return Err(ERROR_INVALID_EXPRESSION);
+    }
+    let factor = libm::pow(10.0, precision as f64);
+    let scaled = number * factor;
+    let rounded = if let Some(method_offset) = method_offset {
+        match rendered_value(method_offset)?.bytes {
+            b"floor" => libm::floor(scaled),
+            b"ceil" => libm::ceil(scaled),
+            b"common" => libm::round(scaled),
+            _ => return Err(ERROR_INVALID_EXPRESSION),
+        }
+    } else {
+        libm::round(scaled)
+    } / factor;
+    write_computed_number(rounded)
+}
+
 fn replace_value(
     input_offset: u32,
     from_offset: u32,
@@ -3495,11 +3934,47 @@ fn replace_value(
     limit: usize,
 ) -> Result<u32, u32> {
     let input = rendered_value(input_offset)?;
-    let from = rendered_value(from_offset)?.bytes;
-    let to = rendered_value(to_offset)?.bytes;
-    if from.is_empty() || limit == 0 {
+    if !matches!(
+        Value::at(from_offset)?,
+        Value::String(_) | Value::SafeString(_) | Value::Number { .. }
+    ) {
         let tag = if input.safe { TAG_SAFE_STRING } else { TAG_STRING };
         return write_bytes_record(tag, input.bytes);
+    }
+    let from = rendered_value(from_offset)?.bytes;
+    let to = rendered_value(to_offset)?.bytes;
+    if limit == 0 || (from.is_empty() && to.is_empty()) {
+        let tag = if input.safe { TAG_SAFE_STRING } else { TAG_STRING };
+        return write_bytes_record(tag, input.bytes);
+    }
+    if from.is_empty() {
+        let insertion_count = input.bytes.len().saturating_add(1).min(limit);
+        let added = insertion_count
+            .checked_mul(to.len())
+            .ok_or(ERROR_RESOURCE_LIMIT)?;
+        let length = input
+            .bytes
+            .len()
+            .checked_add(added)
+            .ok_or(ERROR_RESOURCE_LIMIT)?;
+        let tag = if input.safe { TAG_SAFE_STRING } else { TAG_STRING };
+        let offset = allocate_record(
+            tag,
+            u32::try_from(length).map_err(|_| ERROR_RESOURCE_LIMIT)?,
+        )?;
+        let output = mutable_record_at(offset, tag)?;
+        let mut output_cursor = 0usize;
+        for index in 0..=input.bytes.len() {
+            if index < insertion_count {
+                output[output_cursor..output_cursor + to.len()].copy_from_slice(to);
+                output_cursor += to.len();
+            }
+            if let Some(byte) = input.bytes.get(index) {
+                output[output_cursor] = *byte;
+                output_cursor += 1;
+            }
+        }
+        return Ok(offset);
     }
     let mut count = 0usize;
     let mut cursor = 0usize;

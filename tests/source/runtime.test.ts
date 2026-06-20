@@ -463,6 +463,54 @@ test('evaluates Rust-native filters and tests without host capability calls', as
   }
 });
 
+test('matches scalar, numeric, and text filter edge semantics', async () => {
+  const engine = await createEngine();
+  const cases: readonly [string, TemplateContext, string][] = [
+    ['{{ -3.456 | abs }}', {}, '3.456'],
+    ['{{ "foo" | capitalize }}', {}, 'Foo'],
+    ['{{ str | capitalize }}', { str: markSafe('foo') }, 'Foo'],
+    ['{{ undefined | capitalize }}', {}, ''],
+    ['{{ "fooo" | center }}', {}, `${' '.repeat(38)}fooo${' '.repeat(38)}`],
+    ['{{ "foo" | center }}', {}, `${' '.repeat(38)}foo${' '.repeat(39)}`],
+    ['{{ false | default("foo") }}', {}, 'false'],
+    ['{{ false | default("foo", true) }}', {}, 'foo'],
+    ['{{ foo | escape }}', { foo: ['<html>'] }, '&lt;html&gt;'],
+    ['{{ "<html>" | escape | escape }}', {}, '&lt;html&gt;'],
+    ['{{ "<html>" | safe | forceescape }}', {}, '&lt;html&gt;'],
+    ['{{ "3.5" | float }}', {}, '3.5'],
+    ['{{ "bob" | float("cat") }}', {}, 'cat'],
+    ['{{ "3.5" | int }}', {}, '3'],
+    ['{{ "0x4d32" | int(base=16) }}', {}, '19762'],
+    ['{{ "011" | int(base=8) }}', {}, '9'],
+    ['{{ "bob" | int("cat") }}', {}, 'cat'],
+    ['{{ "one\ntwo\nthree" | indent(2, true) }}', {}, '  one\n  two\n  three'],
+    ['{{ items | join(",", "name") }}', { items: [{ name: 'foo' }, { name: 'bar' }] }, 'foo,bar'],
+    ['{{ str | nl2br }}', { str: markSafe('foo\r\nbar') }, 'foo<br />\nbar'],
+    ['{{ "foo\nbar" | nl2br }}', {}, 'foo&lt;br /&gt;\nbar'],
+    ['{{ "aaabbbccc" | replace("", ".") }}', {}, '.a.a.a.b.b.b.c.c.c.'],
+    ['{{ "aaabbbbbccc" | replace("b", "y", 4) }}', {}, 'aaayyyybccc'],
+    ['{{ "aaabbbbbccc" | replace("b", "", 4) }}', {}, 'aaabccc'],
+    ['{{ 4.5 | round }}', {}, '5'],
+    ['{{ 4.5 | round(0, "floor") }}', {}, '4'],
+    ['{{ 4.12345 | round(4) }}', {}, '4.1235'],
+    ['{{ items | sum }}', { items: [1, 2, 3] }, '6'],
+    ['{{ items | sum("value", 10) }}', { items: [{ value: 1 }, { value: 2 }] }, '13'],
+    ['{{ 1234 | string }}', {}, '1234'],
+    ['{{ "  foo " | trim }}', {}, 'foo'],
+    ['{{ "foo bar baz" | title }}', {}, 'Foo Bar Baz'],
+    ['{{ "foo" | upper }}|{{ "FOO" | lower }}', {}, 'FOO|foo'],
+    ['{{ "foo bar baz" | wordcount }}', {}, '3'],
+    ['{{ null | wordcount }}', {}, ''],
+  ];
+  try {
+    for (const [source, context, expected] of cases) {
+      assert.equal(await engine.render({ source }, context), expected, source);
+    }
+  } finally {
+    await engine.dispose();
+  }
+});
+
 test('dispatches immutable async filters, tests, and globals through safe copied values', async () => {
   let markBlockingCallStarted: (() => void) | undefined;
   const blockingCallStarted = new Promise<void>(resolve => {

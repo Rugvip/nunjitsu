@@ -799,6 +799,127 @@
     {
       "upstream": { "id": "tests/precompile.js:3", "file": "tests/precompile.js", "test": "should return *NIX path seperators, when name is passed as option" },
       "status": "not applicable", "reason": "Precompilation and persistent compiled artifacts are intentionally excluded."
+    },
+    {
+      "upstream": { "id": "tests/filters.js:1", "file": "tests/filters.js", "test": "abs" },
+      "status": "ported"
+    },
+    {
+      "upstream": { "id": "tests/filters.js:3", "file": "tests/filters.js", "test": "capitalize" },
+      "status": "ported"
+    },
+    {
+      "upstream": { "id": "tests/filters.js:4", "file": "tests/filters.js", "test": "center" },
+      "status": "ported"
+    },
+    {
+      "upstream": { "id": "tests/filters.js:5", "file": "tests/filters.js", "test": "default" },
+      "status": "ported"
+    },
+    {
+      "upstream": { "id": "tests/filters.js:7", "file": "tests/filters.js", "test": "escape" },
+      "status": "ported"
+    },
+    {
+      "upstream": { "id": "tests/filters.js:8", "file": "tests/filters.js", "test": "escape skip safe" },
+      "status": "ported"
+    },
+    {
+      "upstream": { "id": "tests/filters.js:9", "file": "tests/filters.js", "test": "should not double escape strings" },
+      "status": "ported"
+    },
+    {
+      "upstream": { "id": "tests/filters.js:10", "file": "tests/filters.js", "test": "should not double escape with autoescape on" },
+      "status": "ported"
+    },
+    {
+      "upstream": { "id": "tests/filters.js:11", "file": "tests/filters.js", "test": "should work with non-string values" },
+      "status": "adapted",
+      "reason": "Array and null coercion are ported; live objects with custom JavaScript toString methods are outside the copied-value contract."
+    },
+    {
+      "upstream": { "id": "tests/filters.js:12", "file": "tests/filters.js", "test": "should not escape safe strings with autoescape on" },
+      "status": "ported"
+    },
+    {
+      "upstream": { "id": "tests/filters.js:13", "file": "tests/filters.js", "test": "should keep strings escaped after they have been escaped" },
+      "status": "ported"
+    },
+    {
+      "upstream": { "id": "tests/filters.js:15", "file": "tests/filters.js", "test": "first" },
+      "status": "ported"
+    },
+    {
+      "upstream": { "id": "tests/filters.js:16", "file": "tests/filters.js", "test": "float" },
+      "status": "ported"
+    },
+    {
+      "upstream": { "id": "tests/filters.js:17", "file": "tests/filters.js", "test": "forceescape" },
+      "status": "ported"
+    },
+    {
+      "upstream": { "id": "tests/filters.js:18", "file": "tests/filters.js", "test": "int" },
+      "status": "ported"
+    },
+    {
+      "upstream": { "id": "tests/filters.js:19", "file": "tests/filters.js", "test": "int (default value)" },
+      "status": "ported"
+    },
+    {
+      "upstream": { "id": "tests/filters.js:20", "file": "tests/filters.js", "test": "float (default value)" },
+      "status": "ported"
+    },
+    {
+      "upstream": { "id": "tests/filters.js:22", "file": "tests/filters.js", "test": "indent" },
+      "status": "ported"
+    },
+    {
+      "upstream": { "id": "tests/filters.js:23", "file": "tests/filters.js", "test": "join" },
+      "status": "ported"
+    },
+    {
+      "upstream": { "id": "tests/filters.js:24", "file": "tests/filters.js", "test": "last" },
+      "status": "ported"
+    },
+    {
+      "upstream": { "id": "tests/filters.js:42", "file": "tests/filters.js", "test": "lower" },
+      "status": "ported"
+    },
+    {
+      "upstream": { "id": "tests/filters.js:43", "file": "tests/filters.js", "test": "nl2br" },
+      "status": "ported"
+    },
+    {
+      "upstream": { "id": "tests/filters.js:50", "file": "tests/filters.js", "test": "reverse" },
+      "status": "ported"
+    },
+    {
+      "upstream": { "id": "tests/filters.js:51", "file": "tests/filters.js", "test": "round" },
+      "status": "ported"
+    },
+    {
+      "upstream": { "id": "tests/filters.js:53", "file": "tests/filters.js", "test": "sum" },
+      "status": "ported"
+    },
+    {
+      "upstream": { "id": "tests/filters.js:55", "file": "tests/filters.js", "test": "string" },
+      "status": "ported"
+    },
+    {
+      "upstream": { "id": "tests/filters.js:57", "file": "tests/filters.js", "test": "title" },
+      "status": "ported"
+    },
+    {
+      "upstream": { "id": "tests/filters.js:58", "file": "tests/filters.js", "test": "trim" },
+      "status": "ported"
+    },
+    {
+      "upstream": { "id": "tests/filters.js:60", "file": "tests/filters.js", "test": "upper" },
+      "status": "ported"
+    },
+    {
+      "upstream": { "id": "tests/filters.js:64", "file": "tests/filters.js", "test": "wordcount" },
+      "status": "ported"
     }
   ]
 }
