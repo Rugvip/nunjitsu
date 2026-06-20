@@ -1,16 +1,25 @@
 import assert from 'node:assert/strict';
+import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import test from 'node:test';
 
 import {
   createEngine,
+  fileSystemLoader,
+  memoryLoader,
   NunjitsuRenderError,
+  TemplateLoaderError,
   type TemplateContext,
 } from '../../src/index.ts';
 
 test('renders through reusable shared-memory workers', async () => {
+  const templates = { 'named.njk': 'Loaded {{ value }}' };
   const engine = await createEngine({
+    loaders: [memoryLoader(templates)],
     workerPool: { minWorkers: 1, maxWorkers: 2 },
   });
+  templates['named.njk'] = 'mutated';
 
   try {
     const [greeting, staticText, missingValue] = await Promise.all([
@@ -21,6 +30,14 @@ test('renders through reusable shared-memory workers', async () => {
     assert.equal(greeting, 'Hello Nunjitsu!');
     assert.equal(staticText, 'No interpolation');
     assert.equal(missingValue, 'Missing: .');
+    assert.equal(
+      await engine.render({ name: 'named.njk' }, { value: 'from memory' }),
+      'Loaded from memory',
+    );
+    await assert.rejects(
+      engine.render({ name: 'missing.njk' }),
+      error => error instanceof TemplateLoaderError && /not found/.test(error.message),
+    );
 
     assert.equal(
       await engine.render(
@@ -69,4 +86,32 @@ test('renders through reusable shared-memory workers', async () => {
   }
 
   await assert.rejects(engine.render({ source: 'disposed' }), /disposed/);
+});
+
+test('filesystem loading stays within explicit canonical roots', async () => {
+  const sandbox = await mkdtemp(join(tmpdir(), 'nunjitsu-'));
+  const root = join(sandbox, 'templates');
+  const secret = join(sandbox, 'secret.njk');
+  await mkdir(root);
+  await writeFile(join(root, 'page.njk'), 'File {{ value }}');
+  await writeFile(secret, 'secret');
+
+  const engine = await createEngine({
+    loaders: [fileSystemLoader({ roots: [root] })],
+  });
+  try {
+    assert.equal(
+      await engine.render({ name: 'page.njk' }, { value: 'works' }),
+      'File works',
+    );
+    await assert.rejects(engine.render({ name: '../secret.njk' }), /escapes its configured root/);
+
+    if (process.platform !== 'win32') {
+      await symlink(secret, join(root, 'link.njk'));
+      await assert.rejects(engine.render({ name: 'link.njk' }), /symlink escapes/);
+    }
+  } finally {
+    await engine.dispose();
+    await rm(sandbox, { force: true, recursive: true });
+  }
 });

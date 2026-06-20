@@ -1,6 +1,7 @@
 import { availableParallelism } from 'node:os';
 import { Worker } from 'node:worker_threads';
 
+import { loadTemplate, type TemplateLoader } from './loaders.ts';
 import { ArenaWriter, decodeOutput } from './protocol.ts';
 import type { TemplateContext } from './values.ts';
 
@@ -30,6 +31,8 @@ export interface EngineOptions {
   workerPool?: WorkerPoolOptions;
   /** Worker memory retained after a render before that worker is recycled. */
   retainedMemoryBytes?: number;
+  /** Trusted template loaders fixed for the lifetime of this engine. */
+  loaders?: readonly TemplateLoader[];
 }
 
 /** An inline template accepted by the initial rendering surface. */
@@ -37,6 +40,15 @@ export interface InlineTemplate {
   /** UTF-8 template source compiled and rendered for this call only. */
   source: string;
 }
+
+/** A template resolved by name through the engine's explicit loader chain. */
+export interface NamedTemplate {
+  /** Loader-specific template name. */
+  name: string;
+}
+
+/** Inline or explicitly loaded template input accepted by rendering methods. */
+export type TemplateInput = InlineTemplate | NamedTemplate;
 
 /** Per-render controls that do not alter engine-level authority. */
 export interface RenderOptions {
@@ -46,16 +58,16 @@ export interface RenderOptions {
 
 /** An initialized asynchronous Nunjitsu engine. */
 export interface Engine {
-  /** Compiles and renders an inline template to one buffered string. */
+  /** Compiles and renders an inline or explicitly loaded template to one buffered string. */
   render(
-    template: InlineTemplate,
+    template: TemplateInput,
     context?: TemplateContext,
     options?: RenderOptions,
   ): Promise<string>;
 
-  /** Compiles and renders an inline template through a pull-driven Web stream. */
+  /** Compiles and renders an inline or explicitly loaded template through a Web stream. */
   renderStream(
-    template: InlineTemplate,
+    template: TemplateInput,
     context?: TemplateContext,
     options?: RenderOptions,
   ): ReadableStream<string>;
@@ -88,7 +100,7 @@ export async function createEngineWithRuntime(
     throw new RangeError('retainedMemoryBytes must be at least the initial Wasm memory size');
   }
 
-  const engine = new EngineImplementation(runtime, pool, retainedMemoryBytes);
+  const engine = new EngineImplementation(runtime, pool, retainedMemoryBytes, options.loaders);
   await engine.initialize();
   return engine;
 }
@@ -146,14 +158,21 @@ class EngineImplementation implements Engine {
   readonly #runtime: RuntimeAssets;
   readonly #pool: NormalizedPoolOptions;
   readonly #retainedMemoryBytes: number;
+  readonly #loaders: readonly TemplateLoader[];
   readonly #slots: WorkerSlot[] = [];
   readonly #waiters: WorkerWaiter[] = [];
   #disposed = false;
 
-  constructor(runtime: RuntimeAssets, pool: NormalizedPoolOptions, retainedMemoryBytes: number) {
+  constructor(
+    runtime: RuntimeAssets,
+    pool: NormalizedPoolOptions,
+    retainedMemoryBytes: number,
+    loaders: readonly TemplateLoader[] = [],
+  ) {
     this.#runtime = runtime;
     this.#pool = pool;
     this.#retainedMemoryBytes = retainedMemoryBytes;
+    this.#loaders = Object.freeze([...loaders]);
   }
 
   async initialize(): Promise<void> {
@@ -167,7 +186,7 @@ class EngineImplementation implements Engine {
   }
 
   async render(
-    template: InlineTemplate,
+    template: TemplateInput,
     context: TemplateContext = {},
     options: RenderOptions = {},
   ): Promise<string> {
@@ -176,16 +195,17 @@ class EngineImplementation implements Engine {
       throw abortError();
     }
 
+    const source = await this.#resolveTemplate(template, options.signal);
     const slot = await this.#acquire(options.signal);
     try {
-      return await slot.render(template.source, context, options.signal);
+      return await slot.render(source, context, options.signal);
     } finally {
       this.#release(slot);
     }
   }
 
   renderStream(
-    template: InlineTemplate,
+    template: TemplateInput,
     context: TemplateContext = {},
     options: RenderOptions = {},
   ): ReadableStream<string> {
@@ -316,6 +336,21 @@ class EngineImplementation implements Engine {
     if (this.#disposed) {
       throw new Error('The Nunjitsu engine was disposed');
     }
+  }
+
+  async #resolveTemplate(template: TemplateInput, signal: AbortSignal | undefined): Promise<string> {
+    const hasSource = 'source' in template && typeof template.source === 'string';
+    const hasName = 'name' in template && typeof template.name === 'string';
+    if (hasSource === hasName) {
+      throw new TypeError('A template must provide exactly one string source or name');
+    }
+    if (hasSource) {
+      return template.source;
+    }
+    if (hasName) {
+      return (await loadTemplate(this.#loaders, template.name, signal)).source;
+    }
+    throw new TypeError('Invalid template input');
   }
 }
 

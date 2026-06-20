@@ -9,9 +9,19 @@ export {
   type Engine,
   type EngineOptions,
   type InlineTemplate,
+  type NamedTemplate,
   type RenderOptions,
+  type TemplateInput,
   type WorkerPoolOptions,
 } from './engine.ts';
+export {
+  fileSystemLoader,
+  memoryLoader,
+  TemplateLoaderError,
+  type FileSystemLoaderOptions,
+  type LoadedTemplate,
+  type TemplateLoader,
+} from './loaders.ts';
 export type { TemplateContext, TemplatePrimitive, TemplateValue } from './values.ts';
 
 /** Creates a Node.js Nunjitsu engine backed by Rust/Wasm worker threads. */
