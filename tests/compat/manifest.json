@@ -121,6 +121,223 @@
       "reason": "Nunjitsu intentionally copies own properties only and renders a polluted inherited property as undefined, enforcing the documented safe-value boundary instead of exposing prototype data."
     },
     {
+      "upstream": { "id": "tests/parser.js:1", "file": "tests/parser.js", "test": "should parse basic types" },
+      "status": "adapted",
+      "reason": "Nunjitsu does not expose Nunjucks AST nodes; the same numeric, string, boolean, none, symbol, and regex literals are rendered through the public engine.",
+      "cases": ["parser-basic-types"]
+    },
+    {
+      "upstream": { "id": "tests/parser.js:2", "file": "tests/parser.js", "test": "should parse aggregate types" },
+      "status": "adapted",
+      "reason": "Array, tuple-group, and record literals are verified through rendering rather than Nunjucks AST object shapes.",
+      "cases": ["parser-group-tuple", "compiler-loop-literal-record"]
+    },
+    {
+      "upstream": { "id": "tests/parser.js:3", "file": "tests/parser.js", "test": "should parse variables" },
+      "status": "adapted",
+      "reason": "Static text surrounding a symbol interpolation is verified through rendered output because Nunjitsu exposes no parser AST API.",
+      "cases": ["compiler-interpolation"]
+    },
+    {
+      "upstream": { "id": "tests/parser.js:4", "file": "tests/parser.js", "test": "should parse operators" },
+      "status": "adapted",
+      "reason": "Comparison, boolean, membership, and built-in test operators are exercised through observable evaluation instead of AST node classes.",
+      "cases": ["compiler-comparison-operators", "compiler-if-boolean-operators", "compiler-in-arrays"]
+    },
+    {
+      "upstream": { "id": "tests/parser.js:5", "file": "tests/parser.js", "test": "should parse tilde" },
+      "status": "adapted",
+      "reason": "Tilde concatenation is verified through rendered output rather than a Nunjucks Concat node.",
+      "cases": ["compiler-string-concatenation"]
+    },
+    {
+      "upstream": { "id": "tests/parser.js:6", "file": "tests/parser.js", "test": "should parse operators with correct precedence" },
+      "status": "adapted",
+      "reason": "Boolean grouping and precedence are exercised through branch and inline-expression results rather than AST nesting.",
+      "cases": ["compiler-if-boolean-operators", "compiler-inline-if-group"]
+    },
+    {
+      "upstream": { "id": "tests/parser.js:7", "file": "tests/parser.js", "test": "should parse blocks" },
+      "status": "adapted",
+      "reason": "If, block, extends, and include directives are exercised through rendering; matching named endblock validation is covered by the runtime error suite."
+    },
+    {
+      "upstream": { "id": "tests/parser.js:8", "file": "tests/parser.js", "test": "should accept attributes and methods of static arrays, objects and primitives" },
+      "status": "not applicable",
+      "reason": "Nunjitsu deliberately does not expose JavaScript prototype methods to templates; equivalent safe operations use built-in filters under the documented copied-value security model."
+    },
+    {
+      "upstream": { "id": "tests/parser.js:9", "file": "tests/parser.js", "test": "should parse include tags" },
+      "status": "adapted",
+      "reason": "Literal and filtered include expressions are resolved and rendered through explicit loaders instead of inspected as Include AST nodes.",
+      "cases": ["compiler-include-basic", "parser-filtered-include-path"]
+    },
+    {
+      "upstream": { "id": "tests/parser.js:10", "file": "tests/parser.js", "test": "should parse for loops" },
+      "status": "adapted",
+      "reason": "Array iteration and loop binding behavior are verified through rendered output instead of For AST nodes.",
+      "cases": ["compiler-loop-simple-array"]
+    },
+    {
+      "upstream": { "id": "tests/parser.js:11", "file": "tests/parser.js", "test": "should parse for loops with else" },
+      "status": "adapted",
+      "reason": "Empty and non-empty loop else behavior is verified through rendered output.",
+      "cases": ["compiler-loop-nonempty-else", "compiler-loop-empty-else"]
+    },
+    {
+      "upstream": { "id": "tests/parser.js:12", "file": "tests/parser.js", "test": "should parse filters" },
+      "status": "adapted",
+      "reason": "Chained and argument-bearing filters are exercised through the built-in filter corpus rather than Filter AST nodes."
+    },
+    {
+      "upstream": { "id": "tests/parser.js:13", "file": "tests/parser.js", "test": "should parse macro definitions" },
+      "status": "adapted",
+      "reason": "Macro parameters, defaults, bodies, and calls are verified through rendered behavior rather than Macro AST nodes.",
+      "cases": ["compiler-macro-basic", "compiler-macro-default-arguments"]
+    },
+    {
+      "upstream": { "id": "tests/parser.js:14", "file": "tests/parser.js", "test": "should parse call blocks" },
+      "status": "adapted",
+      "reason": "Caller-body behavior is verified through rendered call blocks instead of FunCall and Caller AST nodes.",
+      "cases": ["compiler-call-block"]
+    },
+    {
+      "upstream": { "id": "tests/parser.js:15", "file": "tests/parser.js", "test": "should parse call blocks with args" },
+      "status": "adapted",
+      "reason": "Call-block bindings plus positional and keyword arguments are verified through rendered output.",
+      "cases": ["compiler-call-block-arguments"]
+    },
+    {
+      "upstream": { "id": "tests/parser.js:16", "file": "tests/parser.js", "test": "should parse raw" },
+      "status": "adapted",
+      "reason": "Raw delimiter-like text is preserved in output rather than represented as TemplateData AST nodes.",
+      "cases": ["parser-raw-delimiter-text"]
+    },
+    {
+      "upstream": { "id": "tests/parser.js:17", "file": "tests/parser.js", "test": "should parse raw with broken variables" },
+      "status": "adapted",
+      "reason": "Broken interpolation syntax inside raw is preserved literally.",
+      "cases": ["parser-raw-broken-variable"]
+    },
+    {
+      "upstream": { "id": "tests/parser.js:18", "file": "tests/parser.js", "test": "should parse raw with broken blocks" },
+      "status": "adapted",
+      "reason": "Broken block syntax inside raw is preserved literally without consuming the closing marker.",
+      "cases": ["parser-raw-broken-block"]
+    },
+    {
+      "upstream": { "id": "tests/parser.js:19", "file": "tests/parser.js", "test": "should parse raw with pure text" },
+      "status": "adapted",
+      "reason": "Pure raw text is verified through exact rendered output.",
+      "cases": ["parser-raw-pure-text"]
+    },
+    {
+      "upstream": { "id": "tests/parser.js:20", "file": "tests/parser.js", "test": "should parse raw with raw blocks" },
+      "status": "adapted",
+      "reason": "Nested raw markers are balanced and preserved in the outer raw output.",
+      "cases": ["parser-raw-nested-block"]
+    },
+    {
+      "upstream": { "id": "tests/parser.js:21", "file": "tests/parser.js", "test": "should parse raw with comment blocks" },
+      "status": "adapted",
+      "reason": "Comment syntax inside raw is preserved literally.",
+      "cases": ["parser-raw-comment-text"]
+    },
+    {
+      "upstream": { "id": "tests/parser.js:22", "file": "tests/parser.js", "test": "should parse multiple raw blocks" },
+      "status": "adapted",
+      "reason": "Multiple raw regions and the interpolation between them are verified through exact output.",
+      "cases": ["parser-raw-multiple"]
+    },
+    {
+      "upstream": { "id": "tests/parser.js:23", "file": "tests/parser.js", "test": "should parse multiline multiple raw blocks" },
+      "status": "adapted",
+      "reason": "Newlines surrounding multiple raw regions are verified through exact output.",
+      "cases": ["parser-raw-multiline-multiple"]
+    },
+    {
+      "upstream": { "id": "tests/parser.js:24", "file": "tests/parser.js", "test": "should parse verbatim" },
+      "status": "adapted",
+      "reason": "Verbatim delimiter-like text is preserved in output rather than represented as TemplateData AST nodes.",
+      "cases": ["parser-verbatim-delimiter-text"]
+    },
+    {
+      "upstream": { "id": "tests/parser.js:25", "file": "tests/parser.js", "test": "should parse verbatim with broken variables" },
+      "status": "adapted",
+      "reason": "Broken interpolation syntax inside verbatim is preserved literally.",
+      "cases": ["parser-verbatim-broken-variable"]
+    },
+    {
+      "upstream": { "id": "tests/parser.js:26", "file": "tests/parser.js", "test": "should parse verbatim with broken blocks" },
+      "status": "adapted",
+      "reason": "Broken block syntax inside verbatim is preserved literally without consuming the closing marker.",
+      "cases": ["parser-verbatim-broken-block"]
+    },
+    {
+      "upstream": { "id": "tests/parser.js:27", "file": "tests/parser.js", "test": "should parse verbatim with pure text" },
+      "status": "adapted",
+      "reason": "Pure verbatim text is verified through exact rendered output.",
+      "cases": ["parser-verbatim-pure-text"]
+    },
+    {
+      "upstream": { "id": "tests/parser.js:28", "file": "tests/parser.js", "test": "should parse verbatim with verbatim blocks" },
+      "status": "adapted",
+      "reason": "Nested verbatim markers are balanced and preserved in the outer verbatim output.",
+      "cases": ["parser-verbatim-nested-block"]
+    },
+    {
+      "upstream": { "id": "tests/parser.js:29", "file": "tests/parser.js", "test": "should parse verbatim with comment blocks" },
+      "status": "adapted",
+      "reason": "Comment syntax inside verbatim is preserved literally.",
+      "cases": ["parser-verbatim-comment-text"]
+    },
+    {
+      "upstream": { "id": "tests/parser.js:30", "file": "tests/parser.js", "test": "should parse multiple verbatim blocks" },
+      "status": "adapted",
+      "reason": "Multiple verbatim regions and the interpolation between them are verified through exact output.",
+      "cases": ["parser-verbatim-multiple"]
+    },
+    {
+      "upstream": { "id": "tests/parser.js:31", "file": "tests/parser.js", "test": "should parse multiline multiple verbatim blocks" },
+      "status": "adapted",
+      "reason": "Newlines surrounding multiple verbatim regions are verified through exact output.",
+      "cases": ["parser-verbatim-multiline-multiple"]
+    },
+    {
+      "upstream": { "id": "tests/parser.js:32", "file": "tests/parser.js", "test": "should parse switch statements" },
+      "status": "adapted",
+      "reason": "Switch cases, default, no-match, and fallthrough behavior are verified through rendering rather than Switch AST nodes.",
+      "cases": ["compiler-switch-first-case", "compiler-switch-second-case", "compiler-switch-default"]
+    },
+    {
+      "upstream": { "id": "tests/parser.js:33", "file": "tests/parser.js", "test": "should parse keyword and non-keyword arguments" },
+      "status": "adapted",
+      "reason": "Positional and keyword argument binding is verified through macro and custom-tag rendering rather than argument AST nodes.",
+      "cases": ["compiler-macro-keyword-argument", "compiler-custom-body-tag-keyword-argument"]
+    },
+    {
+      "upstream": { "id": "tests/parser.js:34", "file": "tests/parser.js", "test": "should parse imports" },
+      "status": "adapted",
+      "reason": "Namespace, aliased from-import, and filtered template-path imports are rendered through explicit loaders instead of inspected as Import AST nodes.",
+      "cases": ["compiler-import-namespace-values", "compiler-from-import-aliases", "parser-filtered-import-paths"]
+    },
+    {
+      "upstream": { "id": "tests/parser.js:35", "file": "tests/parser.js", "test": "should parse whitespace control" },
+      "status": "adapted",
+      "reason": "Left and right trim markers on expressions, comments, blocks, nested blocks, and imports are verified through exact rendered whitespace."
+    },
+    {
+      "upstream": { "id": "tests/parser.js:36", "file": "tests/parser.js", "test": "should throw errors" },
+      "status": "adapted",
+      "reason": "Every malformed upstream source shape rejects in the runtime suite, including mismatched named endblocks and private imports; exact Nunjucks messages are outside the contract."
+    },
+    {
+      "upstream": { "id": "tests/parser.js:37", "file": "tests/parser.js", "test": "should parse custom tags" },
+      "status": "adapted",
+      "reason": "Nunjitsu replaces parser-object extensions with declarative inline and body tag schemas; equivalent arguments and rendered bodies are covered through the new capability API.",
+      "cases": ["compiler-custom-inline-tag", "compiler-custom-body-tag", "compiler-custom-body-tag-keyword-argument"]
+    },
+    {
       "upstream": { "id": "tests/compiler.js:1", "file": "tests/compiler.js", "test": "should compile templates" },
       "status": "ported",
       "cases": [

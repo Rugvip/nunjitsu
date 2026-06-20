@@ -1778,6 +1778,23 @@
       "expected": "1-2-3"
     },
     {
+      "id": "parser-basic-types",
+      "template": "{{ 1 }}|{{ 4.567 }}|{{ \"foo\" }}|{{ 'foo' }}|{{ true }}|{{ false }}|{{ none }}|{{ foo }}|{{ \"23\" | replace(r/23/gi, \"ok\") }}",
+      "nativeRender": false,
+      "context": { "foo": "value" },
+      "autoescape": true,
+      "expected": "1|4.567|foo|foo|true|false||value|ok"
+    },
+    {
+      "id": "parser-filtered-include-path",
+      "template": "{% include \"partial.html\" | replace(\"html\", \"njk\") %}",
+      "templates": { "partial.njk": "included" },
+      "nativeRender": false,
+      "context": {},
+      "autoescape": true,
+      "expected": "included"
+    },
+    {
       "id": "parser-filtered-import-paths",
       "template": "{% import \"module.html\" | replace(\"html\", \"njk\") as imp %}{{ imp.foo() }}|{% from \"module.html\" | replace(\"html\", \"njk\") import foo as bar %}{{ bar() }}",
       "templates": {
