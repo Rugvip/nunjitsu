@@ -34,6 +34,15 @@ export class TemplateLoaderError extends Error {
   }
 }
 
+/** A template name that no configured loader could resolve. */
+export class TemplateNotFoundError extends TemplateLoaderError {
+  /** Creates a not-found failure for one validated template name. */
+  constructor(name: string) {
+    super(`Template not found: ${name}`);
+    this.name = 'TemplateNotFoundError';
+  }
+}
+
 /** Creates an immutable loader backed by an owned copy of template sources. */
 export function memoryLoader(templates: Readonly<Record<string, string>>): TemplateLoader {
   const sources = new Map<string, string>();
@@ -121,7 +130,7 @@ export async function loadTemplate(
       return loaded;
     }
   }
-  throw new TemplateLoaderError(`Template not found: ${name}`);
+  throw new TemplateNotFoundError(name);
 }
 
 function validateTemplateName(name: string): void {

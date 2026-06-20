@@ -45,7 +45,12 @@ pub enum TemplateItem<'a> {
     /// A context expression between interpolation delimiters.
     Expression(&'a [u8]),
     /// A template-name expression requested by an include tag.
-    Include(&'a [u8]),
+    Include {
+        /// Expression resolving to the requested template name.
+        expression: &'a [u8],
+        /// Whether an absent template should produce no output.
+        ignore_missing: bool,
+    },
     /// A non-built-in block directive resolved against declarative tag schemas.
     Tag(&'a [u8]),
     /// The parser reached the end of this source.
@@ -153,11 +158,14 @@ pub fn next_item_with_options(
                 .strip_prefix(b"include")
                 .filter(|remainder| remainder.first().is_some_and(u8::is_ascii_whitespace))
             {
-                let expression = trim_ascii_whitespace(include);
-                if expression.is_empty() {
-                    return Err(RenderError::InvalidInclude);
-                }
-                Ok((TemplateItem::Include(expression), next_cursor))
+                let (expression, ignore_missing) = parse_include(include)?;
+                Ok((
+                    TemplateItem::Include {
+                        expression,
+                        ignore_missing,
+                    },
+                    next_cursor,
+                ))
             } else {
                 Ok((TemplateItem::Tag(directive), next_cursor))
             }
@@ -357,7 +365,7 @@ fn visit_template<'a>(
                     }
                 }
             }
-            TemplateItem::Include(_) => return Err(RenderError::UnsupportedTag),
+            TemplateItem::Include { .. } => return Err(RenderError::UnsupportedTag),
             TemplateItem::Tag(_) => return Err(RenderError::UnsupportedTag),
             TemplateItem::End => return Ok(()),
         }
@@ -457,6 +465,97 @@ fn find_pair(bytes: &[u8], first: u8, second: u8) -> Option<usize> {
         .position(|window| window[0] == first && window[1] == second)
 }
 
+fn parse_include(source: &[u8]) -> Result<(&[u8], bool), RenderError> {
+    let source = trim_ascii_whitespace(source);
+    if source.is_empty() {
+        return Err(RenderError::InvalidInclude);
+    }
+    let mut cursor = 0usize;
+    let mut quote = None;
+    let mut parentheses = 0usize;
+    let mut brackets = 0usize;
+    let mut braces = 0usize;
+    let mut previous = None;
+    let mut last = None;
+    while let Some(byte) = source.get(cursor).copied() {
+        if let Some(active_quote) = quote {
+            if byte == b'\\' {
+                cursor = cursor.checked_add(2).ok_or(RenderError::InvalidInclude)?;
+                continue;
+            }
+            if byte == active_quote {
+                quote = None;
+            }
+            cursor += 1;
+            continue;
+        }
+        if matches!(byte, b'\'' | b'"') {
+            quote = Some(byte);
+            cursor += 1;
+            continue;
+        }
+        match byte {
+            b'(' => parentheses += 1,
+            b'[' => brackets += 1,
+            b'{' => braces += 1,
+            b')' => {
+                parentheses = parentheses
+                    .checked_sub(1)
+                    .ok_or(RenderError::InvalidInclude)?;
+            }
+            b']' => {
+                brackets = brackets.checked_sub(1).ok_or(RenderError::InvalidInclude)?;
+            }
+            b'}' => {
+                braces = braces.checked_sub(1).ok_or(RenderError::InvalidInclude)?;
+            }
+            _ => {}
+        }
+        if parentheses == 0
+            && brackets == 0
+            && braces == 0
+            && (byte.is_ascii_alphabetic() || byte == b'_')
+        {
+            let start = cursor;
+            cursor += 1;
+            while source
+                .get(cursor)
+                .is_some_and(|byte| byte.is_ascii_alphanumeric() || *byte == b'_')
+            {
+                cursor += 1;
+            }
+            previous = last;
+            last = Some((start, cursor));
+            continue;
+        }
+        cursor += 1;
+    }
+    if quote.is_some() || parentheses != 0 || brackets != 0 || braces != 0 {
+        return Err(RenderError::InvalidInclude);
+    }
+    let Some((ignore_start, ignore_end)) = previous else {
+        return Ok((source, false));
+    };
+    let Some((missing_start, missing_end)) = last else {
+        return Ok((source, false));
+    };
+    if &source[ignore_start..ignore_end] == b"ignore"
+        && &source[missing_start..missing_end] == b"missing"
+        && source[ignore_end..missing_start]
+            .iter()
+            .all(u8::is_ascii_whitespace)
+        && missing_end == source.len()
+    {
+        let expression = trim_ascii_whitespace(&source[..ignore_start]);
+        if expression.is_empty() {
+            return Err(RenderError::InvalidInclude);
+        }
+        Ok((expression, true))
+    } else {
+        Ok((source, false))
+    }
+}
+
 fn trim_ascii_whitespace(mut bytes: &[u8]) -> &[u8] {
     while bytes.first().is_some_and(u8::is_ascii_whitespace) {
         bytes = &bytes[1..];
@@ -479,7 +578,10 @@ mod tests {
             TemplateItem::Text(b"before "),
             TemplateItem::Expression(b"name"),
             TemplateItem::Text(b" "),
-            TemplateItem::Include(b"'partial.njk'"),
+            TemplateItem::Include {
+                expression: b"'partial.njk'",
+                ignore_missing: false,
+            },
             TemplateItem::Text(b" after"),
             TemplateItem::End,
         ];
@@ -488,6 +590,27 @@ mod tests {
             assert_eq!(item, expected_item);
             cursor = next_cursor;
         }
+
+        assert_eq!(
+            next_item(b"{% include target ignore missing %}", 0),
+            Ok((
+                TemplateItem::Include {
+                    expression: b"target",
+                    ignore_missing: true,
+                },
+                35,
+            )),
+        );
+        assert_eq!(
+            next_item(b"{% include 'ignore missing' %}", 0),
+            Ok((
+                TemplateItem::Include {
+                    expression: b"'ignore missing'",
+                    ignore_missing: false,
+                },
+                30,
+            )),
+        );
     }
 
     #[test]

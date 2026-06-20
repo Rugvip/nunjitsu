@@ -26,6 +26,12 @@ interface ResumeLoadCommand {
   cursor: number;
 }
 
+/** Recoverable absence result accepted for an optional include. */
+interface ResumeLoadMissingCommand {
+  type: 'resumeLoadMissing';
+  id: number;
+}
+
 /** Pull command accepted while streaming output is suspended. */
 interface ResumeOutputCommand {
   type: 'resumeOutput';
@@ -44,6 +50,7 @@ interface ResumeCapabilityCommand {
 type WorkerCommand =
   | RenderCommand
   | ResumeLoadCommand
+  | ResumeLoadMissingCommand
   | ResumeOutputCommand
   | ResumeCapabilityCommand;
 
@@ -57,6 +64,7 @@ interface NunjitsuExports {
   controlOffset: () => number;
   render: (requestOffset: number) => number;
   resumeInclude: (sourceOffset: number, canonicalOffset: number) => number;
+  resumeIncludeMissing: () => number;
   resumeOutput: () => number;
   resumeCapability: (valueOffset: number) => number;
 }
@@ -152,6 +160,20 @@ async function start(port: MessagePort): Promise<void> {
         : undefined;
       return;
     }
+    if (command.type === 'resumeLoadMissing') {
+      const state = exports.resumeIncludeMissing();
+      activeRenderId = reportState(
+        port,
+        data.memory,
+        exports,
+        controlOffset,
+        command.id,
+        state,
+      )
+        ? command.id
+        : undefined;
+      return;
+    }
     const cursorState = exports.arenaSetCursor(command.cursor);
     if (cursorState !== 1) {
       finishWithError(port, command.id, cursorState === 2 ? 7 : 1, exports);
@@ -196,7 +218,7 @@ function reportState(
     exports.arenaReset();
     return false;
   }
-  if (state === 3) {
+  if (state === 3 || state === 6) {
     const nameOffset = control.getUint32(4, true);
     const nameLength = control.getUint32(8, true);
     port.postMessage({
@@ -204,6 +226,7 @@ function reportState(
       id,
       name: decodeStringRecord(memory, nameOffset, nameLength),
       cursor: exports.arenaCursor(),
+      ignoreMissing: state === 6,
     });
     return true;
   }
@@ -275,6 +298,9 @@ function parseCommand(value: unknown): WorkerCommand {
   if (candidate.type === 'resumeOutput') {
     return { type: 'resumeOutput', id: candidate.id };
   }
+  if (candidate.type === 'resumeLoadMissing') {
+    return { type: 'resumeLoadMissing', id: candidate.id };
+  }
   if (
     candidate.type === 'resumeCapability' &&
     typeof candidate.valueOffset === 'number' &&
@@ -325,6 +351,7 @@ function parseExports(value: WebAssembly.Exports): NunjitsuExports {
     controlOffset: exportedFunction(value, 'nunjitsu_control_offset'),
     render: exportedFunction(value, 'nunjitsu_render'),
     resumeInclude: exportedFunction(value, 'nunjitsu_resume_include'),
+    resumeIncludeMissing: exportedFunction(value, 'nunjitsu_resume_include_missing'),
     resumeOutput: exportedFunction(value, 'nunjitsu_resume_output'),
     resumeCapability: exportedFunction(value, 'nunjitsu_resume_capability'),
   };

@@ -51,6 +51,9 @@ The API does not emulate Nunjucks classes or callbacks.
 A render accepts inline source or a named template resolved by an explicit
 loader. There is no implicit filesystem loader. Named dependencies discovered
 through include, import, or inheritance use the same configured loader chain.
+`include ... ignore missing` suppresses only the case where every loader returns
+`null`; invalid names, root escapes, I/O failures, and other loader errors still
+reject the render.
 
 Context values are copied into the safe value model described in
 [Security](security.md). Public types must make unsupported live objects and

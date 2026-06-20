@@ -154,6 +154,24 @@
       "context": {},
       "autoescape": false,
       "expected": "4hello|45|ab5"
+    },
+    {
+      "id": "compiler-ignore-missing-include",
+      "template": "hello world {% include \"missing.njk\" ignore missing %}",
+      "templates": {},
+      "nativeRender": false,
+      "context": {},
+      "autoescape": false,
+      "expected": "hello world "
+    },
+    {
+      "id": "compiler-ignore-missing-include-context",
+      "template": "hello world {% include \"missing.njk\" ignore missing %}",
+      "templates": {},
+      "nativeRender": false,
+      "context": { "name": "thedude" },
+      "autoescape": false,
+      "expected": "hello world "
     }
   ]
 }

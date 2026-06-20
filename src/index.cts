@@ -29,6 +29,7 @@ export {
   fileSystemLoader,
   memoryLoader,
   TemplateLoaderError,
+  TemplateNotFoundError,
   type FileSystemLoaderOptions,
   type LoadedTemplate,
   type TemplateLoader,

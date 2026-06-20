@@ -88,6 +88,11 @@
       "upstream": { "id": "tests/compiler.js:62", "file": "tests/compiler.js", "test": "should compile string concatenations with tilde" },
       "status": "ported",
       "cases": ["compiler-string-concatenation"]
+    },
+    {
+      "upstream": { "id": "tests/compiler.js:109", "file": "tests/compiler.js", "test": "should fail silently on missing templates if requested" },
+      "status": "ported",
+      "cases": ["compiler-ignore-missing-include", "compiler-ignore-missing-include-context"]
     }
   ]
 }

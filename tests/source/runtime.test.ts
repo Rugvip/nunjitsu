@@ -12,6 +12,7 @@ import {
   NunjitsuLimitError,
   NunjitsuRenderError,
   TemplateLoaderError,
+  TemplateNotFoundError,
   type TemplateContext,
   type TemplateLoader,
 } from '../../src/index.ts';
@@ -32,6 +33,7 @@ test('renders through reusable shared-memory workers', async () => {
     'cycle-a.njk': '{% include "cycle-b.njk" %}',
     'cycle-b.njk': '{% include "cycle-a.njk" %}',
     'missing-include.njk': '{% include "absent.njk" %}',
+    'optional-include.njk': 'before{% include "absent.njk" ignore missing %}after',
   };
   const ownedTemplates = memoryLoader(templates);
   let nestedLoads = 0;
@@ -80,15 +82,16 @@ test('renders through reusable shared-memory workers', async () => {
     assert.equal(await engine.render({ source: 'Clean after include cycle' }), 'Clean after include cycle');
     await assert.rejects(
       engine.render({ name: 'missing-include.njk' }),
-      error => error instanceof TemplateLoaderError && /not found/.test(error.message),
+      error => error instanceof TemplateNotFoundError && /not found/.test(error.message),
     );
+    assert.equal(await engine.render({ name: 'optional-include.njk' }), 'beforeafter');
     assert.equal(
       await engine.render({ source: 'Clean after loader failure' }),
       'Clean after loader failure',
     );
     await assert.rejects(
       engine.render({ name: 'missing.njk' }),
-      error => error instanceof TemplateLoaderError && /not found/.test(error.message),
+      error => error instanceof TemplateNotFoundError && /not found/.test(error.message),
     );
 
     assert.equal(
@@ -189,6 +192,13 @@ test('streams evaluator chunks with backpressure and preserves partial failure s
     assert.equal(largeChunks.join(''), largeValue);
     assert.ok(largeChunks.length >= 3);
     assert.ok(largeChunks.every(chunk => Buffer.byteLength(chunk) <= 64 * 1024));
+
+    assert.equal(
+      (await Array.fromAsync(
+        engine.renderStream({ source: 'before{% include "absent.njk" ignore missing %}after' }),
+      )).join(''),
+      'beforeafter',
+    );
 
     const invalid = engine.renderStream({ source: 'visible{{ unclosed' }).getReader();
     assert.deepEqual(await invalid.read(), { value: 'visible', done: false });
@@ -312,6 +322,10 @@ test('filesystem loading stays within explicit canonical roots', async () => {
       'File works',
     );
     await assert.rejects(engine.render({ name: '../secret.njk' }), /escapes its configured root/);
+    await assert.rejects(
+      engine.render({ source: '{% include "../secret.njk" ignore missing %}' }),
+      error => error instanceof TemplateLoaderError && /escapes its configured root/.test(error.message),
+    );
 
     if (process.platform !== 'win32') {
       await symlink(secret, join(root, 'link.njk'));

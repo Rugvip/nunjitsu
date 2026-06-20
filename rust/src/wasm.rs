@@ -12,7 +12,7 @@ use core::mem::{align_of, size_of};
 use core::ptr::{addr_of, addr_of_mut, read_unaligned, write_unaligned};
 use core::slice;
 
-const ABI_VERSION: u32 = 12;
+const ABI_VERSION: u32 = 13;
 const PAGE_SIZE: usize = 65_536;
 const STREAM_CHUNK_BYTES: u32 = 64 * 1024;
 const RECORD_ALIGNMENT: u32 = 8;
@@ -43,6 +43,7 @@ const STATE_ERROR: u32 = 2;
 const STATE_LOAD_TEMPLATE: u32 = 3;
 const STATE_OUTPUT_AVAILABLE: u32 = 4;
 const STATE_CALL_CAPABILITY: u32 = 5;
+const STATE_LOAD_OPTIONAL_TEMPLATE: u32 = 6;
 
 const ERROR_NONE: u32 = 0;
 const ERROR_INVALID_ARENA: u32 = 1;
@@ -55,7 +56,7 @@ const ERROR_RESOURCE_LIMIT: u32 = 7;
 const ERROR_UNKNOWN_CAPABILITY: u32 = 8;
 const ERROR_INVALID_EXPRESSION: u32 = 9;
 
-const RENDER_STATE_LENGTH: u32 = 128;
+const RENDER_STATE_LENGTH: u32 = 132;
 const STATE_CONTEXT: usize = 0;
 const STATE_FLAGS: usize = 4;
 const STATE_CURRENT_FRAME: usize = 8;
@@ -88,6 +89,7 @@ const STATE_EXPRESSION_ACTION: usize = 112;
 const STATE_CURRENT_LOOP: usize = 116;
 const STATE_CURRENT_SCOPE: usize = 120;
 const STATE_PENDING_SET_NAME: usize = 124;
+const STATE_INCLUDE_IGNORE_MISSING: usize = 128;
 
 const EXPRESSION_OUTPUT: u32 = 0;
 const EXPRESSION_IF: u32 = 1;
@@ -213,8 +215,26 @@ pub extern "C" fn nunjitsu_render(request_offset: u32) -> u32 {
 
 #[unsafe(no_mangle)]
 pub extern "C" fn nunjitsu_resume_include(source_offset: u32, canonical_offset: u32) -> u32 {
+    if !matches!(
+        unsafe { CONTROL.state },
+        STATE_LOAD_TEMPLATE | STATE_LOAD_OPTIONAL_TEMPLATE
+    ) {
+        return fail(ERROR_INVALID_ARENA);
+    }
     set_control(STATE_IDLE, 0, 0, ERROR_NONE);
     match resume_include(source_offset, canonical_offset).and_then(|()| run_active_render()) {
+        Ok(state) => state,
+        Err(error) => fail(error),
+    }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn nunjitsu_resume_include_missing() -> u32 {
+    if unsafe { CONTROL.state } != STATE_LOAD_OPTIONAL_TEMPLATE {
+        return fail(ERROR_INVALID_ARENA);
+    }
+    set_control(STATE_IDLE, 0, 0, ERROR_NONE);
+    match resume_include_missing().and_then(|()| run_active_render()) {
         Ok(state) => state,
         Err(error) => fail(error),
     }
@@ -337,9 +357,21 @@ fn resume_include(source_offset: u32, canonical_offset: u32) -> Result<(), u32> 
     )?;
     set_state_field(state_offset, STATE_CURRENT_FRAME, frame_offset)?;
     set_state_field(state_offset, STATE_PENDING_NAME, 0)?;
+    set_state_field(state_offset, STATE_INCLUDE_IGNORE_MISSING, 0)?;
     set_state_field(state_offset, STATE_INCLUDE_DEPTH, next_depth)?;
     set_state_field(state_offset, STATE_TRANSIENT_BASE, unsafe { ARENA_CURSOR })?;
     Ok(())
+}
+
+fn resume_include_missing() -> Result<(), u32> {
+    let state_offset = active_state()?;
+    if state_field(state_offset, STATE_PENDING_NAME)? == 0
+        || state_field(state_offset, STATE_INCLUDE_IGNORE_MISSING)? != 1
+    {
+        return Err(ERROR_INVALID_ARENA);
+    }
+    set_state_field(state_offset, STATE_PENDING_NAME, 0)?;
+    set_state_field(state_offset, STATE_INCLUDE_IGNORE_MISSING, 0)
 }
 
 fn resume_output() -> Result<(), u32> {
@@ -431,9 +463,11 @@ fn run_active_render() -> Result<u32, u32> {
         let work = match item {
             TemplateItem::Text(bytes)
             | TemplateItem::Expression(bytes)
-            | TemplateItem::Include(bytes)
             | TemplateItem::Tag(bytes) => 1u32
                 .checked_add(bytes.len() as u32)
+                .ok_or(ERROR_RESOURCE_LIMIT)?,
+            TemplateItem::Include { expression, .. } => 1u32
+                .checked_add(expression.len() as u32)
                 .ok_or(ERROR_RESOURCE_LIMIT)?,
             TemplateItem::End => 1,
         };
@@ -458,7 +492,15 @@ fn run_active_render() -> Result<u32, u32> {
                     return yield_output(state_offset);
                 }
             }
-            TemplateItem::Include(expression) => {
+            TemplateItem::Include {
+                expression,
+                ignore_missing,
+            } => {
+                set_state_field(
+                    state_offset,
+                    STATE_INCLUDE_IGNORE_MISSING,
+                    u32::from(ignore_missing),
+                )?;
                 if let Some(state) = start_expression(state_offset, expression, EXPRESSION_INCLUDE)?
                 {
                     return Ok(state);
@@ -831,13 +873,13 @@ fn issue_include(state_offset: u32, value_offset: u32) -> Result<u32, u32> {
     )?;
     let name_offset = write_bytes_record(TAG_STRING, name)?;
     set_state_field(state_offset, STATE_PENDING_NAME, name_offset)?;
-    set_control(
-        STATE_LOAD_TEMPLATE,
-        name_offset,
-        name.len() as u32,
-        ERROR_NONE,
-    );
-    Ok(STATE_LOAD_TEMPLATE)
+    let state = if state_field(state_offset, STATE_INCLUDE_IGNORE_MISSING)? == 1 {
+        STATE_LOAD_OPTIONAL_TEMPLATE
+    } else {
+        STATE_LOAD_TEMPLATE
+    };
+    set_control(state, name_offset, name.len() as u32, ERROR_NONE);
+    Ok(state)
 }
 
 fn apply_if_condition(state_offset: u32, value_offset: u32) -> Result<Option<u32>, u32> {

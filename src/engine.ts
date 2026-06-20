@@ -8,7 +8,12 @@ import {
   type CapabilityRegistry,
   type TemplateCapabilities,
 } from './capabilities.ts';
-import { loadTemplate, type LoadedTemplate, type TemplateLoader } from './loaders.ts';
+import {
+  loadTemplate,
+  TemplateNotFoundError,
+  type LoadedTemplate,
+  type TemplateLoader,
+} from './loaders.ts';
 import {
   NunjitsuLimitError,
   normalizeRenderLimits,
@@ -239,6 +244,7 @@ interface LoadMessage {
   id: number;
   name: string;
   cursor: number;
+  ignoreMissing: boolean;
 }
 
 /** Output chunk yielded while a streaming evaluator is suspended. */
@@ -870,7 +876,7 @@ class WorkerSlot {
       return;
     }
     if (value.type === 'ready') {
-      if (value.abiVersion !== 12 || value.arenaBase <= 0) {
+      if (value.abiVersion !== 13 || value.arenaBase <= 0) {
         this.#fail(new Error('Nunjitsu worker reported an incompatible Wasm ABI'));
         return;
       }
@@ -1001,6 +1007,11 @@ class WorkerSlot {
       if (this.#pending !== pending) {
         return;
       }
+      if (error instanceof TemplateNotFoundError && message.ignoreMissing) {
+        pending.loading = false;
+        this.#worker.postMessage({ type: 'resumeLoadMissing', id: pending.id });
+        return;
+      }
       this.#pending = undefined;
       this.failed = true;
       void this.#worker.terminate();
@@ -1118,7 +1129,8 @@ function isWorkerMessage(value: unknown): value is WorkerMessage {
     return (
       typeof message.id === 'number' &&
       typeof message.name === 'string' &&
-      typeof message.cursor === 'number'
+      typeof message.cursor === 'number' &&
+      typeof message.ignoreMissing === 'boolean'
     );
   }
   if (message.type === 'chunk') {
