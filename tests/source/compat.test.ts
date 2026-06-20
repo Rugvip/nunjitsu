@@ -215,6 +215,18 @@ function capabilityFixture(name: string | undefined): TemplateCapabilities {
       },
     };
   }
+  if (name === 'compiler-function-globals') {
+    return {
+      globals: {
+        foo(arguments_) {
+          return `${String(arguments_[0])}hi`;
+        },
+        'foo.bar'() {
+          return 'hello';
+        },
+      },
+    };
+  }
   throw new Error(`Unknown compatibility capability fixture: ${name}`);
 }
 

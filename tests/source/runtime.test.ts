@@ -65,6 +65,12 @@ test('renders through reusable shared-memory workers', async () => {
     assert.equal(greeting, 'Hello Nunjitsu!');
     assert.equal(staticText, 'No interpolation');
     assert.equal(missingValue, 'Missing: .');
+    const prototypeFree = Object.create(null) as Record<string, unknown>;
+    prototypeFree.foo = Object.assign(Object.create(null) as Record<string, string>, { bar: 'baz' });
+    assert.equal(
+      await engine.render({ source: '{{ foo.bar }}' }, prototypeFree as TemplateContext),
+      'baz',
+    );
     assert.equal(
       await engine.render({ name: 'named.njk' }, { value: 'from memory' }),
       'Loaded from memory',

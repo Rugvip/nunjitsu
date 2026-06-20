@@ -535,6 +535,58 @@
       "upstream": { "id": "tests/compiler.js:150", "file": "tests/compiler.js", "test": "should work with blocks in the body" },
       "status": "ported",
       "cases": ["compiler-filter-block-inheritance"]
+    },
+    {
+      "upstream": { "id": "tests/compiler.js:2", "file": "tests/compiler.js", "test": "should escape newlines" },
+      "status": "ported",
+      "cases": ["compiler-static-newline"]
+    },
+    {
+      "upstream": { "id": "tests/compiler.js:3", "file": "tests/compiler.js", "test": "should escape Unicode line seperators" },
+      "status": "ported",
+      "cases": ["compiler-unicode-line-separator"]
+    },
+    {
+      "upstream": { "id": "tests/compiler.js:5", "file": "tests/compiler.js", "test": "should compile references - object without prototype" },
+      "status": "adapted",
+      "reason": "The TypeScript runtime test supplies the same nested null-prototype context through Nunjitsu's copied safe-value boundary."
+    },
+    {
+      "upstream": { "id": "tests/compiler.js:7", "file": "tests/compiler.js", "test": "should not treat falsy values the same as undefined" },
+      "status": "ported",
+      "cases": ["compiler-zero-is-defined", "compiler-false-is-defined"]
+    },
+    {
+      "upstream": { "id": "tests/compiler.js:8", "file": "tests/compiler.js", "test": "should display none as empty string" },
+      "status": "ported",
+      "cases": ["compiler-none-empty"]
+    },
+    {
+      "upstream": { "id": "tests/compiler.js:9", "file": "tests/compiler.js", "test": "should compile none as falsy" },
+      "status": "ported",
+      "cases": ["compiler-none-falsy"]
+    },
+    {
+      "upstream": { "id": "tests/compiler.js:10", "file": "tests/compiler.js", "test": "should compile none as null, not undefined" },
+      "status": "ported",
+      "cases": ["compiler-none-not-undefined"]
+    },
+    {
+      "upstream": { "id": "tests/compiler.js:11", "file": "tests/compiler.js", "test": "should compile function calls" },
+      "status": "adapted",
+      "reason": "The template and output are unchanged while the callable is registered as an explicit typed global capability.",
+      "cases": ["compiler-callable-global"]
+    },
+    {
+      "upstream": { "id": "tests/compiler.js:12", "file": "tests/compiler.js", "test": "should compile function calls with correct scope" },
+      "status": "adapted",
+      "reason": "The template and output are unchanged while the dotted callable is registered explicitly instead of invoking a live object method with JavaScript this binding.",
+      "cases": ["compiler-dotted-callable-global"]
+    },
+    {
+      "upstream": { "id": "tests/compiler.js:13", "file": "tests/compiler.js", "test": "should compile switch statements" },
+      "status": "ported",
+      "cases": ["compiler-switch-default", "compiler-switch-first-case", "compiler-switch-second-case", "compiler-switch-no-default", "compiler-switch-fallthrough-first", "compiler-switch-fallthrough-second"]
     }
   ]
 }

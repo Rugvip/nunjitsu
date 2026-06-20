@@ -1256,6 +1256,126 @@
       "context": {},
       "autoescape": true,
       "expected": "may the forth be with you\n"
+    },
+    {
+      "id": "compiler-static-newline",
+      "template": "foo\nbar",
+      "context": {},
+      "autoescape": true,
+      "expected": "foo\nbar"
+    },
+    {
+      "id": "compiler-unicode-line-separator",
+      "template": " ",
+      "context": {},
+      "autoescape": true,
+      "expected": " "
+    },
+    {
+      "id": "compiler-zero-is-defined",
+      "template": "{{ foo }}",
+      "nativeRender": false,
+      "context": { "foo": 0 },
+      "autoescape": true,
+      "expected": "0"
+    },
+    {
+      "id": "compiler-false-is-defined",
+      "template": "{{ foo }}",
+      "nativeRender": false,
+      "context": { "foo": false },
+      "autoescape": true,
+      "expected": "false"
+    },
+    {
+      "id": "compiler-none-empty",
+      "template": "{{ none }}",
+      "nativeRender": false,
+      "context": {},
+      "autoescape": true,
+      "expected": ""
+    },
+    {
+      "id": "compiler-none-falsy",
+      "template": "{% if not none %}yes{% endif %}",
+      "nativeRender": false,
+      "context": {},
+      "autoescape": true,
+      "expected": "yes"
+    },
+    {
+      "id": "compiler-none-not-undefined",
+      "template": "{{ none|default(\"d\", false) }}",
+      "nativeRender": false,
+      "context": {},
+      "autoescape": true,
+      "expected": ""
+    },
+    {
+      "id": "compiler-callable-global",
+      "template": "{{ foo(\"msg\") }}",
+      "capabilityFixture": "compiler-function-globals",
+      "nativeRender": false,
+      "context": {},
+      "autoescape": true,
+      "expected": "msghi"
+    },
+    {
+      "id": "compiler-dotted-callable-global",
+      "template": "{{ foo.bar() }}",
+      "capabilityFixture": "compiler-function-globals",
+      "nativeRender": false,
+      "context": { "foo": { "baz": "hello" } },
+      "autoescape": true,
+      "expected": "hello"
+    },
+    {
+      "id": "compiler-switch-default",
+      "template": "{% switch foo %}{% case \"bar\" %}BAR{% case \"baz\" %}BAZ{% default %}NEITHER FOO NOR BAR{% endswitch %}",
+      "nativeRender": false,
+      "context": {},
+      "autoescape": true,
+      "expected": "NEITHER FOO NOR BAR"
+    },
+    {
+      "id": "compiler-switch-first-case",
+      "template": "{% switch foo %}{% case \"bar\" %}BAR{% case \"baz\" %}BAZ{% default %}NEITHER FOO NOR BAR{% endswitch %}",
+      "nativeRender": false,
+      "context": { "foo": "bar" },
+      "autoescape": true,
+      "expected": "BAR"
+    },
+    {
+      "id": "compiler-switch-second-case",
+      "template": "{% switch foo %}{% case \"bar\" %}BAR{% case \"baz\" %}BAZ{% default %}NEITHER FOO NOR BAR{% endswitch %}",
+      "nativeRender": false,
+      "context": { "foo": "baz" },
+      "autoescape": true,
+      "expected": "BAZ"
+    },
+    {
+      "id": "compiler-switch-no-default",
+      "template": "{% switch foo %}{% case \"bar\" %}BAR{% case \"baz\" %}BAZ{% endswitch %}",
+      "nativeRender": false,
+      "context": {},
+      "autoescape": true,
+      "expected": ""
+    },
+    {
+      "id": "compiler-switch-fallthrough-first",
+      "template": "{% switch foo %}{% case \"bar\" %}{% case \"baz\" %}BAR{% endswitch %}",
+      "nativeRender": false,
+      "context": { "foo": "bar" },
+      "autoescape": true,
+      "expected": "BAR"
+    },
+    {
+      "id": "compiler-switch-fallthrough-second",
+      "template": "{% switch foo %}{% case \"bar\" %}{% case \"baz\" %}BAR{% endswitch %}",
+      "nativeRender": false,
+      "context": { "foo": "baz" },
+      "autoescape": true,
+      "expected": "BAR"
     }
   ]
 }

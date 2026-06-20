@@ -309,7 +309,10 @@ function copyEntries(
 ): { registered: RegisteredCapability[] } {
   const registered: RegisteredCapability[] = [];
   for (const [name, callback] of Object.entries(values ?? {})) {
-    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) {
+    const validName = kind === capabilityKind.global
+      ? /^[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*$/.test(name)
+      : /^[A-Za-z_][A-Za-z0-9_]*$/.test(name);
+    if (!validName) {
       throw new TypeError(`Capability name is not a template identifier: ${name}`);
     }
     if (typeof callback !== 'function') {
