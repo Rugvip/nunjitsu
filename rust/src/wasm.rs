@@ -1,8 +1,9 @@
 use crate::expression::{
     Atom, BinaryOperator, Call, Comparison, Operand, Operation, next_argument, next_binding,
-    next_lookup_segment, next_macro_argument, next_macro_parameter, next_operation,
-    next_record_entry, parse_base, parse_call_block, parse_for_clause, parse_import_clause,
-    parse_set_clause, parse_tag_call, split_binary_expression,
+    next_import_binding, next_lookup_segment, next_macro_argument, next_macro_parameter,
+    next_operation, next_record_entry, parse_base, parse_call_block, parse_for_clause,
+    parse_from_import_clause, parse_import_clause, parse_set_clause, parse_tag_call,
+    split_binary_expression,
 };
 use crate::template::{
     ConditionalBoundary, ParseOptions, RenderError, RenderedValue, TemplateItem, directive_keyword,
@@ -14,7 +15,7 @@ use core::mem::{align_of, size_of};
 use core::ptr::{addr_of, addr_of_mut, read_unaligned, write_unaligned};
 use core::slice;
 
-const ABI_VERSION: u32 = 17;
+const ABI_VERSION: u32 = 18;
 const PAGE_SIZE: usize = 65_536;
 const STREAM_CHUNK_BYTES: u32 = 64 * 1024;
 const RECORD_ALIGNMENT: u32 = 8;
@@ -64,7 +65,7 @@ const ERROR_RESOURCE_LIMIT: u32 = 7;
 const ERROR_UNKNOWN_CAPABILITY: u32 = 8;
 const ERROR_INVALID_EXPRESSION: u32 = 9;
 
-const RENDER_STATE_LENGTH: u32 = 156;
+const RENDER_STATE_LENGTH: u32 = 160;
 const STATE_CONTEXT: usize = 0;
 const STATE_FLAGS: usize = 4;
 const STATE_CURRENT_FRAME: usize = 8;
@@ -104,6 +105,7 @@ const STATE_CURRENT_MACRO_CALL: usize = 140;
 const STATE_CURRENT_BLOCK_DEFINITION: usize = 144;
 const STATE_PENDING_IMPORT_ALIAS: usize = 148;
 const STATE_IMPORT_WITH_CONTEXT: usize = 152;
+const STATE_PENDING_IMPORT_BINDINGS: usize = 156;
 
 const EXPRESSION_OUTPUT: u32 = 0;
 const EXPRESSION_IF: u32 = 1;
@@ -165,7 +167,7 @@ const MACRO_DEFINITION_PARAMETERS: usize = 16;
 const MACRO_DEFINITION_SCOPE: usize = 20;
 const MACRO_DEFINITION_FRAME: usize = 24;
 
-const MACRO_CALL_LENGTH: u32 = 60;
+const MACRO_CALL_LENGTH: u32 = 64;
 const MACRO_CALL_PARENT: usize = 0;
 const MACRO_CALL_FRAME: usize = 4;
 const MACRO_CALL_PENDING_EXPRESSION: usize = 8;
@@ -181,6 +183,7 @@ const MACRO_CALL_LOOP: usize = 44;
 const MACRO_CALL_TRANSIENT_BASE: usize = 48;
 const MACRO_CALL_PENDING_IMPORT_ALIAS: usize = 52;
 const MACRO_CALL_IMPORT_WITH_CONTEXT: usize = 56;
+const MACRO_CALL_PENDING_IMPORT_BINDINGS: usize = 60;
 
 const BLOCK_DEFINITION_LENGTH: u32 = 28;
 const BLOCK_DEFINITION_PARENT: usize = 0;
@@ -409,14 +412,22 @@ fn resume_include(source_offset: u32, canonical_offset: u32) -> Result<(), u32> 
     }
     if load_kind == LOAD_IMPORT {
         let alias = state_field(state_offset, STATE_PENDING_IMPORT_ALIAS)?;
-        if alias == 0 || state_field(state_offset, STATE_IMPORT_WITH_CONTEXT)? > 1 {
+        let bindings = state_field(state_offset, STATE_PENDING_IMPORT_BINDINGS)?;
+        if (alias == 0) == (bindings == 0)
+            || state_field(state_offset, STATE_IMPORT_WITH_CONTEXT)? > 1
+        {
             return Err(ERROR_INVALID_ARENA);
         }
         let namespace = write_import_namespace(state_offset, source_offset, parent)?;
-        assign_scope(state_offset, alias, namespace)?;
+        if alias != 0 {
+            assign_scope(state_offset, alias, namespace)?;
+        } else {
+            assign_import_bindings(state_offset, bindings, namespace)?;
+        }
         set_state_field(state_offset, STATE_PENDING_NAME, 0)?;
         set_state_field(state_offset, STATE_PENDING_LOAD_KIND, LOAD_INCLUDE)?;
         set_state_field(state_offset, STATE_PENDING_IMPORT_ALIAS, 0)?;
+        set_state_field(state_offset, STATE_PENDING_IMPORT_BINDINGS, 0)?;
         set_state_field(state_offset, STATE_IMPORT_WITH_CONTEXT, 0)?;
         set_state_field(state_offset, STATE_TRANSIENT_BASE, unsafe { ARENA_CURSOR })?;
         return Ok(());
@@ -665,10 +676,24 @@ fn start_expression(state_offset: u32, expression: &[u8], action: u32) -> Result
 }
 
 fn handle_tag(state_offset: u32, directive: &[u8]) -> Result<Option<u32>, u32> {
+    if let Some(source) = directive_keyword(directive, b"from") {
+        let clause = parse_from_import_clause(source).map_err(|_| ERROR_UNSUPPORTED_TAG)?;
+        let bindings = write_bytes_record(TAG_STRING, clause.bindings)?;
+        set_state_field(state_offset, STATE_PENDING_IMPORT_ALIAS, 0)?;
+        set_state_field(state_offset, STATE_PENDING_IMPORT_BINDINGS, bindings)?;
+        set_state_field(
+            state_offset,
+            STATE_IMPORT_WITH_CONTEXT,
+            u32::from(clause.with_context),
+        )?;
+        set_state_field(state_offset, STATE_PENDING_LOAD_KIND, LOAD_IMPORT)?;
+        return start_expression(state_offset, clause.template, EXPRESSION_IMPORT);
+    }
     if let Some(source) = directive_keyword(directive, b"import") {
         let clause = parse_import_clause(source).map_err(|_| ERROR_UNSUPPORTED_TAG)?;
         let alias = write_bytes_record(TAG_STRING, clause.alias)?;
         set_state_field(state_offset, STATE_PENDING_IMPORT_ALIAS, alias)?;
+        set_state_field(state_offset, STATE_PENDING_IMPORT_BINDINGS, 0)?;
         set_state_field(
             state_offset,
             STATE_IMPORT_WITH_CONTEXT,
@@ -809,7 +834,7 @@ fn write_import_namespace(
 ) -> Result<u32, u32> {
     let mut count = 0usize;
     let mut cursor = 0usize;
-    let mut block_depth = 0usize;
+    let mut nested_depth = 0usize;
     loop {
         let source = record_at(source_offset, TAG_SOURCE)?;
         let (item, next_cursor) =
@@ -817,19 +842,37 @@ fn write_import_namespace(
                 .map_err(render_error_code)?;
         match item {
             TemplateItem::Tag(directive) => {
-                if directive_keyword(directive, b"block").is_some() {
-                    block_depth = block_depth.checked_add(1).ok_or(ERROR_RESOURCE_LIMIT)?;
-                } else if directive == b"endblock" {
-                    block_depth = block_depth.saturating_sub(1);
+                if directive_keyword(directive, b"block").is_some()
+                    || directive_keyword(directive, b"for").is_some()
+                    || directive_keyword(directive, b"if").is_some()
+                {
+                    nested_depth = nested_depth.checked_add(1).ok_or(ERROR_RESOURCE_LIMIT)?;
+                } else if matches!(directive, b"endblock" | b"endfor" | b"endif") {
+                    nested_depth = nested_depth.saturating_sub(1);
                 } else if directive_keyword(directive, b"macro").is_some() {
                     let end_cursor =
                         find_macro_end(source, next_cursor, parse_options(state_offset)?)
                             .map_err(render_error_code)?;
-                    if block_depth == 0 {
+                    if nested_depth == 0 {
                         count = count.checked_add(1).ok_or(ERROR_RESOURCE_LIMIT)?;
                     }
                     cursor = end_cursor;
                     continue;
+                } else if nested_depth == 0
+                    && let Some(clause) = directive_keyword(directive, b"set")
+                {
+                    let clause = parse_set_clause(clause).map_err(|_| ERROR_UNSUPPORTED_TAG)?;
+                    if clause.expression.is_some() {
+                        let mut binding_cursor = 0usize;
+                        while let Some((name, next)) = next_binding(clause.targets, binding_cursor)
+                            .map_err(|_| ERROR_UNSUPPORTED_TAG)?
+                        {
+                            if !name.starts_with(b"_") {
+                                count = count.checked_add(1).ok_or(ERROR_RESOURCE_LIMIT)?;
+                            }
+                            binding_cursor = next;
+                        }
+                    }
                 }
             }
             TemplateItem::End => break,
@@ -843,8 +886,12 @@ fn write_import_namespace(
         .ok_or(ERROR_RESOURCE_LIMIT)?;
     let namespace = allocate_record(TAG_RECORD, payload_length)?;
     write_u32(mutable_record_at(namespace, TAG_RECORD)?, 0, count as u32)?;
+    let outer_scope = state_field(state_offset, STATE_CURRENT_SCOPE)?;
+    let with_context = state_field(state_offset, STATE_IMPORT_WITH_CONTEXT)? == 1;
+    let mut caller_scope = outer_scope;
+    let mut imported_scope = if with_context { outer_scope } else { 0 };
     cursor = 0;
-    block_depth = 0;
+    nested_depth = 0;
     let mut index = 0usize;
     loop {
         let source = record_at(source_offset, TAG_SOURCE)?;
@@ -853,21 +900,93 @@ fn write_import_namespace(
                 .map_err(render_error_code)?;
         match item {
             TemplateItem::Tag(directive) => {
-                if directive_keyword(directive, b"block").is_some() {
-                    block_depth = block_depth.checked_add(1).ok_or(ERROR_RESOURCE_LIMIT)?;
-                } else if directive == b"endblock" {
-                    block_depth = block_depth.saturating_sub(1);
+                if directive_keyword(directive, b"block").is_some()
+                    || directive_keyword(directive, b"for").is_some()
+                    || directive_keyword(directive, b"if").is_some()
+                {
+                    nested_depth = nested_depth.checked_add(1).ok_or(ERROR_RESOURCE_LIMIT)?;
+                } else if matches!(directive, b"endblock" | b"endfor" | b"endif") {
+                    nested_depth = nested_depth.saturating_sub(1);
+                } else if directive_keyword(directive, b"macro").is_some() {
+                    cursor = find_macro_end(source, next_cursor, parse_options(state_offset)?)
+                        .map_err(render_error_code)?;
+                    continue;
+                } else if nested_depth == 0
+                    && let Some(clause) = directive_keyword(directive, b"set")
+                {
+                    let clause = parse_set_clause(clause).map_err(|_| ERROR_UNSUPPORTED_TAG)?;
+                    if let Some(expression) = clause.expression {
+                        set_state_field(state_offset, STATE_CURRENT_SCOPE, imported_scope)?;
+                        let value = evaluate_sync_expression(state_offset, expression);
+                        set_state_field(state_offset, STATE_CURRENT_SCOPE, caller_scope)?;
+                        let value = value?;
+                        let mut binding_cursor = 0usize;
+                        while let Some((name, next)) = next_binding(clause.targets, binding_cursor)
+                            .map_err(|_| ERROR_UNSUPPORTED_TAG)?
+                        {
+                            if !name.starts_with(b"_") {
+                                let name_offset = write_bytes_record(TAG_STRING, name)?;
+                                if with_context {
+                                    set_state_field(
+                                        state_offset,
+                                        STATE_CURRENT_SCOPE,
+                                        caller_scope,
+                                    )?;
+                                    assign_scope(state_offset, name_offset, value)?;
+                                    caller_scope = state_field(state_offset, STATE_CURRENT_SCOPE)?;
+                                    imported_scope = caller_scope;
+                                } else {
+                                    let scope = allocate_record(TAG_SCOPE, SCOPE_LENGTH)?;
+                                    let scope_record = mutable_record_at(scope, TAG_SCOPE)?;
+                                    write_u32(scope_record, SCOPE_PARENT, imported_scope)?;
+                                    write_u32(scope_record, SCOPE_NAME, name_offset)?;
+                                    write_u32(scope_record, SCOPE_VALUE, value)?;
+                                    imported_scope = scope;
+                                }
+                                let record = mutable_record_at(namespace, TAG_RECORD)?;
+                                write_u32(record, 4 + index * 8, name_offset)?;
+                                write_u32(record, 8 + index * 8, value)?;
+                                index += 1;
+                            }
+                            binding_cursor = next;
+                        }
+                    }
+                }
+            }
+            TemplateItem::End => break,
+            _ => {}
+        }
+        cursor = next_cursor;
+    }
+    set_state_field(state_offset, STATE_CURRENT_SCOPE, caller_scope)?;
+
+    cursor = 0;
+    nested_depth = 0;
+    loop {
+        let source = record_at(source_offset, TAG_SOURCE)?;
+        let (item, next_cursor) =
+            next_item_with_options(source, cursor, parse_options(state_offset)?)
+                .map_err(render_error_code)?;
+        match item {
+            TemplateItem::Tag(directive) => {
+                if directive_keyword(directive, b"block").is_some()
+                    || directive_keyword(directive, b"for").is_some()
+                    || directive_keyword(directive, b"if").is_some()
+                {
+                    nested_depth = nested_depth.checked_add(1).ok_or(ERROR_RESOURCE_LIMIT)?;
+                } else if matches!(directive, b"endblock" | b"endfor" | b"endif") {
+                    nested_depth = nested_depth.saturating_sub(1);
                 } else if let Some(signature) = directive_keyword(directive, b"macro") {
                     let end_cursor =
                         find_macro_end(source, next_cursor, parse_options(state_offset)?)
                             .map_err(render_error_code)?;
-                    if block_depth == 0 {
+                    if nested_depth == 0 {
                         let definition = write_imported_macro_definition(
-                            state_offset,
                             signature,
                             owner_frame,
                             source_offset,
                             next_cursor as u32,
+                            imported_scope,
                         )?;
                         let name = macro_definition_field(definition, MACRO_DEFINITION_NAME)?;
                         let record = mutable_record_at(namespace, TAG_RECORD)?;
@@ -887,12 +1006,33 @@ fn write_import_namespace(
     Ok(namespace)
 }
 
-fn write_imported_macro_definition(
+fn assign_import_bindings(
     state_offset: u32,
+    bindings_offset: u32,
+    namespace_offset: u32,
+) -> Result<(), u32> {
+    let bindings = record_at(bindings_offset, TAG_STRING)?;
+    let namespace = Record::new(record_at(namespace_offset, TAG_RECORD)?)?;
+    let mut cursor = 0usize;
+    while let Some(binding) =
+        next_import_binding(bindings, cursor).map_err(|_| ERROR_UNSUPPORTED_TAG)?
+    {
+        let value = namespace
+            .get_offset(binding.name)
+            .ok_or(ERROR_INVALID_EXPRESSION)?;
+        let alias = write_bytes_record(TAG_STRING, binding.alias)?;
+        assign_scope(state_offset, alias, value)?;
+        cursor = binding.next_cursor;
+    }
+    Ok(())
+}
+
+fn write_imported_macro_definition(
     signature: &[u8],
     owner_frame: u32,
     source_offset: u32,
     body_cursor: u32,
+    scope: u32,
 ) -> Result<u32, u32> {
     let macro_signature = parse_tag_call(signature).map_err(|_| ERROR_UNSUPPORTED_TAG)?;
     let mut parameter_cursor = 0usize;
@@ -910,15 +1050,7 @@ fn write_imported_macro_definition(
     write_u32(definition, MACRO_DEFINITION_SOURCE, source_offset)?;
     write_u32(definition, MACRO_DEFINITION_BODY_CURSOR, body_cursor)?;
     write_u32(definition, MACRO_DEFINITION_PARAMETERS, parameters)?;
-    write_u32(
-        definition,
-        MACRO_DEFINITION_SCOPE,
-        if state_field(state_offset, STATE_IMPORT_WITH_CONTEXT)? == 1 {
-            state_field(state_offset, STATE_CURRENT_SCOPE)?
-        } else {
-            0
-        },
-    )?;
+    write_u32(definition, MACRO_DEFINITION_SCOPE, scope)?;
     write_u32(definition, MACRO_DEFINITION_FRAME, owner_frame)?;
     Ok(definition_offset)
 }
@@ -1411,6 +1543,11 @@ fn start_macro_call(
         MACRO_CALL_IMPORT_WITH_CONTEXT,
         state_field(state_offset, STATE_IMPORT_WITH_CONTEXT)?,
     )?;
+    write_u32(
+        call_record,
+        MACRO_CALL_PENDING_IMPORT_BINDINGS,
+        state_field(state_offset, STATE_PENDING_IMPORT_BINDINGS)?,
+    )?;
 
     set_state_field(state_offset, STATE_CURRENT_MACRO_CALL, call_offset)?;
     set_state_field(state_offset, STATE_CURRENT_FRAME, macro_frame)?;
@@ -1429,6 +1566,7 @@ fn start_macro_call(
     set_state_field(state_offset, STATE_PENDING_NAME, 0)?;
     set_state_field(state_offset, STATE_PENDING_IMPORT_ALIAS, 0)?;
     set_state_field(state_offset, STATE_IMPORT_WITH_CONTEXT, 0)?;
+    set_state_field(state_offset, STATE_PENDING_IMPORT_BINDINGS, 0)?;
     set_state_field(state_offset, STATE_NEGATE_RESULT, NEGATE_NONE)?;
     begin_capture(state_offset, 0)?;
 
@@ -1539,6 +1677,11 @@ fn finish_macro_call(state_offset: u32) -> Result<Option<u32>, u32> {
         state_offset,
         STATE_IMPORT_WITH_CONTEXT,
         macro_call_field(call_offset, MACRO_CALL_IMPORT_WITH_CONTEXT)?,
+    )?;
+    set_state_field(
+        state_offset,
+        STATE_PENDING_IMPORT_BINDINGS,
+        macro_call_field(call_offset, MACRO_CALL_PENDING_IMPORT_BINDINGS)?,
     )?;
     let result_offset =
         if macro_call_field(call_offset, MACRO_CALL_NEGATE_RESULT)? == NEGATE_TRUTHINESS {

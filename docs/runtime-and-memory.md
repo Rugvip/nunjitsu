@@ -79,6 +79,12 @@ resolution order. Selected overrides execute through bounded source frames, so
 inheritance does not require copying block bodies or retaining a precompiled
 template graph.
 
+Imports materialize a render-local namespace record containing exported values
+and deferred macro definitions. `from` imports bind selected namespace entries
+into the active scope. Context-enabled imports begin from the caller scope;
+context-free imports begin from an empty local scope. Nested loop and block
+scopes remain isolated from both the namespace and the importer.
+
 ## Suspension and resumption
 
 Evaluation uses explicit frames rather than the native Rust stack as its

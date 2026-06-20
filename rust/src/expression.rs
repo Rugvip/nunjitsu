@@ -184,6 +184,28 @@ pub struct ImportClause<'a> {
     pub with_context: bool,
 }
 
+/// One `{% from expression import names %}` clause.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct FromImportClause<'a> {
+    /// Template-name expression resolved through configured loaders.
+    pub template: &'a [u8],
+    /// Comma-separated imported names and aliases.
+    pub bindings: &'a [u8],
+    /// Whether the imported template receives the caller context.
+    pub with_context: bool,
+}
+
+/// One imported name and its local alias.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct ImportBinding<'a> {
+    /// Exported template name.
+    pub name: &'a [u8],
+    /// Local name, equal to `name` when no alias is present.
+    pub alias: &'a [u8],
+    /// Cursor of the following binding.
+    pub next_cursor: usize,
+}
+
 /// Parses the base atom, its unary negation, and the following operation cursor.
 pub fn parse_base(expression: &[u8]) -> Result<(Atom<'_>, usize, bool), ExpressionError> {
     if let Some(atom) = parse_inline_if(expression)? {
@@ -725,6 +747,95 @@ pub fn parse_import_clause(source: &[u8]) -> Result<ImportClause<'_>, Expression
     })
 }
 
+/// Parses `template-expression import names [with|without context]`.
+pub fn parse_from_import_clause(source: &[u8]) -> Result<FromImportClause<'_>, ExpressionError> {
+    let start = skip_whitespace(source, 0);
+    let (_, expression_end) = parse_atom(source, start)?;
+    let template = trim_whitespace(&source[start..expression_end]);
+    let mut cursor = skip_whitespace(source, expression_end);
+    if !has_keyword(source, cursor, b"import") {
+        return Err(ExpressionError);
+    }
+    cursor = skip_whitespace(source, cursor + 6);
+    let bindings_start = cursor;
+    let first = next_import_binding(source, cursor)?.ok_or(ExpressionError)?;
+    let mut bindings_end = first.next_cursor;
+    cursor = skip_whitespace(source, first.next_cursor);
+    while cursor != source.len()
+        && !has_keyword(source, cursor, b"with")
+        && !has_keyword(source, cursor, b"without")
+    {
+        let binding = next_import_binding(source, cursor)?.ok_or(ExpressionError)?;
+        bindings_end = binding.next_cursor;
+        cursor = skip_whitespace(source, binding.next_cursor);
+    }
+    if cursor == source.len() {
+        return Ok(FromImportClause {
+            template,
+            bindings: trim_whitespace(&source[bindings_start..bindings_end]),
+            with_context: false,
+        });
+    }
+    let with_context = has_keyword(source, cursor, b"with");
+    cursor = skip_whitespace(source, cursor + if with_context { 4 } else { 7 });
+    if !has_keyword(source, cursor, b"context") {
+        return Err(ExpressionError);
+    }
+    cursor = skip_whitespace(source, cursor + 7);
+    if cursor != source.len() {
+        return Err(ExpressionError);
+    }
+    Ok(FromImportClause {
+        template,
+        bindings: trim_whitespace(&source[bindings_start..bindings_end]),
+        with_context,
+    })
+}
+
+/// Parses one `name [as alias]` entry from an import binding list.
+pub fn next_import_binding(
+    bindings: &[u8],
+    cursor: usize,
+) -> Result<Option<ImportBinding<'_>>, ExpressionError> {
+    let cursor = skip_whitespace(bindings, cursor);
+    if cursor == bindings.len() {
+        return Ok(None);
+    }
+    let name_start = cursor;
+    let mut cursor = parse_identifier(bindings, cursor)?;
+    let name = &bindings[name_start..cursor];
+    cursor = skip_whitespace(bindings, cursor);
+    let alias = if has_keyword(bindings, cursor, b"as") {
+        cursor = skip_whitespace(bindings, cursor + 2);
+        let alias_start = cursor;
+        cursor = parse_identifier(bindings, cursor)?;
+        &bindings[alias_start..cursor]
+    } else {
+        name
+    };
+    cursor = skip_whitespace(bindings, cursor);
+    let next_cursor = if cursor == bindings.len()
+        || has_keyword(bindings, cursor, b"with")
+        || has_keyword(bindings, cursor, b"without")
+    {
+        cursor
+    } else {
+        if bindings.get(cursor) != Some(&b',') {
+            return Err(ExpressionError);
+        }
+        let next = skip_whitespace(bindings, cursor + 1);
+        if next == bindings.len() {
+            return Err(ExpressionError);
+        }
+        next
+    };
+    Ok(Some(ImportBinding {
+        name,
+        alias,
+        next_cursor,
+    }))
+}
+
 /// Parses one identifier from a validated comma-separated binding list.
 pub fn next_binding(
     bindings: &[u8],
@@ -1229,6 +1340,28 @@ mod tests {
                 with_context: true,
             }),
         );
+        assert_eq!(
+            parse_from_import_clause(br#" "import.njk" import foo as baz, bar without context "#),
+            Ok(FromImportClause {
+                template: br#""import.njk""#,
+                bindings: b"foo as baz, bar",
+                with_context: false,
+            }),
+        );
+        let bindings = b"foo as baz, bar";
+        let first = next_import_binding(bindings, 0).unwrap().unwrap();
+        assert_eq!(
+            (first.name, first.alias),
+            (b"foo".as_slice(), b"baz".as_slice())
+        );
+        let second = next_import_binding(bindings, first.next_cursor)
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            (second.name, second.alias),
+            (b"bar".as_slice(), b"bar".as_slice())
+        );
+        assert_eq!(next_import_binding(bindings, second.next_cursor), Ok(None));
         assert_eq!(
             parse_base(b"imp.wrap(\"span\")"),
             Ok((

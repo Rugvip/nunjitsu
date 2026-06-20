@@ -555,6 +555,123 @@
       "expected": "<span>Hey</span>"
     },
     {
+      "id": "compiler-import-namespace-values",
+      "template": "{% import \"import.njk\" as imp %}{{ imp.foo() }} {{ imp.bar }}",
+      "templates": { "import.njk": "{% macro foo() %}Here's a macro{% endmacro %}\n{% set bar = 'baz' %}" },
+      "nativeRender": false,
+      "context": {},
+      "autoescape": false,
+      "expected": "Here's a macro baz"
+    },
+    {
+      "id": "compiler-from-import-aliases",
+      "template": "{% from \"import.njk\" import foo as baz, bar %}{{ bar }} {{ baz() }}",
+      "templates": { "import.njk": "{% macro foo() %}Here's a macro{% endmacro %}\n{% set bar = 'baz' %}" },
+      "nativeRender": false,
+      "context": {},
+      "autoescape": false,
+      "expected": "baz Here's a macro"
+    },
+    {
+      "id": "compiler-from-import-loop-scope",
+      "template": "{% for i in [1,2] %}start: {{ num }}{% from \"import.njk\" import bar as num %}end: {{ num }}{% endfor %}final: {{ num }}",
+      "templates": { "import.njk": "{% set bar = 'baz' %}" },
+      "nativeRender": false,
+      "context": {},
+      "autoescape": false,
+      "expected": "start: end: bazstart: bazend: bazfinal: "
+    },
+    {
+      "id": "compiler-import-with-context-macro",
+      "template": "{% set bar = \"BAR\" %}{% import \"import-context.njk\" as imp with context %}{{ imp.foo() }}",
+      "templates": { "import-context.njk": "{% macro foo() %}Here's {{ bar }}{% endmacro %}" },
+      "nativeRender": false,
+      "context": {},
+      "autoescape": false,
+      "expected": "Here's BAR"
+    },
+    {
+      "id": "compiler-from-import-with-context-macro",
+      "template": "{% set bar = \"BAR\" %}{% from \"import-context.njk\" import foo with context %}{{ foo() }}",
+      "templates": { "import-context.njk": "{% macro foo() %}Here's {{ bar }}{% endmacro %}" },
+      "nativeRender": false,
+      "context": {},
+      "autoescape": false,
+      "expected": "Here's BAR"
+    },
+    {
+      "id": "compiler-import-without-context-preserves-caller-set",
+      "template": "{% set bar = \"BAR\" %}{% import \"import-context-set.njk\" as imp %}{{ bar }}",
+      "templates": { "import-context-set.njk": "{% set bar = \"FOO\" %}{% for i in [1] %}{% set buzz = \"buzz\" %}{% endfor %}" },
+      "nativeRender": false,
+      "context": {},
+      "autoescape": false,
+      "expected": "BAR"
+    },
+    {
+      "id": "compiler-import-without-context-exports-set",
+      "template": "{% set bar = \"BAR\" %}{% import \"import-context-set.njk\" as imp %}{{ imp.bar }}",
+      "templates": { "import-context-set.njk": "{% set bar = \"FOO\" %}{% for i in [1] %}{% set buzz = \"buzz\" %}{% endfor %}" },
+      "nativeRender": false,
+      "context": {},
+      "autoescape": false,
+      "expected": "FOO"
+    },
+    {
+      "id": "compiler-import-with-context-updates-caller-set",
+      "template": "{% set bar = \"BAR\" %}{% import \"import-context-set.njk\" as imp with context %}{{ bar }}{{ buzz }}",
+      "templates": { "import-context-set.njk": "{% set bar = \"FOO\" %}{% for i in [1] %}{% set buzz = \"buzz\" %}{% endfor %}" },
+      "nativeRender": false,
+      "context": {},
+      "autoescape": false,
+      "expected": "FOO"
+    },
+    {
+      "id": "compiler-import-with-context-exports-set",
+      "template": "{% set bar = \"BAR\" %}{% import \"import-context-set.njk\" as imp with context %}{{ imp.bar }}{{ buzz }}",
+      "templates": { "import-context-set.njk": "{% set bar = \"FOO\" %}{% for i in [1] %}{% set buzz = \"buzz\" %}{% endfor %}" },
+      "nativeRender": false,
+      "context": {},
+      "autoescape": false,
+      "expected": "FOO"
+    },
+    {
+      "id": "compiler-import-explicit-without-context",
+      "template": "{% set bar = \"BAR\" %}{% import \"import-context.njk\" as imp without context %}{{ imp.foo() }}",
+      "templates": { "import-context.njk": "{% macro foo() %}Here's {{ bar }}{% endmacro %}" },
+      "nativeRender": false,
+      "context": {},
+      "autoescape": false,
+      "expected": "Here's "
+    },
+    {
+      "id": "compiler-from-import-explicit-without-context",
+      "template": "{% set bar = \"BAR\" %}{% from \"import-context.njk\" import foo without context %}{{ foo() }}",
+      "templates": { "import-context.njk": "{% macro foo() %}Here's {{ bar }}{% endmacro %}" },
+      "nativeRender": false,
+      "context": {},
+      "autoescape": false,
+      "expected": "Here's "
+    },
+    {
+      "id": "compiler-import-defaults-without-context",
+      "template": "{% set bar = \"BAR\" %}{% import \"import-context.njk\" as imp %}{{ imp.foo() }}",
+      "templates": { "import-context.njk": "{% macro foo() %}Here's {{ bar }}{% endmacro %}" },
+      "nativeRender": false,
+      "context": {},
+      "autoescape": false,
+      "expected": "Here's "
+    },
+    {
+      "id": "compiler-from-import-defaults-without-context",
+      "template": "{% set bar = \"BAR\" %}{% from \"import-context.njk\" import foo %}{{ foo() }}",
+      "templates": { "import-context.njk": "{% macro foo() %}Here's {{ bar }}{% endmacro %}" },
+      "nativeRender": false,
+      "context": {},
+      "autoescape": false,
+      "expected": "Here's "
+    },
+    {
       "id": "compiler-block-set-inside-macro",
       "template": "{%- macro foo(bar) -%}{%- set test -%}foo{%- endset -%}{{ bar }}{{ test }}{%- endmacro -%}{{ foo(\"bar\") }}",
       "nativeRender": false,

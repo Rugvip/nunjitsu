@@ -252,6 +252,26 @@
       "upstream": { "id": "tests/compiler.js:84", "file": "tests/compiler.js", "test": "should compile call blocks using imported macros" },
       "status": "ported",
       "cases": ["compiler-call-block-imported-macro"]
+    },
+    {
+      "upstream": { "id": "tests/compiler.js:85", "file": "tests/compiler.js", "test": "should import templates" },
+      "status": "ported",
+      "cases": ["compiler-import-namespace-values", "compiler-from-import-aliases", "compiler-from-import-loop-scope"]
+    },
+    {
+      "upstream": { "id": "tests/compiler.js:86", "file": "tests/compiler.js", "test": "should import templates with context" },
+      "status": "ported",
+      "cases": ["compiler-import-with-context-macro", "compiler-from-import-with-context-macro", "compiler-import-without-context-preserves-caller-set", "compiler-import-without-context-exports-set", "compiler-import-with-context-updates-caller-set", "compiler-import-with-context-exports-set"]
+    },
+    {
+      "upstream": { "id": "tests/compiler.js:87", "file": "tests/compiler.js", "test": "should import templates without context" },
+      "status": "ported",
+      "cases": ["compiler-import-explicit-without-context", "compiler-from-import-explicit-without-context"]
+    },
+    {
+      "upstream": { "id": "tests/compiler.js:88", "file": "tests/compiler.js", "test": "should default to importing without context" },
+      "status": "ported",
+      "cases": ["compiler-import-defaults-without-context", "compiler-from-import-defaults-without-context"]
     }
   ]
 }
