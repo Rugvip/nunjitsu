@@ -33,6 +33,8 @@ pub enum TemplateItem<'a> {
     Expression(&'a [u8]),
     /// A literal template name requested by an include tag.
     Include(&'a [u8]),
+    /// A non-built-in block directive resolved against declarative tag schemas.
+    Tag(&'a [u8]),
     /// The parser reached the end of this source.
     End,
 }
@@ -65,12 +67,15 @@ pub fn next_item(source: &[u8], cursor: usize) -> Result<(TemplateItem<'_>, usiz
                 .map(|relative| content_start + relative)
                 .ok_or(RenderError::UnclosedBlockTag)?;
             let directive = trim_ascii_whitespace(&source[content_start..close]);
-            let include = directive
+            if let Some(include) = directive
                 .strip_prefix(b"include")
                 .filter(|remainder| remainder.first().is_some_and(u8::is_ascii_whitespace))
-                .ok_or(RenderError::UnsupportedTag)?;
-            let name = parse_quoted_literal(trim_ascii_whitespace(include))?;
-            Ok((TemplateItem::Include(name), close + 2))
+            {
+                let name = parse_quoted_literal(trim_ascii_whitespace(include))?;
+                Ok((TemplateItem::Include(name), close + 2))
+            } else {
+                Ok((TemplateItem::Tag(directive), close + 2))
+            }
         }
     }
 }
@@ -159,6 +164,7 @@ fn visit_template<'a>(
                 }
             }
             TemplateItem::Include(_) => return Err(RenderError::UnsupportedTag),
+            TemplateItem::Tag(_) => return Err(RenderError::UnsupportedTag),
             TemplateItem::End => return Ok(()),
         }
     }

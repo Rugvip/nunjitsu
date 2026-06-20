@@ -301,6 +301,21 @@ test('dispatches immutable async filters, tests, and globals through safe copied
         return `${String((user as Record<string, unknown>).name)}:${String(flags[0])}`;
       },
     },
+    tags: {
+      badge: {
+        type: 'inline',
+        async render(arguments_) {
+          await Promise.resolve();
+          return `<span>${String(arguments_[0])}:${String(arguments_[1])}</span>`;
+        },
+      },
+      trustedBadge: {
+        type: 'inline',
+        render(arguments_) {
+          return markSafe(`<b>${String(arguments_[0])}</b>`);
+        },
+      },
+    },
   });
 
   try {
@@ -313,6 +328,8 @@ test('dispatches immutable async filters, tests, and globals through safe copied
             '{{ count is not odd }}',
             '{{ unsafe | trusted }}',
             '{{ describe(user, flags) }}',
+            '{% badge("new", user.name) %}',
+            '{% trustedBadge("safe") %}',
           ].join('|'),
         },
         {
@@ -323,7 +340,7 @@ test('dispatches immutable async filters, tests, and globals through safe copied
           flags: ['first'],
         },
       ),
-      'Hello World!|true|false|<strong><tag></strong>|copied:first',
+      'Hello World!|true|false|<strong><tag></strong>|copied:first|&lt;span&gt;new:copied&lt;/span&gt;|<b>safe</b>',
     );
     assert.equal(
       (await Array.fromAsync(
@@ -342,6 +359,10 @@ test('dispatches immutable async filters, tests, and globals through safe copied
     await assert.rejects(
       engine.render({ source: '{{ value | absent }}' }, { value: 'x' }),
       error => error instanceof NunjitsuRenderError && error.code === 8,
+    );
+    await assert.rejects(
+      engine.render({ source: '{% absentTag %}' }),
+      error => error instanceof NunjitsuRenderError && error.code === 5,
     );
 
     const controller = new AbortController();

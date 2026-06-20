@@ -16,10 +16,12 @@ export {
 } from './engine.ts';
 export type {
   CapabilityCallContext,
+  InlineTemplateTag,
   TemplateCapabilities,
   TemplateFilter,
   TemplateGlobal,
   TemplateTest,
+  TemplateTagRenderer,
 } from './capabilities.ts';
 export {
   fileSystemLoader,

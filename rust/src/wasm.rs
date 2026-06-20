@@ -1,11 +1,13 @@
-use crate::expression::{Atom, Call, Operation, next_argument, next_operation, parse_base};
+use crate::expression::{
+    Atom, Call, Operation, next_argument, next_operation, parse_base, parse_tag_call,
+};
 use crate::template::{RenderError, RenderedValue, TemplateItem, emit_escaped, next_item};
 use core::arch::wasm32::{memory_grow, memory_size};
 use core::mem::{align_of, size_of};
 use core::ptr::{addr_of, addr_of_mut, read_unaligned, write_unaligned};
 use core::slice;
 
-const ABI_VERSION: u32 = 7;
+const ABI_VERSION: u32 = 8;
 const PAGE_SIZE: usize = 65_536;
 const STREAM_CHUNK_BYTES: u32 = 64 * 1024;
 const RECORD_ALIGNMENT: u32 = 8;
@@ -46,7 +48,7 @@ const ERROR_RESOURCE_LIMIT: u32 = 7;
 const ERROR_UNKNOWN_CAPABILITY: u32 = 8;
 const ERROR_INVALID_EXPRESSION: u32 = 9;
 
-const RENDER_STATE_LENGTH: u32 = 108;
+const RENDER_STATE_LENGTH: u32 = 112;
 const STATE_CONTEXT: usize = 0;
 const STATE_FLAGS: usize = 4;
 const STATE_CURRENT_FRAME: usize = 8;
@@ -74,10 +76,12 @@ const STATE_PENDING_EXPRESSION: usize = 92;
 const STATE_EXPRESSION_CURSOR: usize = 96;
 const STATE_CURRENT_VALUE: usize = 100;
 const STATE_NEGATE_RESULT: usize = 104;
+const STATE_TAGS: usize = 108;
 
 const CAPABILITY_FILTER: u32 = 1;
 const CAPABILITY_TEST: u32 = 2;
 const CAPABILITY_GLOBAL: u32 = 3;
+const CAPABILITY_TAG: u32 = 4;
 
 const FRAME_LENGTH: u32 = 16;
 const FRAME_PARENT: usize = 0;
@@ -203,7 +207,7 @@ pub extern "C" fn nunjitsu_resume_capability(value_offset: u32) -> u32 {
 
 fn start_render(request_offset: u32) -> Result<(), u32> {
     let request = record_at(request_offset, TAG_REQUEST)?;
-    if request.len() != 52 {
+    if request.len() != 56 {
         return Err(ERROR_INVALID_RECORD);
     }
     let source_offset = read_u32(request, 0)?;
@@ -219,6 +223,7 @@ fn start_render(request_offset: u32) -> Result<(), u32> {
     let tests_offset = read_u32(request, 40)?;
     let globals_offset = read_u32(request, 44)?;
     let limit_capability_calls = read_u32(request, 48)?;
+    let tags_offset = read_u32(request, 52)?;
     if flags & !3 != 0 {
         return Err(ERROR_INVALID_RECORD);
     }
@@ -230,6 +235,7 @@ fn start_render(request_offset: u32) -> Result<(), u32> {
     validate_capability_registry(filters_offset)?;
     validate_capability_registry(tests_offset)?;
     validate_capability_registry(globals_offset)?;
+    validate_capability_registry(tags_offset)?;
     if limit_include_depth == 0 {
         return Err(ERROR_RESOURCE_LIMIT);
     }
@@ -249,6 +255,7 @@ fn start_render(request_offset: u32) -> Result<(), u32> {
     set_state_field(state_offset, STATE_FILTERS, filters_offset)?;
     set_state_field(state_offset, STATE_TESTS, tests_offset)?;
     set_state_field(state_offset, STATE_GLOBALS, globals_offset)?;
+    set_state_field(state_offset, STATE_TAGS, tags_offset)?;
     set_state_field(
         state_offset,
         STATE_LIMIT_CAPABILITY_CALLS,
@@ -372,7 +379,8 @@ fn run_active_render() -> Result<u32, u32> {
         let work = match item {
             TemplateItem::Text(bytes)
             | TemplateItem::Expression(bytes)
-            | TemplateItem::Include(bytes) => 1u32
+            | TemplateItem::Include(bytes)
+            | TemplateItem::Tag(bytes) => 1u32
                 .checked_add(bytes.len() as u32)
                 .ok_or(ERROR_RESOURCE_LIMIT)?,
             TemplateItem::End => 1,
@@ -414,6 +422,7 @@ fn run_active_render() -> Result<u32, u32> {
                 );
                 return Ok(STATE_LOAD_TEMPLATE);
             }
+            TemplateItem::Tag(directive) => return Ok(start_tag(state_offset, directive)?),
             TemplateItem::End => {
                 set_state_field(state_offset, STATE_CURRENT_FRAME, parent)?;
                 let depth = state_field(state_offset, STATE_INCLUDE_DEPTH)?;
@@ -437,6 +446,26 @@ fn start_expression(state_offset: u32, expression: &[u8]) -> Result<Option<u32>,
     let value_offset = resolve_atom(state_offset, base)?;
     set_state_field(state_offset, STATE_CURRENT_VALUE, value_offset)?;
     continue_expression(state_offset)
+}
+
+fn start_tag(state_offset: u32, directive: &[u8]) -> Result<u32, u32> {
+    let call = parse_tag_call(directive).map_err(|_| ERROR_UNSUPPORTED_TAG)?;
+    let directive_offset = write_bytes_record(TAG_STRING, directive)?;
+    set_state_field(state_offset, STATE_PENDING_EXPRESSION, directive_offset)?;
+    set_state_field(
+        state_offset,
+        STATE_EXPRESSION_CURSOR,
+        directive.len() as u32,
+    )?;
+    set_state_field(state_offset, STATE_CURRENT_VALUE, 0)?;
+    issue_capability(
+        state_offset,
+        CAPABILITY_TAG,
+        call,
+        None,
+        directive.len(),
+        false,
+    )
 }
 
 fn continue_expression(state_offset: u32) -> Result<Option<u32>, u32> {
@@ -483,11 +512,16 @@ fn issue_capability(
         CAPABILITY_FILTER => STATE_FILTERS,
         CAPABILITY_TEST => STATE_TESTS,
         CAPABILITY_GLOBAL => STATE_GLOBALS,
+        CAPABILITY_TAG => STATE_TAGS,
         _ => return Err(ERROR_INVALID_EXPRESSION),
     };
     let registry_offset = state_field(state_offset, registry_field)?;
     let capability_id =
-        resolve_capability(registry_offset, call.name)?.ok_or(ERROR_UNKNOWN_CAPABILITY)?;
+        resolve_capability(registry_offset, call.name)?.ok_or(if kind == CAPABILITY_TAG {
+            ERROR_UNSUPPORTED_TAG
+        } else {
+            ERROR_UNKNOWN_CAPABILITY
+        })?;
 
     let mut argument_count = usize::from(input.is_some());
     let mut argument_cursor = 0usize;

@@ -99,7 +99,8 @@ export class ArenaWriter {
     const filtersOffset = this.#writeCapabilityRegistry(options.capabilities.filters);
     const testsOffset = this.#writeCapabilityRegistry(options.capabilities.tests);
     const globalsOffset = this.#writeCapabilityRegistry(options.capabilities.globals);
-    const requestPayload = new ArrayBuffer(52);
+    const tagsOffset = this.#writeCapabilityRegistry(options.capabilities.tags);
+    const requestPayload = new ArrayBuffer(56);
     const requestView = new DataView(requestPayload);
     requestView.setUint32(0, sourceOffset, true);
     requestView.setUint32(4, contextOffset, true);
@@ -118,6 +119,7 @@ export class ArenaWriter {
     requestView.setUint32(40, testsOffset, true);
     requestView.setUint32(44, globalsOffset, true);
     requestView.setUint32(48, encodeRenderLimit(options.limits.capabilityCalls), true);
+    requestView.setUint32(52, tagsOffset, true);
     const requestOffset = this.#writeRecord(recordTag.request, new Uint8Array(requestPayload));
 
     return { requestOffset, cursor: this.#cursor };
@@ -362,7 +364,8 @@ export function decodeCapabilityRequest(
   if (
     kind !== capabilityKind.filter &&
     kind !== capabilityKind.test &&
-    kind !== capabilityKind.global
+    kind !== capabilityKind.global &&
+    kind !== capabilityKind.tag
   ) {
     throw new Error('Wasm returned an unknown capability category');
   }

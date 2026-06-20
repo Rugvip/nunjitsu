@@ -102,6 +102,16 @@ pub fn next_argument(
     Ok(Some((atom, cursor)))
 }
 
+/// Parses a complete custom-tag directive using the inline call grammar.
+pub fn parse_tag_call(directive: &[u8]) -> Result<Call<'_>, ExpressionError> {
+    let cursor = skip_whitespace(directive, 0);
+    let (call, cursor) = parse_named_call(directive, cursor)?;
+    if skip_whitespace(directive, cursor) != directive.len() {
+        return Err(ExpressionError);
+    }
+    Ok(call)
+}
+
 fn parse_atom(bytes: &[u8], cursor: usize) -> Result<(Atom<'_>, usize), ExpressionError> {
     let byte = *bytes.get(cursor).ok_or(ExpressionError)?;
     if matches!(byte, b'\'' | b'"') {
@@ -334,5 +344,13 @@ mod tests {
         assert_eq!(next_operation(b"value + 1", cursor), Err(ExpressionError));
         assert_eq!(next_argument(b"value,", 0), Err(ExpressionError));
         assert_eq!(parse_base(br#""escaped\"""#), Err(ExpressionError));
+        assert_eq!(
+            parse_tag_call(br#" badge("new", user.name) "#),
+            Ok(Call {
+                name: b"badge",
+                arguments: br#""new", user.name"#,
+            }),
+        );
+        assert_eq!(parse_tag_call(b"badge trailing"), Err(ExpressionError));
     }
 }
