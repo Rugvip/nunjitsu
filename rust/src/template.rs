@@ -203,11 +203,11 @@ pub(crate) fn find_conditional_boundary(
                     return Ok(ConditionalBoundary::EndIf(next_cursor));
                 }
                 depth -= 1;
-            } else if directive_keyword(directive, b"for").is_some() {
+            } else if is_loop_start(directive) {
                 loop_depth = loop_depth
                     .checked_add(1)
                     .ok_or(RenderError::OutputTooLarge)?;
-            } else if directive == b"endfor" && loop_depth != 0 {
+            } else if is_loop_end(directive) && loop_depth != 0 {
                 loop_depth -= 1;
             } else if include_else && depth == 0 && loop_depth == 0 && directive == b"else" {
                 return Ok(ConditionalBoundary::Else(next_cursor));
@@ -239,11 +239,11 @@ pub(crate) fn find_loop_boundaries(
     loop {
         let (item, next_cursor) = next_item_with_options(source, cursor, options)?;
         if let TemplateItem::Tag(directive) = item {
-            if directive_keyword(directive, b"for").is_some() {
+            if is_loop_start(directive) {
                 loop_depth = loop_depth
                     .checked_add(1)
                     .ok_or(RenderError::OutputTooLarge)?;
-            } else if directive == b"endfor" {
+            } else if is_loop_end(directive) {
                 if loop_depth == 0 && conditional_depth == 0 {
                     return Ok(LoopBoundaries {
                         else_cursor,
@@ -373,6 +373,18 @@ pub(crate) fn contains_extends(source: &[u8], options: ParseOptions) -> Result<b
 #[cfg(any(target_arch = "wasm32", test))]
 pub(crate) fn is_endblock(directive: &[u8]) -> bool {
     directive == b"endblock" || directive_keyword(directive, b"endblock").is_some()
+}
+
+#[cfg(any(target_arch = "wasm32", test))]
+fn is_loop_start(directive: &[u8]) -> bool {
+    directive_keyword(directive, b"for").is_some()
+        || directive_keyword(directive, b"asyncEach").is_some()
+        || directive_keyword(directive, b"asyncAll").is_some()
+}
+
+#[cfg(any(target_arch = "wasm32", test))]
+fn is_loop_end(directive: &[u8]) -> bool {
+    matches!(directive, b"endfor" | b"endeach" | b"endall")
 }
 
 /// Returns a non-empty directive remainder after an exact keyword and whitespace.

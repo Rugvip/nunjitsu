@@ -109,17 +109,13 @@
     },
     {
       "upstream": { "id": "tests/compiler.js:20", "file": "tests/compiler.js", "test": "should support destructured looping" },
-      "status": "partial",
-      "reason": "The for-tag behavior is ported; the same upstream helper also registers asyncEach and asyncAll variants.",
-      "removalCondition": "Implement and port the asyncEach and asyncAll variants.",
-      "cases": ["compiler-three-value-loop-destructuring"]
+      "status": "ported",
+      "cases": ["compiler-three-value-loop-destructuring", "compiler-three-value-async-each", "compiler-three-value-async-all"]
     },
     {
       "upstream": { "id": "tests/compiler.js:33", "file": "tests/compiler.js", "test": "should loop over four-dimensional arrays" },
-      "status": "partial",
-      "reason": "The for-tag behavior is ported; the same upstream helper also registers asyncEach and asyncAll variants.",
-      "removalCondition": "Implement and port the asyncEach and asyncAll variants.",
-      "cases": ["compiler-four-value-loop-destructuring"]
+      "status": "ported",
+      "cases": ["compiler-four-value-loop-destructuring", "compiler-four-value-async-each", "compiler-four-value-async-all"]
     },
     {
       "upstream": { "id": "tests/compiler.js:114", "file": "tests/compiler.js", "test": "should compile a set block" },
@@ -587,6 +583,117 @@
       "upstream": { "id": "tests/compiler.js:13", "file": "tests/compiler.js", "test": "should compile switch statements" },
       "status": "ported",
       "cases": ["compiler-switch-default", "compiler-switch-first-case", "compiler-switch-second-case", "compiler-switch-no-default", "compiler-switch-fallthrough-first", "compiler-switch-fallthrough-second"]
+    },
+    {
+      "upstream": { "id": "tests/compiler.js:17", "file": "tests/compiler.js", "test": "should loop over simple arrays" },
+      "status": "ported", "cases": ["compiler-loop-simple-array"]
+    },
+    {
+      "upstream": { "id": "tests/compiler.js:18", "file": "tests/compiler.js", "test": "should loop normally with an {% else %} tag and non-empty array" },
+      "status": "ported", "cases": ["compiler-loop-nonempty-else"]
+    },
+    {
+      "upstream": { "id": "tests/compiler.js:19", "file": "tests/compiler.js", "test": "should execute the {% else %} block when looping over an empty array" },
+      "status": "ported", "cases": ["compiler-loop-empty-else"]
+    },
+    {
+      "upstream": { "id": "tests/compiler.js:21", "file": "tests/compiler.js", "test": "should do loop over key-values of a literal in-template Object" },
+      "status": "ported", "cases": ["compiler-loop-literal-record"]
+    },
+    {
+      "upstream": { "id": "tests/compiler.js:22", "file": "tests/compiler.js", "test": "should support loop.index" },
+      "status": "ported", "cases": ["compiler-loop-index"]
+    },
+    {
+      "upstream": { "id": "tests/compiler.js:23", "file": "tests/compiler.js", "test": "should support loop.index0" },
+      "status": "ported", "cases": ["compiler-loop-index0"]
+    },
+    {
+      "upstream": { "id": "tests/compiler.js:24", "file": "tests/compiler.js", "test": "should support loop.revindex" },
+      "status": "ported", "cases": ["compiler-loop-revindex"]
+    },
+    {
+      "upstream": { "id": "tests/compiler.js:25", "file": "tests/compiler.js", "test": "should support loop.revindex0" },
+      "status": "ported", "cases": ["compiler-loop-revindex0"]
+    },
+    {
+      "upstream": { "id": "tests/compiler.js:26", "file": "tests/compiler.js", "test": "should support loop.first" },
+      "status": "ported", "cases": ["compiler-loop-first"]
+    },
+    {
+      "upstream": { "id": "tests/compiler.js:27", "file": "tests/compiler.js", "test": "should support loop.last" },
+      "status": "ported", "cases": ["compiler-loop-last"]
+    },
+    {
+      "upstream": { "id": "tests/compiler.js:28", "file": "tests/compiler.js", "test": "should support loop.length" },
+      "status": "ported", "cases": ["compiler-loop-length"]
+    },
+    {
+      "upstream": { "id": "tests/compiler.js:29", "file": "tests/compiler.js", "test": "should fail silently when looping over an undefined variable" },
+      "status": "ported", "cases": ["compiler-loop-undefined"]
+    },
+    {
+      "upstream": { "id": "tests/compiler.js:30", "file": "tests/compiler.js", "test": "should fail silently when looping over an undefined property" },
+      "status": "ported", "cases": ["compiler-loop-undefined-property"]
+    },
+    {
+      "upstream": { "id": "tests/compiler.js:31", "file": "tests/compiler.js", "test": "should fail silently when looping over a null variable" },
+      "status": "ported", "cases": ["compiler-loop-null"]
+    },
+    {
+      "upstream": { "id": "tests/compiler.js:32", "file": "tests/compiler.js", "test": "should loop over two-dimensional arrays" },
+      "status": "ported", "cases": ["compiler-loop-two-dimensional"]
+    },
+    {
+      "upstream": { "id": "tests/compiler.js:34", "file": "tests/compiler.js", "test": "should support loop.index with two-dimensional loops" },
+      "status": "ported", "cases": ["compiler-loop-index-two-dimensional"]
+    },
+    {
+      "upstream": { "id": "tests/compiler.js:35", "file": "tests/compiler.js", "test": "should support loop.revindex with two-dimensional loops" },
+      "status": "ported", "cases": ["compiler-loop-revindex-two-dimensional"]
+    },
+    {
+      "upstream": { "id": "tests/compiler.js:36", "file": "tests/compiler.js", "test": "should support key-value looping over an Object variable" },
+      "status": "ported", "cases": ["compiler-loop-record-pairs"]
+    },
+    {
+      "upstream": { "id": "tests/compiler.js:37", "file": "tests/compiler.js", "test": "should support loop.index when looping over an Object\\'s key-value pairs" },
+      "status": "ported", "cases": ["compiler-loop-record-index"]
+    },
+    {
+      "upstream": { "id": "tests/compiler.js:38", "file": "tests/compiler.js", "test": "should support loop.revindex when looping over an Object\\'s key-value pairs" },
+      "status": "ported", "cases": ["compiler-loop-record-revindex"]
+    },
+    {
+      "upstream": { "id": "tests/compiler.js:39", "file": "tests/compiler.js", "test": "should support loop.length when looping over an Object\\'s key-value pairs" },
+      "status": "ported", "cases": ["compiler-loop-record-length"]
+    },
+    {
+      "upstream": { "id": "tests/compiler.js:40", "file": "tests/compiler.js", "test": "should support include tags in the body of the loop" },
+      "status": "ported", "cases": ["compiler-loop-include-body"]
+    },
+    {
+      "upstream": { "id": "tests/compiler.js:41", "file": "tests/compiler.js", "test": "should work with {% set %} and {% include %} tags" },
+      "status": "ported", "cases": ["compiler-loop-set-and-include"]
+    },
+    {
+      "upstream": { "id": "tests/compiler.js:42", "file": "tests/compiler.js", "test": "should work with Set builtin" },
+      "status": "not applicable",
+      "reason": "Live JavaScript Set instances are outside the copied safe-value contract; callers provide arrays for ordered sequences."
+    },
+    {
+      "upstream": { "id": "tests/compiler.js:43", "file": "tests/compiler.js", "test": "should work with Map builtin" },
+      "status": "not applicable",
+      "reason": "Live JavaScript Map instances are outside the copied safe-value contract; callers provide arrays or records."
+    },
+    {
+      "upstream": { "id": "tests/compiler.js:44", "file": "tests/compiler.js", "test": "should allow overriding var with none inside nested scope" },
+      "status": "ported", "cases": ["compiler-loop-overrides-with-none"]
+    },
+    {
+      "upstream": { "id": "tests/compiler.js:45", "file": "tests/compiler.js", "test": "should compile async control" },
+      "status": "adapted",
+      "reason": "Nunjitsu's evaluator is uniformly resumable: ordinary control flow, asyncEach, and asyncAll all suspend on asynchronous filters and loaders. Runtime tests cover capability and include suspension, while the shared cases cover the async loop spellings."
     }
   ]
 }

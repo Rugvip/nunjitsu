@@ -827,7 +827,10 @@ fn handle_tag(state_offset: u32, directive: &[u8]) -> Result<Option<u32>, u32> {
     if let Some(expression) = directive_keyword(directive, b"switch") {
         return start_expression(state_offset, expression, EXPRESSION_SWITCH);
     }
-    if let Some(clause) = directive_keyword(directive, b"for") {
+    if let Some(clause) = directive_keyword(directive, b"for")
+        .or_else(|| directive_keyword(directive, b"asyncEach"))
+        .or_else(|| directive_keyword(directive, b"asyncAll"))
+    {
         start_for(state_offset, clause)?;
         return Ok(None);
     }
@@ -852,7 +855,7 @@ fn handle_tag(state_offset: u32, directive: &[u8]) -> Result<Option<u32>, u32> {
         finish_capture(state_offset)?;
         return Ok(None);
     }
-    if directive == b"endfor" {
+    if matches!(directive, b"endfor" | b"endeach" | b"endall") {
         advance_for(state_offset)?;
         return Ok(None);
     }

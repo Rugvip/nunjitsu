@@ -1376,6 +1376,232 @@
       "context": { "foo": "baz" },
       "autoescape": true,
       "expected": "BAR"
+    },
+    {
+      "id": "compiler-loop-simple-array",
+      "template": "{% for i in arr %}{{ i }}{% endfor %}",
+      "nativeRender": false,
+      "context": { "arr": [1, 2, 3, 4, 5] },
+      "autoescape": true,
+      "expected": "12345"
+    },
+    {
+      "id": "compiler-loop-nonempty-else",
+      "template": "{% for i in arr %}{{ i }}{% else %}empty{% endfor %}",
+      "nativeRender": false,
+      "context": { "arr": [1, 2, 3, 4, 5] },
+      "autoescape": true,
+      "expected": "12345"
+    },
+    {
+      "id": "compiler-loop-empty-else",
+      "template": "{% for i in arr %}{{ i }}{% else %}empty{% endfor %}",
+      "nativeRender": false,
+      "context": { "arr": [] },
+      "autoescape": true,
+      "expected": "empty"
+    },
+    {
+      "id": "compiler-loop-literal-record",
+      "template": "{% for k, v in { one: 1, two: 2 } %}-{{ k }}:{{ v }}-{% endfor %}",
+      "nativeRender": false,
+      "context": {},
+      "autoescape": true,
+      "expected": "-one:1--two:2-"
+    },
+    {
+      "id": "compiler-loop-index",
+      "template": "{% for i in [7,3,6] %}{{ loop.index }}{% endfor %}",
+      "nativeRender": false,
+      "context": {},
+      "autoescape": true,
+      "expected": "123"
+    },
+    {
+      "id": "compiler-loop-index0",
+      "template": "{% for i in [7,3,6] %}{{ loop.index0 }}{% endfor %}",
+      "nativeRender": false,
+      "context": {},
+      "autoescape": true,
+      "expected": "012"
+    },
+    {
+      "id": "compiler-loop-revindex",
+      "template": "{% for i in [7,3,6] %}{{ loop.revindex }}{% endfor %}",
+      "nativeRender": false,
+      "context": {},
+      "autoescape": true,
+      "expected": "321"
+    },
+    {
+      "id": "compiler-loop-revindex0",
+      "template": "{% for i in [7,3,6] %}{{ loop.revindex0 }}{% endfor %}",
+      "nativeRender": false,
+      "context": {},
+      "autoescape": true,
+      "expected": "210"
+    },
+    {
+      "id": "compiler-loop-first",
+      "template": "{% for i in [7,3,6] %}{% if loop.first %}{{ i }}{% endif %}{% endfor %}",
+      "nativeRender": false,
+      "context": {},
+      "autoescape": true,
+      "expected": "7"
+    },
+    {
+      "id": "compiler-loop-last",
+      "template": "{% for i in [7,3,6] %}{% if loop.last %}{{ i }}{% endif %}{% endfor %}",
+      "nativeRender": false,
+      "context": {},
+      "autoescape": true,
+      "expected": "6"
+    },
+    {
+      "id": "compiler-loop-length",
+      "template": "{% for i in [7,3,6] %}{{ loop.length }}{% endfor %}",
+      "nativeRender": false,
+      "context": {},
+      "autoescape": true,
+      "expected": "333"
+    },
+    {
+      "id": "compiler-loop-undefined",
+      "template": "{% for i in foo %}{{ i }}{% endfor %}",
+      "nativeRender": false,
+      "context": {},
+      "autoescape": true,
+      "expected": ""
+    },
+    {
+      "id": "compiler-loop-undefined-property",
+      "template": "{% for i in foo.bar %}{{ i }}{% endfor %}",
+      "nativeRender": false,
+      "context": { "foo": {} },
+      "autoescape": true,
+      "expected": ""
+    },
+    {
+      "id": "compiler-loop-null",
+      "template": "{% for i in foo %}{{ i }}{% endfor %}",
+      "nativeRender": false,
+      "context": { "foo": null },
+      "autoescape": true,
+      "expected": ""
+    },
+    {
+      "id": "compiler-loop-two-dimensional",
+      "template": "{% for x, y in points %}[{{ x }},{{ y }}]{% endfor %}",
+      "nativeRender": false,
+      "context": { "points": [[1, 2], [3, 4], [5, 6]] },
+      "autoescape": true,
+      "expected": "[1,2][3,4][5,6]"
+    },
+    {
+      "id": "compiler-loop-index-two-dimensional",
+      "template": "{% for x, y in points %}{{ loop.index }}{% endfor %}",
+      "nativeRender": false,
+      "context": { "points": [[1, 2], [3, 4], [5, 6]] },
+      "autoescape": true,
+      "expected": "123"
+    },
+    {
+      "id": "compiler-loop-revindex-two-dimensional",
+      "template": "{% for x, y in points %}{{ loop.revindex }}{% endfor %}",
+      "nativeRender": false,
+      "context": { "points": [[1, 2], [3, 4], [5, 6]] },
+      "autoescape": true,
+      "expected": "321"
+    },
+    {
+      "id": "compiler-loop-record-pairs",
+      "template": "{% for k, v in items %}({{ k }},{{ v }}){% endfor %}",
+      "nativeRender": false,
+      "context": { "items": { "foo": 1, "bar": 2 } },
+      "autoescape": true,
+      "expected": "(foo,1)(bar,2)"
+    },
+    {
+      "id": "compiler-loop-record-index",
+      "template": "{% for k, v in items %}{{ loop.index }}{% endfor %}",
+      "nativeRender": false,
+      "context": { "items": { "foo": 1, "bar": 2 } },
+      "autoescape": true,
+      "expected": "12"
+    },
+    {
+      "id": "compiler-loop-record-revindex",
+      "template": "{% for k, v in items %}{{ loop.revindex }}{% endfor %}",
+      "nativeRender": false,
+      "context": { "items": { "foo": 1, "bar": 2 } },
+      "autoescape": true,
+      "expected": "21"
+    },
+    {
+      "id": "compiler-loop-record-length",
+      "template": "{% for k, v in items %}{{ loop.length }}{% endfor %}",
+      "nativeRender": false,
+      "context": { "items": { "foo": 1, "bar": 2 } },
+      "autoescape": true,
+      "expected": "22"
+    },
+    {
+      "id": "compiler-loop-include-body",
+      "template": "{% for item, v in items %}{% include \"item.njk\" %}{% endfor %}",
+      "templates": { "item.njk": "showing {{ item }}" },
+      "nativeRender": false,
+      "context": { "items": { "foo": 1, "bar": 2 } },
+      "autoescape": true,
+      "expected": "showing fooshowing bar"
+    },
+    {
+      "id": "compiler-loop-set-and-include",
+      "template": "{% set item = passed_var %}{% include \"item.njk\" %}\n{% for i in passed_iter %}{% set item = i %}{% include \"item.njk\" %}\n{% endfor %}",
+      "templates": { "item.njk": "showing {{ item }}" },
+      "nativeRender": false,
+      "context": { "passed_var": "test", "passed_iter": ["1", "2", "3"] },
+      "autoescape": true,
+      "expected": "showing test\nshowing 1\nshowing 2\nshowing 3\n"
+    },
+    {
+      "id": "compiler-loop-overrides-with-none",
+      "template": "{% set var = \"foo\" %}{% for i in [1] %}{% set var = none %}{{ var }}{% endfor %}",
+      "nativeRender": false,
+      "context": {},
+      "autoescape": true,
+      "expected": ""
+    },
+    {
+      "id": "compiler-three-value-async-each",
+      "template": "{% asyncEach a, b, c in arr %}{{ a }},{{ b }},{{ c }}.{% endeach %}",
+      "nativeRender": false,
+      "context": { "arr": [["x", "y", "z"], ["1", "2", "3"]] },
+      "autoescape": true,
+      "expected": "x,y,z.1,2,3."
+    },
+    {
+      "id": "compiler-three-value-async-all",
+      "template": "{% asyncAll a, b, c in arr %}{{ a }},{{ b }},{{ c }}.{% endall %}",
+      "nativeRender": false,
+      "context": { "arr": [["x", "y", "z"], ["1", "2", "3"]] },
+      "autoescape": true,
+      "expected": "x,y,z.1,2,3."
+    },
+    {
+      "id": "compiler-four-value-async-each",
+      "template": "{% asyncEach a, b, c, d in arr %}[{{ a }},{{ b }},{{ c }},{{ d }}]{% endeach %}",
+      "nativeRender": false,
+      "context": { "arr": [[1, 2, 3, 4], [5, 6, 7, 8]] },
+      "autoescape": true,
+      "expected": "[1,2,3,4][5,6,7,8]"
+    },
+    {
+      "id": "compiler-four-value-async-all",
+      "template": "{% asyncAll a, b, c, d in arr %}[{{ a }},{{ b }},{{ c }},{{ d }}]{% endall %}",
+      "nativeRender": false,
+      "context": { "arr": [[1, 2, 3, 4], [5, 6, 7, 8]] },
+      "autoescape": true,
+      "expected": "[1,2,3,4][5,6,7,8]"
     }
   ]
 }
