@@ -26,6 +26,10 @@ pub enum Atom<'a> {
     Call(Call<'a>),
     /// A parenthesized expression evaluated as one operand.
     Group(&'a [u8]),
+    /// An array literal's comma-separated element source.
+    Array(&'a [u8]),
+    /// An object literal's comma-separated entry source.
+    Record(&'a [u8]),
 }
 
 /// One atom with an optional unary `not` operator.
@@ -83,6 +87,17 @@ pub struct ForClause<'a> {
     pub second: Option<&'a [u8]>,
     /// Iterable expression after the `in` keyword.
     pub iterable: &'a [u8],
+}
+
+/// One parsed object-literal entry and the cursor of the following entry.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct RecordEntry<'a> {
+    /// UTF-8 key without quotes.
+    pub key: &'a [u8],
+    /// Parsed entry value.
+    pub value: Atom<'a>,
+    /// Cursor after this entry and its comma.
+    pub next_cursor: usize,
 }
 
 /// Parses the base atom, its unary negation, and the following operation cursor.
@@ -243,6 +258,62 @@ pub fn next_argument(
     Ok(Some((atom, cursor)))
 }
 
+/// Parses one object-literal entry from a comma-separated entry slice.
+pub fn next_record_entry(
+    entries: &[u8],
+    cursor: usize,
+) -> Result<Option<RecordEntry<'_>>, ExpressionError> {
+    let mut cursor = skip_whitespace(entries, cursor);
+    if cursor == entries.len() {
+        return Ok(None);
+    }
+    let (key, next) = if matches!(entries.get(cursor), Some(b'\'' | b'"')) {
+        let quote = entries[cursor];
+        let start = cursor + 1;
+        let mut end = start;
+        while entries.get(end).is_some_and(|byte| *byte != quote) {
+            if entries[end] == b'\\' {
+                return Err(ExpressionError);
+            }
+            end += 1;
+        }
+        if entries.get(end) != Some(&quote) {
+            return Err(ExpressionError);
+        }
+        (&entries[start..end], end + 1)
+    } else {
+        let start = cursor;
+        let end = parse_identifier(entries, cursor)?;
+        (&entries[start..end], end)
+    };
+    cursor = skip_whitespace(entries, next);
+    if entries.get(cursor) != Some(&b':') {
+        return Err(ExpressionError);
+    }
+    cursor = skip_whitespace(entries, cursor + 1);
+    let (value, mut cursor) = parse_atom(entries, cursor)?;
+    cursor = skip_whitespace(entries, cursor);
+    if cursor == entries.len() {
+        return Ok(Some(RecordEntry {
+            key,
+            value,
+            next_cursor: cursor,
+        }));
+    }
+    if entries.get(cursor) != Some(&b',') {
+        return Err(ExpressionError);
+    }
+    cursor = skip_whitespace(entries, cursor + 1);
+    if cursor == entries.len() {
+        return Err(ExpressionError);
+    }
+    Ok(Some(RecordEntry {
+        key,
+        value,
+        next_cursor: cursor,
+    }))
+}
+
 /// Parses a complete custom-tag directive using the inline call grammar.
 pub fn parse_tag_call(directive: &[u8]) -> Result<Call<'_>, ExpressionError> {
     let cursor = skip_whitespace(directive, 0);
@@ -289,6 +360,14 @@ fn parse_atom(bytes: &[u8], cursor: usize) -> Result<(Atom<'_>, usize), Expressi
     if byte == b'(' {
         let (expression, cursor) = parse_parenthesized(bytes, cursor)?;
         return Ok((Atom::Group(expression), cursor));
+    }
+    if byte == b'[' {
+        let (elements, cursor) = parse_delimited(bytes, cursor, b'[', b']')?;
+        return Ok((Atom::Array(elements), cursor));
+    }
+    if byte == b'{' {
+        let (entries, cursor) = parse_delimited(bytes, cursor, b'{', b'}')?;
+        return Ok((Atom::Record(entries), cursor));
     }
     if matches!(byte, b'\'' | b'"') {
         return parse_string(bytes, cursor, byte);
@@ -403,10 +482,24 @@ fn parse_number(bytes: &[u8], start: usize) -> Result<(Atom<'_>, usize), Express
 }
 
 fn parse_parenthesized(bytes: &[u8], open: usize) -> Result<(&[u8], usize), ExpressionError> {
-    let mut cursor = open + 1;
-    let start = cursor;
+    parse_delimited(bytes, open, b'(', b')')
+}
+
+fn parse_delimited(
+    bytes: &[u8],
+    open: usize,
+    expected_open: u8,
+    expected_close: u8,
+) -> Result<(&[u8], usize), ExpressionError> {
+    if bytes.get(open) != Some(&expected_open) {
+        return Err(ExpressionError);
+    }
+    let start = open + 1;
+    let mut cursor = start;
     let mut quote = None;
-    let mut depth = 1usize;
+    let mut parentheses = usize::from(expected_open == b'(');
+    let mut brackets = usize::from(expected_open == b'[');
+    let mut braces = usize::from(expected_open == b'{');
     while let Some(byte) = bytes.get(cursor).copied() {
         if let Some(active_quote) = quote {
             if byte == b'\\' {
@@ -419,12 +512,20 @@ fn parse_parenthesized(bytes: &[u8], open: usize) -> Result<(&[u8], usize), Expr
         } else if matches!(byte, b'\'' | b'"') {
             quote = Some(byte);
         } else if byte == b'(' {
-            depth += 1;
+            parentheses += 1;
+        } else if byte == b'[' {
+            brackets += 1;
+        } else if byte == b'{' {
+            braces += 1;
         } else if byte == b')' {
-            depth -= 1;
-            if depth == 0 {
-                return Ok((&bytes[start..cursor], cursor + 1));
-            }
+            parentheses = parentheses.checked_sub(1).ok_or(ExpressionError)?;
+        } else if byte == b']' {
+            brackets = brackets.checked_sub(1).ok_or(ExpressionError)?;
+        } else if byte == b'}' {
+            braces = braces.checked_sub(1).ok_or(ExpressionError)?;
+        }
+        if byte == expected_close && parentheses == 0 && brackets == 0 && braces == 0 {
+            return Ok((&bytes[start..cursor], cursor + 1));
         }
         cursor += 1;
     }
@@ -605,6 +706,28 @@ mod tests {
                 second: Some(b"value"),
                 iterable: b"items | entries ",
             }),
+        );
+
+        let (array, cursor, _) = parse_base(br#"[1, "two", { three: 3 }]"#).unwrap();
+        assert_eq!(array, Atom::Array(br#"1, "two", { three: 3 }"#),);
+        assert_eq!(cursor, 24);
+        let Atom::Array(elements) = array else {
+            panic!("expected array");
+        };
+        let (_, cursor) = next_argument(elements, 0).unwrap().unwrap();
+        let (_, cursor) = next_argument(elements, cursor).unwrap().unwrap();
+        let (record, cursor) = next_argument(elements, cursor).unwrap().unwrap();
+        assert_eq!(next_argument(elements, cursor), Ok(None));
+        let Atom::Record(entries) = record else {
+            panic!("expected record");
+        };
+        assert_eq!(
+            next_record_entry(entries, 0),
+            Ok(Some(RecordEntry {
+                key: b"three",
+                value: Atom::Number(b"3"),
+                next_cursor: entries.len(),
+            })),
         );
     }
 }

@@ -1,6 +1,6 @@
 use crate::expression::{
     Atom, Call, Comparison, Operand, Operation, next_argument, next_lookup_segment, next_operation,
-    parse_base, parse_for_clause, parse_tag_call,
+    next_record_entry, parse_base, parse_for_clause, parse_tag_call,
 };
 use crate::template::{
     ConditionalBoundary, RenderError, RenderedValue, TemplateItem, directive_keyword, emit_escaped,
@@ -1384,7 +1384,70 @@ fn resolve_atom(state_offset: u32, atom: Atom<'_>) -> Result<u32, u32> {
         Atom::Undefined => allocate_record(TAG_UNDEFINED, 0),
         Atom::Call(_) => Err(ERROR_INVALID_EXPRESSION),
         Atom::Group(expression) => evaluate_sync_expression(state_offset, expression),
+        Atom::Array(elements) => write_array_literal(state_offset, elements),
+        Atom::Record(entries) => write_record_literal(state_offset, entries),
     }
+}
+
+fn write_array_literal(state_offset: u32, elements: &[u8]) -> Result<u32, u32> {
+    let mut count = 0usize;
+    let mut cursor = 0usize;
+    while let Some((_, next)) =
+        next_argument(elements, cursor).map_err(|_| ERROR_INVALID_EXPRESSION)?
+    {
+        count = count.checked_add(1).ok_or(ERROR_RESOURCE_LIMIT)?;
+        cursor = next;
+    }
+    let payload_length = 4u32
+        .checked_add((count as u32).checked_mul(4).ok_or(ERROR_RESOURCE_LIMIT)?)
+        .ok_or(ERROR_RESOURCE_LIMIT)?;
+    let offset = allocate_record(TAG_ARRAY, payload_length)?;
+    write_u32(mutable_record_at(offset, TAG_ARRAY)?, 0, count as u32)?;
+    cursor = 0;
+    let mut index = 0usize;
+    while let Some((atom, next)) =
+        next_argument(elements, cursor).map_err(|_| ERROR_INVALID_EXPRESSION)?
+    {
+        let value_offset = resolve_atom(state_offset, atom)?;
+        write_u32(
+            mutable_record_at(offset, TAG_ARRAY)?,
+            4 + index * 4,
+            value_offset,
+        )?;
+        index += 1;
+        cursor = next;
+    }
+    Ok(offset)
+}
+
+fn write_record_literal(state_offset: u32, entries: &[u8]) -> Result<u32, u32> {
+    let mut count = 0usize;
+    let mut cursor = 0usize;
+    while let Some(entry) =
+        next_record_entry(entries, cursor).map_err(|_| ERROR_INVALID_EXPRESSION)?
+    {
+        count = count.checked_add(1).ok_or(ERROR_RESOURCE_LIMIT)?;
+        cursor = entry.next_cursor;
+    }
+    let payload_length = 4u32
+        .checked_add((count as u32).checked_mul(8).ok_or(ERROR_RESOURCE_LIMIT)?)
+        .ok_or(ERROR_RESOURCE_LIMIT)?;
+    let offset = allocate_record(TAG_RECORD, payload_length)?;
+    write_u32(mutable_record_at(offset, TAG_RECORD)?, 0, count as u32)?;
+    cursor = 0;
+    let mut index = 0usize;
+    while let Some(entry) =
+        next_record_entry(entries, cursor).map_err(|_| ERROR_INVALID_EXPRESSION)?
+    {
+        let key_offset = write_bytes_record(TAG_STRING, entry.key)?;
+        let value_offset = resolve_atom(state_offset, entry.value)?;
+        let record = mutable_record_at(offset, TAG_RECORD)?;
+        write_u32(record, 4 + index * 8, key_offset)?;
+        write_u32(record, 8 + index * 8, value_offset)?;
+        index += 1;
+        cursor = entry.next_cursor;
+    }
+    Ok(offset)
 }
 
 fn emit_value(state_offset: u32, value_offset: u32) -> Result<(), u32> {

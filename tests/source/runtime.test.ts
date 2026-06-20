@@ -630,6 +630,16 @@ test('iterates arena-backed arrays and records with nested local scopes', async 
       '1/0/2/1/true/false/2:a;2/1/1/0/false/true/2:b;',
     );
     assert.equal(
+      await engine.render({
+        source: [
+          '{% for item in [7, 3, 6] %}{{ loop.index }}:{{ item }};{% endfor %}',
+          '{% for key, value in { one: 1, two: 2 } %}{{ key }}={{ value }};{% endfor %}',
+          '{{ "a" in ["a", "b"] }}|{{ [1, 2, 3] | reverse | first }}',
+        ].join(''),
+      }),
+      '1:7;2:3;3:6;one=1;two=2;true|3',
+    );
+    assert.equal(
       (await Array.fromAsync(engine.renderStream(
         { source: '{% for item in items %}{% include "item.njk" %}{% endfor %}' },
         { items: ['x', 'y'] },
