@@ -1,0 +1,2194 @@
+{
+  "schemaVersion": 1,
+  "baseline": {
+    "repository": "https://github.com/mozilla/nunjucks.git",
+    "tag": "v3.2.4",
+    "commit": "86a77f49da4779d55414d8337e1a4d7ec7582da5"
+  },
+  "entries": [
+    {
+      "id": "tests/api.js:1",
+      "file": "tests/api.js",
+      "line": 26,
+      "testNameSource": "should always force compilation of parent template"
+    },
+    {
+      "id": "tests/api.js:2",
+      "file": "tests/api.js",
+      "line": 33,
+      "testNameSource": "should only call the callback once when conditional import fails"
+    },
+    {
+      "id": "tests/api.js:3",
+      "file": "tests/api.js",
+      "line": 45,
+      "testNameSource": "should handle correctly relative paths"
+    },
+    {
+      "id": "tests/api.js:4",
+      "file": "tests/api.js",
+      "line": 61,
+      "testNameSource": "should handle correctly cache for relative paths"
+    },
+    {
+      "id": "tests/api.js:5",
+      "file": "tests/api.js",
+      "line": 74,
+      "testNameSource": "should handle correctly relative paths in renderString"
+    },
+    {
+      "id": "tests/api.js:6",
+      "file": "tests/api.js",
+      "line": 86,
+      "testNameSource": "should emit \"load\" event on Environment instance"
+    },
+    {
+      "id": "tests/cli.js:1",
+      "file": "tests/cli.js",
+      "line": 20,
+      "testNameSource": "should echo a compiled template to stdout"
+    },
+    {
+      "id": "tests/cli.js:2",
+      "file": "tests/cli.js",
+      "line": 32,
+      "testNameSource": "should support --name"
+    },
+    {
+      "id": "tests/compiler.js:1",
+      "file": "tests/compiler.js",
+      "line": 35,
+      "testNameSource": "should compile templates"
+    },
+    {
+      "id": "tests/compiler.js:2",
+      "file": "tests/compiler.js",
+      "line": 53,
+      "testNameSource": "should escape newlines"
+    },
+    {
+      "id": "tests/compiler.js:3",
+      "file": "tests/compiler.js",
+      "line": 58,
+      "testNameSource": "should escape Unicode line seperators"
+    },
+    {
+      "id": "tests/compiler.js:4",
+      "file": "tests/compiler.js",
+      "line": 63,
+      "testNameSource": "should compile references"
+    },
+    {
+      "id": "tests/compiler.js:5",
+      "file": "tests/compiler.js",
+      "line": 83,
+      "testNameSource": "should compile references - object without prototype"
+    },
+    {
+      "id": "tests/compiler.js:6",
+      "file": "tests/compiler.js",
+      "line": 99,
+      "testNameSource": "should fail silently on undefined values"
+    },
+    {
+      "id": "tests/compiler.js:7",
+      "file": "tests/compiler.js",
+      "line": 107,
+      "testNameSource": "should not treat falsy values the same as undefined"
+    },
+    {
+      "id": "tests/compiler.js:8",
+      "file": "tests/compiler.js",
+      "line": 117,
+      "testNameSource": "should display none as empty string"
+    },
+    {
+      "id": "tests/compiler.js:9",
+      "file": "tests/compiler.js",
+      "line": 122,
+      "testNameSource": "should compile none as falsy"
+    },
+    {
+      "id": "tests/compiler.js:10",
+      "file": "tests/compiler.js",
+      "line": 127,
+      "testNameSource": "should compile none as null, not undefined"
+    },
+    {
+      "id": "tests/compiler.js:11",
+      "file": "tests/compiler.js",
+      "line": 132,
+      "testNameSource": "should compile function calls"
+    },
+    {
+      "id": "tests/compiler.js:12",
+      "file": "tests/compiler.js",
+      "line": 143,
+      "testNameSource": "should compile function calls with correct scope"
+    },
+    {
+      "id": "tests/compiler.js:13",
+      "file": "tests/compiler.js",
+      "line": 156,
+      "testNameSource": "should compile switch statements"
+    },
+    {
+      "id": "tests/compiler.js:14",
+      "file": "tests/compiler.js",
+      "line": 179,
+      "testNameSource": "should compile if blocks"
+    },
+    {
+      "id": "tests/compiler.js:15",
+      "file": "tests/compiler.js",
+      "line": 268,
+      "testNameSource": "should compile the ternary operator"
+    },
+    {
+      "id": "tests/compiler.js:16",
+      "file": "tests/compiler.js",
+      "line": 277,
+      "testNameSource": "should compile inline conditionals"
+    },
+    {
+      "id": "tests/compiler.js:17",
+      "file": "tests/compiler.js",
+      "line": 324,
+      "testNameSource": "should loop over simple arrays"
+    },
+    {
+      "id": "tests/compiler.js:18",
+      "file": "tests/compiler.js",
+      "line": 330,
+      "testNameSource": "should loop normally with an {% else %} tag and non-empty array"
+    },
+    {
+      "id": "tests/compiler.js:19",
+      "file": "tests/compiler.js",
+      "line": 336,
+      "testNameSource": "should execute the {% else %} block when looping over an empty array"
+    },
+    {
+      "id": "tests/compiler.js:20",
+      "file": "tests/compiler.js",
+      "line": 342,
+      "testNameSource": "should support destructured looping"
+    },
+    {
+      "id": "tests/compiler.js:21",
+      "file": "tests/compiler.js",
+      "line": 349,
+      "testNameSource": "should do loop over key-values of a literal in-template Object"
+    },
+    {
+      "id": "tests/compiler.js:22",
+      "file": "tests/compiler.js",
+      "line": 354,
+      "testNameSource": "should support loop.index"
+    },
+    {
+      "id": "tests/compiler.js:23",
+      "file": "tests/compiler.js",
+      "line": 357,
+      "testNameSource": "should support loop.index0"
+    },
+    {
+      "id": "tests/compiler.js:24",
+      "file": "tests/compiler.js",
+      "line": 360,
+      "testNameSource": "should support loop.revindex"
+    },
+    {
+      "id": "tests/compiler.js:25",
+      "file": "tests/compiler.js",
+      "line": 363,
+      "testNameSource": "should support loop.revindex0"
+    },
+    {
+      "id": "tests/compiler.js:26",
+      "file": "tests/compiler.js",
+      "line": 366,
+      "testNameSource": "should support loop.first"
+    },
+    {
+      "id": "tests/compiler.js:27",
+      "file": "tests/compiler.js",
+      "line": 373,
+      "testNameSource": "should support loop.last"
+    },
+    {
+      "id": "tests/compiler.js:28",
+      "file": "tests/compiler.js",
+      "line": 380,
+      "testNameSource": "should support loop.length"
+    },
+    {
+      "id": "tests/compiler.js:29",
+      "file": "tests/compiler.js",
+      "line": 383,
+      "testNameSource": "should fail silently when looping over an undefined variable"
+    },
+    {
+      "id": "tests/compiler.js:30",
+      "file": "tests/compiler.js",
+      "line": 386,
+      "testNameSource": "should fail silently when looping over an undefined property"
+    },
+    {
+      "id": "tests/compiler.js:31",
+      "file": "tests/compiler.js",
+      "line": 393,
+      "testNameSource": "should fail silently when looping over a null variable"
+    },
+    {
+      "id": "tests/compiler.js:32",
+      "file": "tests/compiler.js",
+      "line": 399,
+      "testNameSource": "should loop over two-dimensional arrays"
+    },
+    {
+      "id": "tests/compiler.js:33",
+      "file": "tests/compiler.js",
+      "line": 404,
+      "testNameSource": "should loop over four-dimensional arrays"
+    },
+    {
+      "id": "tests/compiler.js:34",
+      "file": "tests/compiler.js",
+      "line": 410,
+      "testNameSource": "should support loop.index with two-dimensional loops"
+    },
+    {
+      "id": "tests/compiler.js:35",
+      "file": "tests/compiler.js",
+      "line": 417,
+      "testNameSource": "should support loop.revindex with two-dimensional loops"
+    },
+    {
+      "id": "tests/compiler.js:36",
+      "file": "tests/compiler.js",
+      "line": 424,
+      "testNameSource": "should support key-value looping over an Object variable"
+    },
+    {
+      "id": "tests/compiler.js:37",
+      "file": "tests/compiler.js",
+      "line": 434,
+      "testNameSource": "should support loop.index when looping over an Object\\'s key-value pairs"
+    },
+    {
+      "id": "tests/compiler.js:38",
+      "file": "tests/compiler.js",
+      "line": 444,
+      "testNameSource": "should support loop.revindex when looping over an Object\\'s key-value pairs"
+    },
+    {
+      "id": "tests/compiler.js:39",
+      "file": "tests/compiler.js",
+      "line": 454,
+      "testNameSource": "should support loop.length when looping over an Object\\'s key-value pairs"
+    },
+    {
+      "id": "tests/compiler.js:40",
+      "file": "tests/compiler.js",
+      "line": 464,
+      "testNameSource": "should support include tags in the body of the loop"
+    },
+    {
+      "id": "tests/compiler.js:41",
+      "file": "tests/compiler.js",
+      "line": 474,
+      "testNameSource": "should work with {% set %} and {% include %} tags"
+    },
+    {
+      "id": "tests/compiler.js:42",
+      "file": "tests/compiler.js",
+      "line": 489,
+      "testNameSource": "should work with Set builtin"
+    },
+    {
+      "id": "tests/compiler.js:43",
+      "file": "tests/compiler.js",
+      "line": 507,
+      "testNameSource": "should work with Map builtin"
+    },
+    {
+      "id": "tests/compiler.js:44",
+      "file": "tests/compiler.js",
+      "line": 531,
+      "testNameSource": "should allow overriding var with none inside nested scope"
+    },
+    {
+      "id": "tests/compiler.js:45",
+      "file": "tests/compiler.js",
+      "line": 540,
+      "testNameSource": "should compile async control"
+    },
+    {
+      "id": "tests/compiler.js:46",
+      "file": "tests/compiler.js",
+      "line": 687,
+      "testNameSource": "should compile basic arithmetic operators"
+    },
+    {
+      "id": "tests/compiler.js:47",
+      "file": "tests/compiler.js",
+      "line": 691,
+      "testNameSource": "should compile the exponentiation (**) operator"
+    },
+    {
+      "id": "tests/compiler.js:48",
+      "file": "tests/compiler.js",
+      "line": 695,
+      "testNameSource": "should compile the integer division (//) operator"
+    },
+    {
+      "id": "tests/compiler.js:49",
+      "file": "tests/compiler.js",
+      "line": 699,
+      "testNameSource": "should compile the modulus operator"
+    },
+    {
+      "id": "tests/compiler.js:50",
+      "file": "tests/compiler.js",
+      "line": 703,
+      "testNameSource": "should compile numeric negation operator"
+    },
+    {
+      "id": "tests/compiler.js:51",
+      "file": "tests/compiler.js",
+      "line": 707,
+      "testNameSource": "should compile comparison operators"
+    },
+    {
+      "id": "tests/compiler.js:52",
+      "file": "tests/compiler.js",
+      "line": 735,
+      "testNameSource": "should compile python-style ternary operators"
+    },
+    {
+      "id": "tests/compiler.js:53",
+      "file": "tests/compiler.js",
+      "line": 742,
+      "testNameSource": "should compile the \"in\" operator for Arrays"
+    },
+    {
+      "id": "tests/compiler.js:54",
+      "file": "tests/compiler.js",
+      "line": 752,
+      "testNameSource": "should compile the \"in\" operator for objects"
+    },
+    {
+      "id": "tests/compiler.js:55",
+      "file": "tests/compiler.js",
+      "line": 761,
+      "testNameSource": "should compile the \"in\" operator for strings"
+    },
+    {
+      "id": "tests/compiler.js:56",
+      "file": "tests/compiler.js",
+      "line": 765,
+      "testNameSource": "should throw an error when using the \"in\" operator on unexpected types"
+    },
+    {
+      "id": "tests/compiler.js:57",
+      "file": "tests/compiler.js",
+      "line": 798,
+      "testNameSource": "should throw exceptions when called synchronously"
+    },
+    {
+      "id": "tests/compiler.js:58",
+      "file": "tests/compiler.js",
+      "line": 806,
+      "testNameSource": "should include error line in raised TemplateError"
+    },
+    {
+      "id": "tests/compiler.js:59",
+      "file": "tests/compiler.js",
+      "line": 826,
+      "testNameSource": "should include error line when exception raised in user function"
+    },
+    {
+      "id": "tests/compiler.js:60",
+      "file": "tests/compiler.js",
+      "line": 850,
+      "testNameSource": "should throw exceptions from included templates when called synchronously"
+    },
+    {
+      "id": "tests/compiler.js:61",
+      "file": "tests/compiler.js",
+      "line": 857,
+      "testNameSource": "should pass errors from included templates to callback when async"
+    },
+    {
+      "id": "tests/compiler.js:62",
+      "file": "tests/compiler.js",
+      "line": 869,
+      "testNameSource": "should compile string concatenations with tilde"
+    },
+    {
+      "id": "tests/compiler.js:63",
+      "file": "tests/compiler.js",
+      "line": 876,
+      "testNameSource": "should compile macros"
+    },
+    {
+      "id": "tests/compiler.js:64",
+      "file": "tests/compiler.js",
+      "line": 884,
+      "testNameSource": "should compile macros with optional args"
+    },
+    {
+      "id": "tests/compiler.js:65",
+      "file": "tests/compiler.js",
+      "line": 892,
+      "testNameSource": "should compile macros with args that can be passed to filters"
+    },
+    {
+      "id": "tests/compiler.js:66",
+      "file": "tests/compiler.js",
+      "line": 900,
+      "testNameSource": "should compile macros with positional args"
+    },
+    {
+      "id": "tests/compiler.js:67",
+      "file": "tests/compiler.js",
+      "line": 908,
+      "testNameSource": "should compile macros with arg defaults"
+    },
+    {
+      "id": "tests/compiler.js:68",
+      "file": "tests/compiler.js",
+      "line": 920,
+      "testNameSource": "should compile macros with keyword args"
+    },
+    {
+      "id": "tests/compiler.js:69",
+      "file": "tests/compiler.js",
+      "line": 928,
+      "testNameSource": "should compile macros with only keyword args"
+    },
+    {
+      "id": "tests/compiler.js:70",
+      "file": "tests/compiler.js",
+      "line": 937,
+      "testNameSource": "should compile macros with keyword args overriding defaults"
+    },
+    {
+      "id": "tests/compiler.js:71",
+      "file": "tests/compiler.js",
+      "line": 946,
+      "testNameSource": "should compile macros with out-of-order keyword args"
+    },
+    {
+      "id": "tests/compiler.js:72",
+      "file": "tests/compiler.js",
+      "line": 955,
+      "testNameSource": "should compile macros"
+    },
+    {
+      "id": "tests/compiler.js:73",
+      "file": "tests/compiler.js",
+      "line": 964,
+      "testNameSource": "should compile macros with multiple overridden arg defaults"
+    },
+    {
+      "id": "tests/compiler.js:74",
+      "file": "tests/compiler.js",
+      "line": 973,
+      "testNameSource": "should compile macro calls inside blocks"
+    },
+    {
+      "id": "tests/compiler.js:75",
+      "file": "tests/compiler.js",
+      "line": 985,
+      "testNameSource": "should compile macros defined in one block and called in another"
+    },
+    {
+      "id": "tests/compiler.js:76",
+      "file": "tests/compiler.js",
+      "line": 998,
+      "testNameSource": "should compile macros that include other templates"
+    },
+    {
+      "id": "tests/compiler.js:77",
+      "file": "tests/compiler.js",
+      "line": 1009,
+      "testNameSource": "should compile macros that set vars"
+    },
+    {
+      "id": "tests/compiler.js:78",
+      "file": "tests/compiler.js",
+      "line": 1021,
+      "testNameSource": "should not leak variables set in macro to calling scope"
+    },
+    {
+      "id": "tests/compiler.js:79",
+      "file": "tests/compiler.js",
+      "line": 1038,
+      "testNameSource": "should not leak variables set in nested scope within macro out to calling scope"
+    },
+    {
+      "id": "tests/compiler.js:80",
+      "file": "tests/compiler.js",
+      "line": 1054,
+      "testNameSource": "should compile macros without leaking set to calling scope"
+    },
+    {
+      "id": "tests/compiler.js:81",
+      "file": "tests/compiler.js",
+      "line": 1078,
+      "testNameSource": "should compile macros that cannot see variables in caller scope"
+    },
+    {
+      "id": "tests/compiler.js:82",
+      "file": "tests/compiler.js",
+      "line": 1087,
+      "testNameSource": "should compile call blocks"
+    },
+    {
+      "id": "tests/compiler.js:83",
+      "file": "tests/compiler.js",
+      "line": 1098,
+      "testNameSource": "should compile call blocks with args"
+    },
+    {
+      "id": "tests/compiler.js:84",
+      "file": "tests/compiler.js",
+      "line": 1111,
+      "testNameSource": "should compile call blocks using imported macros"
+    },
+    {
+      "id": "tests/compiler.js:85",
+      "file": "tests/compiler.js",
+      "line": 1119,
+      "testNameSource": "should import templates"
+    },
+    {
+      "id": "tests/compiler.js:86",
+      "file": "tests/compiler.js",
+      "line": 1145,
+      "testNameSource": "should import templates with context"
+    },
+    {
+      "id": "tests/compiler.js:87",
+      "file": "tests/compiler.js",
+      "line": 1185,
+      "testNameSource": "should import templates without context"
+    },
+    {
+      "id": "tests/compiler.js:88",
+      "file": "tests/compiler.js",
+      "line": 1201,
+      "testNameSource": "should default to importing without context"
+    },
+    {
+      "id": "tests/compiler.js:89",
+      "file": "tests/compiler.js",
+      "line": 1217,
+      "testNameSource": "should inherit templates"
+    },
+    {
+      "id": "tests/compiler.js:90",
+      "file": "tests/compiler.js",
+      "line": 1236,
+      "testNameSource": "should not call blocks not defined from template inheritance"
+    },
+    {
+      "id": "tests/compiler.js:91",
+      "file": "tests/compiler.js",
+      "line": 1249,
+      "testNameSource": "should conditionally inherit templates"
+    },
+    {
+      "id": "tests/compiler.js:92",
+      "file": "tests/compiler.js",
+      "line": 1281,
+      "testNameSource": "should error if same block is defined multiple times"
+    },
+    {
+      "id": "tests/compiler.js:93",
+      "file": "tests/compiler.js",
+      "line": 1294,
+      "testNameSource": "should render nested blocks in child template"
+    },
+    {
+      "id": "tests/compiler.js:94",
+      "file": "tests/compiler.js",
+      "line": 1303,
+      "testNameSource": "should render parent blocks with super()"
+    },
+    {
+      "id": "tests/compiler.js:95",
+      "file": "tests/compiler.js",
+      "line": 1318,
+      "testNameSource": "should let super() see global vars from child template"
+    },
+    {
+      "id": "tests/compiler.js:96",
+      "file": "tests/compiler.js",
+      "line": 1327,
+      "testNameSource": "should not let super() see vars from child block"
+    },
+    {
+      "id": "tests/compiler.js:97",
+      "file": "tests/compiler.js",
+      "line": 1336,
+      "testNameSource": "should let child templates access parent global scope"
+    },
+    {
+      "id": "tests/compiler.js:98",
+      "file": "tests/compiler.js",
+      "line": 1345,
+      "testNameSource": "should not let super() modify calling scope"
+    },
+    {
+      "id": "tests/compiler.js:99",
+      "file": "tests/compiler.js",
+      "line": 1354,
+      "testNameSource": "should not let child templates set vars in parent scope"
+    },
+    {
+      "id": "tests/compiler.js:100",
+      "file": "tests/compiler.js",
+      "line": 1363,
+      "testNameSource": "should render blocks in their own scope"
+    },
+    {
+      "id": "tests/compiler.js:101",
+      "file": "tests/compiler.js",
+      "line": 1373,
+      "testNameSource": "should include templates"
+    },
+    {
+      "id": "tests/compiler.js:102",
+      "file": "tests/compiler.js",
+      "line": 1379,
+      "testNameSource": "should include 130 templates without call stack size exceed"
+    },
+    {
+      "id": "tests/compiler.js:103",
+      "file": "tests/compiler.js",
+      "line": 1385,
+      "testNameSource": "should include templates with context"
+    },
+    {
+      "id": "tests/compiler.js:104",
+      "file": "tests/compiler.js",
+      "line": 1394,
+      "testNameSource": "should include templates that can see including scope, but not write to it"
+    },
+    {
+      "id": "tests/compiler.js:105",
+      "file": "tests/compiler.js",
+      "line": 1399,
+      "testNameSource": "should include templates dynamically"
+    },
+    {
+      "id": "tests/compiler.js:106",
+      "file": "tests/compiler.js",
+      "line": 1409,
+      "testNameSource": "should include templates dynamically based on a set var"
+    },
+    {
+      "id": "tests/compiler.js:107",
+      "file": "tests/compiler.js",
+      "line": 1418,
+      "testNameSource": "should include templates dynamically based on an object attr"
+    },
+    {
+      "id": "tests/compiler.js:108",
+      "file": "tests/compiler.js",
+      "line": 1431,
+      "testNameSource": "should throw an error when including a file that does not exist"
+    },
+    {
+      "id": "tests/compiler.js:109",
+      "file": "tests/compiler.js",
+      "line": 1447,
+      "testNameSource": "should fail silently on missing templates if requested"
+    },
+    {
+      "id": "tests/compiler.js:110",
+      "file": "tests/compiler.js",
+      "line": 1463,
+      "testNameSource": "should have access to \"loop\" inside an include"
+    },
+    {
+      "id": "tests/compiler.js:111",
+      "file": "tests/compiler.js",
+      "line": 1479,
+      "testNameSource": "should maintain nested scopes"
+    },
+    {
+      "id": "tests/compiler.js:112",
+      "file": "tests/compiler.js",
+      "line": 1489,
+      "testNameSource": "should allow blocks in for loops"
+    },
+    {
+      "id": "tests/compiler.js:113",
+      "file": "tests/compiler.js",
+      "line": 1498,
+      "testNameSource": "should make includes inherit scope"
+    },
+    {
+      "id": "tests/compiler.js:114",
+      "file": "tests/compiler.js",
+      "line": 1508,
+      "testNameSource": "should compile a set block"
+    },
+    {
+      "id": "tests/compiler.js:115",
+      "file": "tests/compiler.js",
+      "line": 1573,
+      "testNameSource": "should compile set with frame references"
+    },
+    {
+      "id": "tests/compiler.js:116",
+      "file": "tests/compiler.js",
+      "line": 1585,
+      "testNameSource": "should compile set assignments of the same variable"
+    },
+    {
+      "id": "tests/compiler.js:117",
+      "file": "tests/compiler.js",
+      "line": 1601,
+      "testNameSource": "should compile block-set"
+    },
+    {
+      "id": "tests/compiler.js:118",
+      "file": "tests/compiler.js",
+      "line": 1665,
+      "testNameSource": "should compile block-set wrapping an inherited block"
+    },
+    {
+      "id": "tests/compiler.js:119",
+      "file": "tests/compiler.js",
+      "line": 1674,
+      "testNameSource": "should throw errors"
+    },
+    {
+      "id": "tests/compiler.js:120",
+      "file": "tests/compiler.js",
+      "line": 1687,
+      "testNameSource": "should allow custom tag compilation"
+    },
+    {
+      "id": "tests/compiler.js:121",
+      "file": "tests/compiler.js",
+      "line": 1716,
+      "testNameSource": "should allow custom tag compilation without content"
+    },
+    {
+      "id": "tests/compiler.js:122",
+      "file": "tests/compiler.js",
+      "line": 1742,
+      "testNameSource": "should allow complicated custom tag compilation"
+    },
+    {
+      "id": "tests/compiler.js:123",
+      "file": "tests/compiler.js",
+      "line": 1790,
+      "testNameSource": "should allow custom tag with args compilation"
+    },
+    {
+      "id": "tests/compiler.js:124",
+      "file": "tests/compiler.js",
+      "line": 1856,
+      "testNameSource": "should autoescape by default"
+    },
+    {
+      "id": "tests/compiler.js:125",
+      "file": "tests/compiler.js",
+      "line": 1863,
+      "testNameSource": "should autoescape if autoescape is on"
+    },
+    {
+      "id": "tests/compiler.js:126",
+      "file": "tests/compiler.js",
+      "line": 1925,
+      "testNameSource": "should not autoescape safe strings"
+    },
+    {
+      "id": "tests/compiler.js:127",
+      "file": "tests/compiler.js",
+      "line": 1935,
+      "testNameSource": "should not autoescape macros"
+    },
+    {
+      "id": "tests/compiler.js:128",
+      "file": "tests/compiler.js",
+      "line": 1963,
+      "testNameSource": "should not autoescape super()"
+    },
+    {
+      "id": "tests/compiler.js:129",
+      "file": "tests/compiler.js",
+      "line": 1979,
+      "testNameSource": "should autoescape backslashes"
+    },
+    {
+      "id": "tests/compiler.js:130",
+      "file": "tests/compiler.js",
+      "line": 1989,
+      "testNameSource": "should not autoescape when extension set false"
+    },
+    {
+      "id": "tests/compiler.js:131",
+      "file": "tests/compiler.js",
+      "line": 2024,
+      "testNameSource": "should pass context as this to filters"
+    },
+    {
+      "id": "tests/compiler.js:132",
+      "file": "tests/compiler.js",
+      "line": 2043,
+      "testNameSource": "should render regexs"
+    },
+    {
+      "id": "tests/compiler.js:133",
+      "file": "tests/compiler.js",
+      "line": 2053,
+      "testNameSource": "should throw an error when {% call %} is passed an object that is not a function"
+    },
+    {
+      "id": "tests/compiler.js:134",
+      "file": "tests/compiler.js",
+      "line": 2066,
+      "testNameSource": "should throw an error when including a file that calls an undefined macro"
+    },
+    {
+      "id": "tests/compiler.js:135",
+      "file": "tests/compiler.js",
+      "line": 2082,
+      "testNameSource": "should throw an error when including a file that calls an undefined macro even inside {% if %} tag"
+    },
+    {
+      "id": "tests/compiler.js:136",
+      "file": "tests/compiler.js",
+      "line": 2098,
+      "testNameSource": "should throw an error when including a file that imports macro that calls an undefined macro"
+    },
+    {
+      "id": "tests/compiler.js:137",
+      "file": "tests/compiler.js",
+      "line": 2113,
+      "testNameSource": "should control whitespaces correctly"
+    },
+    {
+      "id": "tests/compiler.js:138",
+      "file": "tests/compiler.js",
+      "line": 2130,
+      "testNameSource": "should control expression whitespaces correctly"
+    },
+    {
+      "id": "tests/compiler.js:139",
+      "file": "tests/compiler.js",
+      "line": 2147,
+      "testNameSource": "should get right value when macro parameter conflict with global macro name"
+    },
+    {
+      "id": "tests/compiler.js:140",
+      "file": "tests/compiler.js",
+      "line": 2165,
+      "testNameSource": "should get right value when macro include macro"
+    },
+    {
+      "id": "tests/compiler.js:141",
+      "file": "tests/compiler.js",
+      "line": 2183,
+      "testNameSource": "should allow access to outer scope in call blocks"
+    },
+    {
+      "id": "tests/compiler.js:142",
+      "file": "tests/compiler.js",
+      "line": 2201,
+      "testNameSource": "should not leak scope from call blocks to parent"
+    },
+    {
+      "id": "tests/compiler.js:143",
+      "file": "tests/compiler.js",
+      "line": 2222,
+      "testNameSource": "should import template objects"
+    },
+    {
+      "id": "tests/compiler.js:144",
+      "file": "tests/compiler.js",
+      "line": 2245,
+      "testNameSource": "should inherit template objects"
+    },
+    {
+      "id": "tests/compiler.js:145",
+      "file": "tests/compiler.js",
+      "line": 2267,
+      "testNameSource": "should include template objects"
+    },
+    {
+      "id": "tests/compiler.js:146",
+      "file": "tests/compiler.js",
+      "line": 2280,
+      "testNameSource": "should throw an error when invalid expression whitespaces are used"
+    },
+    {
+      "id": "tests/compiler.js:147",
+      "file": "tests/compiler.js",
+      "line": 2299,
+      "testNameSource": "should apply the title filter to the body"
+    },
+    {
+      "id": "tests/compiler.js:148",
+      "file": "tests/compiler.js",
+      "line": 2305,
+      "testNameSource": "should apply the replace filter to the body"
+    },
+    {
+      "id": "tests/compiler.js:149",
+      "file": "tests/compiler.js",
+      "line": 2311,
+      "testNameSource": "should work with variables in the body"
+    },
+    {
+      "id": "tests/compiler.js:150",
+      "file": "tests/compiler.js",
+      "line": 2317,
+      "testNameSource": "should work with blocks in the body"
+    },
+    {
+      "id": "tests/core.js:1",
+      "file": "tests/core.js",
+      "line": 48,
+      "testNameSource": "should cache templates by default"
+    },
+    {
+      "id": "tests/core.js:2",
+      "file": "tests/core.js",
+      "line": 62,
+      "testNameSource": "should not cache templates with {noCache: true}"
+    },
+    {
+      "id": "tests/express.js:1",
+      "file": "tests/express.js",
+      "line": 21,
+      "testNameSource": "should have reference to nunjucks env"
+    },
+    {
+      "id": "tests/express.js:2",
+      "file": "tests/express.js",
+      "line": 25,
+      "testNameSource": "should render a view with extension"
+    },
+    {
+      "id": "tests/express.js:3",
+      "file": "tests/express.js",
+      "line": 35,
+      "testNameSource": "should render a view without extension"
+    },
+    {
+      "id": "tests/filters.js:1",
+      "file": "tests/filters.js",
+      "line": 29,
+      "testNameSource": "abs"
+    },
+    {
+      "id": "tests/filters.js:2",
+      "file": "tests/filters.js",
+      "line": 35,
+      "testNameSource": "batch"
+    },
+    {
+      "id": "tests/filters.js:3",
+      "file": "tests/filters.js",
+      "line": 48,
+      "testNameSource": "capitalize"
+    },
+    {
+      "id": "tests/filters.js:4",
+      "file": "tests/filters.js",
+      "line": 59,
+      "testNameSource": "center"
+    },
+    {
+      "id": "tests/filters.js:5",
+      "file": "tests/filters.js",
+      "line": 86,
+      "testNameSource": "default"
+    },
+    {
+      "id": "tests/filters.js:6",
+      "file": "tests/filters.js",
+      "line": 98,
+      "testNameSource": "dump"
+    },
+    {
+      "id": "tests/filters.js:7",
+      "file": "tests/filters.js",
+      "line": 109,
+      "testNameSource": "escape"
+    },
+    {
+      "id": "tests/filters.js:8",
+      "file": "tests/filters.js",
+      "line": 116,
+      "testNameSource": "escape skip safe"
+    },
+    {
+      "id": "tests/filters.js:9",
+      "file": "tests/filters.js",
+      "line": 122,
+      "testNameSource": "should not double escape strings"
+    },
+    {
+      "id": "tests/filters.js:10",
+      "file": "tests/filters.js",
+      "line": 128,
+      "testNameSource": "should not double escape with autoescape on"
+    },
+    {
+      "id": "tests/filters.js:11",
+      "file": "tests/filters.js",
+      "line": 134,
+      "testNameSource": "should work with non-string values"
+    },
+    {
+      "id": "tests/filters.js:12",
+      "file": "tests/filters.js",
+      "line": 153,
+      "testNameSource": "should not escape safe strings with autoescape on"
+    },
+    {
+      "id": "tests/filters.js:13",
+      "file": "tests/filters.js",
+      "line": 165,
+      "testNameSource": "should keep strings escaped after they have been escaped"
+    },
+    {
+      "id": "tests/filters.js:14",
+      "file": "tests/filters.js",
+      "line": 172,
+      "testNameSource": "dictsort"
+    },
+    {
+      "id": "tests/filters.js:15",
+      "file": "tests/filters.js",
+      "line": 221,
+      "testNameSource": "first"
+    },
+    {
+      "id": "tests/filters.js:16",
+      "file": "tests/filters.js",
+      "line": 226,
+      "testNameSource": "float"
+    },
+    {
+      "id": "tests/filters.js:17",
+      "file": "tests/filters.js",
+      "line": 231,
+      "testNameSource": "forceescape"
+    },
+    {
+      "id": "tests/filters.js:18",
+      "file": "tests/filters.js",
+      "line": 237,
+      "testNameSource": "int"
+    },
+    {
+      "id": "tests/filters.js:19",
+      "file": "tests/filters.js",
+      "line": 245,
+      "testNameSource": "int (default value)"
+    },
+    {
+      "id": "tests/filters.js:20",
+      "file": "tests/filters.js",
+      "line": 249,
+      "testNameSource": "float (default value)"
+    },
+    {
+      "id": "tests/filters.js:21",
+      "file": "tests/filters.js",
+      "line": 253,
+      "testNameSource": "groupby"
+    },
+    {
+      "id": "tests/filters.js:22",
+      "file": "tests/filters.js",
+      "line": 409,
+      "testNameSource": "indent"
+    },
+    {
+      "id": "tests/filters.js:23",
+      "file": "tests/filters.js",
+      "line": 436,
+      "testNameSource": "join"
+    },
+    {
+      "id": "tests/filters.js:24",
+      "file": "tests/filters.js",
+      "line": 465,
+      "testNameSource": "last"
+    },
+    {
+      "id": "tests/filters.js:25",
+      "file": "tests/filters.js",
+      "line": 471,
+      "testNameSource": "should return length of a list literal"
+    },
+    {
+      "id": "tests/filters.js:26",
+      "file": "tests/filters.js",
+      "line": 474,
+      "testNameSource": "should output 0 for a missing context variable"
+    },
+    {
+      "id": "tests/filters.js:27",
+      "file": "tests/filters.js",
+      "line": 477,
+      "testNameSource": "should output string length for string variables"
+    },
+    {
+      "id": "tests/filters.js:28",
+      "file": "tests/filters.js",
+      "line": 482,
+      "testNameSource": "should output string length for a SafeString variable"
+    },
+    {
+      "id": "tests/filters.js:29",
+      "file": "tests/filters.js",
+      "line": 487,
+      "testNameSource": "should output the correct length of a string created with new String()"
+    },
+    {
+      "id": "tests/filters.js:30",
+      "file": "tests/filters.js",
+      "line": 492,
+      "testNameSource": "should output 0 for a literal \"undefined\""
+    },
+    {
+      "id": "tests/filters.js:31",
+      "file": "tests/filters.js",
+      "line": 495,
+      "testNameSource": "should output 0 for a literal \"null\""
+    },
+    {
+      "id": "tests/filters.js:32",
+      "file": "tests/filters.js",
+      "line": 498,
+      "testNameSource": "should output 0 for an Object with no properties"
+    },
+    {
+      "id": "tests/filters.js:33",
+      "file": "tests/filters.js",
+      "line": 503,
+      "testNameSource": "should output 1 for an Object with 1 property"
+    },
+    {
+      "id": "tests/filters.js:34",
+      "file": "tests/filters.js",
+      "line": 510,
+      "testNameSource": "should output the number of properties for a plain Object, not the value of its length property"
+    },
+    {
+      "id": "tests/filters.js:35",
+      "file": "tests/filters.js",
+      "line": 518,
+      "testNameSource": "should output the length of an array"
+    },
+    {
+      "id": "tests/filters.js:36",
+      "file": "tests/filters.js",
+      "line": 523,
+      "testNameSource": "should output the full length of a sparse array"
+    },
+    {
+      "id": "tests/filters.js:37",
+      "file": "tests/filters.js",
+      "line": 528,
+      "testNameSource": "should output the length of an array created with \"new Array\""
+    },
+    {
+      "id": "tests/filters.js:38",
+      "file": "tests/filters.js",
+      "line": 533,
+      "testNameSource": "should output the length of an array created with \"new Array\" with user-defined properties"
+    },
+    {
+      "id": "tests/filters.js:39",
+      "file": "tests/filters.js",
+      "line": 540,
+      "testNameSource": "should output the length of a Map"
+    },
+    {
+      "id": "tests/filters.js:40",
+      "file": "tests/filters.js",
+      "line": 553,
+      "testNameSource": "should output the length of a Set"
+    },
+    {
+      "id": "tests/filters.js:41",
+      "file": "tests/filters.js",
+      "line": 566,
+      "testNameSource": "list"
+    },
+    {
+      "id": "tests/filters.js:42",
+      "file": "tests/filters.js",
+      "line": 581,
+      "testNameSource": "lower"
+    },
+    {
+      "id": "tests/filters.js:43",
+      "file": "tests/filters.js",
+      "line": 592,
+      "testNameSource": "nl2br"
+    },
+    {
+      "id": "tests/filters.js:44",
+      "file": "tests/filters.js",
+      "line": 609,
+      "testNameSource": "random"
+    },
+    {
+      "id": "tests/filters.js:45",
+      "file": "tests/filters.js",
+      "line": 621,
+      "testNameSource": "reject"
+    },
+    {
+      "id": "tests/filters.js:46",
+      "file": "tests/filters.js",
+      "line": 637,
+      "testNameSource": "rejectattr"
+    },
+    {
+      "id": "tests/filters.js:47",
+      "file": "tests/filters.js",
+      "line": 651,
+      "testNameSource": "select"
+    },
+    {
+      "id": "tests/filters.js:48",
+      "file": "tests/filters.js",
+      "line": 667,
+      "testNameSource": "selectattr"
+    },
+    {
+      "id": "tests/filters.js:49",
+      "file": "tests/filters.js",
+      "line": 681,
+      "testNameSource": "replace"
+    },
+    {
+      "id": "tests/filters.js:50",
+      "file": "tests/filters.js",
+      "line": 733,
+      "testNameSource": "reverse"
+    },
+    {
+      "id": "tests/filters.js:51",
+      "file": "tests/filters.js",
+      "line": 739,
+      "testNameSource": "round"
+    },
+    {
+      "id": "tests/filters.js:52",
+      "file": "tests/filters.js",
+      "line": 747,
+      "testNameSource": "slice"
+    },
+    {
+      "id": "tests/filters.js:53",
+      "file": "tests/filters.js",
+      "line": 771,
+      "testNameSource": "sum"
+    },
+    {
+      "id": "tests/filters.js:54",
+      "file": "tests/filters.js",
+      "line": 805,
+      "testNameSource": "sort"
+    },
+    {
+      "id": "tests/filters.js:55",
+      "file": "tests/filters.js",
+      "line": 863,
+      "testNameSource": "string"
+    },
+    {
+      "id": "tests/filters.js:56",
+      "file": "tests/filters.js",
+      "line": 869,
+      "testNameSource": "striptags"
+    },
+    {
+      "id": "tests/filters.js:57",
+      "file": "tests/filters.js",
+      "line": 891,
+      "testNameSource": "title"
+    },
+    {
+      "id": "tests/filters.js:58",
+      "file": "tests/filters.js",
+      "line": 902,
+      "testNameSource": "trim"
+    },
+    {
+      "id": "tests/filters.js:59",
+      "file": "tests/filters.js",
+      "line": 910,
+      "testNameSource": "truncate"
+    },
+    {
+      "id": "tests/filters.js:60",
+      "file": "tests/filters.js",
+      "line": 941,
+      "testNameSource": "upper"
+    },
+    {
+      "id": "tests/filters.js:61",
+      "file": "tests/filters.js",
+      "line": 952,
+      "testNameSource": "urlencode"
+    },
+    {
+      "id": "tests/filters.js:62",
+      "file": "tests/filters.js",
+      "line": 966,
+      "testNameSource": "urlencode - object without prototype"
+    },
+    {
+      "id": "tests/filters.js:63",
+      "file": "tests/filters.js",
+      "line": 977,
+      "testNameSource": "urlize"
+    },
+    {
+      "id": "tests/filters.js:64",
+      "file": "tests/filters.js",
+      "line": 1060,
+      "testNameSource": "wordcount"
+    },
+    {
+      "id": "tests/globals.js:1",
+      "file": "tests/globals.js",
+      "line": 26,
+      "testNameSource": "should have range"
+    },
+    {
+      "id": "tests/globals.js:2",
+      "file": "tests/globals.js",
+      "line": 41,
+      "testNameSource": "should have cycler"
+    },
+    {
+      "id": "tests/globals.js:3",
+      "file": "tests/globals.js",
+      "line": 66,
+      "testNameSource": "should have joiner"
+    },
+    {
+      "id": "tests/globals.js:4",
+      "file": "tests/globals.js",
+      "line": 80,
+      "testNameSource": "should allow addition of globals"
+    },
+    {
+      "id": "tests/globals.js:5",
+      "file": "tests/globals.js",
+      "line": 92,
+      "testNameSource": "should allow chaining of globals"
+    },
+    {
+      "id": "tests/globals.js:6",
+      "file": "tests/globals.js",
+      "line": 107,
+      "testNameSource": "should allow getting of globals"
+    },
+    {
+      "id": "tests/globals.js:7",
+      "file": "tests/globals.js",
+      "line": 120,
+      "testNameSource": "should allow getting boolean globals"
+    },
+    {
+      "id": "tests/globals.js:8",
+      "file": "tests/globals.js",
+      "line": 131,
+      "testNameSource": "should fail on getting non-existent global"
+    },
+    {
+      "id": "tests/globals.js:9",
+      "file": "tests/globals.js",
+      "line": 142,
+      "testNameSource": "should pass context as this to global functions"
+    },
+    {
+      "id": "tests/globals.js:10",
+      "file": "tests/globals.js",
+      "line": 155,
+      "testNameSource": "should be exclusive to each environment"
+    },
+    {
+      "id": "tests/globals.js:11",
+      "file": "tests/globals.js",
+      "line": 170,
+      "testNameSource": "should return errors from globals"
+    },
+    {
+      "id": "tests/jinja-compat.js:1",
+      "file": "tests/jinja-compat.js",
+      "line": 20,
+      "testNameSource": "should support array slices with start and stop"
+    },
+    {
+      "id": "tests/jinja-compat.js:2",
+      "file": "tests/jinja-compat.js",
+      "line": 28,
+      "testNameSource": "should support array slices using expressions"
+    },
+    {
+      "id": "tests/jinja-compat.js:3",
+      "file": "tests/jinja-compat.js",
+      "line": 37,
+      "testNameSource": "should support array slices with start"
+    },
+    {
+      "id": "tests/jinja-compat.js:4",
+      "file": "tests/jinja-compat.js",
+      "line": 45,
+      "testNameSource": "should support array slices with negative start"
+    },
+    {
+      "id": "tests/jinja-compat.js:5",
+      "file": "tests/jinja-compat.js",
+      "line": 53,
+      "testNameSource": "should support array slices with stop"
+    },
+    {
+      "id": "tests/jinja-compat.js:6",
+      "file": "tests/jinja-compat.js",
+      "line": 61,
+      "testNameSource": "should support array slices with negative stop"
+    },
+    {
+      "id": "tests/jinja-compat.js:7",
+      "file": "tests/jinja-compat.js",
+      "line": 69,
+      "testNameSource": "should support array slices with step"
+    },
+    {
+      "id": "tests/jinja-compat.js:8",
+      "file": "tests/jinja-compat.js",
+      "line": 77,
+      "testNameSource": "should support array slices with negative step"
+    },
+    {
+      "id": "tests/jinja-compat.js:9",
+      "file": "tests/jinja-compat.js",
+      "line": 85,
+      "testNameSource": "should support array slices with start and negative step"
+    },
+    {
+      "id": "tests/jinja-compat.js:10",
+      "file": "tests/jinja-compat.js",
+      "line": 93,
+      "testNameSource": "should support array slices with negative start and negative step"
+    },
+    {
+      "id": "tests/jinja-compat.js:11",
+      "file": "tests/jinja-compat.js",
+      "line": 101,
+      "testNameSource": "should support array slices with stop and negative step"
+    },
+    {
+      "id": "tests/jinja-compat.js:12",
+      "file": "tests/jinja-compat.js",
+      "line": 109,
+      "testNameSource": "should support array slices with start and step"
+    },
+    {
+      "id": "tests/jinja-compat.js:13",
+      "file": "tests/jinja-compat.js",
+      "line": 117,
+      "testNameSource": "should support array slices with start, stop, and step"
+    },
+    {
+      "id": "tests/lexer.js:1",
+      "file": "tests/lexer.js",
+      "line": 65,
+      "testNameSource": "should parse template data"
+    },
+    {
+      "id": "tests/lexer.js:2",
+      "file": "tests/lexer.js",
+      "line": 76,
+      "testNameSource": "should keep track of whitespace"
+    },
+    {
+      "id": "tests/lexer.js:3",
+      "file": "tests/lexer.js",
+      "line": 92,
+      "testNameSource": "should trim blocks"
+    },
+    {
+      "id": "tests/lexer.js:4",
+      "file": "tests/lexer.js",
+      "line": 108,
+      "testNameSource": "should trim windows-style CRLF line endings after blocks"
+    },
+    {
+      "id": "tests/lexer.js:5",
+      "file": "tests/lexer.js",
+      "line": 124,
+      "testNameSource": "should not trim CR after blocks"
+    },
+    {
+      "id": "tests/lexer.js:6",
+      "file": "tests/lexer.js",
+      "line": 141,
+      "testNameSource": "should lstrip and trim blocks"
+    },
+    {
+      "id": "tests/lexer.js:7",
+      "file": "tests/lexer.js",
+      "line": 159,
+      "testNameSource": "should lstrip and not collapse whitespace between blocks"
+    },
+    {
+      "id": "tests/lexer.js:8",
+      "file": "tests/lexer.js",
+      "line": 174,
+      "testNameSource": "should parse variable start and end"
+    },
+    {
+      "id": "tests/lexer.js:9",
+      "file": "tests/lexer.js",
+      "line": 184,
+      "testNameSource": "should treat the non-breaking space as valid whitespace"
+    },
+    {
+      "id": "tests/lexer.js:10",
+      "file": "tests/lexer.js",
+      "line": 193,
+      "testNameSource": "should parse block start and end"
+    },
+    {
+      "id": "tests/lexer.js:11",
+      "file": "tests/lexer.js",
+      "line": 203,
+      "testNameSource": "should parse basic types"
+    },
+    {
+      "id": "tests/lexer.js:12",
+      "file": "tests/lexer.js",
+      "line": 219,
+      "testNameSource": "should parse function calls"
+    },
+    {
+      "id": "tests/lexer.js:13",
+      "file": "tests/lexer.js",
+      "line": 230,
+      "testNameSource": "should parse groups"
+    },
+    {
+      "id": "tests/lexer.js:14",
+      "file": "tests/lexer.js",
+      "line": 244,
+      "testNameSource": "should parse arrays"
+    },
+    {
+      "id": "tests/lexer.js:15",
+      "file": "tests/lexer.js",
+      "line": 258,
+      "testNameSource": "should parse dicts"
+    },
+    {
+      "id": "tests/lexer.js:16",
+      "file": "tests/lexer.js",
+      "line": 274,
+      "testNameSource": "should parse blocks without whitespace"
+    },
+    {
+      "id": "tests/lexer.js:17",
+      "file": "tests/lexer.js",
+      "line": 287,
+      "testNameSource": "should parse filters"
+    },
+    {
+      "id": "tests/lexer.js:18",
+      "file": "tests/lexer.js",
+      "line": 296,
+      "testNameSource": "should parse operators"
+    },
+    {
+      "id": "tests/lexer.js:19",
+      "file": "tests/lexer.js",
+      "line": 337,
+      "testNameSource": "should parse comments"
+    },
+    {
+      "id": "tests/lexer.js:20",
+      "file": "tests/lexer.js",
+      "line": 345,
+      "testNameSource": "should allow changing the variable start and end"
+    },
+    {
+      "id": "tests/lexer.js:21",
+      "file": "tests/lexer.js",
+      "line": 359,
+      "testNameSource": "should allow changing the block start and end"
+    },
+    {
+      "id": "tests/lexer.js:22",
+      "file": "tests/lexer.js",
+      "line": 371,
+      "testNameSource": "should allow changing the variable start and end"
+    },
+    {
+      "id": "tests/lexer.js:23",
+      "file": "tests/lexer.js",
+      "line": 385,
+      "testNameSource": "should allow changing the comment start and end"
+    },
+    {
+      "id": "tests/lexer.js:24",
+      "file": "tests/lexer.js",
+      "line": 399,
+      "testNameSource": "should have individual lexer tag settings for each environment"
+    },
+    {
+      "id": "tests/lexer.js:25",
+      "file": "tests/lexer.js",
+      "line": 421,
+      "testNameSource": "should parse regular expressions"
+    },
+    {
+      "id": "tests/lexer.js:26",
+      "file": "tests/lexer.js",
+      "line": 451,
+      "testNameSource": "should keep track of token positions"
+    },
+    {
+      "id": "tests/loader.js:1",
+      "file": "tests/loader.js",
+      "line": 28,
+      "testNameSource": "should allow a simple loader to be created"
+    },
+    {
+      "id": "tests/loader.js:2",
+      "file": "tests/loader.js",
+      "line": 49,
+      "testNameSource": "should catch loader error"
+    },
+    {
+      "id": "tests/loader.js:3",
+      "file": "tests/loader.js",
+      "line": 75,
+      "testNameSource": "should have default opts for WebLoader"
+    },
+    {
+      "id": "tests/loader.js:4",
+      "file": "tests/loader.js",
+      "line": 82,
+      "testNameSource": "should emit a \"load\" event"
+    },
+    {
+      "id": "tests/loader.js:5",
+      "file": "tests/loader.js",
+      "line": 100,
+      "testNameSource": "should have default opts"
+    },
+    {
+      "id": "tests/loader.js:6",
+      "file": "tests/loader.js",
+      "line": 106,
+      "testNameSource": "should emit a \"load\" event"
+    },
+    {
+      "id": "tests/loader.js:7",
+      "file": "tests/loader.js",
+      "line": 120,
+      "testNameSource": "should have default opts"
+    },
+    {
+      "id": "tests/loader.js:8",
+      "file": "tests/loader.js",
+      "line": 126,
+      "testNameSource": "should emit a \"load\" event"
+    },
+    {
+      "id": "tests/loader.js:9",
+      "file": "tests/loader.js",
+      "line": 136,
+      "testNameSource": "should render templates"
+    },
+    {
+      "id": "tests/loader.js:10",
+      "file": "tests/loader.js",
+      "line": 142,
+      "testNameSource": "should not allow directory traversal"
+    },
+    {
+      "id": "tests/loader.js:11",
+      "file": "tests/loader.js",
+      "line": 148,
+      "testNameSource": "should return null if no match"
+    },
+    {
+      "id": "tests/parser.js:1",
+      "file": "tests/parser.js",
+      "line": 123,
+      "testNameSource": "should parse basic types"
+    },
+    {
+      "id": "tests/parser.js:2",
+      "file": "tests/parser.js",
+      "line": 170,
+      "testNameSource": "should parse aggregate types"
+    },
+    {
+      "id": "tests/parser.js:3",
+      "file": "tests/parser.js",
+      "line": 199,
+      "testNameSource": "should parse variables"
+    },
+    {
+      "id": "tests/parser.js:4",
+      "file": "tests/parser.js",
+      "line": 207,
+      "testNameSource": "should parse operators"
+    },
+    {
+      "id": "tests/parser.js:5",
+      "file": "tests/parser.js",
+      "line": 253,
+      "testNameSource": "should parse tilde"
+    },
+    {
+      "id": "tests/parser.js:6",
+      "file": "tests/parser.js",
+      "line": 264,
+      "testNameSource": "should parse operators with correct precedence"
+    },
+    {
+      "id": "tests/parser.js:7",
+      "file": "tests/parser.js",
+      "line": 294,
+      "testNameSource": "should parse blocks"
+    },
+    {
+      "id": "tests/parser.js:8",
+      "file": "tests/parser.js",
+      "line": 312,
+      "testNameSource": "should accept attributes and methods of static arrays, objects and primitives"
+    },
+    {
+      "id": "tests/parser.js:9",
+      "file": "tests/parser.js",
+      "line": 334,
+      "testNameSource": "should parse include tags"
+    },
+    {
+      "id": "tests/parser.js:10",
+      "file": "tests/parser.js",
+      "line": 345,
+      "testNameSource": "should parse for loops"
+    },
+    {
+      "id": "tests/parser.js:11",
+      "file": "tests/parser.js",
+      "line": 358,
+      "testNameSource": "should parse for loops with else"
+    },
+    {
+      "id": "tests/parser.js:12",
+      "file": "tests/parser.js",
+      "line": 372,
+      "testNameSource": "should parse filters"
+    },
+    {
+      "id": "tests/parser.js:13",
+      "file": "tests/parser.js",
+      "line": 402,
+      "testNameSource": "should parse macro definitions"
+    },
+    {
+      "id": "tests/parser.js:14",
+      "file": "tests/parser.js",
+      "line": 420,
+      "testNameSource": "should parse call blocks"
+    },
+    {
+      "id": "tests/parser.js:15",
+      "file": "tests/parser.js",
+      "line": 442,
+      "testNameSource": "should parse call blocks with args"
+    },
+    {
+      "id": "tests/parser.js:16",
+      "file": "tests/parser.js",
+      "line": 468,
+      "testNameSource": "should parse raw"
+    },
+    {
+      "id": "tests/parser.js:17",
+      "file": "tests/parser.js",
+      "line": 475,
+      "testNameSource": "should parse raw with broken variables"
+    },
+    {
+      "id": "tests/parser.js:18",
+      "file": "tests/parser.js",
+      "line": 482,
+      "testNameSource": "should parse raw with broken blocks"
+    },
+    {
+      "id": "tests/parser.js:19",
+      "file": "tests/parser.js",
+      "line": 489,
+      "testNameSource": "should parse raw with pure text"
+    },
+    {
+      "id": "tests/parser.js:20",
+      "file": "tests/parser.js",
+      "line": 497,
+      "testNameSource": "should parse raw with raw blocks"
+    },
+    {
+      "id": "tests/parser.js:21",
+      "file": "tests/parser.js",
+      "line": 504,
+      "testNameSource": "should parse raw with comment blocks"
+    },
+    {
+      "id": "tests/parser.js:22",
+      "file": "tests/parser.js",
+      "line": 511,
+      "testNameSource": "should parse multiple raw blocks"
+    },
+    {
+      "id": "tests/parser.js:23",
+      "file": "tests/parser.js",
+      "line": 519,
+      "testNameSource": "should parse multiline multiple raw blocks"
+    },
+    {
+      "id": "tests/parser.js:24",
+      "file": "tests/parser.js",
+      "line": 531,
+      "testNameSource": "should parse verbatim"
+    },
+    {
+      "id": "tests/parser.js:25",
+      "file": "tests/parser.js",
+      "line": 538,
+      "testNameSource": "should parse verbatim with broken variables"
+    },
+    {
+      "id": "tests/parser.js:26",
+      "file": "tests/parser.js",
+      "line": 545,
+      "testNameSource": "should parse verbatim with broken blocks"
+    },
+    {
+      "id": "tests/parser.js:27",
+      "file": "tests/parser.js",
+      "line": 552,
+      "testNameSource": "should parse verbatim with pure text"
+    },
+    {
+      "id": "tests/parser.js:28",
+      "file": "tests/parser.js",
+      "line": 560,
+      "testNameSource": "should parse verbatim with verbatim blocks"
+    },
+    {
+      "id": "tests/parser.js:29",
+      "file": "tests/parser.js",
+      "line": 567,
+      "testNameSource": "should parse verbatim with comment blocks"
+    },
+    {
+      "id": "tests/parser.js:30",
+      "file": "tests/parser.js",
+      "line": 574,
+      "testNameSource": "should parse multiple verbatim blocks"
+    },
+    {
+      "id": "tests/parser.js:31",
+      "file": "tests/parser.js",
+      "line": 582,
+      "testNameSource": "should parse multiline multiple verbatim blocks"
+    },
+    {
+      "id": "tests/parser.js:32",
+      "file": "tests/parser.js",
+      "line": 594,
+      "testNameSource": "should parse switch statements"
+    },
+    {
+      "id": "tests/parser.js:33",
+      "file": "tests/parser.js",
+      "line": 616,
+      "testNameSource": "should parse keyword and non-keyword arguments"
+    },
+    {
+      "id": "tests/parser.js:34",
+      "file": "tests/parser.js",
+      "line": 631,
+      "testNameSource": "should parse imports"
+    },
+    {
+      "id": "tests/parser.js:35",
+      "file": "tests/parser.js",
+      "line": 678,
+      "testNameSource": "should parse whitespace control"
+    },
+    {
+      "id": "tests/parser.js:36",
+      "file": "tests/parser.js",
+      "line": 808,
+      "testNameSource": "should throw errors"
+    },
+    {
+      "id": "tests/parser.js:37",
+      "file": "tests/parser.js",
+      "line": 862,
+      "testNameSource": "should parse custom tags"
+    },
+    {
+      "id": "tests/precompile.js:1",
+      "file": "tests/precompile.js",
+      "line": 19,
+      "testNameSource": "should return a string"
+    },
+    {
+      "id": "tests/precompile.js:2",
+      "file": "tests/precompile.js",
+      "line": 26,
+      "testNameSource": "should return *NIX path seperators"
+    },
+    {
+      "id": "tests/precompile.js:3",
+      "file": "tests/precompile.js",
+      "line": 38,
+      "testNameSource": "should return *NIX path seperators, when name is passed as option"
+    },
+    {
+      "id": "tests/runtime.js:1",
+      "file": "tests/runtime.js",
+      "line": 18,
+      "testNameSource": "should report the failed function calls to symbols"
+    },
+    {
+      "id": "tests/runtime.js:2",
+      "file": "tests/runtime.js",
+      "line": 28,
+      "testNameSource": "should report the failed function calls to lookups"
+    },
+    {
+      "id": "tests/runtime.js:3",
+      "file": "tests/runtime.js",
+      "line": 38,
+      "testNameSource": "should report the failed function calls to calls"
+    },
+    {
+      "id": "tests/runtime.js:4",
+      "file": "tests/runtime.js",
+      "line": 48,
+      "testNameSource": "should report full function name in error"
+    },
+    {
+      "id": "tests/runtime.js:5",
+      "file": "tests/runtime.js",
+      "line": 58,
+      "testNameSource": "should report the failed function calls w/multiple args"
+    },
+    {
+      "id": "tests/runtime.js:6",
+      "file": "tests/runtime.js",
+      "line": 77,
+      "testNameSource": "should allow for undefined macro arguments in the last position"
+    },
+    {
+      "id": "tests/runtime.js:7",
+      "file": "tests/runtime.js",
+      "line": 93,
+      "testNameSource": "should allow for objects without a prototype macro arguments in the last position"
+    },
+    {
+      "id": "tests/runtime.js:8",
+      "file": "tests/runtime.js",
+      "line": 114,
+      "testNameSource": "should not read variables property from Object.prototype"
+    },
+    {
+      "id": "tests/tests.js:1",
+      "file": "tests/tests.js",
+      "line": 18,
+      "testNameSource": "callable should detect callability"
+    },
+    {
+      "id": "tests/tests.js:2",
+      "file": "tests/tests.js",
+      "line": 31,
+      "testNameSource": "defined should detect definedness"
+    },
+    {
+      "id": "tests/tests.js:3",
+      "file": "tests/tests.js",
+      "line": 42,
+      "testNameSource": "should support \"is defined\" in {% if %} expressions"
+    },
+    {
+      "id": "tests/tests.js:4",
+      "file": "tests/tests.js",
+      "line": 53,
+      "testNameSource": "should support \"is not defined\" in {% if %} expressions"
+    },
+    {
+      "id": "tests/tests.js:5",
+      "file": "tests/tests.js",
+      "line": 64,
+      "testNameSource": "undefined should detect undefinedness"
+    },
+    {
+      "id": "tests/tests.js:6",
+      "file": "tests/tests.js",
+      "line": 75,
+      "testNameSource": "none/null should detect strictly null values"
+    },
+    {
+      "id": "tests/tests.js:7",
+      "file": "tests/tests.js",
+      "line": 86,
+      "testNameSource": "divisibleby should detect divisibility"
+    },
+    {
+      "id": "tests/tests.js:8",
+      "file": "tests/tests.js",
+      "line": 93,
+      "testNameSource": "escaped should test whether or not something is escaped"
+    },
+    {
+      "id": "tests/tests.js:9",
+      "file": "tests/tests.js",
+      "line": 104,
+      "testNameSource": "even should detect whether or not a number is even"
+    },
+    {
+      "id": "tests/tests.js:10",
+      "file": "tests/tests.js",
+      "line": 111,
+      "testNameSource": "odd should detect whether or not a number is odd"
+    },
+    {
+      "id": "tests/tests.js:11",
+      "file": "tests/tests.js",
+      "line": 118,
+      "testNameSource": "mapping should detect Maps or hashes"
+    },
+    {
+      "id": "tests/tests.js:12",
+      "file": "tests/tests.js",
+      "line": 137,
+      "testNameSource": "falsy should detect whether or not a value is falsy"
+    },
+    {
+      "id": "tests/tests.js:13",
+      "file": "tests/tests.js",
+      "line": 144,
+      "testNameSource": "truthy should detect whether or not a value is truthy"
+    },
+    {
+      "id": "tests/tests.js:14",
+      "file": "tests/tests.js",
+      "line": 151,
+      "testNameSource": "greaterthan than should detect whether or not a value is less than another"
+    },
+    {
+      "id": "tests/tests.js:15",
+      "file": "tests/tests.js",
+      "line": 158,
+      "testNameSource": "ge should detect whether or not a value is greater than or equal to another"
+    },
+    {
+      "id": "tests/tests.js:16",
+      "file": "tests/tests.js",
+      "line": 165,
+      "testNameSource": "lessthan than should detect whether or not a value is less than another"
+    },
+    {
+      "id": "tests/tests.js:17",
+      "file": "tests/tests.js",
+      "line": 172,
+      "testNameSource": "le should detect whether or not a value is less than or equal to another"
+    },
+    {
+      "id": "tests/tests.js:18",
+      "file": "tests/tests.js",
+      "line": 179,
+      "testNameSource": "ne should detect whether or not a value is not equal to another"
+    },
+    {
+      "id": "tests/tests.js:19",
+      "file": "tests/tests.js",
+      "line": 186,
+      "testNameSource": "iterable should detect that a generator is iterable"
+    },
+    {
+      "id": "tests/tests.js:20",
+      "file": "tests/tests.js",
+      "line": 198,
+      "testNameSource": "iterable should detect that an Array is not non-iterable"
+    },
+    {
+      "id": "tests/tests.js:21",
+      "file": "tests/tests.js",
+      "line": 202,
+      "testNameSource": "iterable should detect that a Map is iterable"
+    },
+    {
+      "id": "tests/tests.js:22",
+      "file": "tests/tests.js",
+      "line": 211,
+      "testNameSource": "iterable should detect that a Set is not non-iterable"
+    },
+    {
+      "id": "tests/tests.js:23",
+      "file": "tests/tests.js",
+      "line": 220,
+      "testNameSource": "number should detect whether a value is numeric"
+    },
+    {
+      "id": "tests/tests.js:24",
+      "file": "tests/tests.js",
+      "line": 227,
+      "testNameSource": "string should detect whether a value is a string"
+    },
+    {
+      "id": "tests/tests.js:25",
+      "file": "tests/tests.js",
+      "line": 234,
+      "testNameSource": "equalto should detect value equality"
+    },
+    {
+      "id": "tests/tests.js:26",
+      "file": "tests/tests.js",
+      "line": 241,
+      "testNameSource": "sameas should alias to equalto"
+    },
+    {
+      "id": "tests/tests.js:27",
+      "file": "tests/tests.js",
+      "line": 250,
+      "testNameSource": "lower should detect whether or not a string is lowercased"
+    },
+    {
+      "id": "tests/tests.js:28",
+      "file": "tests/tests.js",
+      "line": 255,
+      "testNameSource": "upper should detect whether or not a string is uppercased"
+    }
+  ]
+}

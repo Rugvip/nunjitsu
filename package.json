@@ -30,7 +30,7 @@
     "test": "npm run typecheck && npm run test:rust && npm run test:source && npm run test:package",
     "test:package": "npm run build && node --test tests/package/esm.test.mjs tests/package/commonjs.test.cjs",
     "test:rust": "cargo test --manifest-path rust/Cargo.toml",
-    "test:source": "npm run build:wasm && node --test tests/source/runtime.test.ts",
+    "test:source": "npm run build:wasm && node --test tests/source/runtime.test.ts tests/source/compat.test.ts",
     "typecheck": "tsgo -p tsconfig.json"
   },
   "devDependencies": {

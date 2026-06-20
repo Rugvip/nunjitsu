@@ -1,0 +1,41 @@
+{
+  "schemaVersion": 1,
+  "baseline": {
+    "repository": "https://github.com/mozilla/nunjucks.git",
+    "tag": "v3.2.4",
+    "commit": "86a77f49da4779d55414d8337e1a4d7ec7582da5"
+  },
+  "coverage": "partial",
+  "entries": [
+    {
+      "upstream": { "id": "tests/compiler.js:1", "file": "tests/compiler.js", "test": "should compile templates" },
+      "status": "ported",
+      "cases": [
+        "compiler-static-text",
+        "compiler-interpolation",
+        "compiler-adjacent-interpolation"
+      ]
+    },
+    {
+      "upstream": { "id": "tests/compiler.js:4", "file": "tests/compiler.js", "test": "should compile references" },
+      "status": "ported",
+      "cases": ["compiler-dotted-reference"]
+    },
+    {
+      "upstream": { "id": "tests/compiler.js:6", "file": "tests/compiler.js", "test": "should fail silently on undefined values" },
+      "status": "ported",
+      "cases": ["compiler-missing-value"]
+    },
+    {
+      "upstream": { "id": "tests/compiler.js:125", "file": "tests/compiler.js", "test": "should autoescape if autoescape is on" },
+      "status": "ported",
+      "cases": ["compiler-autoescape"]
+    },
+    {
+      "upstream": { "id": "tests/compiler.js:126", "file": "tests/compiler.js", "test": "should not autoescape safe strings" },
+      "status": "adapted",
+      "reason": "Nunjitsu uses an explicitly tagged copied safe value instead of Nunjucks's live safe filter result.",
+      "cases": ["compiler-explicit-safe-value"]
+    }
+  ]
+}

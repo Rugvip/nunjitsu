@@ -68,6 +68,12 @@ A parity manifest classifies every upstream test as:
 No upstream case may remain unclassified. Expected failures require an owner,
 reason, and removal condition; an unexplained skip is not a valid state.
 
+During implementation, the checked-in manifest may declare partial coverage so
+the remaining gap is measurable rather than hidden. Partial coverage is never
+a release-ready state. The immutable inventory still records every upstream
+case from the start, and completion requires a one-to-one classification audit
+against that inventory.
+
 See [Testing](testing.md) for execution and release gates.
 
 ## Attribution and licensing

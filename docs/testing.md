@@ -24,7 +24,7 @@ boundary and failure modes.
 
 ## Compatibility corpus
 
-The planned `tests/compat/` directory owns:
+The `tests/compat/` directory owns:
 
 - the copied/adapted template fixtures;
 - a tagged, language-neutral case format;
@@ -43,6 +43,13 @@ not-applicable entries include a reason tied to
 [the compatibility contract](compatibility.md). CI fails on unclassified
 upstream tests, missing fixtures, or cases that only one implementation layer
 executes without an explicit reason.
+
+`upstream-inventory.json` is a checked-in inventory of all 364 Mocha cases in
+the pinned release. It is regenerated only from an explicit v3.2.4 checkout by
+`scripts/import-nunjucks-inventory.mjs`; CI never fetches upstream. While the
+port is incomplete, `manifest.json` declares `coverage: "partial"`. A release
+requires `coverage: "complete"`, one classification for every inventory entry,
+and no dangling or duplicate case mappings.
 
 ## Security tests
 

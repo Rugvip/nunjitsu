@@ -1,0 +1,56 @@
+{
+  "schemaVersion": 1,
+  "cases": [
+    {
+      "id": "compiler-static-text",
+      "template": "Hello world",
+      "context": {},
+      "autoescape": false,
+      "expected": "Hello world"
+    },
+    {
+      "id": "compiler-interpolation",
+      "template": "Hello world, {{ name }}",
+      "context": { "name": "James" },
+      "autoescape": false,
+      "expected": "Hello world, James"
+    },
+    {
+      "id": "compiler-adjacent-interpolation",
+      "template": "Hello world, {{name}}{{suffix}}, how are you",
+      "context": { "name": "James", "suffix": " Long" },
+      "autoescape": false,
+      "expected": "Hello world, James Long, how are you"
+    },
+    {
+      "id": "compiler-dotted-reference",
+      "template": "{{ foo.bar }}",
+      "context": { "foo": { "bar": "baz" } },
+      "autoescape": false,
+      "expected": "baz"
+    },
+    {
+      "id": "compiler-missing-value",
+      "template": "{{ foo.bar.baz }}",
+      "context": {},
+      "autoescape": false,
+      "expected": ""
+    },
+    {
+      "id": "compiler-autoescape",
+      "template": "{{ foo }}",
+      "context": { "foo": "\"'<>&" },
+      "autoescape": true,
+      "expected": "&quot;&#39;&lt;&gt;&amp;"
+    },
+    {
+      "id": "compiler-explicit-safe-value",
+      "template": "{{ foo }}",
+      "context": {
+        "foo": { "$nunjitsu": "safe", "value": "\"'<>&" }
+      },
+      "autoescape": true,
+      "expected": "\"'<>&"
+    }
+  ]
+}
