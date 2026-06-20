@@ -100,6 +100,15 @@ pub struct RecordEntry<'a> {
     pub next_cursor: usize,
 }
 
+/// Parsed name and value expression for an assignment directive.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct SetClause<'a> {
+    /// Assigned identifier.
+    pub name: &'a [u8],
+    /// Complete expression after the assignment operator.
+    pub expression: &'a [u8],
+}
+
 /// Parses the base atom, its unary negation, and the following operation cursor.
 pub fn parse_base(expression: &[u8]) -> Result<(Atom<'_>, usize, bool), ExpressionError> {
     let (operand, cursor) = parse_operand(expression, 0)?;
@@ -353,6 +362,23 @@ pub fn parse_for_clause(source: &[u8]) -> Result<ForClause<'_>, ExpressionError>
         second,
         iterable,
     })
+}
+
+/// Parses `name = expression` for a value assignment.
+pub fn parse_set_clause(source: &[u8]) -> Result<SetClause<'_>, ExpressionError> {
+    let mut cursor = skip_whitespace(source, 0);
+    let start = cursor;
+    cursor = parse_identifier(source, cursor)?;
+    let name = &source[start..cursor];
+    cursor = skip_whitespace(source, cursor);
+    if source.get(cursor) != Some(&b'=') || source.get(cursor + 1) == Some(&b'=') {
+        return Err(ExpressionError);
+    }
+    let expression = &source[skip_whitespace(source, cursor + 1)..];
+    if expression.is_empty() {
+        return Err(ExpressionError);
+    }
+    Ok(SetClause { name, expression })
 }
 
 fn parse_atom(bytes: &[u8], cursor: usize) -> Result<(Atom<'_>, usize), ExpressionError> {
@@ -705,6 +731,13 @@ mod tests {
                 first: b"key",
                 second: Some(b"value"),
                 iterable: b"items | entries ",
+            }),
+        );
+        assert_eq!(
+            parse_set_clause(b" value = source | default('fallback') "),
+            Ok(SetClause {
+                name: b"value",
+                expression: b"source | default('fallback') ",
             }),
         );
 

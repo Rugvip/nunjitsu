@@ -651,6 +651,53 @@ test('iterates arena-backed arrays and records with nested local scopes', async 
   }
 });
 
+test('keeps resumable assignments scoped across loops and includes', async () => {
+  const engine = await createEngine({
+    loaders: [memoryLoader({
+      'mutate.njk': '{% set value = "inside" %}{{ value }}',
+    })],
+    globals: {
+      async greet(arguments_) {
+        await Promise.resolve();
+        return `Hello ${String(arguments_[0])}`;
+      },
+    },
+  });
+  try {
+    assert.equal(
+      await engine.render({
+        source: [
+          '{% set value = "root" %}',
+          '{{ value }}:',
+          '{% include "mutate.njk" %}:',
+          '{{ value }}',
+        ].join(''),
+      }),
+      'root:inside:root',
+    );
+    assert.equal(
+      await engine.render({
+        source: [
+          '{% set item = "outer" %}',
+          '{% for value in [1, 2] %}',
+          '{% set item = value %}{{ item }}',
+          '{% endfor %}',
+          ':{{ item }}',
+        ].join(''),
+      }),
+      '12:outer',
+    );
+    assert.equal(
+      (await Array.fromAsync(engine.renderStream({
+        source: '{% set greeting = greet("World") %}before {{ greeting }} after',
+      }))).join(''),
+      'before Hello World after',
+    );
+  } finally {
+    await engine.dispose();
+  }
+});
+
 test('cancels a render while its worker is suspended on an include loader', async () => {
   let markLoadStarted: (() => void) | undefined;
   const loadStarted = new Promise<void>(resolve => {

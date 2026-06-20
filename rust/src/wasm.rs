@@ -1,6 +1,6 @@
 use crate::expression::{
     Atom, Call, Comparison, Operand, Operation, next_argument, next_lookup_segment, next_operation,
-    next_record_entry, parse_base, parse_for_clause, parse_tag_call,
+    next_record_entry, parse_base, parse_for_clause, parse_set_clause, parse_tag_call,
 };
 use crate::template::{
     ConditionalBoundary, RenderError, RenderedValue, TemplateItem, directive_keyword, emit_escaped,
@@ -11,7 +11,7 @@ use core::mem::{align_of, size_of};
 use core::ptr::{addr_of, addr_of_mut, read_unaligned, write_unaligned};
 use core::slice;
 
-const ABI_VERSION: u32 = 10;
+const ABI_VERSION: u32 = 11;
 const PAGE_SIZE: usize = 65_536;
 const STREAM_CHUNK_BYTES: u32 = 64 * 1024;
 const RECORD_ALIGNMENT: u32 = 8;
@@ -34,6 +34,7 @@ const TAG_OUTPUT_CHUNK: u32 = 15;
 const TAG_CAPABILITY_REGISTRY: u32 = 16;
 const TAG_CAPABILITY_REQUEST: u32 = 17;
 const TAG_LOOP_STATE: u32 = 18;
+const TAG_SCOPE: u32 = 19;
 
 const STATE_IDLE: u32 = 0;
 const STATE_COMPLETE: u32 = 1;
@@ -53,7 +54,7 @@ const ERROR_RESOURCE_LIMIT: u32 = 7;
 const ERROR_UNKNOWN_CAPABILITY: u32 = 8;
 const ERROR_INVALID_EXPRESSION: u32 = 9;
 
-const RENDER_STATE_LENGTH: u32 = 120;
+const RENDER_STATE_LENGTH: u32 = 128;
 const STATE_CONTEXT: usize = 0;
 const STATE_FLAGS: usize = 4;
 const STATE_CURRENT_FRAME: usize = 8;
@@ -84,9 +85,12 @@ const STATE_NEGATE_RESULT: usize = 104;
 const STATE_TAGS: usize = 108;
 const STATE_EXPRESSION_ACTION: usize = 112;
 const STATE_CURRENT_LOOP: usize = 116;
+const STATE_CURRENT_SCOPE: usize = 120;
+const STATE_PENDING_SET_NAME: usize = 124;
 
 const EXPRESSION_OUTPUT: u32 = 0;
 const EXPRESSION_IF: u32 = 1;
+const EXPRESSION_SET: u32 = 2;
 
 const NEGATE_NONE: u32 = 0;
 const NEGATE_BOOLEAN: u32 = 1;
@@ -97,13 +101,14 @@ const CAPABILITY_TEST: u32 = 2;
 const CAPABILITY_GLOBAL: u32 = 3;
 const CAPABILITY_TAG: u32 = 4;
 
-const FRAME_LENGTH: u32 = 16;
+const FRAME_LENGTH: u32 = 20;
 const FRAME_PARENT: usize = 0;
 const FRAME_SOURCE: usize = 4;
 const FRAME_CURSOR: usize = 8;
 const FRAME_CANONICAL_NAME: usize = 12;
+const FRAME_SCOPE_BASE: usize = 16;
 
-const LOOP_STATE_LENGTH: u32 = 40;
+const LOOP_STATE_LENGTH: u32 = 44;
 const LOOP_PARENT: usize = 0;
 const LOOP_FRAME: usize = 4;
 const LOOP_BODY_CURSOR: usize = 8;
@@ -114,6 +119,12 @@ const LOOP_INDEX: usize = 24;
 const LOOP_LENGTH: usize = 28;
 const LOOP_FIRST_NAME: usize = 32;
 const LOOP_SECOND_NAME: usize = 36;
+const LOOP_SCOPE_BASE: usize = 40;
+
+const SCOPE_LENGTH: u32 = 12;
+const SCOPE_PARENT: usize = 0;
+const SCOPE_NAME: usize = 4;
+const SCOPE_VALUE: usize = 8;
 
 #[repr(C)]
 struct Control {
@@ -267,7 +278,7 @@ fn start_render(request_offset: u32) -> Result<(), u32> {
     }
 
     let frame_offset = allocate_record(TAG_FRAME, FRAME_LENGTH)?;
-    write_frame(frame_offset, 0, source_offset, 0, canonical_offset)?;
+    write_frame(frame_offset, 0, source_offset, 0, canonical_offset, 0)?;
     let state_offset = allocate_record(TAG_RENDER_STATE, RENDER_STATE_LENGTH)?;
     set_state_field(state_offset, STATE_CONTEXT, context_offset)?;
     set_state_field(state_offset, STATE_FLAGS, flags)?;
@@ -314,7 +325,14 @@ fn resume_include(source_offset: u32, canonical_offset: u32) -> Result<(), u32> 
         state_field(state_offset, STATE_LIMIT_INCLUDE_DEPTH)?,
     )?;
     let frame_offset = allocate_record(TAG_FRAME, FRAME_LENGTH)?;
-    write_frame(frame_offset, parent, source_offset, 0, canonical_offset)?;
+    write_frame(
+        frame_offset,
+        parent,
+        source_offset,
+        0,
+        canonical_offset,
+        state_field(state_offset, STATE_CURRENT_SCOPE)?,
+    )?;
     set_state_field(state_offset, STATE_CURRENT_FRAME, frame_offset)?;
     set_state_field(state_offset, STATE_PENDING_NAME, 0)?;
     set_state_field(state_offset, STATE_INCLUDE_DEPTH, next_depth)?;
@@ -459,6 +477,11 @@ fn run_active_render() -> Result<u32, u32> {
                 }
             }
             TemplateItem::End => {
+                set_state_field(
+                    state_offset,
+                    STATE_CURRENT_SCOPE,
+                    read_u32(frame, FRAME_SCOPE_BASE)?,
+                )?;
                 set_state_field(state_offset, STATE_CURRENT_FRAME, parent)?;
                 let depth = state_field(state_offset, STATE_INCLUDE_DEPTH)?;
                 set_state_field(state_offset, STATE_INCLUDE_DEPTH, depth.saturating_sub(1))?;
@@ -506,6 +529,12 @@ fn handle_tag(state_offset: u32, directive: &[u8]) -> Result<Option<u32>, u32> {
         start_for(state_offset, clause)?;
         return Ok(None);
     }
+    if let Some(clause) = directive_keyword(directive, b"set") {
+        let clause = parse_set_clause(clause).map_err(|_| ERROR_UNSUPPORTED_TAG)?;
+        let name_offset = write_bytes_record(TAG_STRING, clause.name)?;
+        set_state_field(state_offset, STATE_PENDING_SET_NAME, name_offset)?;
+        return start_expression(state_offset, clause.expression, EXPRESSION_SET);
+    }
     if directive == b"endfor" {
         advance_for(state_offset)?;
         return Ok(None);
@@ -551,6 +580,7 @@ fn start_for(state_offset: u32, source: &[u8]) -> Result<(), u32> {
         .unwrap_or(0);
     let loop_offset = allocate_record(TAG_LOOP_STATE, LOOP_STATE_LENGTH)?;
     let parent = state_field(state_offset, STATE_CURRENT_LOOP)?;
+    let scope_base = state_field(state_offset, STATE_CURRENT_SCOPE)?;
     let loop_state = mutable_record_at(loop_offset, TAG_LOOP_STATE)?;
     write_u32(loop_state, LOOP_PARENT, parent)?;
     write_u32(loop_state, LOOP_FRAME, frame_offset)?;
@@ -566,6 +596,7 @@ fn start_for(state_offset: u32, source: &[u8]) -> Result<(), u32> {
     write_u32(loop_state, LOOP_LENGTH, length)?;
     write_u32(loop_state, LOOP_FIRST_NAME, first_name)?;
     write_u32(loop_state, LOOP_SECOND_NAME, second_name)?;
+    write_u32(loop_state, LOOP_SCOPE_BASE, scope_base)?;
     set_state_field(state_offset, STATE_CURRENT_LOOP, loop_offset)?;
     if length == 0 {
         set_frame_field(
@@ -595,6 +626,11 @@ fn advance_for(state_offset: u32) -> Result<(), u32> {
     }
     let index = loop_field(loop_offset, LOOP_INDEX)?;
     let length = loop_field(loop_offset, LOOP_LENGTH)?;
+    set_state_field(
+        state_offset,
+        STATE_CURRENT_SCOPE,
+        loop_field(loop_offset, LOOP_SCOPE_BASE)?,
+    )?;
     if index + 1 < length {
         set_loop_field(loop_offset, LOOP_INDEX, index + 1)?;
         set_frame_field(
@@ -628,6 +664,19 @@ fn pop_for(state_offset: u32, loop_offset: u32) -> Result<(), u32> {
         STATE_CURRENT_LOOP,
         loop_field(loop_offset, LOOP_PARENT)?,
     )
+}
+
+fn push_scope(state_offset: u32, name_offset: u32, value_offset: u32) -> Result<(), u32> {
+    record_at(name_offset, TAG_STRING)?;
+    Value::at(value_offset)?;
+    let parent = state_field(state_offset, STATE_CURRENT_SCOPE)?;
+    let scope_offset = allocate_record(TAG_SCOPE, SCOPE_LENGTH)?;
+    let scope = mutable_record_at(scope_offset, TAG_SCOPE)?;
+    write_u32(scope, SCOPE_PARENT, parent)?;
+    write_u32(scope, SCOPE_NAME, name_offset)?;
+    write_u32(scope, SCOPE_VALUE, value_offset)?;
+    set_state_field(state_offset, STATE_CURRENT_SCOPE, scope_offset)?;
+    set_state_field(state_offset, STATE_TRANSIENT_BASE, unsafe { ARENA_CURSOR })
 }
 
 fn start_tag(state_offset: u32, directive: &[u8]) -> Result<u32, u32> {
@@ -670,6 +719,12 @@ fn continue_expression(state_offset: u32) -> Result<Option<u32>, u32> {
                 None
             }
             EXPRESSION_IF => apply_if_condition(state_offset, value_offset)?,
+            EXPRESSION_SET => {
+                let name_offset = state_field(state_offset, STATE_PENDING_SET_NAME)?;
+                push_scope(state_offset, name_offset, value_offset)?;
+                set_state_field(state_offset, STATE_PENDING_SET_NAME, 0)?;
+                None
+            }
             _ => return Err(ERROR_INVALID_ARENA),
         };
         if next_state.is_none()
@@ -1697,12 +1752,14 @@ fn write_frame(
     source: u32,
     cursor: u32,
     canonical: u32,
+    scope_base: u32,
 ) -> Result<(), u32> {
     let frame = mutable_record_at(offset, TAG_FRAME)?;
     write_u32(frame, FRAME_PARENT, parent)?;
     write_u32(frame, FRAME_SOURCE, source)?;
     write_u32(frame, FRAME_CURSOR, cursor)?;
-    write_u32(frame, FRAME_CANONICAL_NAME, canonical)
+    write_u32(frame, FRAME_CANONICAL_NAME, canonical)?;
+    write_u32(frame, FRAME_SCOPE_BASE, scope_base)
 }
 
 fn set_frame_field(offset: u32, field: usize, value: u32) -> Result<(), u32> {
@@ -1829,13 +1886,30 @@ impl Context {
             return Some(offset);
         }
         let mut offset = self
-            .lookup_local(first)
+            .lookup_scope(first)
+            .or_else(|| self.lookup_local(first))
             .or_else(|| self.root.get_offset(first))?;
         while let Some((segment, next)) = next_lookup_segment(path, cursor).ok()? {
             offset = Value::at(offset).ok()?.get_offset(segment)?;
             cursor = next;
         }
         Some(offset)
+    }
+
+    fn lookup_scope(&self, name: &[u8]) -> Option<u32> {
+        let mut scope_offset = state_field(self.state_offset, STATE_CURRENT_SCOPE).ok()?;
+        while scope_offset != 0 {
+            let scope = record_at(scope_offset, TAG_SCOPE).ok()?;
+            if scope.len() != SCOPE_LENGTH as usize {
+                return None;
+            }
+            let name_offset = read_u32(scope, SCOPE_NAME).ok()?;
+            if record_at(name_offset, TAG_STRING).ok()? == name {
+                return read_u32(scope, SCOPE_VALUE).ok();
+            }
+            scope_offset = read_u32(scope, SCOPE_PARENT).ok()?;
+        }
+        None
     }
 
     fn lookup_local(&self, name: &[u8]) -> Option<u32> {
