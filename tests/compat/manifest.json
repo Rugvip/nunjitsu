@@ -747,6 +747,58 @@
       "upstream": { "id": "tests/compiler.js:61", "file": "tests/compiler.js", "test": "should pass errors from included templates to callback when async" },
       "status": "adapted",
       "reason": "Nunjitsu uses promises instead of callbacks; the runtime test verifies the equivalent nested include rejection."
+    },
+    {
+      "upstream": { "id": "tests/api.js:1", "file": "tests/api.js", "test": "should always force compilation of parent template" },
+      "status": "not applicable", "reason": "Nunjitsu compiles and renders one-shot without a persistent compiled-template cache."
+    },
+    {
+      "upstream": { "id": "tests/api.js:2", "file": "tests/api.js", "test": "should only call the callback once when conditional import fails" },
+      "status": "not applicable", "reason": "Nunjitsu exposes promises rather than the Nunjucks callback API."
+    },
+    {
+      "upstream": { "id": "tests/api.js:6", "file": "tests/api.js", "test": "should emit \"load\" event on Environment instance" },
+      "status": "not applicable", "reason": "Nunjitsu does not expose Nunjucks Environment instances or their event API."
+    },
+    {
+      "upstream": { "id": "tests/cli.js:1", "file": "tests/cli.js", "test": "should echo a compiled template to stdout" },
+      "status": "not applicable", "reason": "The Nunjucks CLI and precompilation output are outside the documented contract."
+    },
+    {
+      "upstream": { "id": "tests/cli.js:2", "file": "tests/cli.js", "test": "should support --name" },
+      "status": "not applicable", "reason": "The Nunjucks CLI and precompilation output are outside the documented contract."
+    },
+    {
+      "upstream": { "id": "tests/core.js:1", "file": "tests/core.js", "test": "should cache templates by default" },
+      "status": "not applicable", "reason": "Persistent compiled-template caching is intentionally excluded by the one-shot architecture."
+    },
+    {
+      "upstream": { "id": "tests/core.js:2", "file": "tests/core.js", "test": "should not cache templates with {noCache: true}" },
+      "status": "not applicable", "reason": "Persistent compiled-template caching and Nunjucks cache controls are intentionally excluded."
+    },
+    {
+      "upstream": { "id": "tests/express.js:1", "file": "tests/express.js", "test": "should have reference to nunjucks env" },
+      "status": "not applicable", "reason": "Nunjucks Environment and Express integration APIs are outside the documented contract."
+    },
+    {
+      "upstream": { "id": "tests/express.js:2", "file": "tests/express.js", "test": "should render a view with extension" },
+      "status": "not applicable", "reason": "Nunjucks Express integration is outside the documented contract."
+    },
+    {
+      "upstream": { "id": "tests/express.js:3", "file": "tests/express.js", "test": "should render a view without extension" },
+      "status": "not applicable", "reason": "Nunjucks Express integration is outside the documented contract."
+    },
+    {
+      "upstream": { "id": "tests/precompile.js:1", "file": "tests/precompile.js", "test": "should return a string" },
+      "status": "not applicable", "reason": "Precompilation and persistent compiled artifacts are intentionally excluded."
+    },
+    {
+      "upstream": { "id": "tests/precompile.js:2", "file": "tests/precompile.js", "test": "should return *NIX path seperators" },
+      "status": "not applicable", "reason": "Precompilation and persistent compiled artifacts are intentionally excluded."
+    },
+    {
+      "upstream": { "id": "tests/precompile.js:3", "file": "tests/precompile.js", "test": "should return *NIX path seperators, when name is passed as option" },
+      "status": "not applicable", "reason": "Precompilation and persistent compiled artifacts are intentionally excluded."
     }
   ]
 }
