@@ -83,8 +83,16 @@ retain compact AST records until they are no longer reachable in the current
 render. Every source region is syntax-validated during its initial pass; the
 engine must not hide syntax errors merely because a branch or macro was unused.
 
-Includes and inheritance are loaded on demand. Within one render, canonical
-template identities prevent duplicate loading and enable cycle detection. No
+Includes, imports, and inheritance are loaded on demand. A load-yield record
+contains the evaluated dependency name and the current source frame's canonical
+identity. Canonical identity is propagated through block, macro, `super`, and
+custom-tag body frames so a relative request always resolves from the source
+that contains it rather than the source that happened to call it.
+
+Within one render, the request cache is keyed by canonical parent plus requested
+name, while loaded source records are deduplicated by their resolved canonical
+identity. This prevents `./partial.njk` in two directories from aliasing while
+still sharing two spellings that resolve to the same source. No
 parsed form, dependency graph, or raw source is retained for another render.
 An extending template contributes compact block definitions in child-first
 resolution order. Selected overrides execute through bounded source frames, so

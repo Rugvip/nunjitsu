@@ -1707,6 +1707,59 @@
       "context": {},
       "autoescape": true,
       "expected": "yes"
+    },
+    {
+      "id": "api-relative-first-child",
+      "template": "{% include \"relative/test1.njk\" %}",
+      "templates": {
+        "base.njk": "Foo{% block block1 %}Bar{% endblock %}{% block block2 %}Baz{% endblock %}Fizzle",
+        "relative/test1.njk": "{% extends \"../base.njk\" %}{% block block1 %}Test1{% endblock %}"
+      },
+      "nativeRender": false,
+      "context": {},
+      "autoescape": true,
+      "expected": "FooTest1BazFizzle"
+    },
+    {
+      "id": "api-relative-second-child",
+      "template": "{% include \"relative/test2.njk\" %}",
+      "templates": {
+        "base.njk": "Foo{% block block1 %}Bar{% endblock %}{% block block2 %}Baz{% endblock %}Fizzle",
+        "relative/test1.njk": "{% extends \"../base.njk\" %}{% block block1 %}Test1{% endblock %}",
+        "relative/test2.njk": "{% extends \"./test1.njk\" %}{% block block1 %}Test2{% endblock %}"
+      },
+      "nativeRender": false,
+      "context": {},
+      "autoescape": true,
+      "expected": "FooTest2BazFizzle"
+    },
+    {
+      "id": "api-relative-cache",
+      "template": "{% include \"relative/test-cache.njk\" %}",
+      "templates": {
+        "relative/test-cache.njk": "{% include \"./dir1/index.njk\" %}\n{% include \"./dir2/index.njk\" %}",
+        "relative/dir1/index.njk": "{% include \"./macros.njk\" %}",
+        "relative/dir1/macros.njk": "Test1",
+        "relative/dir2/index.njk": "{% include \"./macros.njk\" %}",
+        "relative/dir2/macros.njk": "Test2"
+      },
+      "nativeRender": false,
+      "context": {},
+      "autoescape": true,
+      "expected": "Test1\nTest2"
+    },
+    {
+      "id": "api-relative-inline-source",
+      "template": "{% extends \"./relative/test1.njk\" %}{% block block1 %}Test3{% endblock %}",
+      "canonicalName": "memory:string.njk",
+      "templates": {
+        "base.njk": "Foo{% block block1 %}Bar{% endblock %}{% block block2 %}Baz{% endblock %}Fizzle",
+        "relative/test1.njk": "{% extends \"../base.njk\" %}{% block block1 %}Test1{% endblock %}"
+      },
+      "nativeRender": false,
+      "context": {},
+      "autoescape": true,
+      "expected": "FooTest3BazFizzle"
     }
   ]
 }

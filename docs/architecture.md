@@ -77,8 +77,10 @@ A render is an isolated unit of ownership:
    records only for bodies that must execute later or repeatedly, such as
    macros, blocks, loops, and inheritance overrides.
 4. A loader or host capability request yields an explicit evaluator
-   continuation. The worker remains reserved, and the main thread resumes it
-   after encoding the response.
+   continuation. Loader requests carry the current source's canonical identity
+   so relative dependencies resolve correctly through deferred frames. The
+   worker remains reserved, and the main thread resumes it after encoding the
+   response.
 5. Buffered rendering resolves to one string. Streaming rendering exposes
    bounded chunks with backpressure.
 6. Completion, failure, or cancellation invalidates every render-local offset

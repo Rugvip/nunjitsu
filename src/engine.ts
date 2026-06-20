@@ -26,6 +26,7 @@ import type { TemplateContext, TemplateValue } from './values.ts';
 const initialMemoryPages = 32;
 const maximumMemoryPages = 4096;
 const defaultRetainedMemoryBytes = 16 * 1024 * 1024;
+const expectedAbiVersion = 24;
 
 /** Identifies the runtime assets used to start workers. */
 export interface RuntimeAssets {
@@ -63,6 +64,11 @@ export interface EngineOptions extends TemplateCapabilities {
 export interface InlineTemplate {
   /** UTF-8 template source compiled and rendered for this call only. */
   source: string;
+  /**
+   * Stable identity used as the base for relative dependencies and cycle detection.
+   * Anonymous inline templates may omit it, in which case relative names are loader-defined.
+   */
+  canonicalName?: string;
 }
 
 /** A template resolved by name through the engine's explicit loader chain. */
@@ -161,7 +167,7 @@ interface WorkerWaiter {
 interface PendingRenderBase {
   id: number;
   abort: (() => void) | undefined;
-  load: (name: string) => Promise<LoadedTemplate>;
+  load: (name: string, from?: string) => Promise<LoadedTemplate>;
   call: (
     kind: CapabilityKind,
     id: number,
@@ -169,7 +175,7 @@ interface PendingRenderBase {
   ) => Promise<TemplateValue>;
   loading: boolean;
   calling: boolean;
-  loadedByName: Map<string, CachedLoadedTemplate>;
+  loadedByName: Map<string | undefined, Map<string, CachedLoadedTemplate>>;
   loadedByCanonicalName: Map<string, CachedLoadedTemplate>;
 }
 
@@ -243,6 +249,7 @@ interface LoadMessage {
   type: 'load';
   id: number;
   name: string;
+  from?: string;
   cursor: number;
   ignoreMissing: boolean;
 }
@@ -348,7 +355,7 @@ class EngineImplementation implements Engine {
         this.#lstripBlocks,
         this.#capabilities.descriptors,
         workerLimits,
-        name => loadTemplate(this.#loaders, name, signal),
+        (name, from) => loadTemplate(this.#loaders, name, signal, from),
         (kind, id, arguments_) => this.#capabilities.invoke(kind, id, arguments_, signal),
         signal,
       );
@@ -435,7 +442,7 @@ class EngineImplementation implements Engine {
         this.#lstripBlocks,
         this.#capabilities.descriptors,
         workerLimits,
-        name => loadTemplate(this.#loaders, name, signal),
+        (name, from) => loadTemplate(this.#loaders, name, signal, from),
         (kind, id, arguments_) => this.#capabilities.invoke(kind, id, arguments_, signal),
         signal,
       );
@@ -579,7 +586,22 @@ class EngineImplementation implements Engine {
       throw new TypeError('A template must provide exactly one string source or name');
     }
     if (hasSource) {
-      return { source: template.source, loaderCalls: 0 };
+      const canonicalName = 'canonicalName' in template
+        ? template.canonicalName
+        : undefined;
+      if (
+        canonicalName !== undefined &&
+        (typeof canonicalName !== 'string' || !canonicalName || canonicalName.includes('\0'))
+      ) {
+        throw new TypeError(
+          'Inline template canonicalName must be a non-empty string without NUL',
+        );
+      }
+      return {
+        source: template.source,
+        loaderCalls: 0,
+        ...(canonicalName === undefined ? {} : { canonicalName }),
+      };
     }
     if (hasName) {
       if (limits.loaderCalls === 0) {
@@ -666,7 +688,7 @@ class WorkerSlot {
     lstripBlocks: boolean,
     capabilities: CapabilityDescriptors,
     limits: NormalizedRenderLimits,
-    load: (name: string) => Promise<LoadedTemplate>,
+    load: (name: string, from?: string) => Promise<LoadedTemplate>,
     call: (
       kind: CapabilityKind,
       id: number,
@@ -744,7 +766,7 @@ class WorkerSlot {
     lstripBlocks: boolean,
     capabilities: CapabilityDescriptors,
     limits: NormalizedRenderLimits,
-    load: (name: string) => Promise<LoadedTemplate>,
+    load: (name: string, from?: string) => Promise<LoadedTemplate>,
     call: (
       kind: CapabilityKind,
       id: number,
@@ -876,7 +898,7 @@ class WorkerSlot {
       return;
     }
     if (value.type === 'ready') {
-      if (value.abiVersion !== 23 || value.arenaBase <= 0) {
+      if (value.abiVersion !== expectedAbiVersion || value.arenaBase <= 0) {
         this.#fail(new Error('Nunjitsu worker reported an incompatible Wasm ABI'));
         return;
       }
@@ -973,10 +995,11 @@ class WorkerSlot {
 
   async #resumeLoad(pending: PendingRender, message: LoadMessage): Promise<void> {
     try {
-      let cached = pending.loadedByName.get(message.name);
+      let parentCache = pending.loadedByName.get(message.from);
+      let cached = parentCache?.get(message.name);
       let cursor = message.cursor;
       if (!cached) {
-        const loaded = await pending.load(message.name);
+        const loaded = await pending.load(message.name, message.from);
         cached = pending.loadedByCanonicalName.get(loaded.canonicalName);
         if (!cached) {
           const encoded = new ArenaWriter(this.memory, message.cursor).encodeLoadedTemplate(
@@ -990,7 +1013,11 @@ class WorkerSlot {
           cursor = encoded.cursor;
           pending.loadedByCanonicalName.set(loaded.canonicalName, cached);
         }
-        pending.loadedByName.set(message.name, cached);
+        if (!parentCache) {
+          parentCache = new Map();
+          pending.loadedByName.set(message.from, parentCache);
+        }
+        parentCache.set(message.name, cached);
       }
       if (this.#pending !== pending || this.failed || this.#closed) {
         return;
@@ -1129,6 +1156,7 @@ function isWorkerMessage(value: unknown): value is WorkerMessage {
     return (
       typeof message.id === 'number' &&
       typeof message.name === 'string' &&
+      (message.from === undefined || typeof message.from === 'string') &&
       typeof message.cursor === 'number' &&
       typeof message.ignoreMissing === 'boolean'
     );

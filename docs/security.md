@@ -75,6 +75,14 @@ filesystem loader must normalize and validate paths, reject traversal and root
 escape, and treat symlink behavior explicitly. Merely checking a string prefix
 is insufficient.
 
+Relative names beginning with `./` or `../` are resolved from the requesting
+frame's canonical identity. Canonical identity must follow the source through
+deferred blocks and macros. Request caches must include both parent identity and
+requested name; keying only by the relative spelling can substitute a template
+from another directory. The final resolved filesystem path must remain within
+an explicitly configured canonical root even when the parent path or target
+contains symlinks.
+
 Loaders are trusted authority. A template can request names but cannot bypass
 the loader or access Node filesystem APIs directly.
 

@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { parentPort, workerData, type MessagePort } from 'node:worker_threads';
 
-import { decodeOutput, decodeStringRecord } from './protocol.ts';
+import { decodeLoadRequest, decodeOutput } from './protocol.ts';
 
 /** Data supplied by the engine when a worker starts. */
 interface NunjitsuWorkerData {
@@ -302,12 +302,16 @@ function reportState(
     return false;
   }
   if (state === 3 || state === 6) {
-    const nameOffset = control.getUint32(4, true);
-    const nameLength = control.getUint32(8, true);
+    const request = decodeLoadRequest(
+      memory,
+      control.getUint32(4, true),
+      control.getUint32(8, true),
+    );
     port.postMessage({
       type: 'load',
       id,
-      name: decodeStringRecord(memory, nameOffset, nameLength),
+      name: request.name,
+      ...(request.from === undefined ? {} : { from: request.from }),
       cursor: exports.arenaCursor(),
       ignoreMissing: state === 6,
     });

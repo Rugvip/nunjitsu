@@ -53,6 +53,18 @@ The API does not emulate Nunjucks classes or callbacks.
 A render accepts inline source or a named template resolved by an explicit
 loader. There is no implicit filesystem loader. Named dependencies discovered
 through include, import, or inheritance use the same configured loader chain.
+Every loaded source has a canonical identity. Dependency requests pass the
+requesting source's canonical identity to `TemplateLoader.load` as the optional
+third `from` argument, after the render-owned `AbortSignal`. Built-in loaders
+use `from` only for names beginning with `./` or `../`; other names retain
+loader-root lookup semantics.
+
+Inline source is anonymous by default. A caller that wants relative includes,
+imports, or inheritance supplies `canonicalName` with the source. This is a
+stable identity, not an ambient working directory: for example, use a `file:`
+URL under a configured filesystem root or the matching `memory:` identity for
+an in-memory source. The identity also participates in cycle detection.
+
 `include ... ignore missing` suppresses only the case where every loader returns
 `null`; invalid names, root escapes, I/O failures, and other loader errors still
 reject the render.

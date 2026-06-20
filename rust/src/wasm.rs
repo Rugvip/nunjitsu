@@ -15,7 +15,7 @@ use core::mem::{align_of, size_of};
 use core::ptr::{addr_of, addr_of_mut, read_unaligned, write_unaligned};
 use core::slice;
 
-const ABI_VERSION: u32 = 23;
+const ABI_VERSION: u32 = 24;
 const PAGE_SIZE: usize = 65_536;
 const STREAM_CHUNK_BYTES: u32 = 64 * 1024;
 const RECORD_ALIGNMENT: u32 = 8;
@@ -53,6 +53,7 @@ const TAG_FILTER_BLOCK: u32 = 30;
 const TAG_REGEX: u32 = 31;
 const TAG_CYCLER: u32 = 32;
 const TAG_JOINER: u32 = 33;
+const TAG_LOAD_REQUEST: u32 = 34;
 
 #[link(wasm_import_module = "env")]
 unsafe extern "C" {
@@ -185,7 +186,7 @@ const CAPTURE_LAST_CHUNK: usize = 16;
 const CAPTURE_OUTPUT_LENGTH: usize = 20;
 const CAPTURE_TOTAL_OUTPUT_LENGTH: usize = 24;
 
-const MACRO_DEFINITION_LENGTH: u32 = 36;
+const MACRO_DEFINITION_LENGTH: u32 = 40;
 const MACRO_DEFINITION_PARENT: usize = 0;
 const MACRO_DEFINITION_NAME: usize = 4;
 const MACRO_DEFINITION_SOURCE: usize = 8;
@@ -195,6 +196,7 @@ const MACRO_DEFINITION_SCOPE: usize = 20;
 const MACRO_DEFINITION_FRAME: usize = 24;
 const MACRO_DEFINITION_SUPER: usize = 28;
 const MACRO_DEFINITION_END_CURSOR: usize = 32;
+const MACRO_DEFINITION_CANONICAL_NAME: usize = 36;
 
 const MACRO_CALL_LENGTH: u32 = 64;
 const MACRO_CALL_PARENT: usize = 0;
@@ -489,7 +491,8 @@ fn resume_include(source_offset: u32, canonical_offset: u32) -> Result<(), u32> 
         {
             return Err(ERROR_INVALID_ARENA);
         }
-        let namespace = write_import_namespace(state_offset, source_offset, parent)?;
+        let namespace =
+            write_import_namespace(state_offset, source_offset, canonical_offset, parent)?;
         if alias != 0 {
             assign_scope(state_offset, alias, namespace)?;
         } else {
@@ -770,9 +773,7 @@ fn start_expression(state_offset: u32, expression: &[u8], action: u32) -> Result
         }
         let registered =
             resolve_capability(state_field(state_offset, STATE_GLOBALS)?, call.name)?.is_some();
-        if !registered
-            && let Some(mut value_offset) = apply_builtin_call(state_offset, call)?
-        {
+        if !registered && let Some(mut value_offset) = apply_builtin_call(state_offset, call)? {
             if negated {
                 value_offset = write_boolean(!Value::at(value_offset)?.truthy())?;
             }
@@ -1007,6 +1008,7 @@ fn prepare_extending_template(state_offset: u32) -> Result<(), u32> {
                             signature,
                             frame_offset,
                             source_offset,
+                            frame_canonical_name(frame_offset)?,
                             next_cursor as u32,
                         )? as usize
                     } else {
@@ -1037,6 +1039,7 @@ fn prepare_extending_template(state_offset: u32) -> Result<(), u32> {
 fn write_import_namespace(
     state_offset: u32,
     source_offset: u32,
+    canonical_offset: u32,
     owner_frame: u32,
 ) -> Result<u32, u32> {
     let mut count = 0usize;
@@ -1192,6 +1195,7 @@ fn write_import_namespace(
                             signature,
                             owner_frame,
                             source_offset,
+                            canonical_offset,
                             next_cursor as u32,
                             imported_scope,
                         )?;
@@ -1238,6 +1242,7 @@ fn write_imported_macro_definition(
     signature: &[u8],
     owner_frame: u32,
     source_offset: u32,
+    canonical_offset: u32,
     body_cursor: u32,
     scope: u32,
 ) -> Result<u32, u32> {
@@ -1259,6 +1264,11 @@ fn write_imported_macro_definition(
     write_u32(definition, MACRO_DEFINITION_PARAMETERS, parameters)?;
     write_u32(definition, MACRO_DEFINITION_SCOPE, scope)?;
     write_u32(definition, MACRO_DEFINITION_FRAME, owner_frame)?;
+    write_u32(
+        definition,
+        MACRO_DEFINITION_CANONICAL_NAME,
+        canonical_offset,
+    )?;
     Ok(definition_offset)
 }
 
@@ -1366,6 +1376,11 @@ fn write_super_definition(
     write_u32(definition, MACRO_DEFINITION_FRAME, owner_frame)?;
     write_u32(definition, MACRO_DEFINITION_SUPER, next_super)?;
     write_u32(definition, MACRO_DEFINITION_END_CURSOR, end_cursor)?;
+    write_u32(
+        definition,
+        MACRO_DEFINITION_CANONICAL_NAME,
+        frame_canonical_name(owner_frame)?,
+    )?;
     Ok(definition_offset)
 }
 
@@ -1429,6 +1444,7 @@ fn start_block(state_offset: u32, name: &[u8]) -> Result<(), u32> {
     let frame = record_at(frame_offset, TAG_FRAME)?;
     let source_offset = read_u32(frame, FRAME_SOURCE)?;
     let body_cursor = read_u32(frame, FRAME_CURSOR)?;
+    let canonical_offset = frame_canonical_name(frame_offset)?;
     let end_cursor = find_block_end(
         record_at(source_offset, TAG_SOURCE)?,
         body_cursor as usize,
@@ -1451,7 +1467,7 @@ fn start_block(state_offset: u32, name: &[u8]) -> Result<(), u32> {
             frame_offset,
             source_offset,
             body_cursor,
-            0,
+            canonical_offset,
             current_scope,
             end_cursor,
         )?;
@@ -1461,6 +1477,10 @@ fn start_block(state_offset: u32, name: &[u8]) -> Result<(), u32> {
     }
     let definition_offset = definition_offset.ok_or(ERROR_INVALID_ARENA)?;
     let override_source = block_definition_field(definition_offset, BLOCK_DEFINITION_SOURCE)?;
+    let override_canonical = frame_canonical_name(block_definition_field(
+        definition_offset,
+        BLOCK_DEFINITION_FRAME,
+    )?)?;
     let base_super = write_super_definition(
         source_offset,
         body_cursor,
@@ -1478,7 +1498,7 @@ fn start_block(state_offset: u32, name: &[u8]) -> Result<(), u32> {
         frame_offset,
         override_source,
         block_definition_field(definition_offset, BLOCK_DEFINITION_BODY_CURSOR)?,
-        0,
+        override_canonical,
         current_scope,
         block_definition_field(definition_offset, BLOCK_DEFINITION_END_CURSOR)?,
     )?;
@@ -1517,6 +1537,11 @@ fn start_call_block(state_offset: u32, source: &[u8]) -> Result<(), u32> {
         state_field(state_offset, STATE_CURRENT_SCOPE)?,
     )?;
     write_u32(definition, MACRO_DEFINITION_FRAME, frame_offset)?;
+    write_u32(
+        definition,
+        MACRO_DEFINITION_CANONICAL_NAME,
+        frame_canonical_name(frame_offset)?,
+    )?;
 
     let context_offset = state_field(state_offset, STATE_CONTEXT)?;
     let context = Context::new(record_at(context_offset, TAG_RECORD)?, state_offset)?;
@@ -1547,6 +1572,7 @@ fn define_macro(state_offset: u32, signature: &[u8]) -> Result<(), u32> {
     let frame = record_at(frame_offset, TAG_FRAME)?;
     let source_offset = read_u32(frame, FRAME_SOURCE)?;
     let body_cursor = read_u32(frame, FRAME_CURSOR)?;
+    let canonical_offset = frame_canonical_name(frame_offset)?;
     let owner_frame = if read_u32(frame, FRAME_END_CURSOR)? != 0 {
         read_u32(frame, FRAME_PARENT)?
     } else {
@@ -1557,6 +1583,7 @@ fn define_macro(state_offset: u32, signature: &[u8]) -> Result<(), u32> {
         signature,
         owner_frame,
         source_offset,
+        canonical_offset,
         body_cursor,
     )?;
     set_frame_field(frame_offset, FRAME_CURSOR, end_cursor)
@@ -1567,6 +1594,7 @@ fn register_macro_definition(
     signature: &[u8],
     frame_offset: u32,
     source_offset: u32,
+    canonical_offset: u32,
     body_cursor: u32,
 ) -> Result<u32, u32> {
     let macro_signature = parse_tag_call(signature).map_err(|_| ERROR_UNSUPPORTED_TAG)?;
@@ -1600,6 +1628,11 @@ fn register_macro_definition(
         state_field(state_offset, STATE_CURRENT_SCOPE)?,
     )?;
     write_u32(definition, MACRO_DEFINITION_FRAME, frame_offset)?;
+    write_u32(
+        definition,
+        MACRO_DEFINITION_CANONICAL_NAME,
+        canonical_offset,
+    )?;
     set_state_field(
         state_offset,
         STATE_CURRENT_MACRO_DEFINITION,
@@ -1790,7 +1823,7 @@ fn start_macro_call(
         caller_frame,
         macro_definition_field(definition_offset, MACRO_DEFINITION_SOURCE)?,
         macro_definition_field(definition_offset, MACRO_DEFINITION_BODY_CURSOR)?,
-        0,
+        macro_definition_field(definition_offset, MACRO_DEFINITION_CANONICAL_NAME)?,
         macro_definition_field(definition_offset, MACRO_DEFINITION_SCOPE)?,
         macro_definition_field(definition_offset, MACRO_DEFINITION_END_CURSOR)?,
     )?;
@@ -2427,8 +2460,8 @@ fn start_body_tag(state_offset: u32, call: Call<'_>, schema: TagSchema) -> Resul
 
     let body_frame = allocate_record(TAG_FRAME, FRAME_LENGTH)?;
     let scope_base = state_field(state_offset, STATE_CURRENT_SCOPE)?;
-    let (segment_start, segment_end) = tag_segment(boundaries_offset, 0)?
-        .ok_or(ERROR_INVALID_ARENA)?;
+    let (segment_start, segment_end) =
+        tag_segment(boundaries_offset, 0)?.ok_or(ERROR_INVALID_ARENA)?;
     write_frame(
         body_frame,
         caller_frame,
@@ -2467,9 +2500,7 @@ fn write_tag_arguments(state_offset: u32, arguments: &[u8]) -> Result<u32, u32> 
         next_macro_argument(arguments, cursor).map_err(|_| ERROR_INVALID_EXPRESSION)?
     {
         if argument.name.is_some() {
-            keyword_count = keyword_count
-                .checked_add(1)
-                .ok_or(ERROR_RESOURCE_LIMIT)?;
+            keyword_count = keyword_count.checked_add(1).ok_or(ERROR_RESOURCE_LIMIT)?;
         } else {
             if keyword_count != 0 {
                 return Err(ERROR_INVALID_EXPRESSION);
@@ -2922,12 +2953,22 @@ fn issue_include(state_offset: u32, value_offset: u32) -> Result<u32, u32> {
     )?;
     let name_offset = write_bytes_record(TAG_STRING, name)?;
     set_state_field(state_offset, STATE_PENDING_NAME, name_offset)?;
+    let frame_offset = state_field(state_offset, STATE_CURRENT_FRAME)?;
+    let frame = record_at(frame_offset, TAG_FRAME)?;
+    let canonical_offset = read_u32(frame, FRAME_CANONICAL_NAME)?;
+    if canonical_offset != 0 {
+        record_at(canonical_offset, TAG_STRING)?;
+    }
+    let request_offset = allocate_record(TAG_LOAD_REQUEST, 8)?;
+    let request = mutable_record_at(request_offset, TAG_LOAD_REQUEST)?;
+    write_u32(request, 0, name_offset)?;
+    write_u32(request, 4, canonical_offset)?;
     let state = if state_field(state_offset, STATE_PENDING_LOAD_KIND)? == LOAD_INCLUDE_OPTIONAL {
         STATE_LOAD_OPTIONAL_TEMPLATE
     } else {
         STATE_LOAD_TEMPLATE
     };
-    set_control(state, name_offset, name.len() as u32, ERROR_NONE);
+    set_control(state, request_offset, 8, ERROR_NONE);
     Ok(state)
 }
 
@@ -2983,11 +3024,8 @@ fn apply_switch_condition(state_offset: u32, value_offset: u32) -> Result<(), u3
                 if let Some(expression) = directive_keyword(directive, b"case") {
                     let candidate = evaluate_sync_expression(state_offset, expression)?;
                     if values_equal(value_offset, candidate, false)? {
-                        let branch_cursor = switch_branch_cursor(
-                            state_offset,
-                            source_offset,
-                            next_cursor,
-                        )?;
+                        let branch_cursor =
+                            switch_branch_cursor(state_offset, source_offset, next_cursor)?;
                         set_frame_field(frame_offset, FRAME_CURSOR, branch_cursor as u32)?;
                         return Ok(());
                     }
@@ -3014,8 +3052,7 @@ fn switch_branch_cursor(
                 .map_err(render_error_code)?;
         match item {
             TemplateItem::Tag(directive)
-                if directive_keyword(directive, b"case").is_some()
-                    || directive == b"default" =>
+                if directive_keyword(directive, b"case").is_some() || directive == b"default" =>
             {
                 cursor = next_cursor;
             }
@@ -3191,13 +3228,13 @@ fn range_value(state_offset: u32, call: Call<'_>) -> Result<u32, u32> {
     let (start, stop) = if count == 1 {
         (0.0, Value::at(first)?.as_number())
     } else {
-        let stop = call_positional_argument(state_offset, call, 1)?
-            .ok_or(ERROR_INVALID_EXPRESSION)?;
+        let stop =
+            call_positional_argument(state_offset, call, 1)?.ok_or(ERROR_INVALID_EXPRESSION)?;
         (Value::at(first)?.as_number(), Value::at(stop)?.as_number())
     };
     let step = if count == 3 {
-        let step = call_positional_argument(state_offset, call, 2)?
-            .ok_or(ERROR_INVALID_EXPRESSION)?;
+        let step =
+            call_positional_argument(state_offset, call, 2)?.ok_or(ERROR_INVALID_EXPRESSION)?;
         let step_value = Value::at(step)?;
         if step_value.truthy() {
             step_value.as_number()
@@ -3231,11 +3268,7 @@ fn range_value(state_offset: u32, call: Call<'_>) -> Result<u32, u32> {
     let mut value = start;
     for index in 0..count {
         let item = write_computed_number(value)?;
-        write_u32(
-            mutable_record_at(output, TAG_ARRAY)?,
-            4 + index * 4,
-            item,
-        )?;
+        write_u32(mutable_record_at(output, TAG_ARRAY)?, 4 + index * 4, item)?;
         value += step;
     }
     Ok(output)
@@ -3258,8 +3291,8 @@ fn create_cycler(state_offset: u32, call: Call<'_>) -> Result<u32, u32> {
     write_u32(cycler, CYCLER_NEXT_INDEX, 0)?;
     write_u32(cycler, CYCLER_CURRENT, current)?;
     for index in 0..count {
-        let value = call_positional_argument(state_offset, call, index)?
-            .ok_or(ERROR_INVALID_EXPRESSION)?;
+        let value =
+            call_positional_argument(state_offset, call, index)?.ok_or(ERROR_INVALID_EXPRESSION)?;
         write_u32(
             mutable_record_at(offset, TAG_CYCLER)?,
             CYCLER_FIXED_LENGTH as usize + index * 4,
@@ -3354,8 +3387,7 @@ fn apply_builtin_filter(
                 return Err(ERROR_INVALID_EXPRESSION);
             }
             let size = numeric_usize(
-                call_positional_argument(state_offset, call, 0)?
-                    .ok_or(ERROR_INVALID_EXPRESSION)?,
+                call_positional_argument(state_offset, call, 0)?.ok_or(ERROR_INVALID_EXPRESSION)?,
             )?;
             batch_value(
                 input_offset,
@@ -3426,7 +3458,10 @@ fn apply_builtin_filter(
             if argument_count(call)? > 1 {
                 return Err(ERROR_INVALID_EXPRESSION);
             }
-            dump_value(input_offset, call_positional_argument(state_offset, call, 0)?)?
+            dump_value(
+                input_offset,
+                call_positional_argument(state_offset, call, 0)?,
+            )?
         }
         b"float" => {
             if argument_count(call)? > 1 {
@@ -3434,16 +3469,15 @@ fn apply_builtin_filter(
             }
             let number = input.as_number();
             if number.is_nan() {
-                call_argument(state_offset, call, 0)?
-                    .unwrap_or(write_computed_number(0.0)?)
+                call_argument(state_offset, call, 0)?.unwrap_or(write_computed_number(0.0)?)
             } else {
                 write_computed_number(number)?
             }
         }
         b"groupby" => {
             require_argument_count(call, 1)?;
-            let attribute = call_positional_argument(state_offset, call, 0)?
-                .ok_or(ERROR_INVALID_EXPRESSION)?;
+            let attribute =
+                call_positional_argument(state_offset, call, 0)?.ok_or(ERROR_INVALID_EXPRESSION)?;
             groupby_value(input_offset, attribute)?
         }
         b"int" => {
@@ -3460,8 +3494,7 @@ fn apply_builtin_filter(
             if let Some(number) = parse_integer(input_offset, base)? {
                 write_computed_number(number as f64)?
             } else {
-                call_argument(state_offset, call, 0)?
-                    .unwrap_or(write_computed_number(0.0)?)
+                call_argument(state_offset, call, 0)?.unwrap_or(write_computed_number(0.0)?)
             }
         }
         b"indent" => {
@@ -3503,21 +3536,14 @@ fn apply_builtin_filter(
             require_argument_count(call, 0)?;
             reverse_value(input)?
         }
-        b"reject" | b"select" => select_or_reject_value(
-            state_offset,
-            input_offset,
-            call,
-            call.name == b"select",
-        )?,
+        b"reject" | b"select" => {
+            select_or_reject_value(state_offset, input_offset, call, call.name == b"select")?
+        }
         b"rejectattr" | b"selectattr" => {
             require_argument_count(call, 1)?;
-            let attribute = call_positional_argument(state_offset, call, 0)?
-                .ok_or(ERROR_INVALID_EXPRESSION)?;
-            select_or_reject_attribute_value(
-                input_offset,
-                attribute,
-                call.name == b"selectattr",
-            )?
+            let attribute =
+                call_positional_argument(state_offset, call, 0)?.ok_or(ERROR_INVALID_EXPRESSION)?;
+            select_or_reject_attribute_value(input_offset, attribute, call.name == b"selectattr")?
         }
         b"upper" => {
             require_argument_count(call, 0)?;
@@ -3545,7 +3571,8 @@ fn apply_builtin_filter(
             let limit = if matches!(Value::at(from)?, Value::Regex(_)) {
                 usize::MAX
             } else if count == 3 {
-                let value = call_argument(state_offset, call, 2)?.ok_or(ERROR_INVALID_EXPRESSION)?;
+                let value =
+                    call_argument(state_offset, call, 2)?.ok_or(ERROR_INVALID_EXPRESSION)?;
                 let number = Value::at(value)?.as_number();
                 if number == -1.0 || number == f64::INFINITY {
                     usize::MAX
@@ -3577,8 +3604,7 @@ fn apply_builtin_filter(
                 return Err(ERROR_INVALID_EXPRESSION);
             }
             let slices = numeric_usize(
-                call_positional_argument(state_offset, call, 0)?
-                    .ok_or(ERROR_INVALID_EXPRESSION)?,
+                call_positional_argument(state_offset, call, 0)?.ok_or(ERROR_INVALID_EXPRESSION)?,
             )?;
             slice_value(
                 input_offset,
@@ -3602,7 +3628,11 @@ fn apply_builtin_filter(
             require_argument_count(call, 0)?;
             let rendered = rendered_value(input_offset)?;
             write_bytes_record(
-                if rendered.safe { TAG_SAFE_STRING } else { TAG_STRING },
+                if rendered.safe {
+                    TAG_SAFE_STRING
+                } else {
+                    TAG_STRING
+                },
                 rendered.bytes,
             )?
         }
@@ -3623,17 +3653,17 @@ fn apply_builtin_filter(
             } else {
                 0.0
             };
-            sum_value(
-                input_offset,
-                call_argument(state_offset, call, 0)?,
-                start,
-            )?
+            sum_value(input_offset, call_argument(state_offset, call, 0)?, start)?
         }
         b"trim" => {
             require_argument_count(call, 0)?;
             let rendered = rendered_value(input_offset)?;
             write_bytes_record(
-                if rendered.safe { TAG_SAFE_STRING } else { TAG_STRING },
+                if rendered.safe {
+                    TAG_SAFE_STRING
+                } else {
+                    TAG_STRING
+                },
                 trim_ascii_whitespace(rendered.bytes),
             )?
         }
@@ -4035,11 +4065,7 @@ fn allocate_value_array(count: usize) -> Result<u32, u32> {
         )
         .ok_or(ERROR_RESOURCE_LIMIT)?;
     let offset = allocate_record(TAG_ARRAY, payload_length)?;
-    write_u32(
-        mutable_record_at(offset, TAG_ARRAY)?,
-        0,
-        count as u32,
-    )?;
+    write_u32(mutable_record_at(offset, TAG_ARRAY)?, 0, count as u32)?;
     Ok(offset)
 }
 
@@ -4096,15 +4122,9 @@ fn list_value(value_offset: u32) -> Result<u32, u32> {
             let output = allocate_value_array(text.chars().count())?;
             for (index, character) in text.chars().enumerate() {
                 let mut encoded = [0u8; 4];
-                let item = write_bytes_record(
-                    TAG_STRING,
-                    character.encode_utf8(&mut encoded).as_bytes(),
-                )?;
-                write_u32(
-                    mutable_record_at(output, TAG_ARRAY)?,
-                    4 + index * 4,
-                    item,
-                )?;
+                let item =
+                    write_bytes_record(TAG_STRING, character.encode_utf8(&mut encoded).as_bytes())?;
+                write_u32(mutable_record_at(output, TAG_ARRAY)?, 4 + index * 4, item)?;
             }
             Ok(output)
         }
@@ -4120,11 +4140,7 @@ fn list_value(value_offset: u32) -> Result<u32, u32> {
                 write_u32(pair_record, 8, read_u32(record.payload, 4 + index * 8)?)?;
                 write_u32(pair_record, 12, value_name)?;
                 write_u32(pair_record, 16, read_u32(record.payload, 8 + index * 8)?)?;
-                write_u32(
-                    mutable_record_at(output, TAG_ARRAY)?,
-                    4 + index * 4,
-                    pair,
-                )?;
+                write_u32(mutable_record_at(output, TAG_ARRAY)?, 4 + index * 4, pair)?;
             }
             Ok(output)
         }
@@ -4154,12 +4170,9 @@ fn selection_source(value_offset: u32) -> Result<Array, u32> {
     }
 }
 
-fn selection_test_call<'a>(
-    state_offset: u32,
-    call: Call<'a>,
-) -> Result<Call<'a>, u32> {
-    let Some(argument) = next_macro_argument(call.arguments, 0)
-        .map_err(|_| ERROR_INVALID_EXPRESSION)?
+fn selection_test_call<'a>(state_offset: u32, call: Call<'a>) -> Result<Call<'a>, u32> {
+    let Some(argument) =
+        next_macro_argument(call.arguments, 0).map_err(|_| ERROR_INVALID_EXPRESSION)?
     else {
         return Ok(Call {
             name: b"truthy",
@@ -4193,8 +4206,8 @@ fn select_or_reject_value(
     let mut count = 0usize;
     for index in 0..array.count {
         let item = read_u32(array.payload, 4 + index * 4)?;
-        let result = apply_builtin_test(state_offset, test_call, item)?
-            .ok_or(ERROR_UNKNOWN_CAPABILITY)?;
+        let result =
+            apply_builtin_test(state_offset, test_call, item)?.ok_or(ERROR_UNKNOWN_CAPABILITY)?;
         if result == expected {
             count = count.checked_add(1).ok_or(ERROR_RESOURCE_LIMIT)?;
         }
@@ -4203,8 +4216,8 @@ fn select_or_reject_value(
     let mut output_index = 0usize;
     for index in 0..array.count {
         let item = read_u32(array.payload, 4 + index * 4)?;
-        let result = apply_builtin_test(state_offset, test_call, item)?
-            .ok_or(ERROR_UNKNOWN_CAPABILITY)?;
+        let result =
+            apply_builtin_test(state_offset, test_call, item)?.ok_or(ERROR_UNKNOWN_CAPABILITY)?;
         if result == expected {
             write_u32(
                 mutable_record_at(output, TAG_ARRAY)?,
@@ -4301,7 +4314,8 @@ fn sorted_rank_index(
             } else {
                 other_value
             };
-            let ordering = compare_filter_values(other_selected, candidate_selected, case_sensitive)?;
+            let ordering =
+                compare_filter_values(other_selected, candidate_selected, case_sensitive)?;
             if ordering == core::cmp::Ordering::Less
                 || (ordering == core::cmp::Ordering::Equal && other < candidate)
             {
@@ -4380,9 +4394,7 @@ fn groupby_value(value_offset: u32, attribute_offset: u32) -> Result<u32, u32> {
     let mut group_count = 0usize;
     for index in 0..keys.count {
         if first_key_index(keys, index)? == index {
-            group_count = group_count
-                .checked_add(1)
-                .ok_or(ERROR_RESOURCE_LIMIT)?;
+            group_count = group_count.checked_add(1).ok_or(ERROR_RESOURCE_LIMIT)?;
         }
     }
     let output = allocate_value_array(group_count)?;
@@ -4394,9 +4406,7 @@ fn groupby_value(value_offset: u32, attribute_offset: u32) -> Result<u32, u32> {
         for index in 0..keys.count {
             let candidate = read_u32(keys.payload, 4 + index * 4)?;
             if record_at(candidate, TAG_STRING)? == key_bytes {
-                item_count = item_count
-                    .checked_add(1)
-                    .ok_or(ERROR_RESOURCE_LIMIT)?;
+                item_count = item_count.checked_add(1).ok_or(ERROR_RESOURCE_LIMIT)?;
             }
         }
         let items = allocate_value_array(item_count)?;
@@ -4415,11 +4425,7 @@ fn groupby_value(value_offset: u32, attribute_offset: u32) -> Result<u32, u32> {
         let pair = allocate_value_array(2)?;
         write_u32(mutable_record_at(pair, TAG_ARRAY)?, 4, key)?;
         write_u32(mutable_record_at(pair, TAG_ARRAY)?, 8, items)?;
-        write_u32(
-            mutable_record_at(output, TAG_ARRAY)?,
-            4 + rank * 4,
-            pair,
-        )?;
+        write_u32(mutable_record_at(output, TAG_ARRAY)?, 4 + rank * 4, pair)?;
     }
     Ok(output)
 }
@@ -4436,10 +4442,7 @@ fn property_key_value(value_offset: Option<u32>) -> Result<u32, u32> {
 }
 
 fn first_key_index(keys: Array, candidate: usize) -> Result<usize, u32> {
-    let key = record_at(
-        read_u32(keys.payload, 4 + candidate * 4)?,
-        TAG_STRING,
-    )?;
+    let key = record_at(read_u32(keys.payload, 4 + candidate * 4)?, TAG_STRING)?;
     for index in 0..candidate {
         let existing = record_at(read_u32(keys.payload, 4 + index * 4)?, TAG_STRING)?;
         if existing == key {
@@ -4454,10 +4457,7 @@ fn group_key_index_at_rank(keys: Array, requested_rank: usize) -> Result<Option<
         if first_key_index(keys, candidate)? != candidate {
             continue;
         }
-        let key = record_at(
-            read_u32(keys.payload, 4 + candidate * 4)?,
-            TAG_STRING,
-        )?;
+        let key = record_at(read_u32(keys.payload, 4 + candidate * 4)?, TAG_STRING)?;
         let numeric = property_index(key);
         let mut rank = 0usize;
         for other in 0..keys.count {
@@ -4527,11 +4527,7 @@ fn slice_value(value_offset: u32, slices: usize, fill: Option<u32>) -> Result<u3
             } else {
                 fill.ok_or(ERROR_INVALID_ARENA)?
             };
-            write_u32(
-                mutable_record_at(group, TAG_ARRAY)?,
-                4 + index * 4,
-                item,
-            )?;
+            write_u32(mutable_record_at(group, TAG_ARRAY)?, 4 + index * 4, item)?;
         }
         source_index += available;
         write_u32(
@@ -4591,7 +4587,11 @@ fn center_value(value_offset: u32, width: usize) -> Result<u32, u32> {
         .len()
         .checked_add(padding)
         .ok_or(ERROR_RESOURCE_LIMIT)?;
-    let tag = if rendered.safe { TAG_SAFE_STRING } else { TAG_STRING };
+    let tag = if rendered.safe {
+        TAG_SAFE_STRING
+    } else {
+        TAG_STRING
+    };
     let offset = allocate_record(
         tag,
         u32::try_from(length).map_err(|_| ERROR_RESOURCE_LIMIT)?,
@@ -4605,10 +4605,10 @@ fn center_value(value_offset: u32, width: usize) -> Result<u32, u32> {
 fn parse_integer(value_offset: u32, base: usize) -> Result<Option<i64>, u32> {
     if base == 10 {
         let number = Value::at(value_offset)?.as_number();
-        return Ok((number.is_finite()
-            && number >= i64::MIN as f64
-            && number <= i64::MAX as f64)
-            .then(|| libm::trunc(number) as i64));
+        return Ok(
+            (number.is_finite() && number >= i64::MIN as f64 && number <= i64::MAX as f64)
+                .then(|| libm::trunc(number) as i64),
+        );
     }
     if !(2..=36).contains(&base) {
         return Err(ERROR_INVALID_EXPRESSION);
@@ -4619,7 +4619,11 @@ fn parse_integer(value_offset: u32, base: usize) -> Result<Option<i64>, u32> {
     if matches!(bytes.first(), Some(b'-' | b'+')) {
         bytes = &bytes[1..];
     }
-    if base == 16 && bytes.get(..2).is_some_and(|prefix| matches!(prefix, b"0x" | b"0X")) {
+    if base == 16
+        && bytes
+            .get(..2)
+            .is_some_and(|prefix| matches!(prefix, b"0x" | b"0X"))
+    {
         bytes = &bytes[2..];
     }
     if bytes.is_empty() {
@@ -4648,7 +4652,11 @@ fn indent_value(value_offset: u32, width: usize, first: bool) -> Result<u32, u32
     let rendered = rendered_value(value_offset)?;
     if rendered.bytes.is_empty() {
         return write_bytes_record(
-            if rendered.safe { TAG_SAFE_STRING } else { TAG_STRING },
+            if rendered.safe {
+                TAG_SAFE_STRING
+            } else {
+                TAG_STRING
+            },
             b"",
         );
     }
@@ -4663,7 +4671,11 @@ fn indent_value(value_offset: u32, width: usize, first: bool) -> Result<u32, u32
                 .ok_or(ERROR_RESOURCE_LIMIT)?,
         )
         .ok_or(ERROR_RESOURCE_LIMIT)?;
-    let tag = if rendered.safe { TAG_SAFE_STRING } else { TAG_STRING };
+    let tag = if rendered.safe {
+        TAG_SAFE_STRING
+    } else {
+        TAG_STRING
+    };
     let offset = allocate_record(
         tag,
         u32::try_from(length).map_err(|_| ERROR_RESOURCE_LIMIT)?,
@@ -4786,9 +4798,21 @@ fn nl2br_value(value_offset: u32) -> Result<u32, u32> {
         .bytes
         .len()
         .checked_add(line_breaks.checked_mul(6).ok_or(ERROR_RESOURCE_LIMIT)?)
-        .and_then(|value| value.checked_sub(rendered.bytes.windows(2).filter(|pair| *pair == b"\r\n").count()))
+        .and_then(|value| {
+            value.checked_sub(
+                rendered
+                    .bytes
+                    .windows(2)
+                    .filter(|pair| *pair == b"\r\n")
+                    .count(),
+            )
+        })
         .ok_or(ERROR_RESOURCE_LIMIT)?;
-    let tag = if rendered.safe { TAG_SAFE_STRING } else { TAG_STRING };
+    let tag = if rendered.safe {
+        TAG_SAFE_STRING
+    } else {
+        TAG_STRING
+    };
     let offset = allocate_record(
         tag,
         u32::try_from(length).map_err(|_| ERROR_RESOURCE_LIMIT)?,
@@ -4843,7 +4867,11 @@ fn sum_value(value_offset: u32, attribute_offset: Option<u32>, start: f64) -> Re
     write_computed_number(total)
 }
 
-fn round_value(value_offset: u32, precision: usize, method_offset: Option<u32>) -> Result<u32, u32> {
+fn round_value(
+    value_offset: u32,
+    precision: usize,
+    method_offset: Option<u32>,
+) -> Result<u32, u32> {
     let number = Value::at(value_offset)?.as_number();
     if number.is_nan() || precision > 308 {
         return Err(ERROR_INVALID_EXPRESSION);
@@ -4883,13 +4911,21 @@ fn replace_value(
         Value::at(from_offset)?,
         Value::String(_) | Value::SafeString(_) | Value::Number { .. }
     ) {
-        let tag = if input.safe { TAG_SAFE_STRING } else { TAG_STRING };
+        let tag = if input.safe {
+            TAG_SAFE_STRING
+        } else {
+            TAG_STRING
+        };
         return write_bytes_record(tag, input.bytes);
     }
     let from = rendered_value(from_offset)?.bytes;
     let to = rendered_value(to_offset)?.bytes;
     if limit == 0 || (from.is_empty() && to.is_empty()) {
-        let tag = if input.safe { TAG_SAFE_STRING } else { TAG_STRING };
+        let tag = if input.safe {
+            TAG_SAFE_STRING
+        } else {
+            TAG_STRING
+        };
         return write_bytes_record(tag, input.bytes);
     }
     if from.is_empty() {
@@ -4902,7 +4938,11 @@ fn replace_value(
             .len()
             .checked_add(added)
             .ok_or(ERROR_RESOURCE_LIMIT)?;
-        let tag = if input.safe { TAG_SAFE_STRING } else { TAG_STRING };
+        let tag = if input.safe {
+            TAG_SAFE_STRING
+        } else {
+            TAG_STRING
+        };
         let offset = allocate_record(
             tag,
             u32::try_from(length).map_err(|_| ERROR_RESOURCE_LIMIT)?,
@@ -4936,9 +4976,7 @@ fn replace_value(
             .and_then(|value| value.checked_add(from.len()))
             .ok_or(ERROR_RESOURCE_LIMIT)?;
     }
-    let removed = count
-        .checked_mul(from.len())
-        .ok_or(ERROR_RESOURCE_LIMIT)?;
+    let removed = count.checked_mul(from.len()).ok_or(ERROR_RESOURCE_LIMIT)?;
     let added = count.checked_mul(to.len()).ok_or(ERROR_RESOURCE_LIMIT)?;
     let length = input
         .bytes
@@ -4946,7 +4984,11 @@ fn replace_value(
         .checked_sub(removed)
         .and_then(|value| value.checked_add(added))
         .ok_or(ERROR_RESOURCE_LIMIT)?;
-    let tag = if input.safe { TAG_SAFE_STRING } else { TAG_STRING };
+    let tag = if input.safe {
+        TAG_SAFE_STRING
+    } else {
+        TAG_STRING
+    };
     let offset = allocate_record(
         tag,
         u32::try_from(length).map_err(|_| ERROR_RESOURCE_LIMIT)?,
@@ -5018,8 +5060,7 @@ fn regex_replace_value(
         .ok_or(ERROR_INVALID_RECORD)?;
     let input_length = u32::try_from(input.len()).map_err(|_| ERROR_RESOURCE_LIMIT)?;
     let regex_length = u32::try_from(regex.len()).map_err(|_| ERROR_RESOURCE_LIMIT)?;
-    let replacement_length =
-        u32::try_from(replacement.len()).map_err(|_| ERROR_RESOURCE_LIMIT)?;
+    let replacement_length = u32::try_from(replacement.len()).map_err(|_| ERROR_RESOURCE_LIMIT)?;
     // The worker validates every range and returns either the exact UTF-8 length or an error sentinel.
     let output_length = unsafe {
         nunjitsu_regex_replace(
@@ -5151,11 +5192,7 @@ fn json_value_length(value_offset: u32, indent: &[u8], depth: usize) -> Result<u
                 .ok_or(ERROR_RESOURCE_LIMIT)?;
             if pretty {
                 length = length
-                    .checked_add(json_pretty_overhead(
-                        indent.len(),
-                        depth,
-                        array.count,
-                    )?)
+                    .checked_add(json_pretty_overhead(indent.len(), depth, array.count)?)
                     .ok_or(ERROR_RESOURCE_LIMIT)?;
             }
             let child_depth = depth.checked_add(1).ok_or(ERROR_RESOURCE_LIMIT)?;
@@ -5203,11 +5240,7 @@ fn json_value_length(value_offset: u32, indent: &[u8], depth: usize) -> Result<u
     }
 }
 
-fn json_pretty_overhead(
-    indent_length: usize,
-    depth: usize,
-    entries: usize,
-) -> Result<usize, u32> {
+fn json_pretty_overhead(indent_length: usize, depth: usize, entries: usize) -> Result<usize, u32> {
     let child_depth = depth.checked_add(1).ok_or(ERROR_RESOURCE_LIMIT)?;
     let indentation = child_depth
         .checked_mul(entries)
@@ -5258,12 +5291,16 @@ fn write_json_value(
         }
         Value::Boolean(false) => write_coerced_bytes(output, cursor, b"false"),
         Value::Boolean(true) => write_coerced_bytes(output, cursor, b"true"),
-        Value::Number { numeric, rendered } => {
-            write_coerced_bytes(output, cursor, if numeric.is_finite() { rendered } else { b"null" })
-        }
-        Value::String(bytes) | Value::SafeString(bytes) => {
-            write_json_string(bytes, output, cursor)
-        }
+        Value::Number { numeric, rendered } => write_coerced_bytes(
+            output,
+            cursor,
+            if numeric.is_finite() {
+                rendered
+            } else {
+                b"null"
+            },
+        ),
+        Value::String(bytes) | Value::SafeString(bytes) => write_json_string(bytes, output, cursor),
         Value::Regex(_) => write_coerced_bytes(output, cursor, b"{}"),
         Value::Array(array) => {
             let child_depth = depth.checked_add(1).ok_or(ERROR_RESOURCE_LIMIT)?;
@@ -5308,11 +5345,7 @@ fn write_json_value(
                 }
                 let key = record_at(read_u32(record.payload, 4 + index * 8)?, TAG_STRING)?;
                 write_json_string(key, output, cursor)?;
-                write_coerced_bytes(
-                    output,
-                    cursor,
-                    if indent.is_empty() { b":" } else { b": " },
-                )?;
+                write_coerced_bytes(output, cursor, if indent.is_empty() { b":" } else { b": " })?;
                 write_json_value(value, indent, child_depth, output, cursor)?;
                 written += 1;
             }
@@ -5350,7 +5383,14 @@ fn write_json_string(bytes: &[u8], output: &mut [u8], cursor: &mut usize) -> Res
             0x0d => write_coerced_bytes(output, cursor, b"\\r")?,
             0x00..=0x1f => {
                 const HEX: &[u8; 16] = b"0123456789abcdef";
-                let escaped = [b'\\', b'u', b'0', b'0', HEX[(byte >> 4) as usize], HEX[(byte & 15) as usize]];
+                let escaped = [
+                    b'\\',
+                    b'u',
+                    b'0',
+                    b'0',
+                    HEX[(byte >> 4) as usize],
+                    HEX[(byte & 15) as usize],
+                ];
                 write_coerced_bytes(output, cursor, &escaped)?;
             }
             _ => write_coerced_bytes(output, cursor, &[byte])?,
@@ -5385,7 +5425,11 @@ fn striptags_value(value_offset: u32, preserve_linebreaks: bool) -> Result<u32, 
             .ok_or(ERROR_RESOURCE_LIMIT)?;
         Ok(())
     })?;
-    let tag = if rendered.safe { TAG_SAFE_STRING } else { TAG_STRING };
+    let tag = if rendered.safe {
+        TAG_SAFE_STRING
+    } else {
+        TAG_STRING
+    };
     let output_offset = allocate_record(
         tag,
         u32::try_from(length).map_err(|_| ERROR_RESOURCE_LIMIT)?,
@@ -5497,8 +5541,7 @@ fn normalize_stripped_emit(
                 cursor += 1;
             }
             let followed_by_newline = input.get(cursor) == Some(&b'\n')
-                || (input.get(cursor) == Some(&b'\r')
-                    && input.get(cursor + 1) == Some(&b'\n'));
+                || (input.get(cursor) == Some(&b'\r') && input.get(cursor + 1) == Some(&b'\n'));
             if !line_start && cursor < input.len() && !followed_by_newline {
                 emit(b" ")?;
             }
@@ -5543,11 +5586,15 @@ fn truncate_value(
         255
     };
     if text.chars().count() <= requested {
-        let tag = if rendered.safe { TAG_SAFE_STRING } else { TAG_STRING };
+        let tag = if rendered.safe {
+            TAG_SAFE_STRING
+        } else {
+            TAG_STRING
+        };
         return write_bytes_record(tag, rendered.bytes);
     }
-    let killwords = killwords_offset
-        .is_some_and(|offset| Value::at(offset).is_ok_and(Value::truthy));
+    let killwords =
+        killwords_offset.is_some_and(|offset| Value::at(offset).is_ok_and(Value::truthy));
     let mut end = utf8_prefix_length(text, requested);
     if !killwords {
         let mut last_space = None;
@@ -5569,10 +5616,12 @@ fn truncate_value(
         }
         _ => b"...",
     };
-    let length = end
-        .checked_add(suffix.len())
-        .ok_or(ERROR_RESOURCE_LIMIT)?;
-    let tag = if rendered.safe { TAG_SAFE_STRING } else { TAG_STRING };
+    let length = end.checked_add(suffix.len()).ok_or(ERROR_RESOURCE_LIMIT)?;
+    let tag = if rendered.safe {
+        TAG_SAFE_STRING
+    } else {
+        TAG_STRING
+    };
     let output_offset = allocate_record(
         tag,
         u32::try_from(length).map_err(|_| ERROR_RESOURCE_LIMIT)?,
@@ -5712,11 +5761,7 @@ fn encoded_bytes_length(bytes: &[u8]) -> Result<usize, u32> {
     Ok(length)
 }
 
-fn write_encoded_bytes(
-    bytes: &[u8],
-    output: &mut [u8],
-    cursor: &mut usize,
-) -> Result<(), u32> {
+fn write_encoded_bytes(bytes: &[u8], output: &mut [u8], cursor: &mut usize) -> Result<(), u32> {
     const HEX: &[u8; 16] = b"0123456789ABCDEF";
     for byte in bytes.iter().copied() {
         if url_component_unescaped(byte) {
@@ -5730,7 +5775,11 @@ fn write_encoded_bytes(
 }
 
 fn url_component_unescaped(byte: u8) -> bool {
-    byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.' | b'!' | b'~' | b'*' | b'\'' | b'(' | b')')
+    byte.is_ascii_alphanumeric()
+        || matches!(
+            byte,
+            b'-' | b'_' | b'.' | b'!' | b'~' | b'*' | b'\'' | b'(' | b')'
+        )
 }
 
 fn urlize_value(value_offset: u32, length: usize, nofollow: bool) -> Result<u32, u32> {
@@ -5871,8 +5920,25 @@ fn email_local_byte(byte: u8) -> bool {
     byte.is_ascii_alphanumeric()
         || matches!(
             byte,
-            b'_' | b'.' | b'!' | b'#' | b'$' | b'%' | b'&' | b'\'' | b'*' | b'+' | b'-'
-                | b'/' | b'=' | b'?' | b'^' | b'`' | b'{' | b'|' | b'}' | b'~'
+            b'_' | b'.'
+                | b'!'
+                | b'#'
+                | b'$'
+                | b'%'
+                | b'&'
+                | b'\''
+                | b'*'
+                | b'+'
+                | b'-'
+                | b'/'
+                | b'='
+                | b'?'
+                | b'^'
+                | b'`'
+                | b'{'
+                | b'|'
+                | b'}'
+                | b'~'
         )
 }
 
@@ -6164,8 +6230,11 @@ fn slice_lookup_value(
     if step == 0.0 || !step.is_finite() {
         return Err(ERROR_INVALID_EXPRESSION);
     }
-    let mut start_value = slice_expression_number(state_offset, start)?
-        .unwrap_or(if step < 0.0 { length - 1.0 } else { 0.0 });
+    let mut start_value = slice_expression_number(state_offset, start)?.unwrap_or(if step < 0.0 {
+        length - 1.0
+    } else {
+        0.0
+    });
     let stop_value = slice_expression_number(state_offset, stop)?;
     let mut stop_value = stop_value.unwrap_or(if step < 0.0 { -1.0 } else { length });
     if stop.is_some() && stop_value < 0.0 {
@@ -6362,7 +6431,10 @@ fn coerced_value_length(value_offset: u32) -> Result<usize, u32> {
             let mut length = array.count.saturating_sub(1);
             for index in 0..array.count {
                 length = length
-                    .checked_add(coerced_value_length(read_u32(array.payload, 4 + index * 4)?)?)
+                    .checked_add(coerced_value_length(read_u32(
+                        array.payload,
+                        4 + index * 4,
+                    )?)?)
                     .ok_or(ERROR_RESOURCE_LIMIT)?;
             }
             Ok(length)
@@ -6387,11 +6459,7 @@ fn write_coerced_value_into(
                 if index != 0 {
                     write_coerced_bytes(output, cursor, b",")?;
                 }
-                write_coerced_value_into(
-                    read_u32(array.payload, 4 + index * 4)?,
-                    output,
-                    cursor,
-                )?;
+                write_coerced_value_into(read_u32(array.payload, 4 + index * 4)?, output, cursor)?;
             }
             Ok(())
         }
@@ -6404,17 +6472,11 @@ fn write_coerced_value_into(
     }
 }
 
-fn write_coerced_bytes(
-    output: &mut [u8],
-    cursor: &mut usize,
-    bytes: &[u8],
-) -> Result<(), u32> {
+fn write_coerced_bytes(output: &mut [u8], cursor: &mut usize, bytes: &[u8]) -> Result<(), u32> {
     let end = cursor
         .checked_add(bytes.len())
         .ok_or(ERROR_RESOURCE_LIMIT)?;
-    let destination = output
-        .get_mut(*cursor..end)
-        .ok_or(ERROR_INVALID_ARENA)?;
+    let destination = output.get_mut(*cursor..end).ok_or(ERROR_INVALID_ARENA)?;
     destination.copy_from_slice(bytes);
     *cursor = end;
     Ok(())
@@ -6762,6 +6824,18 @@ fn set_frame_field(offset: u32, field: usize, value: u32) -> Result<(), u32> {
         return Err(ERROR_INVALID_RECORD);
     }
     write_u32(frame, field, value)
+}
+
+fn frame_canonical_name(offset: u32) -> Result<u32, u32> {
+    let frame = record_at(offset, TAG_FRAME)?;
+    if frame.len() != FRAME_LENGTH as usize {
+        return Err(ERROR_INVALID_RECORD);
+    }
+    let canonical_offset = read_u32(frame, FRAME_CANONICAL_NAME)?;
+    if canonical_offset != 0 {
+        record_at(canonical_offset, TAG_STRING)?;
+    }
+    Ok(canonical_offset)
 }
 
 fn loop_field(offset: u32, field: usize) -> Result<u32, u32> {
@@ -7189,10 +7263,12 @@ impl Value {
                 bytes: b"[object Object]",
                 safe: false,
             }),
-            Self::Joiner(_) | Self::Array(_) | Self::Record(_) | Self::Macro => Some(RenderedValue {
-                bytes: b"",
-                safe: false,
-            }),
+            Self::Joiner(_) | Self::Array(_) | Self::Record(_) | Self::Macro => {
+                Some(RenderedValue {
+                    bytes: b"",
+                    safe: false,
+                })
+            }
         }
     }
 

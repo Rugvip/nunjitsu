@@ -20,6 +20,7 @@ type CompatibilityJson = null | boolean | number | string | CompatibilityJson[] 
 interface CompatibilityCase {
   id: string;
   template: string;
+  canonicalName?: string;
   templates?: Record<string, string>;
   capabilityFixture?: string;
   nativeRender?: boolean;
@@ -126,7 +127,12 @@ test('shared compatibility cases render through the TypeScript engine', async t 
       try {
         const context = decodeContext(compatibilityCase.context);
         assert.equal(
-          await engine.render({ source: compatibilityCase.template }, context),
+          await engine.render({
+            source: compatibilityCase.template,
+            ...(compatibilityCase.canonicalName === undefined
+              ? {}
+              : { canonicalName: compatibilityCase.canonicalName }),
+          }, context),
           compatibilityCase.expected,
         );
       } finally {

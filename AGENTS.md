@@ -46,6 +46,9 @@ implementation and documentation aligned with the architecture in
   protection.
 - Provide no ambient cwd filesystem access. Loading is inline or through
   explicit loaders; filesystem loaders are rooted and must prevent root escape.
+- Resolve `./` and `../` dependencies from the requesting source's canonical
+  identity. Preserve that identity through every deferred frame, and key
+  render-local request caches by both canonical parent and requested name.
 - Target Nunjucks v3.2.4 template/runtime behavior, not its JavaScript API.
   Precompilation, browser execution, exact upstream error text, live-object
   semantics, and arbitrary parser extensions are outside the compatibility

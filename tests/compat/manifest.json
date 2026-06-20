@@ -8,6 +8,24 @@
   "coverage": "partial",
   "entries": [
     {
+      "upstream": { "id": "tests/api.js:3", "file": "tests/api.js", "test": "should handle correctly relative paths" },
+      "status": "adapted",
+      "reason": "Equivalent named-template inheritance is exercised through Nunjitsu's immutable memory loader and asynchronous render API.",
+      "cases": ["api-relative-first-child", "api-relative-second-child"]
+    },
+    {
+      "upstream": { "id": "tests/api.js:4", "file": "tests/api.js", "test": "should handle correctly cache for relative paths" },
+      "status": "adapted",
+      "reason": "Nunjitsu has no persistent compiled-template cache; the equivalent parent-aware resolution and render-local canonical deduplication behavior is ported.",
+      "cases": ["api-relative-cache"]
+    },
+    {
+      "upstream": { "id": "tests/api.js:5", "file": "tests/api.js", "test": "should handle correctly relative paths in renderString" },
+      "status": "adapted",
+      "reason": "Inline source supplies an explicit canonicalName instead of the Nunjucks renderString path option, preserving equivalent relative inheritance behavior.",
+      "cases": ["api-relative-inline-source"]
+    },
+    {
       "upstream": { "id": "tests/compiler.js:1", "file": "tests/compiler.js", "test": "should compile templates" },
       "status": "ported",
       "cases": [

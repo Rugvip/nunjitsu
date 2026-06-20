@@ -31,6 +31,7 @@ const recordTag = {
   capabilityRequest: 17,
   tagRegistry: 26,
   regex: 31,
+  loadRequest: 34,
 } as const;
 
 /** The offsets and cursor for one encoded render request. */
@@ -68,6 +69,15 @@ export interface DecodedCapabilityRequest {
   /** Copied callback arguments in call order. */
   arguments: readonly TemplateValue[];
 }
+
+/** One validated dependency request yielded by the Rust evaluator. */
+export interface DecodedLoadRequest {
+  /** Template name as evaluated from the include, import, or extends expression. */
+  name: string;
+  /** Canonical identity of the requesting template, absent for anonymous inline source. */
+  from?: string;
+}
+
 /** Writes render-local records into one worker's shared arena. */
 export class ArenaWriter {
   readonly #memory: WebAssembly.Memory;
@@ -386,33 +396,23 @@ export function decodeOutput(memory: WebAssembly.Memory, offset: number, length:
   );
 }
 
-/** Decodes a string record after validating its tag, length, and bounds. */
-export function decodeStringRecord(
+/** Decodes a dependency request and its optional canonical parent identity. */
+export function decodeLoadRequest(
   memory: WebAssembly.Memory,
   offset: number,
   length: number,
-): string {
-  const buffer = memory.buffer;
-  const recordEnd = offset + recordHeaderLength + length;
-  if (
-    !Number.isSafeInteger(offset) ||
-    !Number.isSafeInteger(length) ||
-    offset < 0 ||
-    length < 0 ||
-    recordEnd > buffer.byteLength
-  ) {
-    throw new Error('Wasm returned an out-of-bounds string record');
+): DecodedLoadRequest {
+  const payload = readRecord(memory, offset, recordTag.loadRequest, length);
+  if (payload.byteLength !== 8) {
+    throw new Error('Wasm returned an invalid loader request');
   }
-  const view = new DataView(buffer);
-  if (
-    view.getUint32(offset, true) !== recordTag.string ||
-    view.getUint32(offset + 4, true) !== length
-  ) {
-    throw new Error('Wasm returned an invalid string record');
-  }
-  return new TextDecoder('utf-8', { fatal: true }).decode(
-    new Uint8Array(buffer, offset + recordHeaderLength, length),
-  );
+  const view = new DataView(payload.buffer, payload.byteOffset, payload.byteLength);
+  const name = decodeNestedString(memory, view.getUint32(0, true), 'loader name');
+  const fromOffset = view.getUint32(4, true);
+  const from = fromOffset === 0
+    ? undefined
+    : decodeNestedString(memory, fromOffset, 'loader parent identity');
+  return Object.freeze({ name, ...(from === undefined ? {} : { from }) });
 }
 
 /** Decodes a yielded capability request and recursively copies its safe arguments. */
@@ -550,6 +550,14 @@ function readAnyRecord(
     tag: view.getUint32(offset, true),
     payload: new Uint8Array(buffer, offset + recordHeaderLength, length),
   };
+}
+
+function decodeNestedString(memory: WebAssembly.Memory, offset: number, label: string): string {
+  const record = readAnyRecord(memory, offset);
+  if (record.tag !== recordTag.string) {
+    throw new Error(`Wasm returned a non-string ${label}`);
+  }
+  return new TextDecoder('utf-8', { fatal: true }).decode(record.payload);
 }
 
 function align(value: number, alignment: number): number {

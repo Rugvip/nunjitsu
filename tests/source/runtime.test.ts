@@ -3,6 +3,7 @@ import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
+import { pathToFileURL } from 'node:url';
 
 import {
   createEngine,
@@ -16,6 +17,46 @@ import {
   type TemplateContext,
   type TemplateLoader,
 } from '../../src/index.ts';
+import { decodeLoadRequest } from '../../src/protocol.ts';
+
+test('validates parent-aware loader request records at the Wasm boundary', () => {
+  const memory = new WebAssembly.Memory({ initial: 1 });
+  const view = new DataView(memory.buffer);
+  const bytes = new Uint8Array(memory.buffer);
+  const encoder = new TextEncoder();
+  const nameOffset = 64;
+  const fromOffset = 96;
+  const requestOffset = 160;
+  const writeString = (offset: number, value: string) => {
+    const encoded = encoder.encode(value);
+    view.setUint32(offset, 2, true);
+    view.setUint32(offset + 4, encoded.byteLength, true);
+    bytes.set(encoded, offset + 8);
+  };
+
+  writeString(nameOffset, './partial.njk');
+  writeString(fromOffset, 'memory:pages%2Fentry.njk');
+  view.setUint32(requestOffset, 34, true);
+  view.setUint32(requestOffset + 4, 8, true);
+  view.setUint32(requestOffset + 8, nameOffset, true);
+  view.setUint32(requestOffset + 12, fromOffset, true);
+
+  assert.deepEqual(decodeLoadRequest(memory, requestOffset, 8), {
+    name: './partial.njk',
+    from: 'memory:pages%2Fentry.njk',
+  });
+  view.setUint32(requestOffset + 12, 0, true);
+  assert.deepEqual(decodeLoadRequest(memory, requestOffset, 8), {
+    name: './partial.njk',
+  });
+
+  assert.throws(() => decodeLoadRequest(memory, requestOffset, 4), /record envelope/);
+  view.setUint32(requestOffset, 2, true);
+  assert.throws(() => decodeLoadRequest(memory, requestOffset, 8), /record envelope/);
+  view.setUint32(requestOffset, 34, true);
+  view.setUint32(requestOffset + 12, memory.buffer.byteLength, true);
+  assert.throws(() => decodeLoadRequest(memory, requestOffset, 8), /out-of-bounds record/);
+});
 
 test('renders through reusable shared-memory workers', async () => {
   const templates = {
@@ -326,24 +367,134 @@ test('applies explicit and environment whitespace controls', async () => {
   }
 });
 
+test('resolves relative dependencies from each canonical parent identity', async () => {
+  const ownedTemplates = memoryLoader({
+    'layout/base.njk': '({% block body %}{% include "./base-partial.njk" %}{% endblock %})',
+    'layout/base-partial.njk': 'base',
+    'pages/child.njk': [
+      '{% extends "../layout/base.njk" %}',
+      '{% block body %}',
+      '{% macro child() %}{% include "./child-partial.njk" %}{% endmacro %}',
+      '{{ child() }}+{{ super() }}{% endblock %}',
+    ].join(''),
+    'pages/child-partial.njk': 'child',
+    'widgets/local.njk': [
+      '{% macro render_piece() %}{% include "./piece.njk" %}{% endmacro %}',
+      '{{ render_piece() }}',
+    ].join(''),
+    'widgets/macros.njk': '{% macro render_piece() %}{% include "./piece.njk" %}{% endmacro %}',
+    'widgets/piece.njk': 'piece',
+    'pages/import.njk': [
+      '{% import "../widgets/macros.njk" as widgets %}',
+      '{{ widgets.render_piece() }}',
+    ].join(''),
+    'relative/cache.njk': [
+      '{% include "./dir1/index.njk" %}|',
+      '{% include "./dir2/index.njk" %}',
+    ].join(''),
+    'relative/dir1/index.njk': '{% include "./partial.njk" %}',
+    'relative/dir1/partial.njk': 'one',
+    'relative/dir2/index.njk': '{% include "./partial.njk" %}',
+    'relative/dir2/partial.njk': 'two',
+    'pages/cycle.njk': '{% include "./cycle.njk" %}',
+    'pages/escape.njk': '{% include "../../outside.njk" %}',
+  });
+  const requests: Array<{ name: string; from: string | undefined }> = [];
+  const loader: TemplateLoader = {
+    async load(name, signal, from) {
+      requests.push({ name, from });
+      return await ownedTemplates.load(name, signal, from);
+    },
+  };
+  const engine = await createEngine({ loaders: [loader] });
+
+  try {
+    assert.equal(await engine.render({ name: 'pages/child.njk' }), '(child+base)');
+    assert.equal(await engine.render({ name: 'widgets/local.njk' }), 'piece');
+    assert.equal(await engine.render({ name: 'pages/import.njk' }), 'piece');
+    assert.equal(await engine.render({ name: 'relative/cache.njk' }), 'one|two');
+    assert.equal(
+      await engine.render({
+        source: '{% include "./widgets/piece.njk" %}',
+        canonicalName: 'memory:entry.njk',
+      }),
+      'piece',
+    );
+
+    assert.ok(requests.some(request =>
+      request.name === './child-partial.njk' && request.from === 'memory:pages%2Fchild.njk'
+    ));
+    assert.ok(requests.some(request =>
+      request.name === './base-partial.njk' && request.from === 'memory:layout%2Fbase.njk'
+    ));
+    assert.ok(requests.some(request =>
+      request.name === './piece.njk' && request.from === 'memory:widgets%2Fmacros.njk'
+    ));
+
+    await assert.rejects(
+      engine.render({ name: 'pages/cycle.njk' }),
+      error => error instanceof NunjitsuRenderError && error.code === 6,
+    );
+    await assert.rejects(
+      engine.render({ name: 'pages/escape.njk' }),
+      error => error instanceof TemplateLoaderError && /escapes the memory namespace/.test(error.message),
+    );
+    await assert.rejects(
+      engine.render({ source: 'invalid', canonicalName: '' }),
+      /canonicalName must be a non-empty string/,
+    );
+  } finally {
+    await engine.dispose();
+  }
+});
+
 test('filesystem loading stays within explicit canonical roots', async () => {
   const sandbox = await mkdtemp(join(tmpdir(), 'nunjitsu-'));
+  const emptyRoot = join(sandbox, 'empty');
   const root = join(sandbox, 'templates');
   const secret = join(sandbox, 'secret.njk');
+  await mkdir(emptyRoot);
   await mkdir(root);
+  await mkdir(join(root, 'layout'));
+  await mkdir(join(root, 'pages'));
   await writeFile(join(root, 'page.njk'), 'File {% include "partial.njk" %}');
   await writeFile(join(root, 'partial.njk'), '{{ value }}');
+  await writeFile(
+    join(root, 'layout', 'base.njk'),
+    'Nested {% block body %}base{% endblock %}',
+  );
+  await writeFile(
+    join(root, 'pages', 'child.njk'),
+    '{% extends "../layout/base.njk" %}{% block body %}{% include "./partial.njk" %}{% endblock %}',
+  );
+  await writeFile(join(root, 'pages', 'partial.njk'), '{{ value }}');
+  await writeFile(join(root, 'pages', 'escape.njk'), '{% include "../../secret.njk" %}');
   await writeFile(secret, 'secret');
 
   const engine = await createEngine({
-    loaders: [fileSystemLoader({ roots: [root] })],
+    loaders: [fileSystemLoader({ roots: [emptyRoot, root] })],
   });
   try {
     assert.equal(
       await engine.render({ name: 'page.njk' }, { value: 'works' }),
       'File works',
     );
+    assert.equal(
+      await engine.render({ name: 'pages/child.njk' }, { value: 'relative' }),
+      'Nested relative',
+    );
+    assert.equal(
+      await engine.render({
+        source: '{% extends "./pages/child.njk" %}',
+        canonicalName: pathToFileURL(join(root, 'inline.njk')).href,
+      }, { value: 'inline' }),
+      'Nested inline',
+    );
     await assert.rejects(engine.render({ name: '../secret.njk' }), /escapes its configured root/);
+    await assert.rejects(
+      engine.render({ name: 'pages/escape.njk' }),
+      /escapes its configured root/,
+    );
     await assert.rejects(
       engine.render({ source: '{% include "../secret.njk" ignore missing %}' }),
       error => error instanceof TemplateLoaderError && /escapes its configured root/.test(error.message),
