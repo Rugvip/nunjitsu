@@ -26,6 +26,61 @@
       "cases": ["api-relative-inline-source"]
     },
     {
+      "upstream": { "id": "tests/loader.js:1", "file": "tests/loader.js", "test": "should allow a simple loader to be created" },
+      "status": "adapted",
+      "reason": "The runtime suite renders a named template through Nunjitsu's minimal asynchronous TemplateLoader interface instead of subclassing a Nunjucks loader."
+    },
+    {
+      "upstream": { "id": "tests/loader.js:2", "file": "tests/loader.js", "test": "should catch loader error" },
+      "status": "adapted",
+      "reason": "Asynchronous loader exceptions reject the render promise, recycle a suspended worker, and leave the engine usable for the next render."
+    },
+    {
+      "upstream": { "id": "tests/loader.js:3", "file": "tests/loader.js", "test": "should have default opts for WebLoader" },
+      "status": "not applicable",
+      "reason": "Browser execution and the Nunjucks WebLoader class are outside the documented compatibility contract."
+    },
+    {
+      "upstream": { "id": "tests/loader.js:4", "file": "tests/loader.js", "test": "should emit a \"load\" event" },
+      "status": "not applicable",
+      "reason": "Browser execution and Nunjucks loader event APIs are outside the documented compatibility contract."
+    },
+    {
+      "upstream": { "id": "tests/loader.js:5", "file": "tests/loader.js", "test": "should have default opts" },
+      "status": "not applicable",
+      "reason": "Nunjitsu deliberately has no implicit cwd loader or persistent loader cache; its filesystem loader requires explicit roots."
+    },
+    {
+      "upstream": { "id": "tests/loader.js:6", "file": "tests/loader.js", "test": "should emit a \"load\" event" },
+      "status": "not applicable",
+      "reason": "The new loader capability is promise-based and does not emulate Nunjucks loader event emitters."
+    },
+    {
+      "upstream": { "id": "tests/loader.js:7", "file": "tests/loader.js", "test": "should have default opts" },
+      "status": "not applicable",
+      "reason": "The NodeResolveLoader class and its cache options are part of the replaced Nunjucks JavaScript loader API."
+    },
+    {
+      "upstream": { "id": "tests/loader.js:8", "file": "tests/loader.js", "test": "should emit a \"load\" event" },
+      "status": "not applicable",
+      "reason": "The new loader capability does not emulate NodeResolveLoader or Nunjucks loader event emitters."
+    },
+    {
+      "upstream": { "id": "tests/loader.js:9", "file": "tests/loader.js", "test": "should render templates" },
+      "status": "adapted",
+      "reason": "The runtime suite verifies that an explicit custom loader can resolve a package-style template name and render its copied source."
+    },
+    {
+      "upstream": { "id": "tests/loader.js:10", "file": "tests/loader.js", "test": "should not allow directory traversal" },
+      "status": "adapted",
+      "reason": "Nunjitsu's explicit-root filesystem loader rejects absolute names, lexical traversal, and canonical symlink escape through its documented security model."
+    },
+    {
+      "upstream": { "id": "tests/loader.js:11", "file": "tests/loader.js", "test": "should return null if no match" },
+      "status": "adapted",
+      "reason": "The runtime suite verifies ordered fallthrough when loaders return null and a terminal TemplateNotFoundError when none match."
+    },
+    {
       "upstream": { "id": "tests/compiler.js:1", "file": "tests/compiler.js", "test": "should compile templates" },
       "status": "ported",
       "cases": [

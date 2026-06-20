@@ -448,6 +448,61 @@ test('resolves relative dependencies from each canonical parent identity', async
   }
 });
 
+test('uses an ordered async loader chain and recovers from loader failures', async () => {
+  const requests: string[] = [];
+  const loaderFailure = new Error('loader failed');
+  const engine = await createEngine({
+    loaders: [
+      {
+        async load(name) {
+          requests.push(`first:${name}`);
+          return null;
+        },
+      },
+      {
+        async load(name, signal) {
+          requests.push(`second:${name}`);
+          assert.ok(signal && !signal.aborted);
+          await new Promise<void>(resolve => setImmediate(resolve));
+          if (name === 'fake.njk') {
+            return { canonicalName: 'custom:fake.njk', source: 'Hello World' };
+          }
+          if (name === 'package/template.njk') {
+            return { canonicalName: 'custom:package/template.njk', source: '{{ value }}' };
+          }
+          if (name === 'broken.njk') {
+            throw loaderFailure;
+          }
+          return null;
+        },
+      },
+    ],
+    workerPool: { minWorkers: 1, maxWorkers: 1 },
+  });
+
+  try {
+    assert.equal(await engine.render({ name: 'fake.njk' }), 'Hello World');
+    assert.equal(
+      await engine.render({ source: '{% include "package/template.njk" %}' }, { value: 'loaded' }),
+      'loaded',
+    );
+    await assert.rejects(
+      engine.render({ source: '{% include "broken.njk" %}' }),
+      error => error === loaderFailure,
+    );
+    assert.equal(await engine.render({ source: 'clean after loader error' }), 'clean after loader error');
+    await assert.rejects(
+      engine.render({ name: 'missing.njk' }),
+      error => error instanceof TemplateNotFoundError,
+    );
+    assert.deepEqual(requests.slice(0, 2), ['first:fake.njk', 'second:fake.njk']);
+    assert.ok(requests.includes('second:broken.njk'));
+    assert.ok(requests.includes('second:missing.njk'));
+  } finally {
+    await engine.dispose();
+  }
+});
+
 test('filesystem loading stays within explicit canonical roots', async () => {
   const sandbox = await mkdtemp(join(tmpdir(), 'nunjitsu-'));
   const emptyRoot = join(sandbox, 'empty');
