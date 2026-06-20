@@ -199,6 +199,40 @@ test('streams evaluator chunks with backpressure and preserves partial failure s
   }
 });
 
+test('omits comments and preserves raw and verbatim regions', async () => {
+  const engine = await createEngine();
+  try {
+    assert.equal(
+      await engine.render({
+        source: [
+          'before',
+          '{# {{ hidden }} {% unknown %} #}',
+          '{% raw %}{{ raw }} {% unknown %}{% endraw %}',
+          '{% verbatim %}{# literal #}{% endverbatim %}',
+          'after',
+        ].join(''),
+      }),
+      'before{{ raw }} {% unknown %}{# literal #}after',
+    );
+    assert.equal(
+      (await Array.fromAsync(engine.renderStream({
+        source: 'a{# omit #}{% raw %}{{ untouched }}{% endraw %}b',
+      }))).join(''),
+      'a{{ untouched }}b',
+    );
+    await assert.rejects(
+      engine.render({ source: '{# unclosed' }),
+      error => error instanceof NunjitsuRenderError && error.code === 5,
+    );
+    await assert.rejects(
+      engine.render({ source: '{% raw %}unclosed' }),
+      error => error instanceof NunjitsuRenderError && error.code === 5,
+    );
+  } finally {
+    await engine.dispose();
+  }
+});
+
 test('filesystem loading stays within explicit canonical roots', async () => {
   const sandbox = await mkdtemp(join(tmpdir(), 'nunjitsu-'));
   const root = join(sandbox, 'templates');

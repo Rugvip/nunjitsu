@@ -2376,6 +2376,8 @@ fn render_error_code(error: RenderError) -> u32 {
         RenderError::UnclosedInterpolation => ERROR_UNCLOSED_INTERPOLATION,
         RenderError::OutputTooLarge | RenderError::OutputBufferTooSmall => ERROR_OUTPUT_TOO_LARGE,
         RenderError::UnclosedBlockTag
+        | RenderError::UnclosedComment
+        | RenderError::UnclosedRaw
         | RenderError::UnsupportedTag
         | RenderError::InvalidInclude => ERROR_UNSUPPORTED_TAG,
     }

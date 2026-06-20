@@ -5,6 +5,10 @@ pub enum RenderError {
     UnclosedInterpolation,
     /// A block tag was opened but not closed.
     UnclosedBlockTag,
+    /// A template comment was opened but not closed.
+    UnclosedComment,
+    /// A raw/verbatim region was opened but not closed.
+    UnclosedRaw,
     /// A block tag is not implemented by the current evaluator.
     UnsupportedTag,
     /// An include tag did not contain one quoted literal name.
@@ -89,6 +93,19 @@ pub fn next_item(source: &[u8], cursor: usize) -> Result<(TemplateItem<'_>, usiz
                 .map(|relative| content_start + relative)
                 .ok_or(RenderError::UnclosedBlockTag)?;
             let directive = trim_ascii_whitespace(&source[content_start..close]);
+            if matches!(directive, b"raw" | b"verbatim") {
+                let end_name = if directive == b"raw" {
+                    b"endraw".as_slice()
+                } else {
+                    b"endverbatim".as_slice()
+                };
+                let body_start = close + 2;
+                let (body_end, next_cursor) = find_raw_end(source, body_start, end_name)?;
+                return Ok((
+                    TemplateItem::Text(&source[body_start..body_end]),
+                    next_cursor,
+                ));
+            }
             if let Some(include) = directive
                 .strip_prefix(b"include")
                 .filter(|remainder| remainder.first().is_some_and(u8::is_ascii_whitespace))
@@ -98,6 +115,12 @@ pub fn next_item(source: &[u8], cursor: usize) -> Result<(TemplateItem<'_>, usiz
             } else {
                 Ok((TemplateItem::Tag(directive), close + 2))
             }
+        }
+        Delimiter::Comment => {
+            let close = find_pair(&source[content_start..], b'#', b'}')
+                .map(|relative| content_start + relative)
+                .ok_or(RenderError::UnclosedComment)?;
+            Ok((TemplateItem::Text(b""), close + 2))
         }
     }
 }
@@ -293,6 +316,7 @@ fn visit_template<'a>(
 enum Delimiter {
     Expression,
     Block,
+    Comment,
 }
 
 fn find_next_tag(source: &[u8], cursor: usize) -> Option<(usize, Delimiter)> {
@@ -302,8 +326,33 @@ fn find_next_tag(source: &[u8], cursor: usize) -> Option<(usize, Delimiter)> {
         .find_map(|(relative, window)| match window {
             b"{{" => Some((cursor + relative, Delimiter::Expression)),
             b"{%" => Some((cursor + relative, Delimiter::Block)),
+            b"{#" => Some((cursor + relative, Delimiter::Comment)),
             _ => None,
         })
+}
+
+fn find_raw_end(
+    source: &[u8],
+    mut cursor: usize,
+    end_name: &[u8],
+) -> Result<(usize, usize), RenderError> {
+    loop {
+        let Some(relative) = source[cursor..]
+            .windows(2)
+            .position(|window| window == b"{%")
+        else {
+            return Err(RenderError::UnclosedRaw);
+        };
+        let open = cursor + relative;
+        let content_start = open + 2;
+        let close = find_pair(&source[content_start..], b'%', b'}')
+            .map(|relative| content_start + relative)
+            .ok_or(RenderError::UnclosedRaw)?;
+        if trim_ascii_whitespace(&source[content_start..close]) == end_name {
+            return Ok((open, close + 2));
+        }
+        cursor = close + 2;
+    }
 }
 
 fn find_pair(bytes: &[u8], first: u8, second: u8) -> Option<usize> {
@@ -394,6 +443,14 @@ mod tests {
             render_template(b"hello", false, |_| None, &mut output),
             Err(RenderError::OutputBufferTooSmall),
         );
+        assert_eq!(
+            render_template(b"{# unclosed", false, |_| None, &mut output),
+            Err(RenderError::UnclosedComment),
+        );
+        assert_eq!(
+            render_template(b"{% raw %}unclosed", false, |_| None, &mut output),
+            Err(RenderError::UnclosedRaw),
+        );
     }
 
     #[test]
@@ -454,5 +511,13 @@ mod tests {
                 end_cursor: loop_source.len(),
             }),
         );
+    }
+
+    #[test]
+    fn omits_comments_and_preserves_raw_template_syntax() {
+        let source = b"before{# {{ hidden }} #}{% raw %}{{ visible syntax }}{% endraw %}after";
+        let mut output = vec![0; source.len()];
+        let written = render_template(source, false, |_| None, &mut output).unwrap();
+        assert_eq!(&output[..written], b"before{{ visible syntax }}after");
     }
 }
