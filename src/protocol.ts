@@ -26,13 +26,23 @@ export interface EncodedRenderRequest {
   /** First unallocated byte after the encoded request. */
   cursor: number;
 }
+
+/** Offsets for one loader result appended while an evaluator is suspended. */
+export interface EncodedLoadedTemplate {
+  /** Offset of the loaded source record. */
+  sourceOffset: number;
+  /** Offset of the loader-provided canonical identity. */
+  canonicalOffset: number;
+  /** First unallocated byte after the loader result. */
+  cursor: number;
+}
 /** Writes render-local records into one worker's shared arena. */
 export class ArenaWriter {
   readonly #memory: WebAssembly.Memory;
   #view: DataView;
   #cursor: number;
 
-  /** Creates a writer beginning at the Wasm-provided arena base. */
+  /** Creates a writer beginning at an aligned free arena cursor. */
   constructor(memory: WebAssembly.Memory, arenaBase: number) {
     this.#memory = memory;
     this.#view = new DataView(memory.buffer);
@@ -43,19 +53,33 @@ export class ArenaWriter {
   encodeRender(
     source: string,
     context: TemplateContext,
-    options: { autoescape: boolean },
+    options: { autoescape: boolean; canonicalName?: string },
   ): EncodedRenderRequest {
     const sourceOffset = this.#writeTextRecord(recordTag.source, source);
     const contextOffset = this.#writeValue(context, new Set());
 
-    const requestPayload = new ArrayBuffer(12);
+    const canonicalOffset = options.canonicalName
+      ? this.#writeTextRecord(recordTag.string, options.canonicalName)
+      : 0;
+    const requestPayload = new ArrayBuffer(16);
     const requestView = new DataView(requestPayload);
     requestView.setUint32(0, sourceOffset, true);
     requestView.setUint32(4, contextOffset, true);
     requestView.setUint32(8, options.autoescape ? 1 : 0, true);
+    requestView.setUint32(12, canonicalOffset, true);
     const requestOffset = this.#writeRecord(recordTag.request, new Uint8Array(requestPayload));
 
     return { requestOffset, cursor: this.#cursor };
+  }
+
+  /** Appends one trusted loader response for a suspended include request. */
+  encodeLoadedTemplate(source: string, canonicalName: string): EncodedLoadedTemplate {
+    if (!canonicalName) {
+      throw new TypeError('Loaded templates require a canonical identity');
+    }
+    const sourceOffset = this.#writeTextRecord(recordTag.source, source);
+    const canonicalOffset = this.#writeTextRecord(recordTag.string, canonicalName);
+    return { sourceOffset, canonicalOffset, cursor: this.#cursor };
   }
 
   #writeTextRecord(tag: number, value: string): number {
@@ -215,6 +239,35 @@ export function decodeOutput(memory: WebAssembly.Memory, offset: number, length:
     throw new Error('Wasm returned an inconsistent output record length');
   }
 
+  return new TextDecoder('utf-8', { fatal: true }).decode(
+    new Uint8Array(buffer, offset + recordHeaderLength, length),
+  );
+}
+
+/** Decodes a string record after validating its tag, length, and bounds. */
+export function decodeStringRecord(
+  memory: WebAssembly.Memory,
+  offset: number,
+  length: number,
+): string {
+  const buffer = memory.buffer;
+  const recordEnd = offset + recordHeaderLength + length;
+  if (
+    !Number.isSafeInteger(offset) ||
+    !Number.isSafeInteger(length) ||
+    offset < 0 ||
+    length < 0 ||
+    recordEnd > buffer.byteLength
+  ) {
+    throw new Error('Wasm returned an out-of-bounds string record');
+  }
+  const view = new DataView(buffer);
+  if (
+    view.getUint32(offset, true) !== recordTag.string ||
+    view.getUint32(offset + 4, true) !== length
+  ) {
+    throw new Error('Wasm returned an invalid string record');
+  }
   return new TextDecoder('utf-8', { fatal: true }).decode(
     new Uint8Array(buffer, offset + recordHeaderLength, length),
   );

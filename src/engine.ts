@@ -1,7 +1,7 @@
 import { availableParallelism } from 'node:os';
 import { Worker } from 'node:worker_threads';
 
-import { loadTemplate, type TemplateLoader } from './loaders.ts';
+import { loadTemplate, type LoadedTemplate, type TemplateLoader } from './loaders.ts';
 import { ArenaWriter, decodeOutput } from './protocol.ts';
 import type { TemplateContext } from './values.ts';
 
@@ -133,6 +133,22 @@ interface PendingRender {
   resolve: (output: string) => void;
   reject: (error: Error) => void;
   abort: (() => void) | undefined;
+  load: (name: string) => Promise<LoadedTemplate>;
+  loading: boolean;
+  loadedByName: Map<string, CachedLoadedTemplate>;
+  loadedByCanonicalName: Map<string, CachedLoadedTemplate>;
+}
+
+/** Immutable arena offsets for a source already loaded during this render. */
+interface CachedLoadedTemplate {
+  sourceOffset: number;
+  canonicalOffset: number;
+}
+
+/** Entry source and optional canonical identity passed into one render. */
+interface ResolvedTemplate {
+  source: string;
+  canonicalName?: string;
 }
 
 /** Message sent after a worker instantiates the Wasm module. */
@@ -159,8 +175,16 @@ interface ErrorMessage {
   errorCode: number;
 }
 
+/** Loader request yielded by the resumable Rust evaluator. */
+interface LoadMessage {
+  type: 'load';
+  id: number;
+  name: string;
+  cursor: number;
+}
+
 /** Worker response accepted by the host protocol. */
-type WorkerMessage = ReadyMessage | ResultMessage | ErrorMessage;
+type WorkerMessage = ReadyMessage | ResultMessage | ErrorMessage | LoadMessage;
 
 class EngineImplementation implements Engine {
   readonly #runtime: RuntimeAssets;
@@ -206,10 +230,16 @@ class EngineImplementation implements Engine {
       throw abortError();
     }
 
-    const source = await this.#resolveTemplate(template, options.signal);
+    const resolved = await this.#resolveTemplate(template, options.signal);
     const slot = await this.#acquire(options.signal);
     try {
-      return await slot.render(source, context, this.#autoescape, options.signal);
+      return await slot.render(
+        resolved,
+        context,
+        this.#autoescape,
+        name => loadTemplate(this.#loaders, name, options.signal),
+        options.signal,
+      );
     } finally {
       this.#release(slot);
     }
@@ -349,17 +379,20 @@ class EngineImplementation implements Engine {
     }
   }
 
-  async #resolveTemplate(template: TemplateInput, signal: AbortSignal | undefined): Promise<string> {
+  async #resolveTemplate(
+    template: TemplateInput,
+    signal: AbortSignal | undefined,
+  ): Promise<ResolvedTemplate> {
     const hasSource = 'source' in template && typeof template.source === 'string';
     const hasName = 'name' in template && typeof template.name === 'string';
     if (hasSource === hasName) {
       throw new TypeError('A template must provide exactly one string source or name');
     }
     if (hasSource) {
-      return template.source;
+      return { source: template.source };
     }
     if (hasName) {
-      return (await loadTemplate(this.#loaders, template.name, signal)).source;
+      return await loadTemplate(this.#loaders, template.name, signal);
     }
     throw new TypeError('Invalid template input');
   }
@@ -405,9 +438,10 @@ class WorkerSlot {
   }
 
   async render(
-    source: string,
+    template: ResolvedTemplate,
     context: TemplateContext,
     autoescape: boolean,
+    load: (name: string) => Promise<LoadedTemplate>,
     signal: AbortSignal | undefined,
   ): Promise<string> {
     await this.ready;
@@ -421,12 +455,26 @@ class WorkerSlot {
       throw new Error('The Nunjitsu worker already has an active render');
     }
 
-    const encoded = new ArenaWriter(this.memory, this.#arenaBase).encodeRender(source, context, {
-      autoescape,
-    });
+    const encoded = new ArenaWriter(this.memory, this.#arenaBase).encodeRender(
+      template.source,
+      context,
+      {
+        autoescape,
+        ...(template.canonicalName ? { canonicalName: template.canonicalName } : {}),
+      },
+    );
     const id = this.#nextRenderId++;
     return await new Promise<string>((resolve, reject) => {
-      const pending: PendingRender = { id, resolve, reject, abort: undefined };
+      const pending: PendingRender = {
+        id,
+        resolve,
+        reject,
+        abort: undefined,
+        load,
+        loading: false,
+        loadedByName: new Map(),
+        loadedByCanonicalName: new Map(),
+      };
       if (signal) {
         const onAbort = () => {
           pending.abort?.();
@@ -468,7 +516,7 @@ class WorkerSlot {
       return;
     }
     if (value.type === 'ready') {
-      if (value.abiVersion !== 3 || value.arenaBase <= 0) {
+      if (value.abiVersion !== 4 || value.arenaBase <= 0) {
         this.#fail(new Error('Nunjitsu worker reported an incompatible Wasm ABI'));
         return;
       }
@@ -486,6 +534,15 @@ class WorkerSlot {
     }
     if (value.id !== pending.id) {
       this.#fail(new Error('Nunjitsu worker returned a stale render result'));
+      return;
+    }
+    if (value.type === 'load') {
+      if (pending.loading) {
+        this.#fail(new Error('Nunjitsu worker yielded overlapping loader requests'));
+        return;
+      }
+      pending.loading = true;
+      void this.#resumeLoad(pending, value);
       return;
     }
     pending.abort?.();
@@ -510,6 +567,50 @@ class WorkerSlot {
     this.#pending?.reject(error);
     this.#pending = undefined;
   }
+
+  async #resumeLoad(pending: PendingRender, message: LoadMessage): Promise<void> {
+    try {
+      let cached = pending.loadedByName.get(message.name);
+      let cursor = message.cursor;
+      if (!cached) {
+        const loaded = await pending.load(message.name);
+        cached = pending.loadedByCanonicalName.get(loaded.canonicalName);
+        if (!cached) {
+          const encoded = new ArenaWriter(this.memory, message.cursor).encodeLoadedTemplate(
+            loaded.source,
+            loaded.canonicalName,
+          );
+          cached = {
+            sourceOffset: encoded.sourceOffset,
+            canonicalOffset: encoded.canonicalOffset,
+          };
+          cursor = encoded.cursor;
+          pending.loadedByCanonicalName.set(loaded.canonicalName, cached);
+        }
+        pending.loadedByName.set(message.name, cached);
+      }
+      if (this.#pending !== pending || this.failed || this.#closed) {
+        return;
+      }
+      pending.loading = false;
+      this.#worker.postMessage({
+        type: 'resumeLoad',
+        id: pending.id,
+        sourceOffset: cached.sourceOffset,
+        canonicalOffset: cached.canonicalOffset,
+        cursor,
+      });
+    } catch (error) {
+      if (this.#pending !== pending) {
+        return;
+      }
+      pending.abort?.();
+      this.#pending = undefined;
+      this.failed = true;
+      void this.#worker.terminate();
+      pending.reject(asError(error));
+    }
+  }
 }
 
 function normalizePoolOptions(options: WorkerPoolOptions | undefined): NormalizedPoolOptions {
@@ -532,6 +633,13 @@ function isWorkerMessage(value: unknown): value is WorkerMessage {
   if (message.type === 'ready') {
     return typeof message.abiVersion === 'number' && typeof message.arenaBase === 'number';
   }
+  if (message.type === 'load') {
+    return (
+      typeof message.id === 'number' &&
+      typeof message.name === 'string' &&
+      typeof message.cursor === 'number'
+    );
+  }
   if (message.type !== 'result' || typeof message.id !== 'number') {
     return false;
   }
@@ -547,6 +655,12 @@ function renderErrorMessage(code: number): string {
   }
   if (code === 4) {
     return 'Rendered output exceeds the available Wasm memory';
+  }
+  if (code === 5) {
+    return 'Unsupported or invalid template tag';
+  }
+  if (code === 6) {
+    return 'Template include cycle detected';
   }
   return `Nunjitsu rendering failed with ABI error code ${code}`;
 }

@@ -6,7 +6,10 @@ import { createEngine, markSafe, memoryLoader } from '../../dist/esm/index.js';
 test('renders through the ESM package entry', async () => {
   const engine = await createEngine({
     autoescape: true,
-    loaders: [memoryLoader({ 'entry.njk': 'ESM {{ value }}' })],
+    loaders: [memoryLoader({
+      'entry.njk': 'ESM {% include "value.njk" %}',
+      'value.njk': '{{ value }}',
+    })],
   });
   try {
     assert.equal(

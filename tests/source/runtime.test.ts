@@ -12,12 +12,32 @@ import {
   NunjitsuRenderError,
   TemplateLoaderError,
   type TemplateContext,
+  type TemplateLoader,
 } from '../../src/index.ts';
 
 test('renders through reusable shared-memory workers', async () => {
-  const templates = { 'named.njk': 'Loaded {{ value }}' };
+  const templates = {
+    'named.njk': 'Loaded {{ value }}',
+    'include.njk': 'Before {% include "partial.njk" %} after',
+    'partial.njk': 'partial {{ value }} {% include \'nested.njk\' %}',
+    'nested.njk': 'nested',
+    'repeat.njk': '{% include "nested.njk" %}{% include "nested.njk" %}',
+    'cycle-a.njk': '{% include "cycle-b.njk" %}',
+    'cycle-b.njk': '{% include "cycle-a.njk" %}',
+    'missing-include.njk': '{% include "absent.njk" %}',
+  };
+  const ownedTemplates = memoryLoader(templates);
+  let nestedLoads = 0;
+  const countingLoader: TemplateLoader = {
+    async load(name, signal) {
+      if (name === 'nested.njk') {
+        nestedLoads += 1;
+      }
+      return await ownedTemplates.load(name, signal);
+    },
+  };
   const engine = await createEngine({
-    loaders: [memoryLoader(templates)],
+    loaders: [countingLoader],
     workerPool: { minWorkers: 1, maxWorkers: 2 },
   });
   templates['named.njk'] = 'mutated';
@@ -34,6 +54,26 @@ test('renders through reusable shared-memory workers', async () => {
     assert.equal(
       await engine.render({ name: 'named.njk' }, { value: 'from memory' }),
       'Loaded from memory',
+    );
+    assert.equal(
+      await engine.render({ name: 'include.njk' }, { value: 'works' }),
+      'Before partial works nested after',
+    );
+    nestedLoads = 0;
+    assert.equal(await engine.render({ name: 'repeat.njk' }), 'nestednested');
+    assert.equal(nestedLoads, 1);
+    await assert.rejects(
+      engine.render({ name: 'cycle-a.njk' }),
+      error => error instanceof NunjitsuRenderError && error.code === 6,
+    );
+    assert.equal(await engine.render({ source: 'Clean after include cycle' }), 'Clean after include cycle');
+    await assert.rejects(
+      engine.render({ name: 'missing-include.njk' }),
+      error => error instanceof TemplateLoaderError && /not found/.test(error.message),
+    );
+    assert.equal(
+      await engine.render({ source: 'Clean after loader failure' }),
+      'Clean after loader failure',
     );
     await assert.rejects(
       engine.render({ name: 'missing.njk' }),
@@ -94,7 +134,8 @@ test('filesystem loading stays within explicit canonical roots', async () => {
   const root = join(sandbox, 'templates');
   const secret = join(sandbox, 'secret.njk');
   await mkdir(root);
-  await writeFile(join(root, 'page.njk'), 'File {{ value }}');
+  await writeFile(join(root, 'page.njk'), 'File {% include "partial.njk" %}');
+  await writeFile(join(root, 'partial.njk'), '{{ value }}');
   await writeFile(secret, 'secret');
 
   const engine = await createEngine({
@@ -134,6 +175,49 @@ test('autoescaping requires an explicit safe string to bypass', async () => {
       await engine.render({ source: '<b>{{ value }}</b>' }, { value: false }),
       '<b>false</b>',
     );
+  } finally {
+    await engine.dispose();
+  }
+});
+
+test('cancels a render while its worker is suspended on an include loader', async () => {
+  let markLoadStarted: (() => void) | undefined;
+  const loadStarted = new Promise<void>(resolve => {
+    markLoadStarted = resolve;
+  });
+  const delayedLoader: TemplateLoader = {
+    async load(name, signal) {
+      if (name !== 'delayed.njk') {
+        return null;
+      }
+      markLoadStarted?.();
+      return await new Promise<never>((_resolve, reject) => {
+        const rejectAborted = () => {
+          const error = new Error('delayed loader aborted');
+          error.name = 'AbortError';
+          reject(error);
+        };
+        if (signal?.aborted) {
+          rejectAborted();
+        } else {
+          signal?.addEventListener('abort', rejectAborted, { once: true });
+        }
+      });
+    },
+  };
+  const engine = await createEngine({
+    loaders: [
+      memoryLoader({ 'entry.njk': 'before {% include "delayed.njk" %} after' }),
+      delayedLoader,
+    ],
+  });
+  try {
+    const controller = new AbortController();
+    const rendering = engine.render({ name: 'entry.njk' }, {}, { signal: controller.signal });
+    await loadStarted;
+    controller.abort();
+    await assert.rejects(rendering, error => error instanceof Error && error.name === 'AbortError');
+    assert.equal(await engine.render({ source: 'clean' }), 'clean');
   } finally {
     await engine.dispose();
   }

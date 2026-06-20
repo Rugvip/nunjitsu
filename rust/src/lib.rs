@@ -5,7 +5,7 @@ mod template;
 #[cfg(target_arch = "wasm32")]
 mod wasm;
 
-pub use template::{RenderError, RenderedValue, render_template};
+pub use template::{RenderError, RenderedValue, TemplateItem, next_item, render_template};
 
 #[cfg(target_arch = "wasm32")]
 #[panic_handler]

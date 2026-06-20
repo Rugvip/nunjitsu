@@ -1,10 +1,10 @@
-use crate::template::{RenderError, RenderedValue, measure_template, render_template};
+use crate::template::{RenderError, RenderedValue, TemplateItem, emit_escaped, next_item};
 use core::arch::wasm32::{memory_grow, memory_size};
 use core::mem::{align_of, size_of};
 use core::ptr::{addr_of, addr_of_mut, read_unaligned, write_unaligned};
 use core::slice;
 
-const ABI_VERSION: u32 = 3;
+const ABI_VERSION: u32 = 4;
 const PAGE_SIZE: usize = 65_536;
 const RECORD_ALIGNMENT: u32 = 8;
 const RECORD_HEADER_LENGTH: usize = 8;
@@ -20,16 +20,37 @@ const TAG_NUMBER: u32 = 9;
 const TAG_ARRAY: u32 = 10;
 const TAG_RECORD: u32 = 11;
 const TAG_SAFE_STRING: u32 = 12;
+const TAG_RENDER_STATE: u32 = 13;
+const TAG_FRAME: u32 = 14;
+const TAG_OUTPUT_CHUNK: u32 = 15;
 
 const STATE_IDLE: u32 = 0;
 const STATE_COMPLETE: u32 = 1;
 const STATE_ERROR: u32 = 2;
+const STATE_LOAD_TEMPLATE: u32 = 3;
 
 const ERROR_NONE: u32 = 0;
 const ERROR_INVALID_ARENA: u32 = 1;
 const ERROR_INVALID_RECORD: u32 = 2;
 const ERROR_UNCLOSED_INTERPOLATION: u32 = 3;
 const ERROR_OUTPUT_TOO_LARGE: u32 = 4;
+const ERROR_UNSUPPORTED_TAG: u32 = 5;
+const ERROR_INCLUDE_CYCLE: u32 = 6;
+
+const RENDER_STATE_LENGTH: u32 = 28;
+const STATE_CONTEXT: usize = 0;
+const STATE_FLAGS: usize = 4;
+const STATE_CURRENT_FRAME: usize = 8;
+const STATE_FIRST_CHUNK: usize = 12;
+const STATE_LAST_CHUNK: usize = 16;
+const STATE_OUTPUT_LENGTH: usize = 20;
+const STATE_PENDING_NAME: usize = 24;
+
+const FRAME_LENGTH: u32 = 16;
+const FRAME_PARENT: usize = 0;
+const FRAME_SOURCE: usize = 4;
+const FRAME_CURSOR: usize = 8;
+const FRAME_CANONICAL_NAME: usize = 12;
 
 #[repr(C)]
 struct Control {
@@ -47,6 +68,7 @@ static mut CONTROL: Control = Control {
 };
 
 static mut ARENA_CURSOR: u32 = 0;
+static mut ACTIVE_RENDER: u32 = 0;
 
 unsafe extern "C" {
     static __heap_base: u8;
@@ -68,9 +90,15 @@ pub extern "C" fn nunjitsu_arena_base() -> u32 {
 }
 
 #[unsafe(no_mangle)]
+pub extern "C" fn nunjitsu_arena_cursor() -> u32 {
+    unsafe { ARENA_CURSOR }
+}
+
+#[unsafe(no_mangle)]
 pub extern "C" fn nunjitsu_arena_reset() {
     unsafe {
         ARENA_CURSOR = nunjitsu_arena_base();
+        ACTIVE_RENDER = 0;
     }
     set_control(STATE_IDLE, 0, 0, ERROR_NONE);
 }
@@ -92,48 +120,254 @@ pub extern "C" fn nunjitsu_arena_set_cursor(cursor: u32) -> u32 {
 #[unsafe(no_mangle)]
 pub extern "C" fn nunjitsu_render(request_offset: u32) -> u32 {
     set_control(STATE_IDLE, 0, 0, ERROR_NONE);
-    match render(request_offset) {
-        Ok((output_offset, output_length)) => {
-            set_control(STATE_COMPLETE, output_offset, output_length, ERROR_NONE);
-            STATE_COMPLETE
-        }
-        Err(error_code) => {
-            set_control(STATE_ERROR, 0, 0, error_code);
-            STATE_ERROR
-        }
+    if unsafe { ACTIVE_RENDER } != 0 {
+        return fail(ERROR_INVALID_ARENA);
+    }
+    match start_render(request_offset).and_then(|()| run_active_render()) {
+        Ok(state) => state,
+        Err(error) => fail(error),
     }
 }
 
-fn render(request_offset: u32) -> Result<(u32, u32), u32> {
+#[unsafe(no_mangle)]
+pub extern "C" fn nunjitsu_resume_include(source_offset: u32, canonical_offset: u32) -> u32 {
+    set_control(STATE_IDLE, 0, 0, ERROR_NONE);
+    match resume_include(source_offset, canonical_offset).and_then(|()| run_active_render()) {
+        Ok(state) => state,
+        Err(error) => fail(error),
+    }
+}
+
+fn start_render(request_offset: u32) -> Result<(), u32> {
     let request = record_at(request_offset, TAG_REQUEST)?;
-    if request.len() != 12 {
+    if request.len() != 16 {
         return Err(ERROR_INVALID_RECORD);
     }
     let source_offset = read_u32(request, 0)?;
     let context_offset = read_u32(request, 4)?;
     let flags = read_u32(request, 8)?;
+    let canonical_offset = read_u32(request, 12)?;
     if flags & !1 != 0 {
         return Err(ERROR_INVALID_RECORD);
     }
-    let autoescape = flags & 1 == 1;
-    let source = record_at(source_offset, TAG_SOURCE)?;
-    let context = Context::new(record_at(context_offset, TAG_RECORD)?)?;
+    record_at(source_offset, TAG_SOURCE)?;
+    record_at(context_offset, TAG_RECORD)?;
+    if canonical_offset != 0 {
+        record_at(canonical_offset, TAG_STRING)?;
+    }
 
-    let output_length = measure_template(source, autoescape, |name| context.lookup(name))
-        .map_err(render_error_code)?;
-    let record_length = RECORD_HEADER_LENGTH
-        .checked_add(output_length)
-        .ok_or(ERROR_OUTPUT_TOO_LARGE)?;
-    let output_offset = arena_alloc(record_length as u32, RECORD_ALIGNMENT)?;
-    write_record_header(output_offset, TAG_OUTPUT, output_length as u32)?;
+    let frame_offset = allocate_record(TAG_FRAME, FRAME_LENGTH)?;
+    write_frame(frame_offset, 0, source_offset, 0, canonical_offset)?;
+    let state_offset = allocate_record(TAG_RENDER_STATE, RENDER_STATE_LENGTH)?;
+    set_state_field(state_offset, STATE_CONTEXT, context_offset)?;
+    set_state_field(state_offset, STATE_FLAGS, flags)?;
+    set_state_field(state_offset, STATE_CURRENT_FRAME, frame_offset)?;
+    unsafe {
+        ACTIVE_RENDER = state_offset;
+    }
+    Ok(())
+}
+
+fn resume_include(source_offset: u32, canonical_offset: u32) -> Result<(), u32> {
+    let state_offset = active_state()?;
+    let pending_name = state_field(state_offset, STATE_PENDING_NAME)?;
+    if pending_name == 0 {
+        return Err(ERROR_INVALID_ARENA);
+    }
+    record_at(source_offset, TAG_SOURCE)?;
+    record_at(canonical_offset, TAG_STRING)?;
+    let parent = state_field(state_offset, STATE_CURRENT_FRAME)?;
+    if include_cycle(parent, canonical_offset)? {
+        return Err(ERROR_INCLUDE_CYCLE);
+    }
+    let frame_offset = allocate_record(TAG_FRAME, FRAME_LENGTH)?;
+    write_frame(frame_offset, parent, source_offset, 0, canonical_offset)?;
+    set_state_field(state_offset, STATE_CURRENT_FRAME, frame_offset)?;
+    set_state_field(state_offset, STATE_PENDING_NAME, 0)?;
+    Ok(())
+}
+
+fn run_active_render() -> Result<u32, u32> {
+    let state_offset = active_state()?;
+    loop {
+        let frame_offset = state_field(state_offset, STATE_CURRENT_FRAME)?;
+        if frame_offset == 0 {
+            return complete_render(state_offset);
+        }
+
+        let frame = record_at(frame_offset, TAG_FRAME)?;
+        if frame.len() != FRAME_LENGTH as usize {
+            return Err(ERROR_INVALID_RECORD);
+        }
+        let parent = read_u32(frame, FRAME_PARENT)?;
+        let source_offset = read_u32(frame, FRAME_SOURCE)?;
+        let cursor = read_u32(frame, FRAME_CURSOR)? as usize;
+        let source = record_at(source_offset, TAG_SOURCE)?;
+        let (item, next_cursor) = next_item(source, cursor).map_err(render_error_code)?;
+        set_frame_field(frame_offset, FRAME_CURSOR, next_cursor as u32)?;
+
+        match item {
+            TemplateItem::Text(text) => append_output(state_offset, text)?,
+            TemplateItem::Expression(expression) => {
+                let context_offset = state_field(state_offset, STATE_CONTEXT)?;
+                let context = Context::new(record_at(context_offset, TAG_RECORD)?)?;
+                if let Some(value) = context.lookup(expression) {
+                    let autoescape = state_field(state_offset, STATE_FLAGS)? & 1 == 1;
+                    if autoescape && !value.safe {
+                        emit_escaped(value.bytes, &mut |segment| {
+                            append_output(state_offset, segment)
+                                .map_err(|_| RenderError::OutputTooLarge)
+                        })
+                        .map_err(render_error_code)?;
+                    } else {
+                        append_output(state_offset, value.bytes)?;
+                    }
+                }
+            }
+            TemplateItem::Include(name) => {
+                let name_offset = write_bytes_record(TAG_STRING, name)?;
+                set_state_field(state_offset, STATE_PENDING_NAME, name_offset)?;
+                set_control(
+                    STATE_LOAD_TEMPLATE,
+                    name_offset,
+                    name.len() as u32,
+                    ERROR_NONE,
+                );
+                return Ok(STATE_LOAD_TEMPLATE);
+            }
+            TemplateItem::End => {
+                set_state_field(state_offset, STATE_CURRENT_FRAME, parent)?;
+            }
+        }
+    }
+}
+
+fn complete_render(state_offset: u32) -> Result<u32, u32> {
+    let output_length = state_field(state_offset, STATE_OUTPUT_LENGTH)?;
+    let output_offset = allocate_record(TAG_OUTPUT, output_length)?;
     let output_payload_offset = output_offset
         .checked_add(RECORD_HEADER_LENGTH as u32)
         .ok_or(ERROR_OUTPUT_TOO_LARGE)?;
-    let output = mutable_memory(output_payload_offset, output_length as u32)?;
-    let written = render_template(source, autoescape, |name| context.lookup(name), output)
-        .map_err(render_error_code)?;
+    let output = mutable_memory(output_payload_offset, output_length)?;
+    let mut output_cursor = 0usize;
+    let mut chunk_offset = state_field(state_offset, STATE_FIRST_CHUNK)?;
+    while chunk_offset != 0 {
+        let chunk = record_at(chunk_offset, TAG_OUTPUT_CHUNK)?;
+        if chunk.len() < 4 {
+            return Err(ERROR_INVALID_RECORD);
+        }
+        let next = read_u32(chunk, 0)?;
+        let data = &chunk[4..];
+        let end = output_cursor
+            .checked_add(data.len())
+            .ok_or(ERROR_OUTPUT_TOO_LARGE)?;
+        if end > output.len() {
+            return Err(ERROR_INVALID_RECORD);
+        }
+        output[output_cursor..end].copy_from_slice(data);
+        output_cursor = end;
+        chunk_offset = next;
+    }
+    if output_cursor != output.len() {
+        return Err(ERROR_INVALID_RECORD);
+    }
+    set_control(STATE_COMPLETE, output_offset, output_length, ERROR_NONE);
+    Ok(STATE_COMPLETE)
+}
 
-    Ok((output_offset, written as u32))
+fn append_output(state_offset: u32, bytes: &[u8]) -> Result<(), u32> {
+    if bytes.is_empty() {
+        return Ok(());
+    }
+    let output_length = state_field(state_offset, STATE_OUTPUT_LENGTH)?;
+    let next_length = output_length
+        .checked_add(bytes.len() as u32)
+        .ok_or(ERROR_OUTPUT_TOO_LARGE)?;
+    let chunk_offset = allocate_record(
+        TAG_OUTPUT_CHUNK,
+        4u32.checked_add(bytes.len() as u32)
+            .ok_or(ERROR_OUTPUT_TOO_LARGE)?,
+    )?;
+    let chunk = mutable_record_at(chunk_offset, TAG_OUTPUT_CHUNK)?;
+    write_u32(chunk, 0, 0)?;
+    chunk[4..].copy_from_slice(bytes);
+
+    let last_chunk = state_field(state_offset, STATE_LAST_CHUNK)?;
+    if last_chunk == 0 {
+        set_state_field(state_offset, STATE_FIRST_CHUNK, chunk_offset)?;
+    } else {
+        let previous = mutable_record_at(last_chunk, TAG_OUTPUT_CHUNK)?;
+        write_u32(previous, 0, chunk_offset)?;
+    }
+    set_state_field(state_offset, STATE_LAST_CHUNK, chunk_offset)?;
+    set_state_field(state_offset, STATE_OUTPUT_LENGTH, next_length)
+}
+
+fn include_cycle(mut frame_offset: u32, canonical_offset: u32) -> Result<bool, u32> {
+    let canonical = record_at(canonical_offset, TAG_STRING)?;
+    while frame_offset != 0 {
+        let frame = record_at(frame_offset, TAG_FRAME)?;
+        if frame.len() != FRAME_LENGTH as usize {
+            return Err(ERROR_INVALID_RECORD);
+        }
+        let existing_offset = read_u32(frame, FRAME_CANONICAL_NAME)?;
+        if existing_offset != 0 && record_at(existing_offset, TAG_STRING)? == canonical {
+            return Ok(true);
+        }
+        frame_offset = read_u32(frame, FRAME_PARENT)?;
+    }
+    Ok(false)
+}
+
+fn write_frame(
+    offset: u32,
+    parent: u32,
+    source: u32,
+    cursor: u32,
+    canonical: u32,
+) -> Result<(), u32> {
+    let frame = mutable_record_at(offset, TAG_FRAME)?;
+    write_u32(frame, FRAME_PARENT, parent)?;
+    write_u32(frame, FRAME_SOURCE, source)?;
+    write_u32(frame, FRAME_CURSOR, cursor)?;
+    write_u32(frame, FRAME_CANONICAL_NAME, canonical)
+}
+
+fn set_frame_field(offset: u32, field: usize, value: u32) -> Result<(), u32> {
+    let frame = mutable_record_at(offset, TAG_FRAME)?;
+    if frame.len() != FRAME_LENGTH as usize {
+        return Err(ERROR_INVALID_RECORD);
+    }
+    write_u32(frame, field, value)
+}
+
+fn state_field(offset: u32, field: usize) -> Result<u32, u32> {
+    let state = record_at(offset, TAG_RENDER_STATE)?;
+    if state.len() != RENDER_STATE_LENGTH as usize {
+        return Err(ERROR_INVALID_RECORD);
+    }
+    read_u32(state, field)
+}
+
+fn set_state_field(offset: u32, field: usize, value: u32) -> Result<(), u32> {
+    let state = mutable_record_at(offset, TAG_RENDER_STATE)?;
+    if state.len() != RENDER_STATE_LENGTH as usize {
+        return Err(ERROR_INVALID_RECORD);
+    }
+    write_u32(state, field, value)
+}
+
+fn active_state() -> Result<u32, u32> {
+    let offset = unsafe { ACTIVE_RENDER };
+    if offset == 0 {
+        return Err(ERROR_INVALID_ARENA);
+    }
+    Ok(offset)
+}
+
+fn fail(error: u32) -> u32 {
+    set_control(STATE_ERROR, 0, 0, error);
+    STATE_ERROR
 }
 
 struct Context {
@@ -279,12 +513,42 @@ impl Value {
     }
 }
 
+fn allocate_record(tag: u32, payload_length: u32) -> Result<u32, u32> {
+    let total_length = (RECORD_HEADER_LENGTH as u32)
+        .checked_add(payload_length)
+        .ok_or(ERROR_OUTPUT_TOO_LARGE)?;
+    let offset = arena_alloc(total_length, RECORD_ALIGNMENT)?;
+    write_record_header(offset, tag, payload_length)?;
+    let payload = mutable_memory(offset + RECORD_HEADER_LENGTH as u32, payload_length)?;
+    payload.fill(0);
+    Ok(offset)
+}
+
+fn write_bytes_record(tag: u32, bytes: &[u8]) -> Result<u32, u32> {
+    let offset = allocate_record(tag, bytes.len() as u32)?;
+    mutable_record_at(offset, tag)?.copy_from_slice(bytes);
+    Ok(offset)
+}
+
 fn record_at(offset: u32, expected_tag: u32) -> Result<&'static [u8], u32> {
     let (tag, payload) = raw_record_at(offset)?;
     if tag != expected_tag {
         return Err(ERROR_INVALID_RECORD);
     }
     Ok(payload)
+}
+
+fn mutable_record_at(offset: u32, expected_tag: u32) -> Result<&'static mut [u8], u32> {
+    let header = memory(offset, RECORD_HEADER_LENGTH as u32)?;
+    let tag = read_u32(header, 0)?;
+    let payload_length = read_u32(header, 4)?;
+    if tag != expected_tag {
+        return Err(ERROR_INVALID_RECORD);
+    }
+    let payload_offset = offset
+        .checked_add(RECORD_HEADER_LENGTH as u32)
+        .ok_or(ERROR_INVALID_RECORD)?;
+    mutable_memory(payload_offset, payload_length)
 }
 
 fn raw_record_at(offset: u32) -> Result<(u32, &'static [u8]), u32> {
@@ -432,6 +696,9 @@ fn render_error_code(error: RenderError) -> u32 {
     match error {
         RenderError::UnclosedInterpolation => ERROR_UNCLOSED_INTERPOLATION,
         RenderError::OutputTooLarge | RenderError::OutputBufferTooSmall => ERROR_OUTPUT_TOO_LARGE,
+        RenderError::UnclosedBlockTag
+        | RenderError::UnsupportedTag
+        | RenderError::InvalidInclude => ERROR_UNSUPPORTED_TAG,
     }
 }
 
