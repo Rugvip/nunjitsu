@@ -93,6 +93,14 @@ An `AbortSignal` or deadline complements deterministic accounting but does not
 replace it. Exceeding a limit, cancellation, a callback failure, or a malformed
 ABI response must all terminate the render and run full cleanup.
 
+Nunjucks-compatible regular-expression replacement executes synchronously in
+the isolated render worker through a range-validated numeric Wasm import. This
+preserves JavaScript `RegExp` flags, captures, and replacement syntax without
+granting templates a host capability. Because backtracking cost is not
+predictable from input size, callers accepting untrusted regex literals must
+provide an `AbortSignal` with an application deadline; cancellation terminates
+and recycles the affected worker.
+
 Choosing unlimited limits is an explicit opt-out from denial-of-service
 protection. The API documentation must state that clearly.
 

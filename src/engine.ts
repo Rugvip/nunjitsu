@@ -876,7 +876,7 @@ class WorkerSlot {
       return;
     }
     if (value.type === 'ready') {
-      if (value.abiVersion !== 22 || value.arenaBase <= 0) {
+      if (value.abiVersion !== 23 || value.arenaBase <= 0) {
         this.#fail(new Error('Nunjitsu worker reported an incompatible Wasm ABI'));
         return;
       }

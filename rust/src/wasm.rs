@@ -15,7 +15,7 @@ use core::mem::{align_of, size_of};
 use core::ptr::{addr_of, addr_of_mut, read_unaligned, write_unaligned};
 use core::slice;
 
-const ABI_VERSION: u32 = 22;
+const ABI_VERSION: u32 = 23;
 const PAGE_SIZE: usize = 65_536;
 const STREAM_CHUNK_BYTES: u32 = 64 * 1024;
 const RECORD_ALIGNMENT: u32 = 8;
@@ -50,6 +50,22 @@ const TAG_TAG_CALL: u32 = 27;
 const TAG_TAG_BOUNDARIES: u32 = 28;
 const TAG_TAG_ARGUMENTS: u32 = 29;
 const TAG_FILTER_BLOCK: u32 = 30;
+const TAG_REGEX: u32 = 31;
+
+#[link(wasm_import_module = "env")]
+unsafe extern "C" {
+    fn nunjitsu_random_index(upper_bound: u32) -> u32;
+    fn nunjitsu_regex_replace(
+        input_offset: u32,
+        input_length: u32,
+        regex_offset: u32,
+        regex_length: u32,
+        replacement_offset: u32,
+        replacement_length: u32,
+        output_offset: u32,
+        output_capacity: u32,
+    ) -> u32;
+}
 
 const STATE_IDLE: u32 = 0;
 const STATE_COMPLETE: u32 = 1;
@@ -3281,6 +3297,10 @@ fn apply_builtin_filter(
             require_argument_count(call, 0)?;
             nl2br_value(input_offset)?
         }
+        b"random" => {
+            require_argument_count(call, 0)?;
+            random_value(input_offset)?
+        }
         b"reverse" => {
             require_argument_count(call, 0)?;
             reverse_value(input)?
@@ -3324,13 +3344,18 @@ fn apply_builtin_filter(
             }
             let from = call_argument(state_offset, call, 0)?.ok_or(ERROR_INVALID_EXPRESSION)?;
             let to = call_argument(state_offset, call, 1)?.ok_or(ERROR_INVALID_EXPRESSION)?;
-            let limit = if count == 3 {
+            let limit = if matches!(Value::at(from)?, Value::Regex(_)) {
+                usize::MAX
+            } else if count == 3 {
                 let value = call_argument(state_offset, call, 2)?.ok_or(ERROR_INVALID_EXPRESSION)?;
                 let number = Value::at(value)?.as_number();
-                if !number.is_finite() || number < 0.0 {
-                    return Err(ERROR_INVALID_EXPRESSION);
+                if number == -1.0 || number == f64::INFINITY {
+                    usize::MAX
+                } else if !number.is_finite() || number <= 0.0 {
+                    0
+                } else {
+                    libm::ceil(number).min(usize::MAX as f64) as usize
                 }
-                number as usize
             } else {
                 usize::MAX
             };
@@ -3428,6 +3453,26 @@ fn apply_builtin_filter(
         b"urlencode" => {
             require_argument_count(call, 0)?;
             urlencode_value(input_offset)?
+        }
+        b"urlize" => {
+            if argument_count(call)? > 2 {
+                return Err(ERROR_INVALID_EXPRESSION);
+            }
+            let length = if let Some(offset) = call_positional_argument(state_offset, call, 0)? {
+                let number = Value::at(offset)?.as_number();
+                if number.is_nan() {
+                    usize::MAX
+                } else if number <= 0.0 {
+                    0
+                } else {
+                    libm::trunc(number).min(usize::MAX as f64) as usize
+                }
+            } else {
+                usize::MAX
+            };
+            let nofollow = call_positional_argument(state_offset, call, 1)?
+                .is_some_and(|offset| matches!(Value::at(offset), Ok(Value::Boolean(true))));
+            urlize_value(input_offset, length, nofollow)?
         }
         b"wordcount" => {
             require_argument_count(call, 0)?;
@@ -4622,6 +4667,15 @@ fn replace_value(
     to_offset: u32,
     limit: usize,
 ) -> Result<u32, u32> {
+    if matches!(Value::at(from_offset)?, Value::Regex(_)) {
+        return regex_replace_value(input_offset, from_offset, to_offset);
+    }
+    if !matches!(
+        Value::at(input_offset)?,
+        Value::String(_) | Value::SafeString(_) | Value::Number { .. }
+    ) {
+        return Ok(input_offset);
+    }
     let input = rendered_value(input_offset)?;
     if !matches!(
         Value::at(from_offset)?,
@@ -4717,6 +4771,111 @@ fn replace_value(
     Ok(offset)
 }
 
+fn random_value(value_offset: u32) -> Result<u32, u32> {
+    let listed_offset = match Value::at(value_offset)? {
+        Value::Array(_) => value_offset,
+        Value::String(_) | Value::SafeString(_) => list_value(value_offset)?,
+        Value::Undefined | Value::Null => return allocate_record(TAG_UNDEFINED, 0),
+        _ => return Err(ERROR_INVALID_EXPRESSION),
+    };
+    let Value::Array(array) = Value::at(listed_offset)? else {
+        return Err(ERROR_INVALID_ARENA);
+    };
+    if array.count == 0 {
+        return allocate_record(TAG_UNDEFINED, 0);
+    }
+    let count = u32::try_from(array.count).map_err(|_| ERROR_RESOURCE_LIMIT)?;
+    // The worker import receives only a validated non-zero bound and must return an index below it.
+    let index = unsafe { nunjitsu_random_index(count) };
+    if index >= count {
+        return Err(ERROR_INVALID_ARENA);
+    }
+    read_u32(array.payload, 4 + index as usize * 4)
+}
+
+fn regex_replace_value(
+    input_offset: u32,
+    regex_offset: u32,
+    replacement_offset: u32,
+) -> Result<u32, u32> {
+    let input = match Value::at(input_offset)? {
+        Value::String(bytes) | Value::SafeString(bytes) => bytes,
+        _ => return Err(ERROR_INVALID_EXPRESSION),
+    };
+    let regex = record_at(regex_offset, TAG_REGEX)?;
+    let replacement_offset = write_javascript_string_value(replacement_offset)?;
+    let replacement = record_at(replacement_offset, TAG_STRING)?;
+    let input_pointer = input_offset
+        .checked_add(RECORD_HEADER_LENGTH as u32)
+        .ok_or(ERROR_INVALID_RECORD)?;
+    let regex_pointer = regex_offset
+        .checked_add(RECORD_HEADER_LENGTH as u32)
+        .ok_or(ERROR_INVALID_RECORD)?;
+    let replacement_pointer = replacement_offset
+        .checked_add(RECORD_HEADER_LENGTH as u32)
+        .ok_or(ERROR_INVALID_RECORD)?;
+    let input_length = u32::try_from(input.len()).map_err(|_| ERROR_RESOURCE_LIMIT)?;
+    let regex_length = u32::try_from(regex.len()).map_err(|_| ERROR_RESOURCE_LIMIT)?;
+    let replacement_length =
+        u32::try_from(replacement.len()).map_err(|_| ERROR_RESOURCE_LIMIT)?;
+    // The worker validates every range and returns either the exact UTF-8 length or an error sentinel.
+    let output_length = unsafe {
+        nunjitsu_regex_replace(
+            input_pointer,
+            input_length,
+            regex_pointer,
+            regex_length,
+            replacement_pointer,
+            replacement_length,
+            0,
+            0,
+        )
+    };
+    if matches!(output_length, 0xffff_ffff | 0xffff_fffe) {
+        return Err(ERROR_INVALID_EXPRESSION);
+    }
+    let tag = if matches!(Value::at(input_offset)?, Value::SafeString(_)) {
+        TAG_SAFE_STRING
+    } else {
+        TAG_STRING
+    };
+    let output_offset = allocate_record(tag, output_length)?;
+    if output_length == 0 {
+        return Ok(output_offset);
+    }
+    let output_pointer = output_offset
+        .checked_add(RECORD_HEADER_LENGTH as u32)
+        .ok_or(ERROR_INVALID_RECORD)?;
+    // The second call writes into the newly allocated payload and must reproduce the sized result.
+    let written = unsafe {
+        nunjitsu_regex_replace(
+            input_pointer,
+            input_length,
+            regex_pointer,
+            regex_length,
+            replacement_pointer,
+            replacement_length,
+            output_pointer,
+            output_length,
+        )
+    };
+    if written != output_length {
+        return Err(ERROR_INVALID_ARENA);
+    }
+    Ok(output_offset)
+}
+
+fn write_javascript_string_value(value_offset: u32) -> Result<u32, u32> {
+    match Value::at(value_offset)? {
+        Value::Undefined => write_bytes_record(TAG_STRING, b"undefined"),
+        Value::Null => write_bytes_record(TAG_STRING, b"null"),
+        _ => {
+            let rendered = rendered_value(value_offset)?;
+            write_bytes_record(TAG_STRING, rendered.bytes)
+        }
+    }
+}
+
 fn dump_value(value_offset: u32, spaces_offset: Option<u32>) -> Result<u32, u32> {
     if matches!(Value::at(value_offset)?, Value::Undefined | Value::Macro) {
         return allocate_record(TAG_UNDEFINED, 0);
@@ -4777,6 +4936,7 @@ fn json_value_length(value_offset: u32, indent: &[u8], depth: usize) -> Result<u
             }
         }
         Value::String(bytes) | Value::SafeString(bytes) => json_string_length(bytes),
+        Value::Regex(_) => Ok(2),
         Value::Array(array) => {
             if array.count == 0 {
                 return Ok(2);
@@ -4900,6 +5060,7 @@ fn write_json_value(
         Value::String(bytes) | Value::SafeString(bytes) => {
             write_json_string(bytes, output, cursor)
         }
+        Value::Regex(_) => write_coerced_bytes(output, cursor, b"{}"),
         Value::Array(array) => {
             let child_depth = depth.checked_add(1).ok_or(ERROR_RESOURCE_LIMIT)?;
             write_coerced_bytes(output, cursor, b"[")?;
@@ -5368,6 +5529,149 @@ fn url_component_unescaped(byte: u8) -> bool {
     byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.' | b'!' | b'~' | b'*' | b'\'' | b'(' | b')')
 }
 
+fn urlize_value(value_offset: u32, length: usize, nofollow: bool) -> Result<u32, u32> {
+    let value = Value::at(value_offset)?;
+    let Some(input) = value.string_bytes() else {
+        return Err(ERROR_INVALID_EXPRESSION);
+    };
+    let mut output_length = 0usize;
+    urlize_emit(input, length, nofollow, &mut |segment| {
+        output_length = output_length
+            .checked_add(segment.len())
+            .ok_or(ERROR_RESOURCE_LIMIT)?;
+        Ok(())
+    })?;
+    let output_offset = allocate_record(
+        TAG_STRING,
+        u32::try_from(output_length).map_err(|_| ERROR_RESOURCE_LIMIT)?,
+    )?;
+    let output = mutable_record_at(output_offset, TAG_STRING)?;
+    let mut cursor = 0usize;
+    urlize_emit(input, length, nofollow, &mut |segment| {
+        write_coerced_bytes(output, &mut cursor, segment)
+    })?;
+    Ok(output_offset)
+}
+
+fn urlize_emit(
+    input: &[u8],
+    length: usize,
+    nofollow: bool,
+    emit: &mut impl FnMut(&[u8]) -> Result<(), u32>,
+) -> Result<(), u32> {
+    let mut cursor = 0usize;
+    while cursor < input.len() {
+        let whitespace = input[cursor].is_ascii_whitespace();
+        let start = cursor;
+        while cursor < input.len() && input[cursor].is_ascii_whitespace() == whitespace {
+            cursor += 1;
+        }
+        let word = &input[start..cursor];
+        if whitespace {
+            emit(word)?;
+        } else {
+            urlize_word_emit(word, length, nofollow, emit)?;
+        }
+    }
+    Ok(())
+}
+
+fn urlize_word_emit(
+    word: &[u8],
+    length: usize,
+    nofollow: bool,
+    emit: &mut impl FnMut(&[u8]) -> Result<(), u32>,
+) -> Result<(), u32> {
+    let mut possible = word;
+    if possible.starts_with(b"&lt;") {
+        possible = &possible[4..];
+    } else if matches!(possible.first(), Some(b'(' | b'<')) {
+        possible = &possible[1..];
+    }
+    if possible.ends_with(b"&gt;") {
+        possible = &possible[..possible.len() - 4];
+    } else if matches!(possible.last(), Some(b'.' | b',' | b')' | b'\n')) {
+        possible = &possible[..possible.len() - 1];
+    }
+    let text = core::str::from_utf8(possible).map_err(|_| ERROR_INVALID_RECORD)?;
+    let short_length = utf8_prefix_length(text, length);
+    let short = &possible[..short_length];
+    let http = possible.starts_with(b"http://") || possible.starts_with(b"https://");
+    let www = possible.starts_with(b"www.");
+    if http || www || has_linkable_tld(possible) && !is_email(possible) {
+        emit(b"<a href=\"")?;
+        if !http {
+            emit(b"http://")?;
+        }
+        emit(possible)?;
+        emit(b"\"")?;
+        if nofollow {
+            emit(b" rel=\"nofollow\"")?;
+        }
+        emit(b">")?;
+        emit(short)?;
+        emit(b"</a>")?;
+    } else if is_email(possible) {
+        emit(b"<a href=\"mailto:")?;
+        emit(possible)?;
+        emit(b"\">")?;
+        emit(possible)?;
+        emit(b"</a>")?;
+    } else {
+        emit(word)?;
+    }
+    Ok(())
+}
+
+fn has_linkable_tld(value: &[u8]) -> bool {
+    for tld in [b".org".as_slice(), b".net".as_slice(), b".com".as_slice()] {
+        for index in 0..=value.len().saturating_sub(tld.len()) {
+            if value.get(index..index + tld.len()) != Some(tld) {
+                continue;
+            }
+            let following = value.get(index + tld.len());
+            if following.is_none() || matches!(following, Some(b':' | b'/')) {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+fn is_email(value: &[u8]) -> bool {
+    let Some(at) = value.iter().position(|byte| *byte == b'@') else {
+        return false;
+    };
+    if at == 0 || value[at + 1..].contains(&b'@') {
+        return false;
+    }
+    if !value[..at].iter().copied().all(email_local_byte) {
+        return false;
+    }
+    let domain = &value[at + 1..];
+    let mut labels = 0usize;
+    for label in domain.split(|byte| *byte == b'.') {
+        if label.is_empty()
+            || !label
+                .iter()
+                .all(|byte| byte.is_ascii_alphanumeric() || *byte == b'-')
+        {
+            return false;
+        }
+        labels += 1;
+    }
+    labels >= 2
+}
+
+fn email_local_byte(byte: u8) -> bool {
+    byte.is_ascii_alphanumeric()
+        || matches!(
+            byte,
+            b'_' | b'.' | b'!' | b'#' | b'$' | b'%' | b'&' | b'\'' | b'*' | b'+' | b'-'
+                | b'/' | b'=' | b'?' | b'^' | b'`' | b'{' | b'|' | b'}' | b'~'
+        )
+}
+
 fn edge_value(value: Value, last: bool) -> Result<u32, u32> {
     match value {
         Value::Array(array) if array.count != 0 => {
@@ -5586,9 +5890,9 @@ fn resolve_atom(state_offset: u32, atom: Atom<'_>) -> Result<u32, u32> {
                 .lookup_offset(path)
                 .map_or_else(|| allocate_record(TAG_UNDEFINED, 0), Ok)
         }
-        Atom::String(value) => write_bytes_record(TAG_STRING, value),
+        Atom::String(value) => write_string_literal(value),
         Atom::Number(value) => write_number(value),
-        Atom::Regex(value) => write_bytes_record(TAG_STRING, value),
+        Atom::Regex(value) => write_bytes_record(TAG_REGEX, value),
         Atom::Boolean(value) => write_boolean(value),
         Atom::Null => allocate_record(TAG_NULL, 0),
         Atom::Undefined => allocate_record(TAG_UNDEFINED, 0),
@@ -5612,6 +5916,52 @@ fn resolve_atom(state_offset: u32, atom: Atom<'_>) -> Result<u32, u32> {
             }
         }
     }
+}
+
+fn write_string_literal(value: &[u8]) -> Result<u32, u32> {
+    let text = core::str::from_utf8(value).map_err(|_| ERROR_INVALID_EXPRESSION)?;
+    let mut length = 0usize;
+    string_literal_emit(text, &mut |segment| {
+        length = length
+            .checked_add(segment.len())
+            .ok_or(ERROR_RESOURCE_LIMIT)?;
+        Ok(())
+    })?;
+    let offset = allocate_record(
+        TAG_STRING,
+        u32::try_from(length).map_err(|_| ERROR_RESOURCE_LIMIT)?,
+    )?;
+    let output = mutable_record_at(offset, TAG_STRING)?;
+    let mut cursor = 0usize;
+    string_literal_emit(text, &mut |segment| {
+        write_coerced_bytes(output, &mut cursor, segment)
+    })?;
+    Ok(offset)
+}
+
+fn string_literal_emit(
+    value: &str,
+    emit: &mut impl FnMut(&[u8]) -> Result<(), u32>,
+) -> Result<(), u32> {
+    let mut characters = value.char_indices();
+    while let Some((start, character)) = characters.next() {
+        if character != '\\' {
+            let end = start + character.len_utf8();
+            emit(&value.as_bytes()[start..end])?;
+            continue;
+        }
+        let (_, escaped) = characters.next().ok_or(ERROR_INVALID_EXPRESSION)?;
+        match escaped {
+            'n' => emit(b"\n")?,
+            't' => emit(b"\t")?,
+            'r' => emit(b"\r")?,
+            _ => {
+                let mut encoded = [0u8; 4];
+                emit(escaped.encode_utf8(&mut encoded).as_bytes())?;
+            }
+        }
+    }
+    Ok(())
 }
 
 fn write_array_literal(state_offset: u32, elements: &[u8]) -> Result<u32, u32> {
@@ -6416,6 +6766,7 @@ enum Value {
     },
     String(&'static [u8]),
     SafeString(&'static [u8]),
+    Regex(&'static [u8]),
     Array(Array),
     Record(Record),
     Macro,
@@ -6442,6 +6793,7 @@ impl Value {
             }
             TAG_STRING => Ok(Self::String(payload)),
             TAG_SAFE_STRING => Ok(Self::SafeString(payload)),
+            TAG_REGEX => Ok(Self::Regex(payload)),
             TAG_ARRAY => Ok(Self::Array(Array::new(payload)?)),
             TAG_RECORD => Ok(Self::Record(Record::new(payload)?)),
             TAG_MACRO_DEFINITION if payload.len() == MACRO_DEFINITION_LENGTH as usize => {
@@ -6485,6 +6837,10 @@ impl Value {
                 bytes: value,
                 safe: true,
             }),
+            Self::Regex(value) => Some(RenderedValue {
+                bytes: value,
+                safe: false,
+            }),
             Self::Array(_) | Self::Record(_) | Self::Macro => Some(RenderedValue {
                 bytes: b"",
                 safe: false,
@@ -6495,7 +6851,11 @@ impl Value {
     fn truthy(self) -> bool {
         match self {
             Self::Undefined | Self::Null | Self::Boolean(false) => false,
-            Self::Boolean(true) | Self::Array(_) | Self::Record(_) | Self::Macro => true,
+            Self::Boolean(true)
+            | Self::Regex(_)
+            | Self::Array(_)
+            | Self::Record(_)
+            | Self::Macro => true,
             Self::Number { numeric, .. } => numeric != 0.0 && !numeric.is_nan(),
             Self::String(value) | Self::SafeString(value) => !value.is_empty(),
         }
@@ -6525,7 +6885,11 @@ impl Value {
                         .unwrap_or(f64::NAN)
                 }
             }
-            Self::Undefined | Self::Array(_) | Self::Record(_) | Self::Macro => f64::NAN,
+            Self::Undefined
+            | Self::Regex(_)
+            | Self::Array(_)
+            | Self::Record(_)
+            | Self::Macro => f64::NAN,
         }
     }
 }

@@ -83,7 +83,30 @@ async function start(port: MessagePort): Promise<void> {
   const data = parseWorkerData(workerData);
   const bytes = await readFile(new URL(data.wasmUrl));
   const instantiated = await WebAssembly.instantiate(bytes, {
-    env: { memory: data.memory },
+    env: {
+      memory: data.memory,
+      nunjitsu_random_index: randomIndex,
+      nunjitsu_regex_replace: (
+        inputOffset: number,
+        inputLength: number,
+        regexOffset: number,
+        regexLength: number,
+        replacementOffset: number,
+        replacementLength: number,
+        outputOffset: number,
+        outputCapacity: number,
+      ) => regexReplace(
+        data.memory,
+        inputOffset,
+        inputLength,
+        regexOffset,
+        regexLength,
+        replacementOffset,
+        replacementLength,
+        outputOffset,
+        outputCapacity,
+      ),
+    },
   });
   const exports = parseExports(instantiated.instance.exports);
   exports.arenaReset();
@@ -192,6 +215,66 @@ async function start(port: MessagePort): Promise<void> {
       ? command.id
       : undefined;
   });
+}
+
+function randomIndex(upperBound: number): number {
+  const normalized = upperBound >>> 0;
+  if (normalized === 0) {
+    return 0;
+  }
+  return Math.floor(Math.random() * normalized);
+}
+
+function regexReplace(
+  memory: WebAssembly.Memory,
+  inputOffset: number,
+  inputLength: number,
+  regexOffset: number,
+  regexLength: number,
+  replacementOffset: number,
+  replacementLength: number,
+  outputOffset: number,
+  outputCapacity: number,
+): number {
+  try {
+    const decoder = new TextDecoder('utf-8', { fatal: true });
+    const input = decoder.decode(memoryBytes(memory, inputOffset, inputLength));
+    const literal = decoder.decode(memoryBytes(memory, regexOffset, regexLength));
+    const replacement = decoder.decode(
+      memoryBytes(memory, replacementOffset, replacementLength),
+    );
+    const delimiter = literal.lastIndexOf('/');
+    if (!literal.startsWith('/') || delimiter === 0) {
+      return 0xffff_ffff;
+    }
+    const expression = new RegExp(literal.slice(1, delimiter), literal.slice(delimiter + 1));
+    const encoded = new TextEncoder().encode(input.replace(expression, replacement));
+    if (outputCapacity === 0) {
+      return encoded.byteLength;
+    }
+    const output = memoryBytes(memory, outputOffset, outputCapacity);
+    if (encoded.byteLength > output.byteLength) {
+      return 0xffff_fffe;
+    }
+    output.set(encoded);
+    return encoded.byteLength;
+  } catch {
+    return 0xffff_ffff;
+  }
+}
+
+function memoryBytes(
+  memory: WebAssembly.Memory,
+  offset: number,
+  length: number,
+): Uint8Array {
+  const normalizedOffset = offset >>> 0;
+  const normalizedLength = length >>> 0;
+  const end = normalizedOffset + normalizedLength;
+  if (end > memory.buffer.byteLength) {
+    throw new RangeError('Wasm requested memory outside the worker arena');
+  }
+  return new Uint8Array(memory.buffer, normalizedOffset, normalizedLength);
 }
 
 function reportState(

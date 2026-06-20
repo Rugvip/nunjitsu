@@ -1157,7 +1157,11 @@ fn parse_string(
             return Ok((Atom::String(&bytes[start..cursor]), cursor + 1));
         }
         if *byte == b'\\' {
-            return Err(ExpressionError);
+            cursor = cursor.checked_add(2).ok_or(ExpressionError)?;
+            if cursor > bytes.len() {
+                return Err(ExpressionError);
+            }
+            continue;
         }
         cursor += 1;
     }
@@ -1343,7 +1347,11 @@ mod tests {
         assert_eq!(base, Atom::Arithmetic(expression));
         assert_eq!(next_operation(expression, cursor), Ok(None));
         assert_eq!(next_argument(b"value,", 0), Err(ExpressionError));
-        assert_eq!(parse_base(br#""escaped\"""#), Err(ExpressionError));
+        let escaped = br#""escaped\"""#;
+        assert_eq!(
+            parse_base(escaped),
+            Ok((Atom::String(br#"escaped\""#), escaped.len(), false)),
+        );
         assert_eq!(
             parse_tag_call(br#" badge("new", user.name) "#),
             Ok(Call {

@@ -1050,6 +1050,18 @@
     {
       "upstream": { "id": "tests/filters.js:62", "file": "tests/filters.js", "test": "urlencode - object without prototype" },
       "status": "ported"
+    },
+    {
+      "upstream": { "id": "tests/filters.js:44", "file": "tests/filters.js", "test": "random" },
+      "status": "ported"
+    },
+    {
+      "upstream": { "id": "tests/filters.js:49", "file": "tests/filters.js", "test": "replace" },
+      "status": "ported"
+    },
+    {
+      "upstream": { "id": "tests/filters.js:63", "file": "tests/filters.js", "test": "urlize" },
+      "status": "ported"
     }
   ]
 }

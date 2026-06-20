@@ -686,6 +686,145 @@ test('matches scalar, numeric, and text filter edge semantics', async () => {
     ['{{ "&" | urlencode }}', {}, '%26'],
     ['{{ value | urlencode | safe }}', { value: [[1, 2], ['&1', '&2']] }, '1=2&%261=%262'],
     ['{{ value | urlencode | safe }}', { value: { 1: 2, '&1': '&2' } }, '1=2&%261=%262'],
+    ['{{ 123456 | replace("4", ".") }}', {}, '123.56'],
+    ['{{ 12345.6 | replace(4, ".") }}', {}, '123.5.6'],
+    ['{{ 12345.6 | replace(4, 7) }}', {}, '12375.6'],
+    ['{{ 123450.6 | replace(0, 7) }}', {}, '123457.6'],
+    ['{{ "aaabbbccc" | replace(null, ".") }}', {}, 'aaabbbccc'],
+    ['{{ "aaabbbccc" | replace(undefined, ".") }}', {}, 'aaabbbccc'],
+    ['{{ "aaabbbccc" | replace({}, ".") }}', {}, 'aaabbbccc'],
+    ['{{ "aaabbbccc" | replace(true, ".") }}', {}, 'aaabbbccc'],
+    ['{{ "aaabbbccc" | replace(false, ".") }}', {}, 'aaabbbccc'],
+    ['{{ "aaabbbccc" | replace(["wrong"], ".") }}', {}, 'aaabbbccc'],
+    ['{{ "aaabbbccc" | replace("a", "x") }}', {}, 'xxxbbbccc'],
+    ['{{ "aaabbbccc" | replace("a", "x", 2) }}', {}, 'xxabbbccc'],
+    ['{{ "aaabbbbbccc" | replace("", "") }}', {}, 'aaabbbbbccc'],
+    ['{{ "aaabbbbbccc" | replace("b", "") }}', {}, 'aaaccc'],
+    ['{{ "aaabbbbbccc" | replace("ab", "y", 4) }}', {}, 'aaybbbbccc'],
+    ['{{ "aaabbbbbccc" | replace("d", "y", 4) }}', {}, 'aaabbbbbccc'],
+    ['{{ "aaabbcccbbb" | replace("b", "y", 4) }}', {}, 'aaayycccyyb'],
+    ['{{ undefined | replace("b", "y", 4) }}', {}, ''],
+    ['{{ null | replace("b", "y", 4) }}', {}, ''],
+    ['{{ {} | replace("b", "y", 4) }}', {}, '[object Object]'],
+    ['{{ [] | replace("b", "y", 4) }}', {}, ''],
+    ['{{ true | replace("rue", "afafasf", 4) }}', {}, 'true'],
+    ['{{ false | replace("rue", "afafasf", 4) }}', {}, 'false'],
+    ['{{ "<img src=" | replace("<img", "<img alt=val") | safe }}', {}, '<img alt=val src='],
+    [
+      '{{ "<img src=\\"http://www.example.com\\" />" | replace("<img", "replacement text") | safe }}',
+      {},
+      'replacement text src="http://www.example.com" />',
+    ],
+    ['{{ "aabbbb" | replace(r/ab{2}/, "z") }}', {}, 'azbb'],
+    ['{{ "aaaAAA" | replace(r/a/i, "z") }}', {}, 'zaaAAA'],
+    ['{{ "aaaAAA" | replace(r/a/g, "z") }}', {}, 'zzzAAA'],
+    ['{{ "aaaAAA" | replace(r/a/gi, "z") }}', {}, 'zzzzzz'],
+    [
+      '{{ "abc123" | replace(r/([a-z]+)([0-9]+)/, "$2-$1") }}',
+      {},
+      '123-abc',
+    ],
+    ['{{ value | replace("a", "x") }}', { value: markSafe('aaabbbccc') }, 'xxxbbbccc'],
+    [
+      '{{ "foo http://www.example.com/ bar" | urlize | safe }}',
+      {},
+      'foo <a href="http://www.example.com/">http://www.example.com/</a> bar',
+    ],
+    ['{{ "" | urlize }}|{{ "foo" | urlize }}', {}, '|foo'],
+    [
+      '{{ "http://jinja.pocoo.org/docs/templates/" | urlize | safe }}',
+      {},
+      '<a href="http://jinja.pocoo.org/docs/templates/">http://jinja.pocoo.org/docs/templates/</a>',
+    ],
+    [
+      '{{ "https://jinja.pocoo.org/docs/templates/" | urlize | safe }}',
+      {},
+      '<a href="https://jinja.pocoo.org/docs/templates/">https://jinja.pocoo.org/docs/templates/</a>',
+    ],
+    [
+      '{{ "www.pocoo.org/docs/templates/" | urlize | safe }}',
+      {},
+      '<a href="http://www.pocoo.org/docs/templates/">www.pocoo.org/docs/templates/</a>',
+    ],
+    [
+      '{{ "pocoo.org/docs/templates/" | urlize | safe }}',
+      {},
+      '<a href="http://pocoo.org/docs/templates/">pocoo.org/docs/templates/</a>',
+    ],
+    [
+      '{{ "pocoo.net/docs/templates/" | urlize | safe }}',
+      {},
+      '<a href="http://pocoo.net/docs/templates/">pocoo.net/docs/templates/</a>',
+    ],
+    [
+      '{{ "pocoo.com/docs/templates/" | urlize | safe }}',
+      {},
+      '<a href="http://pocoo.com/docs/templates/">pocoo.com/docs/templates/</a>',
+    ],
+    [
+      '{{ "pocoo.com:80" | urlize | safe }}|{{ "pocoo.com" | urlize | safe }}',
+      {},
+      '<a href="http://pocoo.com:80">pocoo.com:80</a>|<a href="http://pocoo.com">pocoo.com</a>',
+    ],
+    ['{{ "pocoo.commune" | urlize | safe }}', {}, 'pocoo.commune'],
+    [
+      '{{ "http://jinja.pocoo.org/docs/templates/" | urlize(12, true) | safe }}',
+      {},
+      '<a href="http://jinja.pocoo.org/docs/templates/" rel="nofollow">http://jinja</a>',
+    ],
+    [
+      '{{ "(http://jinja.pocoo.org/docs/templates/" | urlize | safe }}',
+      {},
+      '<a href="http://jinja.pocoo.org/docs/templates/">http://jinja.pocoo.org/docs/templates/</a>',
+    ],
+    [
+      '{{ "<http://jinja.pocoo.org/docs/templates/" | urlize | safe }}',
+      {},
+      '<a href="http://jinja.pocoo.org/docs/templates/">http://jinja.pocoo.org/docs/templates/</a>',
+    ],
+    [
+      '{{ "&lt;http://jinja.pocoo.org/docs/templates/" | urlize | safe }}',
+      {},
+      '<a href="http://jinja.pocoo.org/docs/templates/">http://jinja.pocoo.org/docs/templates/</a>',
+    ],
+    [
+      '{{ "http://jinja.pocoo.org/docs/templates/," | urlize | safe }}',
+      {},
+      '<a href="http://jinja.pocoo.org/docs/templates/">http://jinja.pocoo.org/docs/templates/</a>',
+    ],
+    [
+      '{{ "http://jinja.pocoo.org/docs/templates/." | urlize | safe }}',
+      {},
+      '<a href="http://jinja.pocoo.org/docs/templates/">http://jinja.pocoo.org/docs/templates/</a>',
+    ],
+    [
+      '{{ "http://jinja.pocoo.org/docs/templates/)" | urlize | safe }}',
+      {},
+      '<a href="http://jinja.pocoo.org/docs/templates/">http://jinja.pocoo.org/docs/templates/</a>',
+    ],
+    [
+      '{{ "http://jinja.pocoo.org/docs/templates/\\n" | urlize | safe }}',
+      {},
+      '<a href="http://jinja.pocoo.org/docs/templates/">http://jinja.pocoo.org/docs/templates/</a>\n',
+    ],
+    [
+      '{{ "http://jinja.pocoo.org/docs/templates/&gt;" | urlize | safe }}',
+      {},
+      '<a href="http://jinja.pocoo.org/docs/templates/">http://jinja.pocoo.org/docs/templates/</a>',
+    ],
+    [
+      '{{ "http://testuser@testuser.com" | urlize | safe }}',
+      {},
+      '<a href="http://testuser@testuser.com">http://testuser@testuser.com</a>',
+    ],
+    [
+      '{{ "testuser@testuser.com" | urlize | safe }}',
+      {},
+      '<a href="mailto:testuser@testuser.com">testuser@testuser.com</a>',
+    ],
+    ['{{ "foo." | urlize }}|{{ "foo.foo" | urlize }}', {}, 'foo.|foo.foo'],
+    ['{{ "<b>what up</b>" | urlize | safe }}', {}, '<b>what up</b>'],
+    ['{{ "what\\nup" | urlize | safe }}|{{ "what\\tup" | urlize | safe }}', {}, 'what\nup|what\tup'],
   ];
   try {
     for (const [source, context, expected] of cases) {
@@ -702,6 +841,15 @@ test('matches scalar, numeric, and text filter edge semantics', async () => {
       ),
       '1=2&%261=%262',
     );
+    for (let index = 0; index < 100; index += 1) {
+      const random = Number(await engine.render({ source: '{{ [1,2,3,4,5,6,7,8,9] | random }}' }));
+      assert.ok(random >= 1 && random <= 9);
+    }
+    await assert.rejects(
+      engine.render({ source: '{{ "value" | replace(r/a/z, "x") }}' }),
+      error => error instanceof NunjitsuRenderError && error.code === 9,
+    );
+    assert.equal(await engine.render({ source: 'clean after invalid regex' }), 'clean after invalid regex');
     const customArray = Object.assign([0, 1], { key: 'value' });
     await assert.rejects(
       engine.render(

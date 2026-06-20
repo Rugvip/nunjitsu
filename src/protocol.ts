@@ -30,6 +30,7 @@ const recordTag = {
   capabilityRegistry: 16,
   capabilityRequest: 17,
   tagRegistry: 26,
+  regex: 31,
 } as const;
 
 /** The offsets and cursor for one encoded render request. */
@@ -452,7 +453,7 @@ function decodeValue(
   if (tag === recordTag.number && payload.byteLength >= 8) {
     return new DataView(payload.buffer, payload.byteOffset, payload.byteLength).getFloat64(0, true);
   }
-  if (tag === recordTag.string || tag === recordTag.safeString) {
+  if (tag === recordTag.string || tag === recordTag.safeString || tag === recordTag.regex) {
     const value = new TextDecoder('utf-8', { fatal: true }).decode(payload);
     return tag === recordTag.safeString ? new SafeString(value) : value;
   }

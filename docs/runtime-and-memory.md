@@ -23,6 +23,13 @@ across workers; no source survives the render that loaded it.
 The host contract is a small, versioned raw ABI. Imports and exports use numeric
 primitives and offset/length pairs. Structured objects do not cross the ABI.
 
+In addition to the worker-owned memory, the production module imports two
+worker-local scalar operations required by Nunjucks semantics: bounded random
+index selection and JavaScript regular-expression replacement over validated
+UTF-8 ranges. Rust owns the source parsing, typed regex record, arena
+allocation, and result validation. The worker import cannot retain an arena
+view or offset after returning.
+
 The ABI must:
 
 - expose and validate an explicit version before rendering;
