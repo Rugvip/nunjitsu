@@ -25,14 +25,15 @@ design, compatibility boundaries, and testing strategy are documented in
 
 ## Setup
 
-Implementation scaffolding has not been added yet. Development will require:
+Development requires Node.js 24.12 or newer, npm, and rustup. The repository
+pins its Rust toolchain and TypeScript 7 native compiler.
 
-- Node.js 24.12 or newer;
-- the lockfile-pinned TypeScript 7.0 release candidate; and
-- a Rust toolchain capable of building the repository's Wasm target.
+Install dependencies and run the complete source and package test matrix:
 
-Build and test commands will be added here when the corresponding project files
-exist.
+```sh
+npm install
+npm test
+```
 
 ## License
 

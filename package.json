@@ -1,0 +1,41 @@
+{
+  "name": "nunjitsu",
+  "version": "0.0.0",
+  "description": "A Nunjucks-compatible template engine backed by Rust and WebAssembly",
+  "type": "module",
+  "private": true,
+  "engines": {
+    "node": ">=24.12.0"
+  },
+  "main": "./dist/cjs/index.cjs",
+  "module": "./dist/esm/index.js",
+  "types": "./dist/esm/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/esm/index.d.ts",
+      "import": "./dist/esm/index.js",
+      "require": "./dist/cjs/index.cjs"
+    }
+  },
+  "files": [
+    "dist/",
+    "LICENSE",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "npm run clean && npm run build:wasm && npm run build:typescript && node scripts/finalize-build.mjs",
+    "build:typescript": "tsgo -p tsconfig.esm.json && tsgo -p tsconfig.cjs.json && node scripts/build-cjs.mjs",
+    "build:wasm": "cargo build --manifest-path rust/Cargo.toml --target wasm32-unknown-unknown --release -Z build-std=core,compiler_builtins",
+    "clean": "node scripts/clean.mjs",
+    "test": "npm run typecheck && npm run test:rust && npm run test:source && npm run test:package",
+    "test:package": "npm run build && node --test tests/package/esm.test.mjs tests/package/commonjs.test.cjs",
+    "test:rust": "cargo test --manifest-path rust/Cargo.toml",
+    "test:source": "npm run build:wasm && node --test tests/source/runtime.test.ts",
+    "typecheck": "tsgo -p tsconfig.json"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "@typescript/native-preview": "7.0.0-dev.20260613.1",
+    "esbuild": "^0.25.0"
+  }
+}
