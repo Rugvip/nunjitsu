@@ -126,6 +126,59 @@ pub enum Operation<'a> {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct ExpressionError;
 
+/// Reports whether a parenthesized expression contains a top-level tuple separator.
+pub fn has_top_level_comma(expression: &[u8]) -> Result<bool, ExpressionError> {
+    let mut cursor = 0usize;
+    let mut quote = None;
+    let mut parentheses = 0usize;
+    let mut brackets = 0usize;
+    let mut braces = 0usize;
+    while let Some(byte) = expression.get(cursor).copied() {
+        if let Some(active_quote) = quote {
+            if byte == b'\\' {
+                cursor = cursor.checked_add(2).ok_or(ExpressionError)?;
+                continue;
+            }
+            if byte == active_quote {
+                quote = None;
+            }
+            cursor += 1;
+            continue;
+        }
+        if matches!(byte, b'\'' | b'"') {
+            quote = Some(byte);
+            cursor += 1;
+            continue;
+        }
+        if byte == b'r'
+            && expression.get(cursor + 1) == Some(&b'/')
+            && (cursor == 0
+                || expression[..cursor]
+                    .last()
+                    .is_some_and(|previous| previous.is_ascii_whitespace() || *previous == b','))
+        {
+            let (_, next) = parse_regex(expression, cursor)?;
+            cursor = next;
+            continue;
+        }
+        match byte {
+            b'(' => parentheses += 1,
+            b'[' => brackets += 1,
+            b'{' => braces += 1,
+            b')' => parentheses = parentheses.checked_sub(1).ok_or(ExpressionError)?,
+            b']' => brackets = brackets.checked_sub(1).ok_or(ExpressionError)?,
+            b'}' => braces = braces.checked_sub(1).ok_or(ExpressionError)?,
+            b',' if parentheses == 0 && brackets == 0 && braces == 0 => return Ok(true),
+            _ => {}
+        }
+        cursor += 1;
+    }
+    if quote.is_some() || parentheses != 0 || brackets != 0 || braces != 0 {
+        return Err(ExpressionError);
+    }
+    Ok(false)
+}
+
 /// Parsed variable binding and iterable expression for a `for` directive.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct ForClause<'a> {
@@ -738,13 +791,12 @@ pub fn parse_call_block(source: &[u8]) -> Result<CallBlock<'_>, ExpressionError>
 /// Parses `template-expression as namespace [with|without context]`.
 pub fn parse_import_clause(source: &[u8]) -> Result<ImportClause<'_>, ExpressionError> {
     let start = skip_whitespace(source, 0);
-    let (_, expression_end) = parse_atom(source, start)?;
+    let expression_end = find_top_level_keyword(source, start, b"as")?;
     let template = trim_whitespace(&source[start..expression_end]);
-    let mut cursor = skip_whitespace(source, expression_end);
-    if !has_keyword(source, cursor, b"as") {
+    if template.is_empty() {
         return Err(ExpressionError);
     }
-    cursor = skip_whitespace(source, cursor + 2);
+    let mut cursor = skip_whitespace(source, expression_end + 2);
     let alias_start = cursor;
     cursor = parse_identifier(source, cursor)?;
     let alias = &source[alias_start..cursor];
@@ -781,13 +833,12 @@ pub fn parse_import_clause(source: &[u8]) -> Result<ImportClause<'_>, Expression
 /// Parses `template-expression import names [with|without context]`.
 pub fn parse_from_import_clause(source: &[u8]) -> Result<FromImportClause<'_>, ExpressionError> {
     let start = skip_whitespace(source, 0);
-    let (_, expression_end) = parse_atom(source, start)?;
+    let expression_end = find_top_level_keyword(source, start, b"import")?;
     let template = trim_whitespace(&source[start..expression_end]);
-    let mut cursor = skip_whitespace(source, expression_end);
-    if !has_keyword(source, cursor, b"import") {
+    if template.is_empty() {
         return Err(ExpressionError);
     }
-    cursor = skip_whitespace(source, cursor + 6);
+    let mut cursor = skip_whitespace(source, expression_end + 6);
     let bindings_start = cursor;
     let first = next_import_binding(source, cursor)?.ok_or(ExpressionError)?;
     let mut bindings_end = first.next_cursor;
@@ -835,6 +886,9 @@ pub fn next_import_binding(
     let name_start = cursor;
     let mut cursor = parse_identifier(bindings, cursor)?;
     let name = &bindings[name_start..cursor];
+    if name.starts_with(b"_") {
+        return Err(ExpressionError);
+    }
     cursor = skip_whitespace(bindings, cursor);
     let alias = if has_keyword(bindings, cursor, b"as") {
         cursor = skip_whitespace(bindings, cursor + 2);
@@ -1166,19 +1220,15 @@ fn arithmetic_operand_end(bytes: &[u8], start: usize) -> Result<usize, Expressio
 }
 
 fn keyword_boundary(bytes: &[u8], start: usize, cursor: usize, keyword: &[u8]) -> bool {
-    (cursor == start || bytes[cursor - 1].is_ascii_whitespace())
+    (cursor == start
+        || bytes[cursor - 1].is_ascii_whitespace()
+        || bytes[start..cursor].ends_with("\u{a0}".as_bytes()))
         && bytes.get(cursor..cursor + keyword.len()) == Some(keyword)
-        && bytes
-            .get(cursor + keyword.len())
-            .is_some_and(u8::is_ascii_whitespace)
+        && whitespace_width(bytes, cursor + keyword.len()) != 0
 }
 
 fn is_unary_sign(bytes: &[u8], cursor: usize) -> bool {
-    let Some(previous) = bytes[..cursor]
-        .iter()
-        .rposition(|byte| !byte.is_ascii_whitespace())
-        .map(|index| bytes[index])
-    else {
+    let Some(previous) = trim_whitespace(&bytes[..cursor]).last().copied() else {
         return true;
     };
     matches!(
@@ -1203,8 +1253,14 @@ fn is_unary_sign(bytes: &[u8], cursor: usize) -> bool {
 fn trim_whitespace(bytes: &[u8]) -> &[u8] {
     let start = skip_whitespace(bytes, 0);
     let mut end = bytes.len();
-    while end > start && bytes[end - 1].is_ascii_whitespace() {
-        end -= 1;
+    while end > start {
+        if bytes[end - 1].is_ascii_whitespace() {
+            end -= 1;
+        } else if bytes[start..end].ends_with("\u{a0}".as_bytes()) {
+            end -= "\u{a0}".len();
+        } else {
+            break;
+        }
     }
     &bytes[start..end]
 }
@@ -1359,16 +1415,76 @@ fn parse_path_segment(bytes: &[u8], cursor: usize) -> Result<usize, ExpressionEr
 
 fn has_keyword(bytes: &[u8], cursor: usize, keyword: &[u8]) -> bool {
     bytes.get(cursor..cursor + keyword.len()) == Some(keyword)
-        && bytes
-            .get(cursor + keyword.len())
-            .is_none_or(|byte| byte.is_ascii_whitespace())
+        && (cursor + keyword.len() == bytes.len()
+            || whitespace_width(bytes, cursor + keyword.len()) != 0)
+}
+
+fn find_top_level_keyword(
+    bytes: &[u8],
+    start: usize,
+    keyword: &[u8],
+) -> Result<usize, ExpressionError> {
+    let mut cursor = start;
+    let mut quote = None;
+    let mut parentheses = 0usize;
+    let mut brackets = 0usize;
+    let mut braces = 0usize;
+    while let Some(byte) = bytes.get(cursor).copied() {
+        if let Some(active_quote) = quote {
+            if byte == b'\\' {
+                cursor = cursor.checked_add(2).ok_or(ExpressionError)?;
+                continue;
+            }
+            if byte == active_quote {
+                quote = None;
+            }
+            cursor += 1;
+            continue;
+        }
+        if matches!(byte, b'\'' | b'"') {
+            quote = Some(byte);
+            cursor += 1;
+            continue;
+        }
+        match byte {
+            b'(' => parentheses += 1,
+            b'[' => brackets += 1,
+            b'{' => braces += 1,
+            b')' => parentheses = parentheses.checked_sub(1).ok_or(ExpressionError)?,
+            b']' => brackets = brackets.checked_sub(1).ok_or(ExpressionError)?,
+            b'}' => braces = braces.checked_sub(1).ok_or(ExpressionError)?,
+            _ => {}
+        }
+        if parentheses == 0
+            && brackets == 0
+            && braces == 0
+            && keyword_boundary(bytes, start, cursor, keyword)
+        {
+            return Ok(cursor);
+        }
+        cursor += 1;
+    }
+    Err(ExpressionError)
 }
 
 fn skip_whitespace(bytes: &[u8], mut cursor: usize) -> usize {
-    while bytes.get(cursor).is_some_and(u8::is_ascii_whitespace) {
-        cursor += 1;
+    loop {
+        let width = whitespace_width(bytes, cursor);
+        if width == 0 {
+            return cursor;
+        }
+        cursor += width;
     }
-    cursor
+}
+
+fn whitespace_width(bytes: &[u8], cursor: usize) -> usize {
+    if bytes.get(cursor).is_some_and(u8::is_ascii_whitespace) {
+        1
+    } else if bytes.get(cursor..cursor + "\u{a0}".len()) == Some("\u{a0}".as_bytes()) {
+        "\u{a0}".len()
+    } else {
+        0
+    }
 }
 
 fn is_identifier_start(byte: u8) -> bool {
@@ -1485,10 +1601,28 @@ mod tests {
             }),
         );
         assert_eq!(
+            parse_import_clause(br#" "import.html" | replace("html", "njk") as imp "#),
+            Ok(ImportClause {
+                template: br#""import.html" | replace("html", "njk")"#,
+                alias: b"imp",
+                with_context: false,
+            }),
+        );
+        assert_eq!(
             parse_from_import_clause(br#" "import.njk" import foo as baz, bar without context "#),
             Ok(FromImportClause {
                 template: br#""import.njk""#,
                 bindings: b"foo as baz, bar",
+                with_context: false,
+            }),
+        );
+        assert_eq!(
+            parse_from_import_clause(
+                br#" "import.html" | replace("html", "njk") import foo as baz "#,
+            ),
+            Ok(FromImportClause {
+                template: br#""import.html" | replace("html", "njk")"#,
+                bindings: b"foo as baz",
                 with_context: false,
             }),
         );
@@ -1506,6 +1640,14 @@ mod tests {
             (b"bar".as_slice(), b"bar".as_slice())
         );
         assert_eq!(next_import_binding(bindings, second.next_cursor), Ok(None));
+        assert_eq!(next_import_binding(b"_private", 0), Err(ExpressionError));
+        assert_eq!(
+            parse_base("\u{a0}foo\u{a0}".as_bytes()),
+            Ok((Atom::Lookup(b"foo"), 7, false)),
+        );
+        assert_eq!(has_top_level_comma(b"1, 2, 3"), Ok(true));
+        assert_eq!(has_top_level_comma(br#"[1, 2], "three,four""#), Ok(true));
+        assert_eq!(has_top_level_comma(br#"[1, 2] | join(",")"#), Ok(false));
         assert_eq!(
             parse_base(b"imp.wrap(\"span\")"),
             Ok((

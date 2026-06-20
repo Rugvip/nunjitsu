@@ -303,18 +303,23 @@ pub(crate) fn find_block_end(
     source: &[u8],
     mut cursor: usize,
     options: ParseOptions,
+    expected_name: &[u8],
 ) -> Result<usize, RenderError> {
-    let mut depth = 0usize;
     loop {
         let (item, next_cursor) = next_item_with_options(source, cursor, options)?;
         if let TemplateItem::Tag(directive) = item {
-            if directive_keyword(directive, b"block").is_some() {
-                depth = depth.checked_add(1).ok_or(RenderError::OutputTooLarge)?;
-            } else if is_endblock(directive) {
-                if depth == 0 {
+            if let Some(nested_name) = directive_keyword(directive, b"block") {
+                cursor = find_block_end(source, next_cursor, options, nested_name)?;
+                continue;
+            }
+            if is_endblock(directive) {
+                let Some(actual_name) = directive_keyword(directive, b"endblock") else {
                     return Ok(next_cursor);
+                };
+                if actual_name != expected_name {
+                    return Err(RenderError::UnsupportedTag);
                 }
-                depth -= 1;
+                return Ok(next_cursor);
             }
         } else if item == TemplateItem::End {
             return Err(RenderError::UnclosedBlockTag);
@@ -514,6 +519,10 @@ fn find_raw_end(
     options: ParseOptions,
 ) -> Result<(usize, usize), RenderError> {
     let mut search_cursor = body_start;
+    let start_name = end_name
+        .strip_prefix(b"end")
+        .ok_or(RenderError::UnclosedRaw)?;
+    let mut depth = 0usize;
     loop {
         let Some(relative) = source[search_cursor..]
             .windows(2)
@@ -524,12 +533,28 @@ fn find_raw_end(
         let open = search_cursor + relative;
         let left_trim = source.get(open + 2) == Some(&b'-');
         let content_start = open + 2 + usize::from(left_trim);
+        let marker = source[content_start..]
+            .iter()
+            .position(|byte| !byte.is_ascii_whitespace())
+            .map(|relative| content_start + relative)
+            .ok_or(RenderError::UnclosedRaw)?;
+        if !raw_marker_prefix(source, marker, start_name)
+            && !raw_marker_prefix(source, marker, end_name)
+        {
+            search_cursor = open + 2;
+            continue;
+        }
         let close = find_pair(&source[content_start..], b'%', b'}')
             .map(|relative| content_start + relative)
             .ok_or(RenderError::UnclosedRaw)?;
         let right_trim = close > content_start && source[close - 1] == b'-';
         let content_end = close - usize::from(right_trim);
-        if trim_ascii_whitespace(&source[content_start..content_end]) == end_name {
+        let directive = trim_ascii_whitespace(&source[content_start..content_end]);
+        if directive == start_name {
+            depth = depth.checked_add(1).ok_or(RenderError::OutputTooLarge)?;
+        } else if directive == end_name && depth != 0 {
+            depth -= 1;
+        } else if directive == end_name {
             let mut body_end = open;
             if left_trim {
                 while body_end > body_start && source[body_end - 1].is_ascii_whitespace() {
@@ -553,6 +578,13 @@ fn find_raw_end(
         }
         search_cursor = close + 2;
     }
+}
+
+fn raw_marker_prefix(source: &[u8], cursor: usize, name: &[u8]) -> bool {
+    source.get(cursor..cursor + name.len()) == Some(name)
+        && source
+            .get(cursor + name.len())
+            .is_some_and(|byte| byte.is_ascii_whitespace() || matches!(byte, b'-' | b'%'))
 }
 
 fn following_cursor(
@@ -844,8 +876,17 @@ mod tests {
 
         let block_source = b"body{% block nested %}nested{% endblock %}tail{% endblock %}after";
         assert_eq!(
-            find_block_end(block_source, 0, ParseOptions::default()),
+            find_block_end(block_source, 0, ParseOptions::default(), b"outer"),
             Ok(60),
+        );
+        assert_eq!(
+            find_block_end(
+                b"body{% block nested %}nested{% endblock wrong %}{% endblock outer %}",
+                0,
+                ParseOptions::default(),
+                b"outer",
+            ),
+            Err(RenderError::UnsupportedTag),
         );
 
         let call_source = b"body{% call wrap() %}nested{% endcall %}tail{% endcall %}after";
@@ -875,6 +916,16 @@ mod tests {
         let mut output = vec![0; source.len()];
         let written = render_template(source, false, |_| None, &mut output).unwrap();
         assert_eq!(&output[..written], b"before{{ visible syntax }}after");
+
+        let source = b"{% raw %}{% if broken }literal{% endraw %}";
+        let mut output = vec![0; source.len()];
+        let written = render_template(source, false, |_| None, &mut output).unwrap();
+        assert_eq!(&output[..written], b"{% if broken }literal");
+
+        let source = b"{% raw %}{% raw %}nested{% endraw %}{% endraw %}";
+        let mut output = vec![0; source.len()];
+        let written = render_template(source, false, |_| None, &mut output).unwrap();
+        assert_eq!(&output[..written], b"{% raw %}nested{% endraw %}");
 
         let source = b"hello \n{#- comment -#} \n world";
         let mut output = vec![0; source.len()];

@@ -358,6 +358,12 @@ test('applies explicit and environment whitespace controls', async () => {
     );
     assert.equal(
       await configured.render({
+        source: '  {% if true %}\rfoo\r\n{% endif %}\r',
+      }),
+      '\rfoo\r\n\r',
+    );
+    assert.equal(
+      await configured.render({
         source: '   {% set a = 1 %} {% set b = 2 %}{{ a }}{{ b }}',
       }),
       ' 12',
@@ -1899,6 +1905,7 @@ test('rejects invalid expressions and calls across deferred template frames', as
         '{% import "macro-call-undefined-macro.njk" as t %}',
         '{% for el in list %}{{ t.defined_macro() }}{% endfor %}',
       ].join(''),
+      'foo': '{% macro _bar() %}private{% endmacro %}',
     })],
   });
   try {
@@ -1909,6 +1916,19 @@ test('rejects invalid expressions and calls across deferred template frames', as
       ['{{ foo.barThatIsLongerThanTen() }}', {}],
       ['{{ foo.bar("multiple", "args") }}', {}],
       ['{{ foo["bar"]["zip"]("multiple", "args") }}', {}],
+      ['hello {{ foo', {}],
+      ['hello {% if', {}],
+      ['hello {% if sdf zxc', {}],
+      ['{% include "foo %}', {}],
+      ['hello {% if sdf %} data', {}],
+      ['hello {% block sdf %} data', {}],
+      ['hello {% block sdf %} data{% endblock foo %}', {}],
+      ['hello {% bar %} dsfsdf', {}],
+      ['{{ foo(bar baz) }}', {}],
+      ['{% import "foo" %}', {}],
+      ['{% from "foo" %}', {}],
+      ['{% from "foo" import bar baz %}', {}],
+      ['{% from "foo" import _bar %}', {}],
       ['{% call foo() %}{% endcall %}', { foo: 'bar' }],
       ['{% include "undefined-macro.njk" %}', {}],
       ['{% if true %}{% include "undefined-macro.njk" %}{% endif %}', {}],
@@ -1919,7 +1939,8 @@ test('rejects invalid expressions and calls across deferred template frames', as
     ] as const) {
       await assert.rejects(
         engine.render({ source }, context),
-        error => error instanceof NunjitsuRenderError && [8, 9].includes(error.code),
+        error => error instanceof NunjitsuRenderError && [3, 5, 8, 9].includes(error.code),
+        source,
       );
     }
   } finally {

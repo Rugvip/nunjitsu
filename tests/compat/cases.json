@@ -1768,6 +1768,161 @@
       "context": {},
       "autoescape": true,
       "expected": "hello "
+    },
+    {
+      "id": "parser-group-tuple",
+      "template": "{{ (1, 2, 3) | join(\"-\") }}",
+      "nativeRender": false,
+      "context": {},
+      "autoescape": true,
+      "expected": "1-2-3"
+    },
+    {
+      "id": "parser-filtered-import-paths",
+      "template": "{% import \"module.html\" | replace(\"html\", \"njk\") as imp %}{{ imp.foo() }}|{% from \"module.html\" | replace(\"html\", \"njk\") import foo as bar %}{{ bar() }}",
+      "templates": {
+        "module.njk": "{% macro foo() %}loaded{% endmacro %}"
+      },
+      "nativeRender": false,
+      "context": {},
+      "autoescape": true,
+      "expected": "loaded|loaded"
+    },
+    {
+      "id": "lexer-nonbreaking-space",
+      "template": "{{ foo }}",
+      "nativeRender": false,
+      "context": { "foo": "value" },
+      "autoescape": true,
+      "expected": "value"
+    },
+    {
+      "id": "parser-raw-delimiter-text",
+      "template": "{% raw %}hello {{ {% %} }}{% endraw %}",
+      "nativeRender": false,
+      "context": {},
+      "autoescape": true,
+      "expected": "hello {{ {% %} }}"
+    },
+    {
+      "id": "parser-raw-broken-variable",
+      "template": "{% raw %}{{ x }{% endraw %}",
+      "nativeRender": false,
+      "context": {},
+      "autoescape": true,
+      "expected": "{{ x }"
+    },
+    {
+      "id": "parser-raw-broken-block",
+      "template": "{% raw %}{% if i_am_stupid }Still do your job well{% endraw %}",
+      "nativeRender": false,
+      "context": {},
+      "autoescape": true,
+      "expected": "{% if i_am_stupid }Still do your job well"
+    },
+    {
+      "id": "parser-raw-pure-text",
+      "template": "{% raw %}abc{% endraw %}",
+      "nativeRender": false,
+      "context": {},
+      "autoescape": true,
+      "expected": "abc"
+    },
+    {
+      "id": "parser-raw-nested-block",
+      "template": "{% raw %}{% raw %}{{ x }{% endraw %}{% endraw %}",
+      "nativeRender": false,
+      "context": {},
+      "autoescape": true,
+      "expected": "{% raw %}{{ x }{% endraw %}"
+    },
+    {
+      "id": "parser-raw-comment-text",
+      "template": "{% raw %}{# test {% endraw %}",
+      "nativeRender": false,
+      "context": {},
+      "autoescape": true,
+      "expected": "{# test "
+    },
+    {
+      "id": "parser-raw-multiple",
+      "template": "{% raw %}{{ var }}{% endraw %}{{ var }}{% raw %}{{ var }}{% endraw %}",
+      "nativeRender": false,
+      "context": { "var": "resolved" },
+      "autoescape": true,
+      "expected": "{{ var }}resolved{{ var }}"
+    },
+    {
+      "id": "parser-raw-multiline-multiple",
+      "template": "\n{% raw %}{{ var }}{% endraw %}\n{{ var }}\n{% raw %}{{ var }}{% endraw %}\n",
+      "nativeRender": false,
+      "context": { "var": "resolved" },
+      "autoescape": true,
+      "expected": "\n{{ var }}\nresolved\n{{ var }}\n"
+    },
+    {
+      "id": "parser-verbatim-delimiter-text",
+      "template": "{% verbatim %}hello {{ {% %} }}{% endverbatim %}",
+      "nativeRender": false,
+      "context": {},
+      "autoescape": true,
+      "expected": "hello {{ {% %} }}"
+    },
+    {
+      "id": "parser-verbatim-broken-variable",
+      "template": "{% verbatim %}{{ x }{% endverbatim %}",
+      "nativeRender": false,
+      "context": {},
+      "autoescape": true,
+      "expected": "{{ x }"
+    },
+    {
+      "id": "parser-verbatim-broken-block",
+      "template": "{% verbatim %}{% if i_am_stupid }Still do your job well{% endverbatim %}",
+      "nativeRender": false,
+      "context": {},
+      "autoescape": true,
+      "expected": "{% if i_am_stupid }Still do your job well"
+    },
+    {
+      "id": "parser-verbatim-pure-text",
+      "template": "{% verbatim %}abc{% endverbatim %}",
+      "nativeRender": false,
+      "context": {},
+      "autoescape": true,
+      "expected": "abc"
+    },
+    {
+      "id": "parser-verbatim-nested-block",
+      "template": "{% verbatim %}{% verbatim %}{{ x }{% endverbatim %}{% endverbatim %}",
+      "nativeRender": false,
+      "context": {},
+      "autoescape": true,
+      "expected": "{% verbatim %}{{ x }{% endverbatim %}"
+    },
+    {
+      "id": "parser-verbatim-comment-text",
+      "template": "{% verbatim %}{# test {% endverbatim %}",
+      "nativeRender": false,
+      "context": {},
+      "autoescape": true,
+      "expected": "{# test "
+    },
+    {
+      "id": "parser-verbatim-multiple",
+      "template": "{% verbatim %}{{ var }}{% endverbatim %}{{ var }}{% verbatim %}{{ var }}{% endverbatim %}",
+      "nativeRender": false,
+      "context": { "var": "resolved" },
+      "autoescape": true,
+      "expected": "{{ var }}resolved{{ var }}"
+    },
+    {
+      "id": "parser-verbatim-multiline-multiple",
+      "template": "\n{% verbatim %}{{ var }}{% endverbatim %}\n{{ var }}\n{% verbatim %}{{ var }}{% endverbatim %}\n",
+      "nativeRender": false,
+      "context": { "var": "resolved" },
+      "autoescape": true,
+      "expected": "\n{{ var }}\nresolved\n{{ var }}\n"
     }
   ]
 }

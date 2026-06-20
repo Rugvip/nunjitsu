@@ -1,9 +1,9 @@
 use crate::expression::{
-    Atom, BinaryOperator, Call, Comparison, Operand, Operation, next_argument, next_binding,
-    next_import_binding, next_lookup_segment, next_macro_argument, next_macro_parameter,
-    next_operation, next_record_entry, parse_base, parse_call_block, parse_for_clause,
-    parse_from_import_clause, parse_import_clause, parse_set_clause, parse_tag_call,
-    parse_tag_name, split_binary_expression,
+    Atom, BinaryOperator, Call, Comparison, Operand, Operation, has_top_level_comma, next_argument,
+    next_binding, next_import_binding, next_lookup_segment, next_macro_argument,
+    next_macro_parameter, next_operation, next_record_entry, parse_base, parse_call_block,
+    parse_for_clause, parse_from_import_clause, parse_import_clause, parse_set_clause,
+    parse_tag_call, parse_tag_name, split_binary_expression,
 };
 use crate::template::{
     ConditionalBoundary, ParseOptions, RenderError, RenderedValue, TemplateItem, contains_extends,
@@ -1287,6 +1287,7 @@ fn register_block_definition(
         record_at(source_offset, TAG_SOURCE)?,
         body_cursor as usize,
         parse_options(state_offset)?,
+        block.name,
     )
     .map_err(render_error_code)? as u32;
     let mut existing_definition = state_field(state_offset, STATE_CURRENT_BLOCK_DEFINITION)?;
@@ -1449,6 +1450,7 @@ fn start_block(state_offset: u32, name: &[u8]) -> Result<(), u32> {
         record_at(source_offset, TAG_SOURCE)?,
         body_cursor as usize,
         parse_options(state_offset)?,
+        block.name,
     )
     .map_err(render_error_code)? as u32;
     set_frame_field(frame_offset, FRAME_CURSOR, end_cursor)?;
@@ -6188,7 +6190,13 @@ fn resolve_atom(state_offset: u32, atom: Atom<'_>) -> Result<u32, u32> {
             }
             apply_builtin_call(state_offset, call)?.ok_or(ERROR_INVALID_EXPRESSION)
         }
-        Atom::Group(expression) => evaluate_sync_expression(state_offset, expression),
+        Atom::Group(expression) => {
+            if has_top_level_comma(expression).map_err(|_| ERROR_INVALID_EXPRESSION)? {
+                write_array_literal(state_offset, expression)
+            } else {
+                evaluate_sync_expression(state_offset, expression)
+            }
+        }
         Atom::Array(elements) => write_array_literal(state_offset, elements),
         Atom::Record(entries) => write_record_literal(state_offset, entries),
         Atom::Arithmetic(expression) => evaluate_binary_expression(state_offset, expression),
