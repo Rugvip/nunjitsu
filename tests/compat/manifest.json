@@ -199,6 +199,11 @@
       "cases": ["compiler-macro-overridden-defaults"]
     },
     {
+      "upstream": { "id": "tests/compiler.js:74", "file": "tests/compiler.js", "test": "should compile macro calls inside blocks" },
+      "status": "ported",
+      "cases": ["compiler-macro-call-inside-inherited-block"]
+    },
+    {
       "upstream": { "id": "tests/compiler.js:75", "file": "tests/compiler.js", "test": "should compile macros defined in one block and called in another" },
       "status": "ported",
       "cases": ["compiler-macro-defined-across-blocks"]

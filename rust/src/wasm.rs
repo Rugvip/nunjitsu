@@ -6,7 +6,7 @@ use crate::expression::{
 };
 use crate::template::{
     ConditionalBoundary, ParseOptions, RenderError, RenderedValue, TemplateItem, directive_keyword,
-    emit_escaped, find_conditional_boundary, find_loop_boundaries, find_macro_end,
+    emit_escaped, find_block_end, find_conditional_boundary, find_loop_boundaries, find_macro_end,
     next_item_with_options,
 };
 use core::arch::wasm32::{memory_grow, memory_size};
@@ -14,7 +14,7 @@ use core::mem::{align_of, size_of};
 use core::ptr::{addr_of, addr_of_mut, read_unaligned, write_unaligned};
 use core::slice;
 
-const ABI_VERSION: u32 = 15;
+const ABI_VERSION: u32 = 16;
 const PAGE_SIZE: usize = 65_536;
 const STREAM_CHUNK_BYTES: u32 = 64 * 1024;
 const RECORD_ALIGNMENT: u32 = 8;
@@ -43,6 +43,7 @@ const TAG_CAPTURE: u32 = 21;
 const TAG_MACRO_DEFINITION: u32 = 22;
 const TAG_MACRO_CALL: u32 = 23;
 const TAG_MACRO_ARGUMENTS: u32 = 24;
+const TAG_BLOCK_DEFINITION: u32 = 25;
 
 const STATE_IDLE: u32 = 0;
 const STATE_COMPLETE: u32 = 1;
@@ -63,7 +64,7 @@ const ERROR_RESOURCE_LIMIT: u32 = 7;
 const ERROR_UNKNOWN_CAPABILITY: u32 = 8;
 const ERROR_INVALID_EXPRESSION: u32 = 9;
 
-const RENDER_STATE_LENGTH: u32 = 144;
+const RENDER_STATE_LENGTH: u32 = 148;
 const STATE_CONTEXT: usize = 0;
 const STATE_FLAGS: usize = 4;
 const STATE_CURRENT_FRAME: usize = 8;
@@ -96,15 +97,21 @@ const STATE_EXPRESSION_ACTION: usize = 112;
 const STATE_CURRENT_LOOP: usize = 116;
 const STATE_CURRENT_SCOPE: usize = 120;
 const STATE_PENDING_SET_BINDINGS: usize = 124;
-const STATE_INCLUDE_IGNORE_MISSING: usize = 128;
+const STATE_PENDING_LOAD_KIND: usize = 128;
 const STATE_CURRENT_CAPTURE: usize = 132;
 const STATE_CURRENT_MACRO_DEFINITION: usize = 136;
 const STATE_CURRENT_MACRO_CALL: usize = 140;
+const STATE_CURRENT_BLOCK_DEFINITION: usize = 144;
 
 const EXPRESSION_OUTPUT: u32 = 0;
 const EXPRESSION_IF: u32 = 1;
 const EXPRESSION_SET: u32 = 2;
 const EXPRESSION_INCLUDE: u32 = 3;
+const EXPRESSION_EXTENDS: u32 = 4;
+
+const LOAD_INCLUDE: u32 = 0;
+const LOAD_INCLUDE_OPTIONAL: u32 = 1;
+const LOAD_EXTENDS: u32 = 2;
 
 const NEGATE_NONE: u32 = 0;
 const NEGATE_BOOLEAN: u32 = 1;
@@ -115,12 +122,13 @@ const CAPABILITY_TEST: u32 = 2;
 const CAPABILITY_GLOBAL: u32 = 3;
 const CAPABILITY_TAG: u32 = 4;
 
-const FRAME_LENGTH: u32 = 20;
+const FRAME_LENGTH: u32 = 24;
 const FRAME_PARENT: usize = 0;
 const FRAME_SOURCE: usize = 4;
 const FRAME_CURSOR: usize = 8;
 const FRAME_CANONICAL_NAME: usize = 12;
 const FRAME_SCOPE_BASE: usize = 16;
+const FRAME_END_CURSOR: usize = 20;
 
 const LOOP_STATE_LENGTH: u32 = 44;
 const LOOP_PARENT: usize = 0;
@@ -161,12 +169,21 @@ const MACRO_CALL_EXPRESSION_CURSOR: usize = 12;
 const MACRO_CALL_EXPRESSION_ACTION: usize = 16;
 const MACRO_CALL_CURRENT_VALUE: usize = 20;
 const MACRO_CALL_PENDING_SET_BINDINGS: usize = 24;
-const MACRO_CALL_INCLUDE_IGNORE_MISSING: usize = 28;
+const MACRO_CALL_PENDING_LOAD_KIND: usize = 28;
 const MACRO_CALL_PENDING_NAME: usize = 32;
 const MACRO_CALL_NEGATE_RESULT: usize = 36;
 const MACRO_CALL_SCOPE: usize = 40;
 const MACRO_CALL_LOOP: usize = 44;
 const MACRO_CALL_TRANSIENT_BASE: usize = 48;
+
+const BLOCK_DEFINITION_LENGTH: u32 = 28;
+const BLOCK_DEFINITION_PARENT: usize = 0;
+const BLOCK_DEFINITION_NAME: usize = 4;
+const BLOCK_DEFINITION_SOURCE: usize = 8;
+const BLOCK_DEFINITION_BODY_CURSOR: usize = 12;
+const BLOCK_DEFINITION_END_CURSOR: usize = 16;
+const BLOCK_DEFINITION_SCOPE: usize = 20;
+const BLOCK_DEFINITION_FRAME: usize = 24;
 
 const SCOPE_LENGTH: u32 = 12;
 const SCOPE_PARENT: usize = 0;
@@ -343,7 +360,7 @@ fn start_render(request_offset: u32) -> Result<(), u32> {
     }
 
     let frame_offset = allocate_record(TAG_FRAME, FRAME_LENGTH)?;
-    write_frame(frame_offset, 0, source_offset, 0, canonical_offset, 0)?;
+    write_frame(frame_offset, 0, source_offset, 0, canonical_offset, 0, 0)?;
     let state_offset = allocate_record(TAG_RENDER_STATE, RENDER_STATE_LENGTH)?;
     set_state_field(state_offset, STATE_CONTEXT, context_offset)?;
     set_state_field(state_offset, STATE_FLAGS, flags)?;
@@ -397,10 +414,11 @@ fn resume_include(source_offset: u32, canonical_offset: u32) -> Result<(), u32> 
         0,
         canonical_offset,
         state_field(state_offset, STATE_CURRENT_SCOPE)?,
+        0,
     )?;
     set_state_field(state_offset, STATE_CURRENT_FRAME, frame_offset)?;
     set_state_field(state_offset, STATE_PENDING_NAME, 0)?;
-    set_state_field(state_offset, STATE_INCLUDE_IGNORE_MISSING, 0)?;
+    set_state_field(state_offset, STATE_PENDING_LOAD_KIND, LOAD_INCLUDE)?;
     set_state_field(state_offset, STATE_INCLUDE_DEPTH, next_depth)?;
     set_state_field(state_offset, STATE_TRANSIENT_BASE, unsafe { ARENA_CURSOR })?;
     Ok(())
@@ -409,12 +427,12 @@ fn resume_include(source_offset: u32, canonical_offset: u32) -> Result<(), u32> 
 fn resume_include_missing() -> Result<(), u32> {
     let state_offset = active_state()?;
     if state_field(state_offset, STATE_PENDING_NAME)? == 0
-        || state_field(state_offset, STATE_INCLUDE_IGNORE_MISSING)? != 1
+        || state_field(state_offset, STATE_PENDING_LOAD_KIND)? != LOAD_INCLUDE_OPTIONAL
     {
         return Err(ERROR_INVALID_ARENA);
     }
     set_state_field(state_offset, STATE_PENDING_NAME, 0)?;
-    set_state_field(state_offset, STATE_INCLUDE_IGNORE_MISSING, 0)
+    set_state_field(state_offset, STATE_PENDING_LOAD_KIND, LOAD_INCLUDE)
 }
 
 fn resume_output() -> Result<(), u32> {
@@ -499,10 +517,14 @@ fn run_active_render() -> Result<u32, u32> {
         let parent = read_u32(frame, FRAME_PARENT)?;
         let source_offset = read_u32(frame, FRAME_SOURCE)?;
         let cursor = read_u32(frame, FRAME_CURSOR)? as usize;
+        let end_cursor = read_u32(frame, FRAME_END_CURSOR)? as usize;
         let source = record_at(source_offset, TAG_SOURCE)?;
-        let (item, next_cursor) =
+        let (item, next_cursor) = if end_cursor != 0 && cursor >= end_cursor {
+            (TemplateItem::End, cursor)
+        } else {
             next_item_with_options(source, cursor, parse_options(state_offset)?)
-                .map_err(render_error_code)?;
+                .map_err(render_error_code)?
+        };
         let work = match item {
             TemplateItem::Text(bytes)
             | TemplateItem::Expression(bytes)
@@ -539,8 +561,12 @@ fn run_active_render() -> Result<u32, u32> {
             } => {
                 set_state_field(
                     state_offset,
-                    STATE_INCLUDE_IGNORE_MISSING,
-                    u32::from(ignore_missing),
+                    STATE_PENDING_LOAD_KIND,
+                    if ignore_missing {
+                        LOAD_INCLUDE_OPTIONAL
+                    } else {
+                        LOAD_INCLUDE
+                    },
                 )?;
                 if let Some(state) = start_expression(state_offset, expression, EXPRESSION_INCLUDE)?
                 {
@@ -565,8 +591,10 @@ fn run_active_render() -> Result<u32, u32> {
                     read_u32(frame, FRAME_SCOPE_BASE)?,
                 )?;
                 set_state_field(state_offset, STATE_CURRENT_FRAME, parent)?;
-                let depth = state_field(state_offset, STATE_INCLUDE_DEPTH)?;
-                set_state_field(state_offset, STATE_INCLUDE_DEPTH, depth.saturating_sub(1))?;
+                if end_cursor == 0 {
+                    let depth = state_field(state_offset, STATE_INCLUDE_DEPTH)?;
+                    set_state_field(state_offset, STATE_INCLUDE_DEPTH, depth.saturating_sub(1))?;
+                }
             }
         }
     }
@@ -608,11 +636,13 @@ fn start_expression(state_offset: u32, expression: &[u8], action: u32) -> Result
 }
 
 fn handle_tag(state_offset: u32, directive: &[u8]) -> Result<Option<u32>, u32> {
+    if let Some(expression) = directive_keyword(directive, b"extends") {
+        prepare_extending_template(state_offset)?;
+        set_state_field(state_offset, STATE_PENDING_LOAD_KIND, LOAD_EXTENDS)?;
+        return start_expression(state_offset, expression, EXPRESSION_EXTENDS);
+    }
     if let Some(name) = directive_keyword(directive, b"block") {
-        let block = parse_tag_call(name).map_err(|_| ERROR_UNSUPPORTED_TAG)?;
-        if !block.arguments.is_empty() {
-            return Err(ERROR_UNSUPPORTED_TAG);
-        }
+        start_block(state_offset, name)?;
         return Ok(None);
     }
     if directive == b"endblock" {
@@ -667,7 +697,195 @@ fn handle_tag(state_offset: u32, directive: &[u8]) -> Result<Option<u32>, u32> {
     start_tag(state_offset, directive).map(Some)
 }
 
+fn prepare_extending_template(state_offset: u32) -> Result<(), u32> {
+    let frame_offset = state_field(state_offset, STATE_CURRENT_FRAME)?;
+    let frame = record_at(frame_offset, TAG_FRAME)?;
+    if read_u32(frame, FRAME_END_CURSOR)? != 0 {
+        return Err(ERROR_UNSUPPORTED_TAG);
+    }
+    let source_offset = read_u32(frame, FRAME_SOURCE)?;
+    let source_length = record_at(source_offset, TAG_SOURCE)?.len();
+    let mut cursor = 0usize;
+    let mut block_depth = 0usize;
+    loop {
+        let source = record_at(source_offset, TAG_SOURCE)?;
+        let (item, next_cursor) =
+            next_item_with_options(source, cursor, parse_options(state_offset)?)
+                .map_err(render_error_code)?;
+        match item {
+            TemplateItem::Tag(directive) => {
+                if let Some(name) = directive_keyword(directive, b"block") {
+                    register_block_definition(
+                        state_offset,
+                        name,
+                        frame_offset,
+                        source_offset,
+                        next_cursor as u32,
+                    )?;
+                    block_depth = block_depth.checked_add(1).ok_or(ERROR_RESOURCE_LIMIT)?;
+                } else if directive == b"endblock" {
+                    block_depth = block_depth.saturating_sub(1);
+                } else if let Some(signature) = directive_keyword(directive, b"macro") {
+                    let end_cursor = if block_depth == 0 {
+                        register_macro_definition(
+                            state_offset,
+                            signature,
+                            frame_offset,
+                            source_offset,
+                            next_cursor as u32,
+                        )? as usize
+                    } else {
+                        find_macro_end(source, next_cursor, parse_options(state_offset)?)
+                            .map_err(render_error_code)?
+                    };
+                    cursor = end_cursor;
+                    continue;
+                }
+            }
+            TemplateItem::End => break,
+            _ => {}
+        }
+        cursor = next_cursor;
+    }
+    set_frame_field(frame_offset, FRAME_CURSOR, source_length as u32)
+}
+
+fn register_block_definition(
+    state_offset: u32,
+    name: &[u8],
+    frame_offset: u32,
+    source_offset: u32,
+    body_cursor: u32,
+) -> Result<u32, u32> {
+    let block = parse_tag_call(name).map_err(|_| ERROR_UNSUPPORTED_TAG)?;
+    if !block.arguments.is_empty() {
+        return Err(ERROR_UNSUPPORTED_TAG);
+    }
+    let end_cursor = find_block_end(
+        record_at(source_offset, TAG_SOURCE)?,
+        body_cursor as usize,
+        parse_options(state_offset)?,
+    )
+    .map_err(render_error_code)? as u32;
+    let name_offset = write_bytes_record(TAG_STRING, block.name)?;
+    let definition_offset = allocate_record(TAG_BLOCK_DEFINITION, BLOCK_DEFINITION_LENGTH)?;
+    let definition = mutable_record_at(definition_offset, TAG_BLOCK_DEFINITION)?;
+    write_u32(definition, BLOCK_DEFINITION_PARENT, 0)?;
+    write_u32(definition, BLOCK_DEFINITION_NAME, name_offset)?;
+    write_u32(definition, BLOCK_DEFINITION_SOURCE, source_offset)?;
+    write_u32(definition, BLOCK_DEFINITION_BODY_CURSOR, body_cursor)?;
+    write_u32(definition, BLOCK_DEFINITION_END_CURSOR, end_cursor)?;
+    write_u32(
+        definition,
+        BLOCK_DEFINITION_SCOPE,
+        state_field(state_offset, STATE_CURRENT_SCOPE)?,
+    )?;
+    write_u32(definition, BLOCK_DEFINITION_FRAME, frame_offset)?;
+    let first_definition = state_field(state_offset, STATE_CURRENT_BLOCK_DEFINITION)?;
+    if first_definition == 0 {
+        set_state_field(
+            state_offset,
+            STATE_CURRENT_BLOCK_DEFINITION,
+            definition_offset,
+        )?;
+    } else {
+        let mut last_definition = first_definition;
+        loop {
+            let next = block_definition_field(last_definition, BLOCK_DEFINITION_PARENT)?;
+            if next == 0 {
+                break;
+            }
+            last_definition = next;
+        }
+        write_u32(
+            mutable_record_at(last_definition, TAG_BLOCK_DEFINITION)?,
+            BLOCK_DEFINITION_PARENT,
+            definition_offset,
+        )?;
+    }
+    Ok(end_cursor)
+}
+
+fn resolve_block(state_offset: u32, name: &[u8]) -> Result<Option<u32>, u32> {
+    let mut definition_offset = state_field(state_offset, STATE_CURRENT_BLOCK_DEFINITION)?;
+    while definition_offset != 0 {
+        let definition = record_at(definition_offset, TAG_BLOCK_DEFINITION)?;
+        if definition.len() != BLOCK_DEFINITION_LENGTH as usize {
+            return Err(ERROR_INVALID_RECORD);
+        }
+        if record_at(read_u32(definition, BLOCK_DEFINITION_NAME)?, TAG_STRING)? == name {
+            return Ok(Some(definition_offset));
+        }
+        definition_offset = read_u32(definition, BLOCK_DEFINITION_PARENT)?;
+    }
+    Ok(None)
+}
+
+fn start_block(state_offset: u32, name: &[u8]) -> Result<(), u32> {
+    let block = parse_tag_call(name).map_err(|_| ERROR_UNSUPPORTED_TAG)?;
+    if !block.arguments.is_empty() {
+        return Err(ERROR_UNSUPPORTED_TAG);
+    }
+    let Some(definition_offset) = resolve_block(state_offset, block.name)? else {
+        return Ok(());
+    };
+    let frame_offset = state_field(state_offset, STATE_CURRENT_FRAME)?;
+    let frame = record_at(frame_offset, TAG_FRAME)?;
+    let source_offset = read_u32(frame, FRAME_SOURCE)?;
+    let override_source = block_definition_field(definition_offset, BLOCK_DEFINITION_SOURCE)?;
+    if source_offset == override_source {
+        return Ok(());
+    }
+    let body_cursor = read_u32(frame, FRAME_CURSOR)?;
+    let end_cursor = find_block_end(
+        record_at(source_offset, TAG_SOURCE)?,
+        body_cursor as usize,
+        parse_options(state_offset)?,
+    )
+    .map_err(render_error_code)? as u32;
+    set_frame_field(frame_offset, FRAME_CURSOR, end_cursor)?;
+
+    let block_frame = allocate_record(TAG_FRAME, FRAME_LENGTH)?;
+    write_frame(
+        block_frame,
+        frame_offset,
+        override_source,
+        block_definition_field(definition_offset, BLOCK_DEFINITION_BODY_CURSOR)?,
+        0,
+        state_field(state_offset, STATE_CURRENT_SCOPE)?,
+        block_definition_field(definition_offset, BLOCK_DEFINITION_END_CURSOR)?,
+    )?;
+    set_state_field(state_offset, STATE_CURRENT_FRAME, block_frame)?;
+    set_state_field(state_offset, STATE_TRANSIENT_BASE, unsafe { ARENA_CURSOR })?;
+    set_state_field(
+        state_offset,
+        STATE_CURRENT_SCOPE,
+        block_definition_field(definition_offset, BLOCK_DEFINITION_SCOPE)?,
+    )
+}
+
 fn define_macro(state_offset: u32, signature: &[u8]) -> Result<(), u32> {
+    let frame_offset = state_field(state_offset, STATE_CURRENT_FRAME)?;
+    let frame = record_at(frame_offset, TAG_FRAME)?;
+    let source_offset = read_u32(frame, FRAME_SOURCE)?;
+    let body_cursor = read_u32(frame, FRAME_CURSOR)?;
+    let end_cursor = register_macro_definition(
+        state_offset,
+        signature,
+        frame_offset,
+        source_offset,
+        body_cursor,
+    )?;
+    set_frame_field(frame_offset, FRAME_CURSOR, end_cursor)
+}
+
+fn register_macro_definition(
+    state_offset: u32,
+    signature: &[u8],
+    frame_offset: u32,
+    source_offset: u32,
+    body_cursor: u32,
+) -> Result<u32, u32> {
     let macro_signature = parse_tag_call(signature).map_err(|_| ERROR_UNSUPPORTED_TAG)?;
     let mut parameter_cursor = 0usize;
     while let Some(parameter) = next_macro_parameter(macro_signature.arguments, parameter_cursor)
@@ -676,10 +894,6 @@ fn define_macro(state_offset: u32, signature: &[u8]) -> Result<(), u32> {
         parameter_cursor = parameter.next_cursor;
     }
 
-    let frame_offset = state_field(state_offset, STATE_CURRENT_FRAME)?;
-    let frame = record_at(frame_offset, TAG_FRAME)?;
-    let source_offset = read_u32(frame, FRAME_SOURCE)?;
-    let body_cursor = read_u32(frame, FRAME_CURSOR)?;
     let source = record_at(source_offset, TAG_SOURCE)?;
     let end_cursor = find_macro_end(source, body_cursor as usize, parse_options(state_offset)?)
         .map_err(render_error_code)?;
@@ -708,7 +922,7 @@ fn define_macro(state_offset: u32, signature: &[u8]) -> Result<(), u32> {
         STATE_CURRENT_MACRO_DEFINITION,
         definition_offset,
     )?;
-    set_frame_field(frame_offset, FRAME_CURSOR, end_cursor as u32)
+    Ok(end_cursor as u32)
 }
 
 fn resolve_macro(state_offset: u32, name: &[u8]) -> Result<Option<u32>, u32> {
@@ -894,6 +1108,7 @@ fn start_macro_call(
         macro_definition_field(definition_offset, MACRO_DEFINITION_BODY_CURSOR)?,
         0,
         macro_definition_field(definition_offset, MACRO_DEFINITION_SCOPE)?,
+        0,
     )?;
     let call_offset = allocate_record(TAG_MACRO_CALL, MACRO_CALL_LENGTH)?;
     let call_record = mutable_record_at(call_offset, TAG_MACRO_CALL)?;
@@ -930,8 +1145,8 @@ fn start_macro_call(
     )?;
     write_u32(
         call_record,
-        MACRO_CALL_INCLUDE_IGNORE_MISSING,
-        state_field(state_offset, STATE_INCLUDE_IGNORE_MISSING)?,
+        MACRO_CALL_PENDING_LOAD_KIND,
+        state_field(state_offset, STATE_PENDING_LOAD_KIND)?,
     )?;
     write_u32(
         call_record,
@@ -972,7 +1187,7 @@ fn start_macro_call(
     set_state_field(state_offset, STATE_CURRENT_VALUE, 0)?;
     set_state_field(state_offset, STATE_EXPRESSION_ACTION, EXPRESSION_OUTPUT)?;
     set_state_field(state_offset, STATE_PENDING_SET_BINDINGS, 0)?;
-    set_state_field(state_offset, STATE_INCLUDE_IGNORE_MISSING, 0)?;
+    set_state_field(state_offset, STATE_PENDING_LOAD_KIND, LOAD_INCLUDE)?;
     set_state_field(state_offset, STATE_PENDING_NAME, 0)?;
     set_state_field(state_offset, STATE_NEGATE_RESULT, NEGATE_NONE)?;
     begin_capture(state_offset, 0)?;
@@ -1058,8 +1273,8 @@ fn finish_macro_call(state_offset: u32) -> Result<Option<u32>, u32> {
     )?;
     set_state_field(
         state_offset,
-        STATE_INCLUDE_IGNORE_MISSING,
-        macro_call_field(call_offset, MACRO_CALL_INCLUDE_IGNORE_MISSING)?,
+        STATE_PENDING_LOAD_KIND,
+        macro_call_field(call_offset, MACRO_CALL_PENDING_LOAD_KIND)?,
     )?;
     set_state_field(
         state_offset,
@@ -1421,7 +1636,9 @@ fn continue_expression(state_offset: u32) -> Result<Option<u32>, u32> {
                 set_state_field(state_offset, STATE_PENDING_SET_BINDINGS, 0)?;
                 None
             }
-            EXPRESSION_INCLUDE => Some(issue_include(state_offset, value_offset)?),
+            EXPRESSION_INCLUDE | EXPRESSION_EXTENDS => {
+                Some(issue_include(state_offset, value_offset)?)
+            }
             _ => return Err(ERROR_INVALID_ARENA),
         };
         if next_state.is_none()
@@ -1534,7 +1751,7 @@ fn issue_include(state_offset: u32, value_offset: u32) -> Result<u32, u32> {
     )?;
     let name_offset = write_bytes_record(TAG_STRING, name)?;
     set_state_field(state_offset, STATE_PENDING_NAME, name_offset)?;
-    let state = if state_field(state_offset, STATE_INCLUDE_IGNORE_MISSING)? == 1 {
+    let state = if state_field(state_offset, STATE_PENDING_LOAD_KIND)? == LOAD_INCLUDE_OPTIONAL {
         STATE_LOAD_OPTIONAL_TEMPLATE
     } else {
         STATE_LOAD_TEMPLATE
@@ -2566,13 +2783,15 @@ fn write_frame(
     cursor: u32,
     canonical: u32,
     scope_base: u32,
+    end_cursor: u32,
 ) -> Result<(), u32> {
     let frame = mutable_record_at(offset, TAG_FRAME)?;
     write_u32(frame, FRAME_PARENT, parent)?;
     write_u32(frame, FRAME_SOURCE, source)?;
     write_u32(frame, FRAME_CURSOR, cursor)?;
     write_u32(frame, FRAME_CANONICAL_NAME, canonical)?;
-    write_u32(frame, FRAME_SCOPE_BASE, scope_base)
+    write_u32(frame, FRAME_SCOPE_BASE, scope_base)?;
+    write_u32(frame, FRAME_END_CURSOR, end_cursor)
 }
 
 fn set_frame_field(offset: u32, field: usize, value: u32) -> Result<(), u32> {
@@ -2621,6 +2840,14 @@ fn macro_call_field(offset: u32, field: usize) -> Result<u32, u32> {
         return Err(ERROR_INVALID_RECORD);
     }
     read_u32(call, field)
+}
+
+fn block_definition_field(offset: u32, field: usize) -> Result<u32, u32> {
+    let definition = record_at(offset, TAG_BLOCK_DEFINITION)?;
+    if definition.len() != BLOCK_DEFINITION_LENGTH as usize {
+        return Err(ERROR_INVALID_RECORD);
+    }
+    read_u32(definition, field)
 }
 
 fn iterable_length(offset: u32) -> Result<u32, u32> {

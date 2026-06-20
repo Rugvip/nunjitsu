@@ -74,6 +74,10 @@ engine must not hide syntax errors merely because a branch or macro was unused.
 Includes and inheritance are loaded on demand. Within one render, canonical
 template identities prevent duplicate loading and enable cycle detection. No
 parsed form, dependency graph, or raw source is retained for another render.
+An extending template contributes compact block definitions in child-first
+resolution order. Selected overrides execute through bounded source frames, so
+inheritance does not require copying block bodies or retaining a precompiled
+template graph.
 
 ## Suspension and resumption
 

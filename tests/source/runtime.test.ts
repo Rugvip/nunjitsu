@@ -948,6 +948,35 @@ test('executes deferred macros in isolated captured scopes', async () => {
   }
 });
 
+test('resolves inherited blocks through bounded one-shot frames', async () => {
+  const engine = await createEngine({
+    loaders: [memoryLoader({
+      'base.njk': 'A{% block content %}base{% endblock %}B{% block footer %}base footer{% endblock %}C',
+      'middle.njk': [
+        '{% extends "base.njk" %}',
+        '{% block content %}middle{% endblock %}',
+        '{% block footer %}middle footer{% endblock %}',
+      ].join(''),
+    })],
+  });
+  try {
+    assert.equal(
+      await engine.render({
+        source: '{% extends parent %}{% block content %}child{% endblock %}',
+      }, { parent: 'middle.njk' }),
+      'AchildBmiddle footerC',
+    );
+    assert.equal(
+      (await Array.fromAsync(engine.renderStream({
+        source: '{% extends "base.njk" %}{% block content %}streamed{% endblock %}',
+      }))).join(''),
+      'AstreamedBbase footerC',
+    );
+  } finally {
+    await engine.dispose();
+  }
+});
+
 test('cancels a render while its worker is suspended on an include loader', async () => {
   let markLoadStarted: (() => void) | undefined;
   const loadStarted = new Promise<void>(resolve => {

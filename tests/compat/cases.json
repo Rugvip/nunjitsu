@@ -456,6 +456,15 @@
       "expected": "11020"
     },
     {
+      "id": "compiler-macro-call-inside-inherited-block",
+      "template": "{% extends \"base.njk\" %}{% macro foo(x, y=2, z=5) %}{{ x }}{{ y }}{{ z }}{% endmacro %}{% block block1 %}{{ foo(1) }}{% endblock %}",
+      "templates": { "base.njk": "Foo{% block block1 %}Bar{% endblock %}{% block block2 %}Baz{% endblock %}Fizzle" },
+      "nativeRender": false,
+      "context": {},
+      "autoescape": false,
+      "expected": "Foo125BazFizzle"
+    },
+    {
       "id": "compiler-macro-defined-across-blocks",
       "template": "{% block bar %}{% macro foo(x, y=2, z=5) %}{{ x }}{{ y }}{{ z }}{% endmacro %}{% endblock %}{% block baz %}{{ foo(1) }}{% endblock %}",
       "nativeRender": false,
