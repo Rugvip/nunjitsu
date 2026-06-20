@@ -920,6 +920,27 @@
     {
       "upstream": { "id": "tests/filters.js:64", "file": "tests/filters.js", "test": "wordcount" },
       "status": "ported"
+    },
+    {
+      "upstream": { "id": "tests/filters.js:2", "file": "tests/filters.js", "test": "batch" },
+      "status": "ported"
+    },
+    {
+      "upstream": { "id": "tests/filters.js:14", "file": "tests/filters.js", "test": "dictsort" },
+      "status": "ported"
+    },
+    {
+      "upstream": { "id": "tests/filters.js:41", "file": "tests/filters.js", "test": "list" },
+      "status": "ported"
+    },
+    {
+      "upstream": { "id": "tests/filters.js:52", "file": "tests/filters.js", "test": "slice" },
+      "status": "ported"
+    },
+    {
+      "upstream": { "id": "tests/filters.js:54", "file": "tests/filters.js", "test": "sort" },
+      "status": "adapted",
+      "reason": "All copied-value sort assertions are ported. Exact throwOnUndefined diagnostics are outside the documented exception-format contract."
     }
   ]
 }

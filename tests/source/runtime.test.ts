@@ -501,6 +501,51 @@ test('matches scalar, numeric, and text filter edge semantics', async () => {
     ['{{ "foo" | upper }}|{{ "FOO" | lower }}', {}, 'FOO|foo'],
     ['{{ "foo bar baz" | wordcount }}', {}, '3'],
     ['{{ null | wordcount }}', {}, ''],
+    [
+      '{% for a in [1,2,3,4,5,6]|batch(2) %}-{% for b in a %}{{ b }}{% endfor %}-{% endfor %}',
+      {},
+      '-12--34--56-',
+    ],
+    [
+      '{% for item in items | dictsort %}{{ item[0] }}{% endfor %}',
+      { items: { e: 1, d: 2, c: 3, a: 4, f: 5, b: 6 } },
+      'abcdef',
+    ],
+    [
+      '{% for item in items | dictsort(false, "value") %}{{ item[0] }}{% endfor %}',
+      { items: { a: 6, b: 5, c: 1, d: 2 } },
+      'cdba',
+    ],
+    ['{% for i in "foobar" | list %}{{ i }},{% endfor %}', {}, 'f,o,o,b,a,r,'],
+    [
+      '{% for pair in person | list %}{{ pair.key }}: {{ pair.value }} - {% endfor %}',
+      { person: { name: 'Joe', age: 83 } },
+      'name: Joe - age: 83 - ',
+    ],
+    [
+      '{% for items in arr | slice(3) %}--{% for item in items %}{{ item }}{% endfor %}--{% endfor %}',
+      { arr: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10] },
+      '--1234----567----8910--',
+    ],
+    ['{% for i in [3,5,2,1,4,6] | sort %}{{ i }}{% endfor %}', {}, '123456'],
+    ['{% for i in [1,6,3,7] | sort(true) %}{{ i }}{% endfor %}', {}, '7631'],
+    ['{% for i in ["fOo", "Foo"] | sort(false, true) %}{{ i }}{% endfor %}', {}, 'FoofOo'],
+    [
+      '{% for item in items | sort(false, false, "name") %}{{ item.name }}{% endfor %}',
+      { items: [{ name: 'james' }, { name: 'fred' }, { name: 'john' }] },
+      'fredjamesjohn',
+    ],
+    [
+      '{% for item in items | sort(attribute="meta.age") %}{{ item.name }}{% endfor %}',
+      {
+        items: [
+          { name: 'james', meta: { age: 25 } },
+          { name: 'fred', meta: { age: 18 } },
+          { name: 'john', meta: { age: 19 } },
+        ],
+      },
+      'fredjohnjames',
+    ],
   ];
   try {
     for (const [source, context, expected] of cases) {
