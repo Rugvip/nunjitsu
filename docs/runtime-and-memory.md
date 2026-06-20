@@ -51,6 +51,11 @@ linear memory. This includes loaded UTF-8 sources, compact syntax records,
 deferred AST bodies, safe input values, evaluator frames, capability payloads,
 and output chunks.
 
+Built-in `cycler` and `joiner` globals use small typed mutable arena records.
+Their cursors are render-local state, are reachable only through template
+scope, and disappear with the wholesale arena reset. They never become host
+objects or persistent engine state.
+
 Arena invariants are non-negotiable:
 
 - Records have an explicit kind, byte length, and alignment.

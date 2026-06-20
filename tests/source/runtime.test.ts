@@ -238,6 +238,7 @@ test('streams evaluator chunks with backpressure and preserves partial failure s
   } finally {
     await engine.dispose();
   }
+
 });
 
 test('omits comments and preserves raw and verbatim regions', async () => {
@@ -939,6 +940,71 @@ test('matches built-in test semantics across copied values', async () => {
     );
   } finally {
     await engine.dispose();
+  }
+});
+
+test('provides render-local range, cycler, and joiner globals', async () => {
+  const engine = await createEngine();
+  const cases: readonly [string, string][] = [
+    ['{% for i in range(0, 10) %}{{ i }}{% endfor %}', '0123456789'],
+    ['{% for i in range(10) %}{{ i }}{% endfor %}', '0123456789'],
+    ['{% for i in range(5, 10) %}{{ i }}{% endfor %}', '56789'],
+    ['{% for i in range(-2, 0) %}{{ i }}{% endfor %}', '-2-1'],
+    ['{% for i in range(5, 10, 2) %}{{ i }}{% endfor %}', '579'],
+    ['{% for i in range(5, 10, 2.5) %}{{ i }}{% endfor %}', '57.5'],
+    ['{% for i in range(10, 5, -1) %}{{ i }}{% endfor %}', '109876'],
+    ['{% for i in range(10, 5, -2.5) %}{{ i }}{% endfor %}', '107.5'],
+    [
+      '{% set cls = cycler("odd", "even") %}{{ cls.next() }}{{ cls.next() }}{{ cls.next() }}',
+      'oddevenodd',
+    ],
+    [
+      '{% set cls = cycler("odd", "even") %}{{ cls.next() }}{{ cls.reset() }}{{ cls.next() }}',
+      'oddodd',
+    ],
+    [
+      '{% set cls = cycler("odd", "even") %}{{ cls.next() }}{{ cls.next() }}{{ cls.current }}',
+      'oddeveneven',
+    ],
+    [
+      '{% set comma = joiner() %}foo{{ comma() }}bar{{ comma() }}baz{{ comma() }}',
+      'foobar,baz,',
+    ],
+    [
+      '{% set pipe = joiner("|") %}foo{{ pipe() }}bar{{ pipe() }}baz{{ pipe() }}',
+      'foobar|baz|',
+    ],
+  ];
+  try {
+    for (const [source, expected] of cases) {
+      assert.equal(await engine.render({ source }), expected, source);
+    }
+  } finally {
+    await engine.dispose();
+  }
+
+  const configured = await createEngine({
+    globals: {
+      hello(arguments_) {
+        return `Hello ${String(arguments_[0])}`;
+      },
+      goodbye(arguments_) {
+        return `Goodbye ${String(arguments_[0])}`;
+      },
+    },
+  });
+  const isolated = await createEngine();
+  try {
+    assert.equal(
+      await configured.render({ source: '{{ hello("World!") }}|{{ goodbye("World!") }}' }),
+      'Hello World!|Goodbye World!',
+    );
+    await assert.rejects(
+      isolated.render({ source: '{{ hello("World!") }}' }),
+      error => error instanceof NunjitsuRenderError && error.code === 8,
+    );
+  } finally {
+    await Promise.all([configured.dispose(), isolated.dispose()]);
   }
 });
 

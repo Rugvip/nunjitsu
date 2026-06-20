@@ -1179,6 +1179,58 @@
     {
       "upstream": { "id": "tests/tests.js:28", "file": "tests/tests.js", "test": "upper should detect whether or not a string is uppercased" },
       "status": "ported"
+    },
+    {
+      "upstream": { "id": "tests/globals.js:1", "file": "tests/globals.js", "test": "should have range" },
+      "status": "ported"
+    },
+    {
+      "upstream": { "id": "tests/globals.js:2", "file": "tests/globals.js", "test": "should have cycler" },
+      "status": "ported"
+    },
+    {
+      "upstream": { "id": "tests/globals.js:3", "file": "tests/globals.js", "test": "should have joiner" },
+      "status": "ported"
+    },
+    {
+      "upstream": { "id": "tests/globals.js:4", "file": "tests/globals.js", "test": "should allow addition of globals" },
+      "status": "adapted",
+      "reason": "Callable globals are configured immutably when creating a Nunjitsu engine and the equivalent rendering behavior is ported."
+    },
+    {
+      "upstream": { "id": "tests/globals.js:5", "file": "tests/globals.js", "test": "should allow chaining of globals" },
+      "status": "adapted",
+      "reason": "Nunjitsu accepts multiple callable globals in one immutable engine configuration rather than exposing a chainable mutator."
+    },
+    {
+      "upstream": { "id": "tests/globals.js:6", "file": "tests/globals.js", "test": "should allow getting of globals" },
+      "status": "not applicable",
+      "reason": "Nunjitsu does not expose Nunjucks Environment instances or a mutable global getter API."
+    },
+    {
+      "upstream": { "id": "tests/globals.js:7", "file": "tests/globals.js", "test": "should allow getting boolean globals" },
+      "status": "not applicable",
+      "reason": "Nunjitsu exposes callable engine globals through immutable capabilities; copied boolean values belong in render context."
+    },
+    {
+      "upstream": { "id": "tests/globals.js:8", "file": "tests/globals.js", "test": "should fail on getting non-existent global" },
+      "status": "not applicable",
+      "reason": "Nunjitsu has no public global getter; invoking an unregistered template global fails through the render API."
+    },
+    {
+      "upstream": { "id": "tests/globals.js:9", "file": "tests/globals.js", "test": "should pass context as this to global functions" },
+      "status": "not applicable",
+      "reason": "The new capability API does not emulate Nunjucks this.lookup; global arguments are copied explicitly and callbacks receive a render-owned AbortSignal."
+    },
+    {
+      "upstream": { "id": "tests/globals.js:10", "file": "tests/globals.js", "test": "should be exclusive to each environment" },
+      "status": "adapted",
+      "reason": "The runtime test verifies immutable global registries are isolated between independently created engines."
+    },
+    {
+      "upstream": { "id": "tests/globals.js:11", "file": "tests/globals.js", "test": "should return errors from globals" },
+      "status": "adapted",
+      "reason": "Nunjitsu propagates trusted global callback failures as promise rejections and verifies worker cleanup through its asynchronous API."
     }
   ]
 }

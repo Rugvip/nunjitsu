@@ -51,6 +51,8 @@ const TAG_TAG_BOUNDARIES: u32 = 28;
 const TAG_TAG_ARGUMENTS: u32 = 29;
 const TAG_FILTER_BLOCK: u32 = 30;
 const TAG_REGEX: u32 = 31;
+const TAG_CYCLER: u32 = 32;
+const TAG_JOINER: u32 = 33;
 
 #[link(wasm_import_module = "env")]
 unsafe extern "C" {
@@ -239,6 +241,15 @@ const FILTER_BLOCK_LENGTH: u32 = 12;
 const FILTER_BLOCK_PARENT: usize = 0;
 const FILTER_BLOCK_FRAME: usize = 4;
 const FILTER_BLOCK_EXPRESSION: usize = 8;
+
+const CYCLER_FIXED_LENGTH: u32 = 12;
+const CYCLER_COUNT: usize = 0;
+const CYCLER_NEXT_INDEX: usize = 4;
+const CYCLER_CURRENT: usize = 8;
+
+const JOINER_LENGTH: u32 = 8;
+const JOINER_SEPARATOR: usize = 0;
+const JOINER_USED: usize = 4;
 
 const SCOPE_LENGTH: u32 = 12;
 const SCOPE_PARENT: usize = 0;
@@ -756,6 +767,17 @@ fn start_expression(state_offset: u32, expression: &[u8], action: u32) -> Result
         if let Some(definition_offset) = resolve_macro(state_offset, call.name)? {
             start_macro_call(state_offset, definition_offset, call, negated, 0)?;
             return Ok(None);
+        }
+        let registered =
+            resolve_capability(state_field(state_offset, STATE_GLOBALS)?, call.name)?.is_some();
+        if !registered
+            && let Some(mut value_offset) = apply_builtin_call(state_offset, call)?
+        {
+            if negated {
+                value_offset = write_boolean(!Value::at(value_offset)?.truthy())?;
+            }
+            set_state_field(state_offset, STATE_CURRENT_VALUE, value_offset)?;
+            return continue_expression(state_offset);
         }
         return issue_capability(
             state_offset,
@@ -3135,6 +3157,182 @@ fn resolve_operand(state_offset: u32, operand: Operand<'_>) -> Result<u32, u32> 
     Ok(value_offset)
 }
 
+fn apply_builtin_call(state_offset: u32, call: Call<'_>) -> Result<Option<u32>, u32> {
+    let context_offset = state_field(state_offset, STATE_CONTEXT)?;
+    let context = Context::new(record_at(context_offset, TAG_RECORD)?, state_offset)?;
+    if let Some(value_offset) = context.lookup_offset(call.name) {
+        if matches!(Value::at(value_offset)?, Value::Joiner(_)) {
+            return call_joiner(value_offset, call).map(Some);
+        }
+        return Ok(None);
+    }
+    for (suffix, reset) in [(b".next".as_slice(), false), (b".reset".as_slice(), true)] {
+        if let Some(owner) = call.name.strip_suffix(suffix)
+            && let Some(value_offset) = context.lookup_offset(owner)
+            && matches!(Value::at(value_offset)?, Value::Cycler(_))
+        {
+            return call_cycler(value_offset, call, reset).map(Some);
+        }
+    }
+    match call.name {
+        b"range" => range_value(state_offset, call).map(Some),
+        b"cycler" => create_cycler(state_offset, call).map(Some),
+        b"joiner" => create_joiner(state_offset, call).map(Some),
+        _ => Ok(None),
+    }
+}
+
+fn range_value(state_offset: u32, call: Call<'_>) -> Result<u32, u32> {
+    let count = argument_count(call)?;
+    if !(1..=3).contains(&count) {
+        return Err(ERROR_INVALID_EXPRESSION);
+    }
+    let first = call_positional_argument(state_offset, call, 0)?.ok_or(ERROR_INVALID_EXPRESSION)?;
+    let (start, stop) = if count == 1 {
+        (0.0, Value::at(first)?.as_number())
+    } else {
+        let stop = call_positional_argument(state_offset, call, 1)?
+            .ok_or(ERROR_INVALID_EXPRESSION)?;
+        (Value::at(first)?.as_number(), Value::at(stop)?.as_number())
+    };
+    let step = if count == 3 {
+        let step = call_positional_argument(state_offset, call, 2)?
+            .ok_or(ERROR_INVALID_EXPRESSION)?;
+        let step_value = Value::at(step)?;
+        if step_value.truthy() {
+            step_value.as_number()
+        } else {
+            1.0
+        }
+    } else {
+        1.0
+    };
+    if !start.is_finite() || !stop.is_finite() || !step.is_finite() {
+        return Err(ERROR_INVALID_EXPRESSION);
+    }
+    let count = if step > 0.0 && start < stop {
+        libm::ceil((stop - start) / step)
+    } else if step < 0.0 && start > stop {
+        libm::ceil((start - stop) / -step)
+    } else {
+        0.0
+    };
+    if count > u32::MAX as f64 {
+        return Err(ERROR_RESOURCE_LIMIT);
+    }
+    let count = count as usize;
+    charge_counter(
+        state_offset,
+        STATE_WORK_UNITS,
+        STATE_LIMIT_WORK_UNITS,
+        u32::try_from(count).map_err(|_| ERROR_RESOURCE_LIMIT)?,
+    )?;
+    let output = allocate_value_array(count)?;
+    let mut value = start;
+    for index in 0..count {
+        let item = write_computed_number(value)?;
+        write_u32(
+            mutable_record_at(output, TAG_ARRAY)?,
+            4 + index * 4,
+            item,
+        )?;
+        value += step;
+    }
+    Ok(output)
+}
+
+fn create_cycler(state_offset: u32, call: Call<'_>) -> Result<u32, u32> {
+    let count = argument_count(call)?;
+    let payload_length = CYCLER_FIXED_LENGTH
+        .checked_add(
+            u32::try_from(count)
+                .map_err(|_| ERROR_RESOURCE_LIMIT)?
+                .checked_mul(4)
+                .ok_or(ERROR_RESOURCE_LIMIT)?,
+        )
+        .ok_or(ERROR_RESOURCE_LIMIT)?;
+    let offset = allocate_record(TAG_CYCLER, payload_length)?;
+    let current = allocate_record(TAG_NULL, 0)?;
+    let cycler = mutable_record_at(offset, TAG_CYCLER)?;
+    write_u32(cycler, CYCLER_COUNT, count as u32)?;
+    write_u32(cycler, CYCLER_NEXT_INDEX, 0)?;
+    write_u32(cycler, CYCLER_CURRENT, current)?;
+    for index in 0..count {
+        let value = call_positional_argument(state_offset, call, index)?
+            .ok_or(ERROR_INVALID_EXPRESSION)?;
+        write_u32(
+            mutable_record_at(offset, TAG_CYCLER)?,
+            CYCLER_FIXED_LENGTH as usize + index * 4,
+            value,
+        )?;
+    }
+    Ok(offset)
+}
+
+fn call_cycler(value_offset: u32, call: Call<'_>, reset: bool) -> Result<u32, u32> {
+    require_argument_count(call, 0)?;
+    if reset {
+        let current = allocate_record(TAG_NULL, 0)?;
+        let cycler = mutable_record_at(value_offset, TAG_CYCLER)?;
+        write_u32(cycler, CYCLER_NEXT_INDEX, 0)?;
+        write_u32(cycler, CYCLER_CURRENT, current)?;
+        return allocate_record(TAG_UNDEFINED, 0);
+    }
+    let cycler = record_at(value_offset, TAG_CYCLER)?;
+    let count = read_u32(cycler, CYCLER_COUNT)? as usize;
+    if count == 0 {
+        let current = allocate_record(TAG_UNDEFINED, 0)?;
+        write_u32(
+            mutable_record_at(value_offset, TAG_CYCLER)?,
+            CYCLER_CURRENT,
+            current,
+        )?;
+        return Ok(current);
+    }
+    let index = read_u32(cycler, CYCLER_NEXT_INDEX)? as usize;
+    if index >= count {
+        return Err(ERROR_INVALID_RECORD);
+    }
+    let current = read_u32(cycler, CYCLER_FIXED_LENGTH as usize + index * 4)?;
+    let next = (index + 1) % count;
+    let cycler = mutable_record_at(value_offset, TAG_CYCLER)?;
+    write_u32(cycler, CYCLER_NEXT_INDEX, next as u32)?;
+    write_u32(cycler, CYCLER_CURRENT, current)?;
+    Ok(current)
+}
+
+fn create_joiner(state_offset: u32, call: Call<'_>) -> Result<u32, u32> {
+    if argument_count(call)? > 1 {
+        return Err(ERROR_INVALID_EXPRESSION);
+    }
+    let separator = if let Some(value) = call_positional_argument(state_offset, call, 0)? {
+        if Value::at(value)?.truthy() {
+            value
+        } else {
+            write_bytes_record(TAG_STRING, b",")?
+        }
+    } else {
+        write_bytes_record(TAG_STRING, b",")?
+    };
+    let offset = allocate_record(TAG_JOINER, JOINER_LENGTH)?;
+    let joiner = mutable_record_at(offset, TAG_JOINER)?;
+    write_u32(joiner, JOINER_SEPARATOR, separator)?;
+    write_u32(joiner, JOINER_USED, 0)?;
+    Ok(offset)
+}
+
+fn call_joiner(value_offset: u32, call: Call<'_>) -> Result<u32, u32> {
+    require_argument_count(call, 0)?;
+    let joiner = mutable_record_at(value_offset, TAG_JOINER)?;
+    let used = read_u32(joiner, JOINER_USED)?;
+    write_u32(joiner, JOINER_USED, 1)?;
+    if used == 0 {
+        write_bytes_record(TAG_STRING, b"")
+    } else {
+        read_u32(joiner, JOINER_SEPARATOR)
+    }
+}
+
 fn apply_builtin_filter(
     state_offset: u32,
     call: Call<'_>,
@@ -4929,7 +5127,9 @@ fn dump_indent(spaces_offset: Option<u32>) -> Result<u32, u32> {
 
 fn json_value_length(value_offset: u32, indent: &[u8], depth: usize) -> Result<usize, u32> {
     match Value::at(value_offset)? {
-        Value::Undefined | Value::Null | Value::Macro => Ok(4),
+        Value::Undefined | Value::Null | Value::Cycler(_) | Value::Joiner(_) | Value::Macro => {
+            Ok(4)
+        }
         Value::Boolean(false) => Ok(5),
         Value::Boolean(true) => Ok(4),
         Value::Number { numeric, rendered } => {
@@ -5053,7 +5253,7 @@ fn write_json_value(
     cursor: &mut usize,
 ) -> Result<(), u32> {
     match Value::at(value_offset)? {
-        Value::Undefined | Value::Null | Value::Macro => {
+        Value::Undefined | Value::Null | Value::Cycler(_) | Value::Joiner(_) | Value::Macro => {
             write_coerced_bytes(output, cursor, b"null")
         }
         Value::Boolean(false) => write_coerced_bytes(output, cursor, b"false"),
@@ -5710,9 +5910,6 @@ fn edge_value(value: Value, last: bool) -> Result<u32, u32> {
 fn evaluate_sync_expression(state_offset: u32, expression: &[u8]) -> Result<u32, u32> {
     let (atom, mut cursor, negated) =
         parse_base(expression).map_err(|_| ERROR_INVALID_EXPRESSION)?;
-    if matches!(atom, Atom::Call(_)) {
-        return Err(ERROR_INVALID_EXPRESSION);
-    }
     let mut current = resolve_operand(state_offset, Operand { atom, negated })?;
     while let Some((operation, next_cursor)) =
         next_operation(expression, cursor).map_err(|_| ERROR_INVALID_EXPRESSION)?
@@ -5910,7 +6107,12 @@ fn resolve_atom(state_offset: u32, atom: Atom<'_>) -> Result<u32, u32> {
         Atom::Boolean(value) => write_boolean(value),
         Atom::Null => allocate_record(TAG_NULL, 0),
         Atom::Undefined => allocate_record(TAG_UNDEFINED, 0),
-        Atom::Call(_) => Err(ERROR_INVALID_EXPRESSION),
+        Atom::Call(call) => {
+            if resolve_capability(state_field(state_offset, STATE_GLOBALS)?, call.name)?.is_some() {
+                return Err(ERROR_INVALID_EXPRESSION);
+            }
+            apply_builtin_call(state_offset, call)?.ok_or(ERROR_INVALID_EXPRESSION)
+        }
         Atom::Group(expression) => evaluate_sync_expression(state_offset, expression),
         Atom::Array(elements) => write_array_literal(state_offset, elements),
         Atom::Record(entries) => write_record_literal(state_offset, entries),
@@ -6770,6 +6972,38 @@ impl Array {
 }
 
 #[derive(Clone, Copy)]
+struct Cycler {
+    payload: &'static [u8],
+}
+
+impl Cycler {
+    fn new(payload: &'static [u8]) -> Result<Self, u32> {
+        if payload.len() < CYCLER_FIXED_LENGTH as usize {
+            return Err(ERROR_INVALID_RECORD);
+        }
+        let count = read_u32(payload, CYCLER_COUNT)? as usize;
+        let expected = (CYCLER_FIXED_LENGTH as usize)
+            .checked_add(count.checked_mul(4).ok_or(ERROR_INVALID_RECORD)?)
+            .ok_or(ERROR_INVALID_RECORD)?;
+        if payload.len() != expected {
+            return Err(ERROR_INVALID_RECORD);
+        }
+        Ok(Self { payload })
+    }
+
+    fn get_offset(self, name: &[u8]) -> Option<u32> {
+        if name == b"current" {
+            read_u32(self.payload, CYCLER_CURRENT).ok()
+        } else {
+            None
+        }
+    }
+}
+
+#[derive(Clone, Copy)]
+struct Joiner;
+
+#[derive(Clone, Copy)]
 enum Value {
     Undefined,
     Null,
@@ -6783,6 +7017,8 @@ enum Value {
     Regex(&'static [u8]),
     Array(Array),
     Record(Record),
+    Cycler(Cycler),
+    Joiner(Joiner),
     Macro,
 }
 
@@ -6810,6 +7046,8 @@ impl Value {
             TAG_REGEX => Ok(Self::Regex(payload)),
             TAG_ARRAY => Ok(Self::Array(Array::new(payload)?)),
             TAG_RECORD => Ok(Self::Record(Record::new(payload)?)),
+            TAG_CYCLER => Ok(Self::Cycler(Cycler::new(payload)?)),
+            TAG_JOINER if payload.len() == JOINER_LENGTH as usize => Ok(Self::Joiner(Joiner)),
             TAG_MACRO_DEFINITION if payload.len() == MACRO_DEFINITION_LENGTH as usize => {
                 Ok(Self::Macro)
             }
@@ -6821,6 +7059,7 @@ impl Value {
         match self {
             Self::Array(array) => array.get_offset(name),
             Self::Record(record) => record.get_offset(name),
+            Self::Cycler(cycler) => cycler.get_offset(name),
             _ => None,
         }
     }
@@ -6855,7 +7094,11 @@ impl Value {
                 bytes: value,
                 safe: false,
             }),
-            Self::Array(_) | Self::Record(_) | Self::Macro => Some(RenderedValue {
+            Self::Cycler(_) => Some(RenderedValue {
+                bytes: b"[object Object]",
+                safe: false,
+            }),
+            Self::Joiner(_) | Self::Array(_) | Self::Record(_) | Self::Macro => Some(RenderedValue {
                 bytes: b"",
                 safe: false,
             }),
@@ -6869,6 +7112,8 @@ impl Value {
             | Self::Regex(_)
             | Self::Array(_)
             | Self::Record(_)
+            | Self::Cycler(_)
+            | Self::Joiner(_)
             | Self::Macro => true,
             Self::Number { numeric, .. } => numeric != 0.0 && !numeric.is_nan(),
             Self::String(value) | Self::SafeString(value) => !value.is_empty(),
@@ -6903,6 +7148,8 @@ impl Value {
             | Self::Regex(_)
             | Self::Array(_)
             | Self::Record(_)
+            | Self::Cycler(_)
+            | Self::Joiner(_)
             | Self::Macro => f64::NAN,
         }
     }
