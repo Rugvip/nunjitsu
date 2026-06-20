@@ -93,6 +93,21 @@
       "upstream": { "id": "tests/compiler.js:109", "file": "tests/compiler.js", "test": "should fail silently on missing templates if requested" },
       "status": "ported",
       "cases": ["compiler-ignore-missing-include", "compiler-ignore-missing-include-context"]
+    },
+    {
+      "upstream": { "id": "tests/compiler.js:15", "file": "tests/compiler.js", "test": "should compile the ternary operator" },
+      "status": "ported",
+      "cases": ["compiler-ternary-false", "compiler-ternary-true"]
+    },
+    {
+      "upstream": { "id": "tests/compiler.js:16", "file": "tests/compiler.js", "test": "should compile inline conditionals" },
+      "status": "ported",
+      "cases": ["compiler-inline-if-true", "compiler-inline-if-false", "compiler-inline-if-not", "compiler-inline-if-and", "compiler-inline-if-or", "compiler-inline-if-group", "compiler-inline-if-comparison"]
+    },
+    {
+      "upstream": { "id": "tests/compiler.js:52", "file": "tests/compiler.js", "test": "should compile python-style ternary operators" },
+      "status": "ported",
+      "cases": ["compiler-python-style-ternary-tests"]
     }
   ]
 }

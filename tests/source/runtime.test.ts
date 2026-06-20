@@ -418,6 +418,12 @@ test('evaluates Rust-native filters and tests without host capability calls', as
       }),
       'true|yes',
     );
+    assert.equal(
+      await engine.render({
+        source: '{{ "selected" if true else absent() }}|{{ absent() if false }}',
+      }),
+      'selected|',
+    );
   } finally {
     await engine.dispose();
   }

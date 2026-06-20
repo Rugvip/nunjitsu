@@ -172,6 +172,86 @@
       "context": { "name": "thedude" },
       "autoescape": false,
       "expected": "hello world "
+    },
+    {
+      "id": "compiler-ternary-false",
+      "template": "{{ \"foo\" if bar else \"baz\" }}",
+      "nativeRender": false,
+      "context": {},
+      "autoescape": false,
+      "expected": "baz"
+    },
+    {
+      "id": "compiler-ternary-true",
+      "template": "{{ \"foo\" if bar else \"baz\" }}",
+      "nativeRender": false,
+      "context": { "bar": true },
+      "autoescape": false,
+      "expected": "foo"
+    },
+    {
+      "id": "compiler-inline-if-true",
+      "template": "Give me some {{ \"pizza\" if hungry else \"water\" }}",
+      "nativeRender": false,
+      "context": { "hungry": true },
+      "autoescape": false,
+      "expected": "Give me some pizza"
+    },
+    {
+      "id": "compiler-inline-if-false",
+      "template": "Give me some {{ \"pizza\" if hungry else \"water\" }}",
+      "nativeRender": false,
+      "context": { "hungry": false },
+      "autoescape": false,
+      "expected": "Give me some water"
+    },
+    {
+      "id": "compiler-inline-if-not",
+      "template": "{{ \"good\" if not hungry }}",
+      "nativeRender": false,
+      "context": { "hungry": false },
+      "autoescape": false,
+      "expected": "good"
+    },
+    {
+      "id": "compiler-inline-if-and",
+      "template": "{{ \"good\" if hungry and like_pizza }}",
+      "nativeRender": false,
+      "context": { "hungry": true, "like_pizza": true },
+      "autoescape": false,
+      "expected": "good"
+    },
+    {
+      "id": "compiler-inline-if-or",
+      "template": "{{ \"good\" if hungry or like_pizza }}",
+      "nativeRender": false,
+      "context": { "hungry": false, "like_pizza": true },
+      "autoescape": false,
+      "expected": "good"
+    },
+    {
+      "id": "compiler-inline-if-group",
+      "template": "{{ \"good\" if (hungry or like_pizza) and anchovies }}",
+      "nativeRender": false,
+      "context": { "hungry": false, "like_pizza": true, "anchovies": true },
+      "autoescape": false,
+      "expected": "good"
+    },
+    {
+      "id": "compiler-inline-if-comparison",
+      "template": "{{ \"pizza\" if food == \"pizza\" }}{{ \"beer\" if food == \"beer\" }}",
+      "nativeRender": false,
+      "context": { "food": "beer" },
+      "autoescape": false,
+      "expected": "beer"
+    },
+    {
+      "id": "compiler-python-style-ternary-tests",
+      "template": "{{ \"yes\" if 1 is odd else \"no\" }}|{{ \"yes\" if 2 is even else \"no\" }}|{{ \"yes\" if 2 is odd else \"no\" }}|{{ \"yes\" if 1 is even else \"no\" }}",
+      "nativeRender": false,
+      "context": {},
+      "autoescape": false,
+      "expected": "yes|yes|no|no"
     }
   ]
 }

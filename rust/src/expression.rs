@@ -32,6 +32,15 @@ pub enum Atom<'a> {
     Record(&'a [u8]),
     /// An arithmetic or concatenation expression evaluated with precedence.
     Arithmetic(&'a [u8]),
+    /// A lazy inline conditional expression.
+    InlineIf {
+        /// Expression evaluated when the condition is truthy.
+        body: &'a [u8],
+        /// Expression whose truthiness selects the branch.
+        condition: &'a [u8],
+        /// Optional expression evaluated when the condition is falsey.
+        alternative: Option<&'a [u8]>,
+    },
 }
 
 /// One binary arithmetic or string-concatenation operator.
@@ -137,8 +146,85 @@ pub struct SetClause<'a> {
 
 /// Parses the base atom, its unary negation, and the following operation cursor.
 pub fn parse_base(expression: &[u8]) -> Result<(Atom<'_>, usize, bool), ExpressionError> {
+    if let Some(atom) = parse_inline_if(expression)? {
+        return Ok((atom, expression.len(), false));
+    }
     let (operand, cursor) = parse_operand(expression, 0)?;
     Ok((operand.atom, cursor, operand.negated))
+}
+
+fn parse_inline_if(expression: &[u8]) -> Result<Option<Atom<'_>>, ExpressionError> {
+    let mut cursor = 0usize;
+    let mut quote = None;
+    let mut parentheses = 0usize;
+    let mut brackets = 0usize;
+    let mut braces = 0usize;
+    let mut if_position = None;
+    let mut else_position = None;
+    while let Some(byte) = expression.get(cursor).copied() {
+        if let Some(active_quote) = quote {
+            if byte == b'\\' {
+                cursor = cursor.checked_add(2).ok_or(ExpressionError)?;
+                continue;
+            }
+            if byte == active_quote {
+                quote = None;
+            }
+            cursor += 1;
+            continue;
+        }
+        if matches!(byte, b'\'' | b'"') {
+            quote = Some(byte);
+            cursor += 1;
+            continue;
+        }
+        match byte {
+            b'(' => parentheses += 1,
+            b'[' => brackets += 1,
+            b'{' => braces += 1,
+            b')' => parentheses = parentheses.checked_sub(1).ok_or(ExpressionError)?,
+            b']' => brackets = brackets.checked_sub(1).ok_or(ExpressionError)?,
+            b'}' => braces = braces.checked_sub(1).ok_or(ExpressionError)?,
+            _ => {}
+        }
+        if parentheses == 0 && brackets == 0 && braces == 0 {
+            if if_position.is_none() && keyword_boundary(expression, 0, cursor, b"if") {
+                if_position = Some(cursor);
+                cursor += 2;
+                continue;
+            }
+            if if_position.is_some()
+                && else_position.is_none()
+                && keyword_boundary(expression, 0, cursor, b"else")
+            {
+                else_position = Some(cursor);
+                cursor += 4;
+                continue;
+            }
+        }
+        cursor += 1;
+    }
+    if quote.is_some() || parentheses != 0 || brackets != 0 || braces != 0 {
+        return Err(ExpressionError);
+    }
+    let Some(if_position) = if_position else {
+        return Ok(None);
+    };
+    let body = trim_whitespace(&expression[..if_position]);
+    let condition_end = else_position.unwrap_or(expression.len());
+    let condition = trim_whitespace(&expression[if_position + 2..condition_end]);
+    let alternative = else_position
+        .map(|position| trim_whitespace(&expression[position + 4..]))
+        .filter(|alternative| !alternative.is_empty());
+    if body.is_empty() || condition.is_empty() || (else_position.is_some() && alternative.is_none())
+    {
+        return Err(ExpressionError);
+    }
+    Ok(Some(Atom::InlineIf {
+        body,
+        condition,
+        alternative,
+    }))
 }
 
 /// Splits an arithmetic expression at its lowest-precedence, rightmost operator.
@@ -1010,6 +1096,30 @@ mod tests {
                 },
                 comparison.len(),
             ))),
+        );
+        assert_eq!(
+            parse_base(br#""yes" if value is odd else "no""#),
+            Ok((
+                Atom::InlineIf {
+                    body: br#""yes""#,
+                    condition: b"value is odd",
+                    alternative: Some(br#""no""#),
+                },
+                31,
+                false,
+            )),
+        );
+        assert_eq!(
+            parse_base(br#""if else" if enabled"#),
+            Ok((
+                Atom::InlineIf {
+                    body: br#""if else""#,
+                    condition: b"enabled",
+                    alternative: None,
+                },
+                20,
+                false,
+            )),
         );
 
         let (array, cursor, _) = parse_base(br#"[1, "two", { three: 3 }]"#).unwrap();

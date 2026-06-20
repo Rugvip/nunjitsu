@@ -1558,6 +1558,20 @@ fn resolve_atom(state_offset: u32, atom: Atom<'_>) -> Result<u32, u32> {
         Atom::Array(elements) => write_array_literal(state_offset, elements),
         Atom::Record(entries) => write_record_literal(state_offset, entries),
         Atom::Arithmetic(expression) => evaluate_binary_expression(state_offset, expression),
+        Atom::InlineIf {
+            body,
+            condition,
+            alternative,
+        } => {
+            let condition = evaluate_sync_expression(state_offset, condition)?;
+            if Value::at(condition)?.truthy() {
+                evaluate_sync_expression(state_offset, body)
+            } else if let Some(alternative) = alternative {
+                evaluate_sync_expression(state_offset, alternative)
+            } else {
+                allocate_record(TAG_UNDEFINED, 0)
+            }
+        }
     }
 }
 
