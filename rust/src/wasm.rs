@@ -6101,6 +6101,15 @@ fn resolve_atom(state_offset: u32, atom: Atom<'_>) -> Result<u32, u32> {
             }
             allocate_record(TAG_UNDEFINED, 0)
         }
+        Atom::Slice {
+            target,
+            start,
+            stop,
+            step,
+        } => {
+            let target = resolve_atom(state_offset, Atom::Lookup(target))?;
+            slice_lookup_value(state_offset, target, start, stop, step)
+        }
         Atom::String(value) => write_string_literal(value),
         Atom::Number(value) => write_number(value),
         Atom::Regex(value) => write_bytes_record(TAG_REGEX, value),
@@ -6131,6 +6140,88 @@ fn resolve_atom(state_offset: u32, atom: Atom<'_>) -> Result<u32, u32> {
                 allocate_record(TAG_UNDEFINED, 0)
             }
         }
+    }
+}
+
+fn slice_lookup_value(
+    state_offset: u32,
+    value_offset: u32,
+    start: Option<&[u8]>,
+    stop: Option<&[u8]>,
+    step: Option<&[u8]>,
+) -> Result<u32, u32> {
+    let source_offset = match Value::at(value_offset)? {
+        Value::Array(_) => value_offset,
+        Value::String(_) | Value::SafeString(_) => list_value(value_offset)?,
+        Value::Undefined | Value::Null => allocate_value_array(0)?,
+        _ => return Err(ERROR_INVALID_EXPRESSION),
+    };
+    let Value::Array(source) = Value::at(source_offset)? else {
+        return Err(ERROR_INVALID_ARENA);
+    };
+    let length = source.count as f64;
+    let step = slice_expression_number(state_offset, step)?.unwrap_or(1.0);
+    if step == 0.0 || !step.is_finite() {
+        return Err(ERROR_INVALID_EXPRESSION);
+    }
+    let mut start_value = slice_expression_number(state_offset, start)?
+        .unwrap_or(if step < 0.0 { length - 1.0 } else { 0.0 });
+    let stop_value = slice_expression_number(state_offset, stop)?;
+    let mut stop_value = stop_value.unwrap_or(if step < 0.0 { -1.0 } else { length });
+    if stop.is_some() && stop_value < 0.0 {
+        stop_value += length;
+    }
+    if start_value < 0.0 {
+        start_value += length;
+    }
+    let mut count = 0usize;
+    let mut index = start_value;
+    while slice_index_in_bounds(index, stop_value, step, length) {
+        charge_counter(state_offset, STATE_WORK_UNITS, STATE_LIMIT_WORK_UNITS, 1)?;
+        count = count.checked_add(1).ok_or(ERROR_RESOURCE_LIMIT)?;
+        index += step;
+    }
+    let output = allocate_value_array(count)?;
+    index = start_value;
+    for output_index in 0..count {
+        let value = if libm::trunc(index) == index && index >= 0.0 && index < length {
+            read_u32(source.payload, 4 + index as usize * 4)?
+        } else {
+            allocate_record(TAG_UNDEFINED, 0)?
+        };
+        write_u32(
+            mutable_record_at(output, TAG_ARRAY)?,
+            4 + output_index * 4,
+            value,
+        )?;
+        index += step;
+    }
+    Ok(output)
+}
+
+fn slice_expression_number(
+    state_offset: u32,
+    expression: Option<&[u8]>,
+) -> Result<Option<f64>, u32> {
+    let Some(expression) = expression else {
+        return Ok(None);
+    };
+    let value = Value::at(evaluate_sync_expression(state_offset, expression)?)?.as_number();
+    if value.is_finite() {
+        Ok(Some(value))
+    } else {
+        Err(ERROR_INVALID_EXPRESSION)
+    }
+}
+
+fn slice_index_in_bounds(index: f64, stop: f64, step: f64, length: f64) -> bool {
+    if index < 0.0 || index > length {
+        return false;
+    }
+    if step > 0.0 {
+        index < stop
+    } else {
+        index > stop
     }
 }
 

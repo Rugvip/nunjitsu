@@ -1008,6 +1008,33 @@ test('provides render-local range, cycler, and joiner globals', async () => {
   }
 });
 
+test('evaluates Jinja-compatible array slices', async () => {
+  const engine = await createEngine();
+  const context = { arr: ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'], n: 1 };
+  const cases: readonly [string, string][] = [
+    ['{% for i in arr[1:4] %}{{ i }}{% endfor %}', 'bcd'],
+    ['{% for i in arr[n:n+3] %}{{ i }}{% endfor %}', 'bcd'],
+    ['{% for i in arr[3:] %}{{ i }}{% endfor %}', 'defgh'],
+    ['{% for i in arr[-3:] %}{{ i }}{% endfor %}', 'fgh'],
+    ['{% for i in arr[:4] %}{{ i }}{% endfor %}', 'abcd'],
+    ['{% for i in arr[:-3] %}{{ i }}{% endfor %}', 'abcde'],
+    ['{% for i in arr[::2] %}{{ i }}{% endfor %}', 'aceg'],
+    ['{% for i in arr[::-1] %}{{ i }}{% endfor %}', 'hgfedcba'],
+    ['{% for i in arr[4::-1] %}{{ i }}{% endfor %}', 'edcba'],
+    ['{% for i in arr[-5::-1] %}{{ i }}{% endfor %}', 'dcba'],
+    ['{% for i in arr[:3:-1] %}{{ i }}{% endfor %}', 'hgfe'],
+    ['{% for i in arr[1::2] %}{{ i }}{% endfor %}', 'bdfh'],
+    ['{% for i in arr[1:7:2] %}{{ i }}{% endfor %}', 'bdf'],
+  ];
+  try {
+    for (const [source, expected] of cases) {
+      assert.equal(await engine.render({ source }, context), expected, source);
+    }
+  } finally {
+    await engine.dispose();
+  }
+});
+
 test('dispatches immutable async filters, tests, and globals through safe copied values', async () => {
   let markBlockingCallStarted: (() => void) | undefined;
   const blockingCallStarted = new Promise<void>(resolve => {

@@ -1231,6 +1231,58 @@
       "upstream": { "id": "tests/globals.js:11", "file": "tests/globals.js", "test": "should return errors from globals" },
       "status": "adapted",
       "reason": "Nunjitsu propagates trusted global callback failures as promise rejections and verifies worker cleanup through its asynchronous API."
+    },
+    {
+      "upstream": { "id": "tests/jinja-compat.js:1", "file": "tests/jinja-compat.js", "test": "should support array slices with start and stop" },
+      "status": "ported"
+    },
+    {
+      "upstream": { "id": "tests/jinja-compat.js:2", "file": "tests/jinja-compat.js", "test": "should support array slices using expressions" },
+      "status": "ported"
+    },
+    {
+      "upstream": { "id": "tests/jinja-compat.js:3", "file": "tests/jinja-compat.js", "test": "should support array slices with start" },
+      "status": "ported"
+    },
+    {
+      "upstream": { "id": "tests/jinja-compat.js:4", "file": "tests/jinja-compat.js", "test": "should support array slices with negative start" },
+      "status": "ported"
+    },
+    {
+      "upstream": { "id": "tests/jinja-compat.js:5", "file": "tests/jinja-compat.js", "test": "should support array slices with stop" },
+      "status": "ported"
+    },
+    {
+      "upstream": { "id": "tests/jinja-compat.js:6", "file": "tests/jinja-compat.js", "test": "should support array slices with negative stop" },
+      "status": "ported"
+    },
+    {
+      "upstream": { "id": "tests/jinja-compat.js:7", "file": "tests/jinja-compat.js", "test": "should support array slices with step" },
+      "status": "ported"
+    },
+    {
+      "upstream": { "id": "tests/jinja-compat.js:8", "file": "tests/jinja-compat.js", "test": "should support array slices with negative step" },
+      "status": "ported"
+    },
+    {
+      "upstream": { "id": "tests/jinja-compat.js:9", "file": "tests/jinja-compat.js", "test": "should support array slices with start and negative step" },
+      "status": "ported"
+    },
+    {
+      "upstream": { "id": "tests/jinja-compat.js:10", "file": "tests/jinja-compat.js", "test": "should support array slices with negative start and negative step" },
+      "status": "ported"
+    },
+    {
+      "upstream": { "id": "tests/jinja-compat.js:11", "file": "tests/jinja-compat.js", "test": "should support array slices with stop and negative step" },
+      "status": "ported"
+    },
+    {
+      "upstream": { "id": "tests/jinja-compat.js:12", "file": "tests/jinja-compat.js", "test": "should support array slices with start and step" },
+      "status": "ported"
+    },
+    {
+      "upstream": { "id": "tests/jinja-compat.js:13", "file": "tests/jinja-compat.js", "test": "should support array slices with start, stop, and step" },
+      "status": "ported"
     }
   ]
 }

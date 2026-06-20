@@ -12,6 +12,17 @@ pub struct Call<'a> {
 pub enum Atom<'a> {
     /// A dotted lookup into the copied render context.
     Lookup(&'a [u8]),
+    /// A Jinja-compatible slice over one copied lookup value.
+    Slice {
+        /// Lookup path evaluated before slicing.
+        target: &'a [u8],
+        /// Optional inclusive starting-index expression.
+        start: Option<&'a [u8]>,
+        /// Optional exclusive stopping-index expression.
+        stop: Option<&'a [u8]>,
+        /// Optional step expression.
+        step: Option<&'a [u8]>,
+    },
     /// A UTF-8 string literal without its quotes.
     String(&'a [u8]),
     /// A decimal numeric literal retained in source form.
@@ -969,6 +980,19 @@ fn parse_atom(bytes: &[u8], cursor: usize) -> Result<(Atom<'_>, usize), Expressi
     let start = cursor;
     let mut cursor = parse_identifier(bytes, cursor)?;
     while matches!(bytes.get(cursor), Some(b'.' | b'[')) {
+        if bytes.get(cursor) == Some(&b'[')
+            && let Some((slice, end)) = parse_slice(bytes, cursor)?
+        {
+            return Ok((
+                Atom::Slice {
+                    target: &bytes[start..cursor],
+                    start: slice.0,
+                    stop: slice.1,
+                    step: slice.2,
+                },
+                end,
+            ));
+        }
         let Some((_, next)) = next_lookup_segment(&bytes[start..], cursor - start)? else {
             return Err(ExpressionError);
         };
@@ -988,6 +1012,68 @@ fn parse_atom(bytes: &[u8], cursor: usize) -> Result<(Atom<'_>, usize), Expressi
         _ => Atom::Lookup(name),
     };
     Ok((atom, cursor))
+}
+
+type SliceFields<'a> = (Option<&'a [u8]>, Option<&'a [u8]>, Option<&'a [u8]>);
+
+fn parse_slice(
+    bytes: &[u8],
+    open: usize,
+) -> Result<Option<(SliceFields<'_>, usize)>, ExpressionError> {
+    let (content, end) = parse_delimited(bytes, open, b'[', b']')?;
+    let mut positions = [None, None];
+    let mut count = 0usize;
+    let mut cursor = 0usize;
+    let mut quote = None;
+    let mut parentheses = 0usize;
+    let mut brackets = 0usize;
+    let mut braces = 0usize;
+    while let Some(byte) = content.get(cursor).copied() {
+        if let Some(active_quote) = quote {
+            if byte == b'\\' {
+                cursor = cursor.checked_add(2).ok_or(ExpressionError)?;
+                continue;
+            }
+            if byte == active_quote {
+                quote = None;
+            }
+            cursor += 1;
+            continue;
+        }
+        match byte {
+            b'\'' | b'"' => quote = Some(byte),
+            b'(' => parentheses += 1,
+            b')' => parentheses = parentheses.checked_sub(1).ok_or(ExpressionError)?,
+            b'[' => brackets += 1,
+            b']' => brackets = brackets.checked_sub(1).ok_or(ExpressionError)?,
+            b'{' => braces += 1,
+            b'}' => braces = braces.checked_sub(1).ok_or(ExpressionError)?,
+            b':' if parentheses == 0 && brackets == 0 && braces == 0 => {
+                if count == positions.len() {
+                    return Err(ExpressionError);
+                }
+                positions[count] = Some(cursor);
+                count += 1;
+            }
+            _ => {}
+        }
+        cursor += 1;
+    }
+    if count == 0 {
+        return Ok(None);
+    }
+    let first = positions[0].ok_or(ExpressionError)?;
+    let second = positions[1];
+    let start = optional_slice_field(&content[..first]);
+    let stop_end = second.unwrap_or(content.len());
+    let stop = optional_slice_field(&content[first + 1..stop_end]);
+    let step = second.and_then(|position| optional_slice_field(&content[position + 1..]));
+    Ok(Some(((start, stop, step), end)))
+}
+
+fn optional_slice_field(bytes: &[u8]) -> Option<&[u8]> {
+    let value = trim_whitespace(bytes);
+    (!value.is_empty()).then_some(value)
 }
 
 fn parse_regex(bytes: &[u8], start: usize) -> Result<(Atom<'_>, usize), ExpressionError> {
@@ -1640,5 +1726,38 @@ mod tests {
                 next_cursor: entries.len(),
             })),
         );
+    }
+
+    #[test]
+    fn parses_jinja_slice_bounds() {
+        let expression = b"arr[n:n+3]";
+        assert_eq!(
+            parse_base(expression),
+            Ok((
+                Atom::Slice {
+                    target: b"arr",
+                    start: Some(b"n"),
+                    stop: Some(b"n+3"),
+                    step: None,
+                },
+                expression.len(),
+                false,
+            )),
+        );
+        let expression = b"values[::-1]";
+        assert_eq!(
+            parse_base(expression),
+            Ok((
+                Atom::Slice {
+                    target: b"values",
+                    start: None,
+                    stop: None,
+                    step: Some(b"-1"),
+                },
+                expression.len(),
+                false,
+            )),
+        );
+        assert!(parse_base(b"values[1:2:3:4]").is_err());
     }
 }

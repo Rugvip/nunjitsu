@@ -13,6 +13,7 @@ Nunjitsu targets observable template and runtime behavior:
 - expressions, truthiness, scoping, and rendering semantics;
 - built-in filters, tests, and globals;
 - includes, imports, macros, inheritance, and blocks;
+- Jinja-compatible array slice expressions supported by Nunjucks v3.2.4;
 - synchronous and asynchronous template behavior; and
 - the ability to add host filters, tests, globals, loaders, and custom tags
   through the new capability model.
