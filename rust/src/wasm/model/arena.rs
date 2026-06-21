@@ -114,6 +114,17 @@ fn write_identifier(code_units: &[u16]) -> Result<u32, u32> {
     Ok(offset)
 }
 
+fn write_regex(code_units: &[u16]) -> Result<u32, u32> {
+    let length = u32::try_from(code_units.len()).map_err(|_| ERROR_RESOURCE_LIMIT)?;
+    let (start, output) = allocate_value_code_units(length)?;
+    output.copy_from_slice(code_units);
+    let offset = allocate_slot(TAG_REGEX, 8)?;
+    let payload = mutable_slot_record(offset, TAG_REGEX)?.ok_or(ERROR_INVALID_RECORD)?;
+    write_u32(payload, 0, start)?;
+    write_u32(payload, 4, length)?;
+    Ok(offset)
+}
+
 fn write_identifier_bytes(bytes: &[u8]) -> Result<u32, u32> {
     let value = core::str::from_utf8(bytes).map_err(|_| ERROR_INVALID_RECORD)?;
     let length = value.encode_utf16().count();
@@ -136,6 +147,35 @@ fn write_identifier_bytes(bytes: &[u8]) -> Result<u32, u32> {
 
 fn identifier_code_units(offset: u32) -> Result<&'static [u16], u32> {
     let payload = record_at(offset, TAG_IDENTIFIER)?;
+    if payload.len() != 8 {
+        return Err(ERROR_INVALID_RECORD);
+    }
+    let start = read_u32(payload, 0)?;
+    let length = read_u32(payload, 4)?;
+    let pool = unsafe { (*memory_prefix()).values };
+    let end = start.checked_add(length).ok_or(ERROR_INVALID_RECORD)?;
+    if end > pool.cursor {
+        return Err(ERROR_INVALID_RECORD);
+    }
+    let byte_offset = pool
+        .offset
+        .checked_add(
+            start
+                .checked_mul(VALUE_CODE_UNIT_LENGTH)
+                .ok_or(ERROR_INVALID_RECORD)?,
+        )
+        .ok_or(ERROR_INVALID_RECORD)?;
+    let bytes = memory(
+        byte_offset,
+        length
+            .checked_mul(VALUE_CODE_UNIT_LENGTH)
+            .ok_or(ERROR_INVALID_RECORD)?,
+    )?;
+    Ok(unsafe { slice::from_raw_parts(bytes.as_ptr().cast::<u16>(), length as usize) })
+}
+
+fn regex_code_units(offset: u32) -> Result<&'static [u16], u32> {
+    let payload = record_at(offset, TAG_REGEX)?;
     if payload.len() != 8 {
         return Err(ERROR_INVALID_RECORD);
     }

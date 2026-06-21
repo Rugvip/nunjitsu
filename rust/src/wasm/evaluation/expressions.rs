@@ -219,7 +219,7 @@ fn resolve_atom(state_offset: u32, atom: Atom<'_>) -> Result<u32, u32> {
         }
         Atom::String(value) => write_string_literal(value),
         Atom::Number(value) => write_number(value),
-        Atom::Regex(value) => write_code_units_record(TAG_REGEX, value),
+        Atom::Regex(value) => write_regex(value),
         Atom::Boolean(value) => write_boolean(value),
         Atom::Null => allocate_record(TAG_NULL, 0),
         Atom::Undefined => allocate_record(TAG_UNDEFINED, 0),

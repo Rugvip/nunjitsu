@@ -242,7 +242,7 @@ impl Value {
                 Ok(Self::SafeString(code_units_as_utf8(value_code_units(payload)?)?))
             }
             TAG_IDENTIFIER => Ok(Self::String(code_units_as_utf8(identifier_code_units(offset)?)?)),
-            TAG_REGEX => Ok(Self::Regex(payload)),
+            TAG_REGEX => Ok(Self::Regex(code_units_as_utf8(regex_code_units(offset)?)?)),
             TAG_ARRAY => Ok(Self::Array(Array::new(payload)?)),
             TAG_RECORD => Ok(Self::Record(Record::new(payload)?)),
             TAG_CYCLER => Ok(Self::Cycler(Cycler::new(payload)?)),

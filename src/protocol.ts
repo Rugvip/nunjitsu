@@ -896,6 +896,18 @@ function decodeValue(
     const slotOffset = layout.slotOffset + offset * fixedSlotLength;
     const slotView = new DataView(memory.buffer, slotOffset, fixedSlotLength);
     const slotTag = slotView.getUint32(0, true) & 0xff;
+    if (slotTag === recordTag.regex) {
+      const start = slotView.getUint32(4, true);
+      const length = slotView.getUint32(8, true);
+      if (start + length > fixedCursors.values || start + length > layout.valueCapacity) {
+        throw new Error('Wasm returned an out-of-bounds regex range');
+      }
+      return new TextDecoder('utf-16le', { fatal: true }).decode(new Uint8Array(
+        memory.buffer,
+        layout.valueOffset + start * 2,
+        length * 2,
+      ));
+    }
     if (slotTag === recordTag.stringValue || slotTag === recordTag.safeStringValue) {
       const handle = slotView.getUint32(4, true);
       if ((handle & 0x8000_0000) !== 0) {

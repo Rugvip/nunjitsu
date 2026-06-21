@@ -196,6 +196,7 @@ fn slot_payload_length(tag: u32) -> Option<u32> {
         TAG_SOURCE => Some(12),
         TAG_EXPRESSION => Some(8),
         TAG_IDENTIFIER => Some(8),
+        TAG_REGEX => Some(8),
         TAG_REQUEST => Some(56),
         TAG_UNDEFINED | TAG_NULL => Some(0),
         TAG_BOOLEAN => Some(1),
@@ -241,6 +242,7 @@ fn slot_category_mask(tag: u32) -> u32 {
         | TAG_NUMBER
         | TAG_STRING_VALUE
         | TAG_SAFE_STRING_VALUE
+        | TAG_REGEX
         | TAG_ARRAY
         | TAG_RECORD
         | TAG_CYCLER
