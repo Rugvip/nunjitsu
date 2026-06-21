@@ -53,5 +53,11 @@ deep constant and computed lookups, macro and scope churn, built-in filter
 pipelines, and repeated rendering while a prepared context evolves. Context
 preparation is reported as setup rather than repeated rendering work; the
 evolving case measures each immutable path update and following render.
+By default, the harness runs 10 loops over the complete case list. Each
+case/engine pair starts in fresh isolated workers during every loop and performs
+20 warmup operations followed by 100 individually timed operations. Median,
+p95, mean, and throughput use all 1,000 raw timing samples per case and engine
+rather than first aggregating the samples within each loop. Reported setup and
+retained memory are averages across loop workers; peak RSS is their maximum.
 Callback benchmarks are intentionally excluded because the direct-string API
 is synchronous and callback overhead is not a separate target.

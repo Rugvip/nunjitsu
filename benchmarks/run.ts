@@ -18,6 +18,7 @@ type Implementation = 'nunjitsu' | 'nunjucks';
 interface BenchmarkOptions {
   warmup: number;
   iterations: number;
+  loops: number;
   cases: readonly BenchmarkCaseId[];
   json: boolean;
 }
@@ -54,6 +55,7 @@ interface BenchmarkReport {
     parallelism: number;
     warmup: number;
     iterations: number;
+    loops: number;
   };
   results: ReportResult[];
   comparisons: Array<{ caseId: BenchmarkCaseId; medianRatio: number }>;
@@ -64,17 +66,25 @@ const scriptPath = fileURLToPath(import.meta.url);
 
 async function runBenchmarks(options: BenchmarkOptions): Promise<BenchmarkReport> {
   const workers: WorkerResult[] = [];
-  for (const caseId of options.cases) {
-    const pair = await Promise.all(
-      implementations.map(implementation => runInSubprocess(implementation, caseId, options)),
-    );
-    if (pair[0]!.output !== pair[1]!.output) {
-      throw new Error(`Output mismatch for benchmark case ${caseId}`);
+  const outputs = new Map<BenchmarkCaseId, string>();
+  for (let loop = 0; loop < options.loops; loop += 1) {
+    for (const caseId of options.cases) {
+      const pair = await Promise.all(
+        implementations.map(implementation => runInSubprocess(implementation, caseId, options)),
+      );
+      if (pair[0]!.output !== pair[1]!.output) {
+        throw new Error(`Output mismatch for benchmark case ${caseId}`);
+      }
+      outputs.set(caseId, verifyStableOutput(outputs.get(caseId), pair[0]!.output, caseId));
+      workers.push(...pair);
     }
-    workers.push(...pair);
   }
 
-  const results = workers.map(summarizeResult);
+  const results = options.cases.flatMap(caseId => implementations.map(implementation => (
+    summarizeResults(workers.filter(worker => (
+      worker.caseId === caseId && worker.implementation === implementation
+    )))
+  )));
   const comparisons = options.cases.map(caseId => {
     const nunjitsu = results.find(result =>
       result.caseId === caseId && result.implementation === 'nunjitsu'
@@ -97,6 +107,7 @@ async function runBenchmarks(options: BenchmarkOptions): Promise<BenchmarkReport
       parallelism: availableParallelism(),
       warmup: options.warmup,
       iterations: options.iterations,
+      loops: options.loops,
     },
     results,
     comparisons,
@@ -267,21 +278,37 @@ function verifyStableOutput(
   return current;
 }
 
-function summarizeResult(result: WorkerResult): ReportResult {
-  const sorted = Array.from(result.samplesMs).sort((left, right) => left - right);
+function summarizeResults(results: readonly WorkerResult[]): ReportResult {
+  const first = results[0];
+  if (!first) {
+    throw new Error('Benchmark requires at least one worker result');
+  }
+  const samples: number[] = [];
+  let setupMs = 0;
+  let retainedRssBytes = 0;
+  let peakRssBytes = 0;
+  for (const result of results) {
+    for (const sample of result.samplesMs) {
+      samples.push(sample);
+    }
+    setupMs += result.setupMs;
+    retainedRssBytes += result.retainedRssBytes;
+    peakRssBytes = Math.max(peakRssBytes, result.peakRssBytes);
+  }
+  const sorted = samples.sort((left, right) => left - right);
   const meanMs = sorted.reduce((sum, value) => sum + value, 0) / sorted.length;
   return {
-    implementation: result.implementation,
-    caseId: result.caseId,
-    description: result.description,
-    setupMs: result.setupMs,
+    implementation: first.implementation,
+    caseId: first.caseId,
+    description: first.description,
+    setupMs: setupMs / results.length,
     medianMs: percentile(sorted, 0.5),
     p95Ms: percentile(sorted, 0.95),
     meanMs,
     operationsPerSecond: 1_000 / meanMs,
-    outputBytes: result.outputBytes,
-    retainedRssBytes: result.retainedRssBytes,
-    peakRssBytes: result.peakRssBytes,
+    outputBytes: first.outputBytes,
+    retainedRssBytes: retainedRssBytes / results.length,
+    peakRssBytes,
   };
 }
 
@@ -297,7 +324,7 @@ function formatReport(report: BenchmarkReport): string {
   const lines = [
     'Nunjitsu benchmark against Nunjucks 3.2.4',
     `Node ${report.runtime.node} on ${report.runtime.platform}/${report.runtime.architecture}; ${report.runtime.parallelism} logical CPUs`,
-    `${report.runtime.warmup} warmup and ${report.runtime.iterations} measured operations per result`,
+    `${report.runtime.loops} loops with ${report.runtime.warmup} warmup and ${report.runtime.iterations} measured operations each (${report.runtime.loops * report.runtime.iterations} timing samples per result)`,
     '',
     '| case | engine | setup | median | p95 | operations/s | retained RSS | peak RSS | output |',
     '| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |',
@@ -345,12 +372,17 @@ async function collectGarbage(): Promise<void> {
 }
 
 function parseOptions(arguments_: readonly string[]): BenchmarkOptions {
-  const warmup = parseNonNegativeInteger(optionValue(arguments_, 'warmup') ?? '3', 'warmup');
-  const iterations = parsePositiveInteger(optionValue(arguments_, 'iterations') ?? '15', 'iterations');
+  const warmup = parseNonNegativeInteger(optionValue(arguments_, 'warmup') ?? '20', 'warmup');
+  const iterations = parsePositiveInteger(optionValue(arguments_, 'iterations') ?? '100', 'iterations');
+  const loops = parsePositiveInteger(
+    optionValue(arguments_, 'loops') ?? '10',
+    'loops',
+  );
   const caseOption = optionValue(arguments_, 'case');
   return {
     warmup,
     iterations,
+    loops,
     cases: caseOption === undefined
       ? benchmarkWorkloads.map(workload => workload.id)
       : caseOption.split(',').map(parseCaseId),
