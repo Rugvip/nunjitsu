@@ -282,7 +282,7 @@ fn urlencode_array(array: Array) -> Result<u32, u32> {
 fn urlencode_record(record: Record) -> Result<u32, u32> {
     let mut length = record.count.saturating_sub(1);
     for index in 0..record.count {
-        let key = record_at(read_u32(record.payload, 4 + index * 8)?, TAG_STRING)?;
+        let key = rendered_value(read_u32(record.payload, 4 + index * 8)?)?.bytes;
         let value_length = encoded_value_length(read_u32(record.payload, 8 + index * 8)?)?;
         length = length
             .checked_add(encoded_bytes_length(key)?)
@@ -300,7 +300,7 @@ fn urlencode_record(record: Record) -> Result<u32, u32> {
         if index != 0 {
             write_coerced_bytes(output, &mut cursor, b"&")?;
         }
-        let key = record_at(read_u32(record.payload, 4 + index * 8)?, TAG_STRING)?;
+        let key = rendered_value(read_u32(record.payload, 4 + index * 8)?)?.bytes;
         write_encoded_bytes(key, output, &mut cursor)?;
         write_coerced_bytes(output, &mut cursor, b"=")?;
         write_encoded_value(

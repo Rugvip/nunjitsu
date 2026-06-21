@@ -172,8 +172,8 @@ fn list_value(value_offset: u32) -> Result<u32, u32> {
         }
         Value::Record(record) => {
             let output = allocate_value_array(record.count)?;
-            let key_name = write_bytes_record(TAG_STRING, b"key")?;
-            let value_name = write_bytes_record(TAG_STRING, b"value")?;
+            let key_name = write_identifier_bytes(b"key")?;
+            let value_name = write_identifier_bytes(b"value")?;
             for index in 0..record.count {
                 let pair = allocate_record(TAG_RECORD, 20)?;
                 let pair_record = mutable_record_at(pair, TAG_RECORD)?;
