@@ -1,11 +1,14 @@
 {
   "name": "nunjitsu",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "A secure direct string template engine written in TypeScript",
   "license": "Apache-2.0",
   "type": "module",
-  "private": true,
   "sideEffects": false,
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
   "engines": {
     "node": ">=22.0.0"
   },
