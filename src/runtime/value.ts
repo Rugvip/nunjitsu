@@ -81,6 +81,11 @@ export class RuntimeRecord {
     return this.#entries.get(name);
   }
 
+  /** Returns whether one allowed own entry exists. */
+  has(name: string): boolean {
+    return !isReservedName(name) && this.#entries.has(name);
+  }
+
   /** Iterates immutable own entries in insertion order. */
   entries(): IterableIterator<[string, RuntimeValue]> {
     return this.#entries.entries();

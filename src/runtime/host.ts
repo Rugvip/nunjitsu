@@ -26,8 +26,17 @@ export function createRuntimeHost(capabilities: TemplateCapabilities): RuntimeHo
 
   return Object.freeze({
     tags: Object.freeze([...tags.values()].map(tag => tag.descriptor)),
+    hasFilter(name) {
+      return filters.has(name);
+    },
+    hasTest(name) {
+      return tests.has(name);
+    },
     hasGlobal(name) {
       return globals.has(name);
+    },
+    hasTag(name) {
+      return tags.has(name);
     },
     async filter(name, input, arguments_, signal) {
       const callback = filters.get(name) as TemplateFilter | undefined;

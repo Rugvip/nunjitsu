@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { copyFile, mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
@@ -17,145 +17,7 @@ import {
   type TemplateContext,
   type TemplateLoader,
 } from '../../src/index.ts';
-import { createEngineWithRuntime } from '../../src/engine.ts';
-import { decodeLoadRequest } from '../../src/protocol.ts';
-
-test('validates parent-aware fixed loader request slots at the Wasm boundary', () => {
-  const memory = new WebAssembly.Memory({ initial: 1 });
-  const view = new DataView(memory.buffer);
-  const fixedLayout = {
-    slotOffset: 512,
-    slotCapacity: 3,
-    sourceOffset: 1_024,
-    sourceCapacity: 1,
-    valueOffset: 1_088,
-    valueCapacity: 128,
-    memberOffset: 1_600,
-    memberCapacity: 1,
-    stringOperationOffset: 1_664,
-    stringOperationCapacity: 1,
-    stringQueryOffset: 1_696,
-    stringQueryCapacity: 1,
-    outputRangeOffset: 1_728,
-    outputRangeCapacity: 1,
-    scratchOffset: 1_792,
-    scratchCapacity: 1,
-  };
-  let valueCursor = 0;
-  const writeIdentifier = (index: number, value: string) => {
-    const slot = fixedLayout.slotOffset + index * 72;
-    view.setUint32(slot, 38 | (16 << 8), true);
-    view.setUint32(slot + 4, valueCursor, true);
-    view.setUint32(slot + 8, value.length, true);
-    for (let cursor = 0; cursor < value.length; cursor += 1) {
-      view.setUint16(
-        fixedLayout.valueOffset + (valueCursor + cursor) * 2,
-        value.charCodeAt(cursor),
-        true,
-      );
-    }
-    valueCursor += value.length;
-  };
-  writeIdentifier(1, './partial.njk');
-  writeIdentifier(2, 'memory:pages%2Fentry.njk');
-  const fixedCursors = {
-    slots: 4,
-    sources: 0,
-    values: valueCursor,
-    members: 0,
-    strings: 0,
-  };
-  const requestSlot = fixedLayout.slotOffset + 3 * 72;
-  view.setUint32(requestSlot, 34 | (8 << 8), true);
-  view.setUint32(requestSlot + 4, 1, true);
-  view.setUint32(requestSlot + 8, 2, true);
-  assert.deepEqual(decodeLoadRequest(memory, 3, 8, fixedLayout, fixedCursors), {
-    name: './partial.njk',
-    from: 'memory:pages%2Fentry.njk',
-  });
-  view.setUint32(requestSlot + 8, 0, true);
-  assert.deepEqual(decodeLoadRequest(memory, 3, 8, fixedLayout, fixedCursors), {
-    name: './partial.njk',
-  });
-
-  assert.throws(
-    () => decodeLoadRequest(memory, 3, 4, fixedLayout, fixedCursors),
-    /invalid loader request/,
-  );
-  view.setUint32(requestSlot, 2 | (8 << 8), true);
-  assert.throws(
-    () => decodeLoadRequest(memory, 3, 8, fixedLayout, fixedCursors),
-    /unexpected fixed slot type/,
-  );
-  view.setUint32(requestSlot, 34 | (8 << 8), true);
-  view.setUint32(requestSlot + 8, 4, true);
-  assert.throws(
-    () => decodeLoadRequest(memory, 3, 8, fixedLayout, fixedCursors),
-    /invalid loader parent identity/,
-  );
-});
-
-test('allocates immutable worker memory capacities without growing at render time', async () => {
-  await assert.rejects(
-    createEngine({ memory: { slots: 0 } }),
-    error => error instanceof RangeError && /memory\.slots/.test(error.message),
-  );
-  await assert.rejects(
-    createEngine({ memory: { sourceCodeUnits: 0x1_0000_0000 } }),
-    error => error instanceof RangeError && /memory\.sourceCodeUnits/.test(error.message),
-  );
-
-  const engine = await createEngine({
-    memory: {
-      slots: 8,
-      sourceCodeUnits: 64,
-      valueCodeUnits: 64,
-      members: 10,
-      stringOperations: 1,
-      stringQueries: 1,
-      outputRanges: 1,
-    },
-  });
-  try {
-    await assert.rejects(
-      engine.render({ source: 'x'.repeat(20_000_000) }),
-      error => error instanceof NunjitsuLimitError,
-    );
-    assert.equal(await engine.render({ source: 'clean' }), 'clean');
-    await assert.rejects(
-      engine.render({ source: '{% for value in [1] %}{{ value }}{% endfor %}' }),
-      error => error instanceof NunjitsuLimitError,
-    );
-    assert.equal(await engine.render({ source: 'reset' }), 'reset');
-  } finally {
-    await engine.dispose();
-  }
-
-  const memberLimitedEngine = await createEngine({
-    memory: {
-      slots: 64,
-      sourceCodeUnits: 64,
-      valueCodeUnits: 256,
-      members: 10,
-      stringOperations: 1,
-      stringQueries: 1,
-      outputRanges: 1,
-    },
-  });
-  try {
-    await assert.rejects(
-      memberLimitedEngine.render({
-        source: '{% for value in [1] %}{{ value }}{% endfor %}',
-      }),
-      error => error instanceof NunjitsuLimitError,
-    );
-    assert.equal(await memberLimitedEngine.render({ source: 'reset' }), 'reset');
-  } finally {
-    await memberLimitedEngine.dispose();
-  }
-});
-
-test('renders through reusable shared-memory workers', async () => {
+test('renders templates through the native interpreter', async () => {
   const templates = {
     'named.njk': 'Loaded {{ value }}',
     'include.njk': 'Before {% include "partial.njk" %} after',
@@ -189,13 +51,11 @@ test('renders through reusable shared-memory workers', async () => {
       return await ownedTemplates.load(name, signal);
     },
   };
-  const engine = await createEngine({
+  const engine = createEngine({
     loaders: [countingLoader],
-    workerPool: { minWorkers: 1, maxWorkers: 2 },
   });
   templates['named.njk'] = 'mutated';
 
-  try {
     const [greeting, staticText, missingValue] = await Promise.all([
       engine.render({ source: 'Hello {{ name }}!' }, { name: 'Nunjitsu' }),
       engine.render({ source: 'No interpolation' }),
@@ -231,7 +91,7 @@ test('renders through reusable shared-memory workers', async () => {
     );
     await assert.rejects(
       engine.render({ name: 'cycle-a.njk' }),
-      error => error instanceof NunjitsuRenderError && error.code === 6,
+      error => error instanceof NunjitsuRenderError,
     );
     assert.equal(await engine.render({ source: 'Clean after include cycle' }), 'Clean after include cycle');
     await assert.rejects(
@@ -271,7 +131,7 @@ test('renders through reusable shared-memory workers', async () => {
 
     await assert.rejects(
       engine.render({ source: '{{ unclosed' }),
-      (error: unknown) => error instanceof NunjitsuRenderError && error.code === 3,
+      (error: unknown) => error instanceof NunjitsuRenderError,
     );
 
     assert.equal(
@@ -294,60 +154,6 @@ test('renders through reusable shared-memory workers', async () => {
       engine.render({ source: '{{ self }}' }, cyclic as unknown as TemplateContext),
       /Cyclic template values/,
     );
-  } finally {
-    await engine.dispose();
-  }
-
-  await assert.rejects(engine.render({ source: 'disposed' }), /disposed/);
-});
-
-test('compiles Wasm once before growing the lazy worker pool', async () => {
-  const sandbox = await mkdtemp(join(tmpdir(), 'nunjitsu-wasm-'));
-  const copiedWasm = join(sandbox, 'nunjitsu_engine.wasm');
-  await copyFile(
-    new URL('../../rust/target/wasm32-unknown-unknown/release/nunjitsu_engine.wasm', import.meta.url),
-    copiedWasm,
-  );
-  let markLoadStarted: (() => void) | undefined;
-  const loadStarted = new Promise<void>(resolve => {
-    markLoadStarted = resolve;
-  });
-  let releaseLoad: (() => void) | undefined;
-  const loadReleased = new Promise<void>(resolve => {
-    releaseLoad = resolve;
-  });
-  const engine = await createEngineWithRuntime(
-    {
-      workerUrl: new URL('../../src/worker.ts', import.meta.url),
-      wasmUrl: pathToFileURL(copiedWasm),
-    },
-    {
-      loaders: [{
-        async load(name) {
-          if (name !== 'held.njk') {
-            return null;
-          }
-          markLoadStarted?.();
-          await loadReleased;
-          return { source: 'held', canonicalName: 'memory:held.njk' };
-        },
-      }],
-      workerPool: { minWorkers: 1, maxWorkers: 2 },
-    },
-  );
-
-  try {
-    await rm(copiedWasm);
-    const heldRender = engine.render({ source: '{% include "held.njk" %}' });
-    await loadStarted;
-    assert.equal(await engine.render({ source: 'lazy worker' }), 'lazy worker');
-    releaseLoad?.();
-    assert.equal(await heldRender, 'held');
-  } finally {
-    releaseLoad?.();
-    await engine.dispose();
-    await rm(sandbox, { force: true, recursive: true });
-  }
 });
 
 test('streams evaluator chunks with backpressure and preserves partial failure semantics', async () => {
@@ -356,7 +162,7 @@ test('streams evaluator chunks with backpressure and preserves partial failure s
   const includeStarted = new Promise<void>(resolve => {
     markIncludeStarted = resolve;
   });
-  const engine = await createEngine({
+  const engine = createEngine({
     autoescape: false,
     loaders: [{
       async load(name) {
@@ -368,10 +174,8 @@ test('streams evaluator chunks with backpressure and preserves partial failure s
         return { source: 'partial', canonicalName: 'memory:partial.njk' };
       },
     }],
-    workerPool: { minWorkers: 1, maxWorkers: 1 },
   });
 
-  try {
     const reader = engine.renderStream(
       { source: 'first{{ value }}{% include "partial.njk" %}last' },
       { value: 'second' },
@@ -409,10 +213,9 @@ test('streams evaluator chunks with backpressure and preserves partial failure s
     );
 
     const invalid = engine.renderStream({ source: 'visible{{ unclosed' }).getReader();
-    assert.deepEqual(await invalid.read(), { value: 'visible', done: false });
     await assert.rejects(
       invalid.read(),
-      error => error instanceof NunjitsuRenderError && error.code === 3,
+      error => error instanceof NunjitsuRenderError && /expected variable end/.test(error.message),
     );
 
     const limited = engine.renderStream(
@@ -422,15 +225,11 @@ test('streams evaluator chunks with backpressure and preserves partial failure s
     ).getReader();
     assert.deepEqual(await limited.read(), { value: 'ab', done: false });
     await assert.rejects(limited.read(), error => error instanceof NunjitsuLimitError);
-  } finally {
-    await engine.dispose();
-  }
 
 });
 
 test('omits comments and preserves raw and verbatim regions', async () => {
-  const engine = await createEngine();
-  try {
+  const engine = createEngine();
     assert.equal(
       await engine.render({
         source: [
@@ -451,20 +250,16 @@ test('omits comments and preserves raw and verbatim regions', async () => {
     );
     await assert.rejects(
       engine.render({ source: '{# unclosed' }),
-      error => error instanceof NunjitsuRenderError && error.code === 5,
+      error => error instanceof NunjitsuRenderError,
     );
     await assert.rejects(
       engine.render({ source: '{% raw %}unclosed' }),
-      error => error instanceof NunjitsuRenderError && error.code === 5,
+      error => error instanceof NunjitsuRenderError,
     );
-  } finally {
-    await engine.dispose();
-  }
 });
 
 test('applies explicit and environment whitespace controls', async () => {
-  const engine = await createEngine();
-  try {
+  const engine = createEngine();
     assert.equal(
       await engine.render(
         { source: 'Well, {{- greeting -}} my friend' },
@@ -484,12 +279,8 @@ test('applies explicit and environment whitespace controls', async () => {
       await engine.render({ source: 'a {% raw -%}\n {{ value }} \n{%- endraw %} b' }),
       'a {{ value }} b',
     );
-  } finally {
-    await engine.dispose();
-  }
 
-  const configured = await createEngine({ trimBlocks: true, lstripBlocks: true });
-  try {
+  const configured = createEngine({ trimBlocks: true, lstripBlocks: true });
     assert.equal(
       await configured.render({
         source: 'test\n {% if true %}\n  foo\n {% endif %}\n</div>',
@@ -514,9 +305,6 @@ test('applies explicit and environment whitespace controls', async () => {
       }),
       ' 12',
     );
-  } finally {
-    await configured.dispose();
-  }
 });
 
 test('resolves relative dependencies from each canonical parent identity', async () => {
@@ -558,9 +346,8 @@ test('resolves relative dependencies from each canonical parent identity', async
       return await ownedTemplates.load(name, signal, from);
     },
   };
-  const engine = await createEngine({ loaders: [loader] });
+  const engine = createEngine({ loaders: [loader] });
 
-  try {
     assert.equal(await engine.render({ name: 'pages/child.njk' }), '(child+base)');
     assert.equal(await engine.render({ name: 'widgets/local.njk' }), 'piece');
     assert.equal(await engine.render({ name: 'pages/import.njk' }), 'piece');
@@ -585,7 +372,7 @@ test('resolves relative dependencies from each canonical parent identity', async
 
     await assert.rejects(
       engine.render({ name: 'pages/cycle.njk' }),
-      error => error instanceof NunjitsuRenderError && error.code === 6,
+      error => error instanceof NunjitsuRenderError,
     );
     await assert.rejects(
       engine.render({ name: 'pages/escape.njk' }),
@@ -595,15 +382,12 @@ test('resolves relative dependencies from each canonical parent identity', async
       engine.render({ source: 'invalid', canonicalName: '' }),
       /canonicalName must be a non-empty string/,
     );
-  } finally {
-    await engine.dispose();
-  }
 });
 
 test('uses an ordered async loader chain and recovers from loader failures', async () => {
   const requests: string[] = [];
   const loaderFailure = new Error('loader failed');
-  const engine = await createEngine({
+  const engine = createEngine({
     loaders: [
       {
         async load(name) {
@@ -629,10 +413,8 @@ test('uses an ordered async loader chain and recovers from loader failures', asy
         },
       },
     ],
-    workerPool: { minWorkers: 1, maxWorkers: 1 },
   });
 
-  try {
     assert.equal(await engine.render({ name: 'fake.njk' }), 'Hello World');
     assert.equal(
       await engine.render({ source: '{% include "package/template.njk" %}' }, { value: 'loaded' }),
@@ -650,9 +432,6 @@ test('uses an ordered async loader chain and recovers from loader failures', asy
     assert.deepEqual(requests.slice(0, 2), ['first:fake.njk', 'second:fake.njk']);
     assert.ok(requests.includes('second:broken.njk'));
     assert.ok(requests.includes('second:missing.njk'));
-  } finally {
-    await engine.dispose();
-  }
 });
 
 test('filesystem loading stays within explicit canonical roots', async () => {
@@ -678,7 +457,7 @@ test('filesystem loading stays within explicit canonical roots', async () => {
   await writeFile(join(root, 'pages', 'escape.njk'), '{% include "../../secret.njk" %}');
   await writeFile(secret, 'secret');
 
-  const engine = await createEngine({
+  const engine = createEngine({
     loaders: [fileSystemLoader({ roots: [emptyRoot, root] })],
   });
   try {
@@ -712,14 +491,12 @@ test('filesystem loading stays within explicit canonical roots', async () => {
       await assert.rejects(engine.render({ name: 'link.njk' }), /symlink escapes/);
     }
   } finally {
-    await engine.dispose();
     await rm(sandbox, { force: true, recursive: true });
   }
 });
 
 test('autoescaping requires an explicit safe string to bypass', async () => {
-  const engine = await createEngine({ autoescape: true });
-  try {
+  const engine = createEngine({ autoescape: true });
     assert.equal(
       await engine.render(
         { source: '<p>{{ unsafe }} {{ safe }}</p>' },
@@ -734,14 +511,10 @@ test('autoescaping requires an explicit safe string to bypass', async () => {
       await engine.render({ source: '<b>{{ value }}</b>' }, { value: false }),
       '<b>false</b>',
     );
-  } finally {
-    await engine.dispose();
-  }
 });
 
 test('evaluates Rust-native filters and tests without host capability calls', async () => {
-  const engine = await createEngine({ autoescape: true });
-  try {
+  const engine = createEngine({ autoescape: true });
     assert.equal(
       await engine.render(
         {
@@ -804,26 +577,19 @@ test('evaluates Rust-native filters and tests without host capability calls', as
       }),
       'selected|',
     );
-  } finally {
-    await engine.dispose();
-  }
 
-  const overriding = await createEngine({
+  const overriding = createEngine({
     filters: {
       upper() {
         return 'overridden';
       },
     },
   });
-  try {
     assert.equal(await overriding.render({ source: '{{ "value" | upper }}' }), 'overridden');
-  } finally {
-    await overriding.dispose();
-  }
 });
 
 test('matches scalar, numeric, and text filter edge semantics', async () => {
-  const engine = await createEngine();
+  const engine = createEngine();
   const cases: readonly [string, TemplateContext, string][] = [
     ['{{ -3.456 | abs }}', {}, '3.456'],
     ['{{ "foo" | capitalize }}', {}, 'Foo'],
@@ -1185,7 +951,6 @@ test('matches scalar, numeric, and text filter edge semantics', async () => {
     ['{{ "<b>what up</b>" | urlize | safe }}', {}, '<b>what up</b>'],
     ['{{ "what\\nup" | urlize | safe }}|{{ "what\\tup" | urlize | safe }}', {}, 'what\nup|what\tup'],
   ];
-  try {
     for (const [source, context, expected] of cases) {
       assert.equal(await engine.render({ source }, context), expected, source);
     }
@@ -1206,7 +971,7 @@ test('matches scalar, numeric, and text filter edge semantics', async () => {
     }
     await assert.rejects(
       engine.render({ source: '{{ "value" | replace(r/a/z, "x") }}' }),
-      error => error instanceof NunjitsuRenderError && error.code === 9,
+      error => error instanceof NunjitsuRenderError,
     );
     assert.equal(await engine.render({ source: 'clean after invalid regex' }), 'clean after invalid regex');
     const customArray = Object.assign([0, 1], { key: 'value' });
@@ -1226,14 +991,11 @@ test('matches scalar, numeric, and text filter edge semantics', async () => {
         /Only plain records/,
       );
     }
-  } finally {
-    await engine.dispose();
-  }
 });
 
 test('matches built-in test semantics across copied values', async () => {
   const shared = { value: true };
-  const engine = await createEngine();
+  const engine = createEngine();
   const cases: readonly [string, TemplateContext, string][] = [
     [
       '{% macro available() %}yes{% endmacro %}{{ available is callable }}|{{ "value" is not callable }}',
@@ -1285,7 +1047,6 @@ test('matches built-in test semantics across copied values', async () => {
       'true|false|true|false',
     ],
   ];
-  try {
     for (const [source, context, expected] of cases) {
       assert.equal(await engine.render({ source }, context), expected, source);
     }
@@ -1296,13 +1057,10 @@ test('matches built-in test semantics across copied values', async () => {
       ),
       /Unsupported template value of type function/,
     );
-  } finally {
-    await engine.dispose();
-  }
 });
 
 test('provides render-local range, cycler, and joiner globals', async () => {
-  const engine = await createEngine();
+  const engine = createEngine();
   const cases: readonly [string, string][] = [
     ['{% for i in range(0, 10) %}{{ i }}{% endfor %}', '0123456789'],
     ['{% for i in range(10) %}{{ i }}{% endfor %}', '0123456789'],
@@ -1333,15 +1091,11 @@ test('provides render-local range, cycler, and joiner globals', async () => {
       'foobar|baz|',
     ],
   ];
-  try {
     for (const [source, expected] of cases) {
       assert.equal(await engine.render({ source }), expected, source);
     }
-  } finally {
-    await engine.dispose();
-  }
 
-  const configured = await createEngine({
+  const configured = createEngine({
     globals: {
       hello(arguments_) {
         return `Hello ${String(arguments_[0])}`;
@@ -1351,23 +1105,19 @@ test('provides render-local range, cycler, and joiner globals', async () => {
       },
     },
   });
-  const isolated = await createEngine();
-  try {
+  const isolated = createEngine();
     assert.equal(
       await configured.render({ source: '{{ hello("World!") }}|{{ goodbye("World!") }}' }),
       'Hello World!|Goodbye World!',
     );
     await assert.rejects(
       isolated.render({ source: '{{ hello("World!") }}' }),
-      error => error instanceof NunjitsuRenderError && error.code === 8,
+      error => error instanceof NunjitsuRenderError,
     );
-  } finally {
-    await Promise.all([configured.dispose(), isolated.dispose()]);
-  }
 });
 
 test('evaluates Jinja-compatible array slices', async () => {
-  const engine = await createEngine();
+  const engine = createEngine();
   const context = { arr: ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'], n: 1 };
   const cases: readonly [string, string][] = [
     ['{% for i in arr[1:4] %}{{ i }}{% endfor %}', 'bcd'],
@@ -1384,13 +1134,9 @@ test('evaluates Jinja-compatible array slices', async () => {
     ['{% for i in arr[1::2] %}{{ i }}{% endfor %}', 'bdfh'],
     ['{% for i in arr[1:7:2] %}{{ i }}{% endfor %}', 'bdf'],
   ];
-  try {
     for (const [source, expected] of cases) {
       assert.equal(await engine.render({ source }, context), expected, source);
     }
-  } finally {
-    await engine.dispose();
-  }
 });
 
 test('dispatches immutable async filters, tests, and globals through safe copied values', async () => {
@@ -1398,9 +1144,8 @@ test('dispatches immutable async filters, tests, and globals through safe copied
   const blockingCallStarted = new Promise<void>(resolve => {
     markBlockingCallStarted = resolve;
   });
-  const engine = await createEngine({
+  const engine = createEngine({
     autoescape: true,
-    workerPool: { minWorkers: 1, maxWorkers: 1 },
     loaders: [memoryLoader({ 'chosen.njk': 'loaded {{ value }}' })],
     filters: {
       async suffix(input, arguments_) {
@@ -1469,7 +1214,6 @@ test('dispatches immutable async filters, tests, and globals through safe copied
     },
   });
 
-  try {
     assert.equal(
       await engine.render(
         {
@@ -1518,11 +1262,11 @@ test('dispatches immutable async filters, tests, and globals through safe copied
     );
     await assert.rejects(
       engine.render({ source: '{{ value | absent }}' }, { value: 'x' }),
-      error => error instanceof NunjitsuRenderError && error.code === 8,
+      error => error instanceof NunjitsuRenderError,
     );
     await assert.rejects(
       engine.render({ source: '{% absentTag %}' }),
-      error => error instanceof NunjitsuRenderError && error.code === 5,
+      error => error instanceof NunjitsuRenderError,
     );
     await assert.rejects(engine.render({ source: '{{ explode() }}' }), /ERROR/);
 
@@ -1536,13 +1280,10 @@ test('dispatches immutable async filters, tests, and globals through safe copied
     controller.abort();
     await assert.rejects(rendering, error => error instanceof Error && error.name === 'AbortError');
     assert.equal(await engine.render({ source: 'clean' }), 'clean');
-  } finally {
-    await engine.dispose();
-  }
 });
 
 test('renders declarative custom tag bodies and ordered intermediate sections', async () => {
-  const engine = await createEngine({
+  const engine = createEngine({
     autoescape: true,
     filters: {
       async suffix(input, arguments_) {
@@ -1575,7 +1316,6 @@ test('renders declarative custom tag bodies and ordered intermediate sections', 
     },
   });
 
-  try {
     assert.equal(
       await engine.render({ source: '{% reverse %}123456789{% endreverse %}' }),
       '987654321',
@@ -1602,13 +1342,10 @@ test('renders declarative custom tag bodies and ordered intermediate sections', 
       }),
       'dbca',
     );
-  } finally {
-    await engine.dispose();
-  }
 });
 
 test('evaluates nested and resumable if branches without rendering inactive bodies', async () => {
-  const engine = await createEngine({
+  const engine = createEngine({
     tests: {
       async enabled(input) {
         await Promise.resolve();
@@ -1616,7 +1353,6 @@ test('evaluates nested and resumable if branches without rendering inactive bodi
       },
     },
   });
-  try {
     const template = {
       source: [
         '{% if outer %}',
@@ -1723,22 +1459,18 @@ test('evaluates nested and resumable if branches without rendering inactive bodi
     );
     await assert.rejects(
       engine.render({ source: '{% if value %}unclosed' }, { value: false }),
-      error => error instanceof NunjitsuRenderError && error.code === 5,
+      error => error instanceof NunjitsuRenderError,
     );
     await assert.rejects(
       engine.render({ source: '{% if value %}{{ unclosed{% endif %}' }, { value: false }),
-      error => error instanceof NunjitsuRenderError && error.code === 3,
+      error => error instanceof NunjitsuRenderError,
     );
-  } finally {
-    await engine.dispose();
-  }
 });
 
 test('iterates slot-backed arrays and records with nested local scopes', async () => {
-  const engine = await createEngine({
+  const engine = createEngine({
     loaders: [memoryLoader({ 'item.njk': '<{{ item }}>' })],
   });
-  try {
     const list = { source: '{% for item in items %}[{{ item }}]{% else %}empty{% endfor %}' };
     assert.equal(await engine.render(list, { items: ['a', 'b', 'c'] }), '[a][b][c]');
     assert.equal(await engine.render(list, { items: [] }), 'empty');
@@ -1809,13 +1541,10 @@ test('iterates slot-backed arrays and records with nested local scopes', async (
       ))).join(''),
       '<x><y>',
     );
-  } finally {
-    await engine.dispose();
-  }
 });
 
 test('keeps resumable assignments scoped across loops and includes', async () => {
-  const engine = await createEngine({
+  const engine = createEngine({
     autoescape: false,
     loaders: [memoryLoader({
       'mutate.njk': '{% set value = "inside" %}{{ value }}',
@@ -1828,7 +1557,6 @@ test('keeps resumable assignments scoped across loops and includes', async () =>
       },
     },
   });
-  try {
     assert.equal(
       await engine.render({
         source: [
@@ -1897,23 +1625,19 @@ test('keeps resumable assignments scoped across loops and includes', async () =>
     );
     await assert.rejects(
       engine.render({ source: '{% set captured %}unclosed' }),
-      error => error instanceof NunjitsuRenderError && error.code === 5,
+      error => error instanceof NunjitsuRenderError,
     );
     assert.equal(
       await engine.render({ source: 'clean after capture failure' }),
       'clean after capture failure',
     );
-  } finally {
-    await engine.dispose();
-  }
 });
 
 test('executes deferred macros in isolated captured scopes', async () => {
-  const engine = await createEngine({
+  const engine = createEngine({
     autoescape: true,
     loaders: [memoryLoader({ 'macro-include.njk': 'included {{ value }}' })],
   });
-  try {
     assert.equal(
       await engine.render(
         {
@@ -1963,15 +1687,12 @@ test('executes deferred macros in isolated captured scopes', async () => {
       await Array.fromAsync(engine.renderStream({
         source: 'before{% macro value() %}macro{% endmacro %}{{ value() }}after',
       })),
-      ['before', 'macroafter'],
+      ['before', 'macro', 'after'],
     );
-  } finally {
-    await engine.dispose();
-  }
 });
 
 test('resolves inherited blocks through bounded one-shot frames', async () => {
-  const engine = await createEngine({
+  const engine = createEngine({
     loaders: [memoryLoader({
       'base.njk': 'A{% block content %}base{% endblock %}B{% block footer %}base footer{% endblock %}C',
       'middle.njk': [
@@ -1982,7 +1703,6 @@ test('resolves inherited blocks through bounded one-shot frames', async () => {
       'simple-base.njk': '{% block test %}base{% endblock test %}',
     })],
   });
-  try {
     assert.equal(
       await engine.render({
         source: '{% extends parent %}{% block content %}child{% endblock %}',
@@ -2007,20 +1727,16 @@ test('resolves inherited blocks through bounded one-shot frames', async () => {
           '{% block test %}second{% endblock %}',
         ].join(''),
       }),
-      error => error instanceof NunjitsuRenderError && error.code === 5,
+      error => error instanceof NunjitsuRenderError,
     );
-  } finally {
-    await engine.dispose();
-  }
 });
 
 test('loads imported macro namespaces without rendering module text', async () => {
-  const engine = await createEngine({
+  const engine = createEngine({
     loaders: [memoryLoader({
       'macros.njk': 'ignored{% macro value() %}macro{% endmacro %}ignored',
     })],
   });
-  try {
     assert.equal(
       await engine.render({
         source: 'before{% import "macros.njk" as macros %}{{ macros.value() }}after',
@@ -2031,15 +1747,12 @@ test('loads imported macro namespaces without rendering module text', async () =
       engine.render({
         source: '{% from "macros.njk" import absent %}',
       }),
-      error => error instanceof NunjitsuRenderError && error.code === 9,
+      error => error instanceof NunjitsuRenderError,
     );
-  } finally {
-    await engine.dispose();
-  }
 });
 
 test('rejects invalid expressions and calls across deferred template frames', async () => {
-  const engine = await createEngine({
+  const engine = createEngine({
     loaders: [memoryLoader({
       'undefined-macro.njk': '{{ undef() }}',
       'macro-call-undefined-macro.njk': [
@@ -2054,7 +1767,6 @@ test('rejects invalid expressions and calls across deferred template frames', as
       'foo': '{% macro _bar() %}private{% endmacro %}',
     })],
   });
-  try {
     for (const [source, context] of [
       ['{{ foo("cvan") }}', {}],
       ['{{ foo["bar"]("cvan") }}', {}],
@@ -2086,13 +1798,10 @@ test('rejects invalid expressions and calls across deferred template frames', as
     ] as const) {
       await assert.rejects(
         engine.render({ source }, context),
-        error => error instanceof NunjitsuRenderError && [3, 5, 8, 9].includes(error.code),
+        error => error instanceof NunjitsuRenderError,
         source,
       );
     }
-  } finally {
-    await engine.dispose();
-  }
 });
 
 test('handles trailing macro values through the safe slot boundary', async () => {
@@ -2106,8 +1815,7 @@ test('handles trailing macro values through the safe slot boundary', async () =>
     enumerable: true,
     value: 'function(){ return 1+2; }()',
   });
-  const engine = await createEngine();
-
+  const engine = createEngine();
   try {
     assert.equal(
       await engine.render({
@@ -2132,7 +1840,6 @@ test('handles trailing macro values through the safe slot boundary', async () =>
       '',
     );
   } finally {
-    await engine.dispose();
     if (previousDescriptor) {
       Object.defineProperty(Object.prototype, inheritedName, previousDescriptor);
     } else {
@@ -2166,22 +1873,18 @@ test('cancels a render while its worker is suspended on an include loader', asyn
       });
     },
   };
-  const engine = await createEngine({
+  const engine = createEngine({
     loaders: [
       memoryLoader({ 'entry.njk': 'before {% include "delayed.njk" %} after' }),
       delayedLoader,
     ],
   });
-  try {
     const controller = new AbortController();
     const rendering = engine.render({ name: 'entry.njk' }, {}, { signal: controller.signal });
     await loadStarted;
     controller.abort();
     await assert.rejects(rendering, error => error instanceof Error && error.name === 'AbortError');
     assert.equal(await engine.render({ source: 'clean' }), 'clean');
-  } finally {
-    await engine.dispose();
-  }
 });
 
 test('cancels a partially consumed stream and recycles its reserved worker', async () => {
@@ -2209,11 +1912,9 @@ test('cancels a partially consumed stream and recycles its reserved worker', asy
       });
     },
   };
-  const engine = await createEngine({
+  const engine = createEngine({
     loaders: [delayedLoader],
-    workerPool: { minWorkers: 1, maxWorkers: 1 },
   });
-  try {
     const reader = engine.renderStream(
       { source: 'before{{ value }}{% include "delayed.njk" %} after' },
       { value: 'yield' },
@@ -2223,13 +1924,10 @@ test('cancels a partially consumed stream and recycles its reserved worker', asy
     await loadStarted;
     await reader.cancel();
     assert.equal(await engine.render({ source: 'clean' }), 'clean');
-  } finally {
-    await engine.dispose();
-  }
 });
 
 test('enforces finite per-render limits and permits explicit unlimited values', async () => {
-  const engine = await createEngine({
+  const engine = createEngine({
     loaders: [
       memoryLoader({
         'entry.njk': 'before {% include "partial.njk" %} after',
@@ -2237,7 +1935,6 @@ test('enforces finite per-render limits and permits explicit unlimited values', 
       }),
     ],
   });
-  try {
     for (const [template, limits] of [
       [{ source: 'output' }, { outputBytes: 3 }],
       [{ source: 'work' }, { workUnits: 1 }],
@@ -2266,7 +1963,4 @@ test('enforces finite per-render limits and permits explicit unlimited values', 
       ),
       'unlimited output',
     );
-  } finally {
-    await engine.dispose();
-  }
 });

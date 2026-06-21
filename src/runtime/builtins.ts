@@ -30,6 +30,11 @@ interface NunjucksModule {
 const nativeNunjucks = (nunjucks as unknown as { default: NunjucksModule }).default;
 const environment = new nativeNunjucks.Environment(null, { autoescape: false });
 
+/** Returns whether the pinned standard library exposes one filter name. */
+export function hasBuiltinFilter(name: string): boolean {
+  return environment.getFilter(name) !== undefined;
+}
+
 /** Applies one trusted built-in filter to copied public values. */
 export function applyBuiltinFilter(
   name: string,
@@ -37,6 +42,18 @@ export function applyBuiltinFilter(
   positional: readonly RuntimeValue[],
   keyword: ReadonlyMap<string, RuntimeValue>,
 ): RuntimeValue | undefined {
+  if (name === 'reverse') {
+    if (typeof input === 'string' || input instanceof RuntimeSafeString) {
+      const reversed = [...renderRuntimeValue(input)].reverse().join('');
+      return input instanceof RuntimeSafeString ? new RuntimeSafeString(reversed) : reversed;
+    }
+    if (input instanceof RuntimeArray) {
+      return new RuntimeArray([...input.values()].reverse());
+    }
+  }
+  if (name === 'groupby') {
+    return groupRuntimeValues(input, positional[0]);
+  }
   const filter = environment.getFilter(name);
   if (!filter) {
     return undefined;
@@ -54,6 +71,40 @@ export function applyBuiltinFilter(
   }
   const result = filter.apply(Object.freeze({ env: environment }), arguments_);
   return fromBuiltinValue(result);
+}
+
+function groupRuntimeValues(input: RuntimeValue, attribute: RuntimeValue): RuntimeValue {
+  if (!(input instanceof RuntimeArray)) {
+    return new RuntimeRecord([]);
+  }
+  const path = typeof attribute === 'string' || attribute instanceof RuntimeSafeString
+    ? renderRuntimeValue(attribute).split('.')
+    : [];
+  const grouped = new Map<string, RuntimeValue[]>();
+  for (const value of input.values()) {
+    let key: RuntimeValue = value;
+    for (const segment of path) {
+      key = key instanceof RuntimeRecord ? key.get(segment) : undefined;
+    }
+    if (path.length === 0) {
+      key = undefined;
+    }
+    const renderedKey = key === undefined ? 'undefined' : renderRuntimeValue(key);
+    const values = grouped.get(renderedKey) ?? [];
+    values.push(value);
+    grouped.set(renderedKey, values);
+  }
+  const entries = [...grouped].map(([key, values]) => [key, new RuntimeArray(values)] as const);
+  const numeric = entries
+    .filter(([key]) => isArrayIndex(key))
+    .sort(([left], [right]) => Number(left) - Number(right));
+  const named = entries.filter(([key]) => !isArrayIndex(key));
+  return new RuntimeRecord([...numeric, ...named]);
+}
+
+function isArrayIndex(value: string): boolean {
+  const number = Number(value);
+  return Number.isInteger(number) && number >= 0 && number < 0xffff_ffff && `${number}` === value;
 }
 
 /** Applies one closed built-in test. */

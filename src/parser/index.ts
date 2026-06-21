@@ -58,8 +58,15 @@ interface ForeignNodes {
   CallExtension: new (extension: unknown, prop: string, args: unknown, content: unknown[]) => unknown;
 }
 
-const parser = (nunjucks as unknown as { default: { parser: ForeignParser } }).default.parser;
-const foreignNodes = (nunjucks as unknown as { default: { nodes: ForeignNodes } }).default.nodes;
+interface NunjucksModule {
+  readonly parser: ForeignParser;
+  readonly nodes: ForeignNodes;
+  installJinjaCompat(): () => void;
+}
+
+const nativeNunjucks = (nunjucks as unknown as { default: NunjucksModule }).default;
+const parser = nativeNunjucks.parser;
+const foreignNodes = nativeNunjucks.nodes;
 
 const nodeFields = Object.freeze({
   Root: ['children'],
@@ -74,6 +81,7 @@ const nodeFields = Object.freeze({
   KeywordArgs: ['children'],
   Pair: ['key', 'value'],
   LookupVal: ['target', 'val'],
+  Slice: ['start', 'stop', 'step'],
   If: ['cond', 'body', 'else_'],
   IfAsync: ['cond', 'body', 'else_'],
   InlineIf: ['cond', 'body', 'else_'],
@@ -121,8 +129,15 @@ export function parseTemplate(
   source: string,
   options: ParseOptions = { trimBlocks: false, lstripBlocks: false },
 ): AstNode {
+  const normalizedSource = normalizeNumericLookups(normalizeRawWhitespace(source));
+  validateRawBlocks(normalizedSource);
+  const uninstallCompat = nativeNunjucks.installJinjaCompat();
   try {
-    return convertNode(parser.parse(source, createParserExtensions(options.tags ?? []), options));
+    return convertNode(parser.parse(
+      normalizedSource,
+      createParserExtensions(options.tags ?? []),
+      options,
+    ));
   } catch (error) {
     if (error instanceof NunjitsuParseError) {
       throw error;
@@ -134,6 +149,39 @@ export function parseTemplate(
       typeof foreign.colno === 'number' ? foreign.colno : undefined,
       error,
     );
+  } finally {
+    uninstallCompat();
+  }
+}
+
+function normalizeNumericLookups(source: string): string {
+  return source.replace(
+    /{[{%][\s\S]*?[}%]}/g,
+    tag => tag.replace(/(?<=[A-Za-z_\])])\.(\d+)\b/g, '[$1]'),
+  );
+}
+
+function normalizeRawWhitespace(source: string): string {
+  return source
+    .replace(/({%\s*(?:raw|verbatim)\s*)-%}[\t\n\r ]*/g, '$1%}')
+    .replace(/[\t\n\r ]*{%-\s*(end(?:raw|verbatim))\s*%}/g, '{% $1 %}');
+}
+
+function validateRawBlocks(source: string): void {
+  const opening = /{%-?\s*(raw|verbatim)\s*-?%}/g;
+  for (;;) {
+    const match = opening.exec(source);
+    if (!match) {
+      return;
+    }
+    const name = match[1]!;
+    const closing = new RegExp(`{%-?\\s*end${name}\\s*-?%}`, 'g');
+    closing.lastIndex = opening.lastIndex;
+    const end = closing.exec(source);
+    if (!end) {
+      throw new NunjitsuParseError(`Missing end${name} tag`);
+    }
+    opening.lastIndex = closing.lastIndex;
   }
 }
 

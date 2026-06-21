@@ -222,13 +222,12 @@ async function runWorker(
 async function createNunjitsuRunner(workload: BenchmarkWorkload): Promise<BenchmarkRunner> {
   const options: EngineOptions = {
     autoescape: false,
-    workerPool: { minWorkers: 1, maxWorkers: 1 },
     ...(workload.template.type === 'named'
       ? { loaders: [memoryLoader(workload.template.files)] }
       : {}),
     ...(workload.capabilities ? createNunjitsuCapabilities() : {}),
   };
-  const engine = await createEngine(options);
+  const engine = createEngine(options);
   return {
     async render() {
       return await engine.render(
@@ -238,9 +237,7 @@ async function createNunjitsuRunner(workload: BenchmarkWorkload): Promise<Benchm
         workload.context,
       );
     },
-    async dispose() {
-      await engine.dispose();
-    },
+    async dispose() {},
   };
 }
 

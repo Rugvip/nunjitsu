@@ -8,6 +8,7 @@ import {
   applyBuiltinFilter,
   applyBuiltinTest,
   escapeHtml,
+  hasBuiltinFilter,
   lookupRuntimeValue,
   runtimeNumber,
 } from './builtins.ts';
@@ -37,6 +38,12 @@ export interface RuntimeHost {
   readonly tags?: readonly ParseTagDescriptor[];
   /** Returns whether one exact global name is registered. */
   hasGlobal?(name: string): boolean;
+  /** Returns whether one exact filter name is registered. */
+  hasFilter?(name: string): boolean;
+  /** Returns whether one exact test name is registered. */
+  hasTest?(name: string): boolean;
+  /** Returns whether one exact custom tag name is registered. */
+  hasTag?(name: string): boolean;
   /** Resolves one named template through explicitly configured trusted loaders. */
   load?(
     name: string,
@@ -87,6 +94,8 @@ export interface EvaluateOptions {
   readonly canonicalName?: string;
 }
 
+type OutputTarget = string[] | ((value: string) => Promise<void>);
+
 interface MacroDefinition {
   readonly node: AstNode;
   readonly scope: RuntimeScope;
@@ -104,6 +113,23 @@ interface BlockFrame {
   readonly scope: RuntimeScope;
 }
 
+type BuiltinCallableDefinition =
+  | {
+    readonly type: 'cycler';
+    readonly values: readonly RuntimeValue[];
+    index: number;
+  }
+  | {
+    readonly type: 'cycler-method';
+    readonly owner: number;
+    readonly method: 'next' | 'reset';
+  }
+  | {
+    readonly type: 'joiner';
+    readonly separator: string;
+    used: boolean;
+  };
+
 /** Parses and evaluates one inline source through the closed interpreter. */
 export async function evaluateTemplate(
   source: string,
@@ -119,10 +145,32 @@ export async function evaluateTemplate(
   return await evaluator.render(ast, copyRuntimeContext(context), options.canonicalName);
 }
 
+/** Parses completely, then evaluates while awaiting each emitted output segment. */
+export async function evaluateTemplateStream(
+  source: string,
+  context: TemplateContext,
+  options: EvaluateOptions,
+  emit: (value: string) => Promise<void>,
+): Promise<void> {
+  const ast = parseTemplate(source, {
+    trimBlocks: options.trimBlocks,
+    lstripBlocks: options.lstripBlocks,
+    ...(options.host?.tags ? { tags: options.host.tags } : {}),
+  });
+  const evaluator = new Evaluator(options);
+  await evaluator.render(ast, copyRuntimeContext(context), options.canonicalName, emit);
+}
+
 class Evaluator {
   readonly #options: EvaluateOptions;
   readonly #macros = new Map<number, MacroDefinition>();
   readonly #templates = new Map<string, AstNode>();
+  readonly #loadedTemplates = new Map<
+    string,
+    { readonly source: string; readonly canonicalName: string } | null
+  >();
+  readonly #activeTemplates: string[] = [];
+  readonly #builtinCallables = new Map<number, BuiltinCallableDefinition>();
   #activeBlocks = new Map<string, readonly BlockDefinition[]>();
   readonly #blockStack: BlockFrame[] = [];
   #probingExtends = false;
@@ -131,6 +179,7 @@ class Evaluator {
   #workUnits = 0;
   #outputBytes = 0;
   #loaderCalls = 0;
+  #capabilityCalls = 0;
 
   constructor(options: EvaluateOptions) {
     this.#options = options;
@@ -140,25 +189,38 @@ class Evaluator {
     ast: AstNode,
     context: RuntimeRecord,
     canonicalName?: string,
+    emit?: (value: string) => Promise<void>,
   ): Promise<string> {
     const contextScope = new RuntimeScope();
     for (const [name, value] of context.entries()) {
       contextScope.setReadonly(name, value);
     }
     const scope = contextScope.child(true);
-    const output: string[] = [];
+    const output: OutputTarget = emit ?? [];
     await this.#renderTemplate(ast, scope, output, 0, canonicalName);
-    return output.join('');
+    return Array.isArray(output) ? output.join('') : '';
   }
 
   async #renderTemplate(
     ast: AstNode,
     scope: RuntimeScope,
-    output: string[],
+    output: OutputTarget,
     depth: number,
     canonicalName: string | undefined,
     inheritedBlocks: ReadonlyMap<string, readonly BlockDefinition[]> = new Map(),
   ): Promise<void> {
+    if (canonicalName !== undefined) {
+      if (this.#activeTemplates.includes(canonicalName)) {
+        throw new Error(`Template dependency cycle detected at ${canonicalName}`);
+      }
+      if (
+        this.#options.limits.includeDepth !== Number.POSITIVE_INFINITY &&
+        this.#activeTemplates.length >= this.#options.limits.includeDepth
+      ) {
+        throw new NunjitsuLimitError('includeDepth');
+      }
+      this.#activeTemplates.push(canonicalName);
+    }
     const previousBlocks = this.#activeBlocks;
     const activeBlocks = mergeBlocks(inheritedBlocks, collectBlocks(ast, canonicalName));
     this.#activeBlocks = activeBlocks;
@@ -193,13 +255,16 @@ class Evaluator {
       await this.#evaluateNode(ast, scope, output, depth + 1, canonicalName);
     } finally {
       this.#activeBlocks = previousBlocks;
+      if (canonicalName !== undefined) {
+        this.#activeTemplates.pop();
+      }
     }
   }
 
   async #evaluateNode(
     node: AstNode,
     scope: RuntimeScope,
-    output: string[],
+    output: OutputTarget,
     depth: number,
     canonicalName?: string,
   ): Promise<void> {
@@ -215,11 +280,11 @@ class Evaluator {
         }
         for (const child of astNodes(node, 'children')) {
           if (child.type === 'TemplateData') {
-            this.#append(output, literalString(child));
+            await this.#append(output, literalString(child));
           } else {
             const value = await this.#evaluateExpression(child, scope, depth + 1);
             const rendered = renderRuntimeValue(value);
-            this.#append(
+            await this.#append(
               output,
               this.#options.autoescape && !(value instanceof RuntimeSafeString)
                 ? escapeHtml(rendered)
@@ -327,7 +392,7 @@ class Evaluator {
   async #evaluateBlock(
     node: AstNode,
     scope: RuntimeScope,
-    output: string[],
+    output: OutputTarget,
     depth: number,
     canonicalName: string | undefined,
   ): Promise<void> {
@@ -342,7 +407,7 @@ class Evaluator {
     chain: readonly BlockDefinition[],
     index: number,
     scope: RuntimeScope,
-    output: string[],
+    output: OutputTarget,
     depth: number,
   ): Promise<void> {
     const definition = chain[index];
@@ -366,7 +431,7 @@ class Evaluator {
   async #evaluateSequence(
     nodes: readonly AstNode[],
     scope: RuntimeScope,
-    output: string[],
+    output: OutputTarget,
     depth: number,
     canonicalName?: string,
   ): Promise<void> {
@@ -378,7 +443,7 @@ class Evaluator {
   async #evaluateFor(
     node: AstNode,
     scope: RuntimeScope,
-    output: string[],
+    output: OutputTarget,
     depth: number,
     canonicalName?: string,
   ): Promise<void> {
@@ -505,7 +570,20 @@ class Evaluator {
       }
       case 'LookupVal': {
         const target = await this.#evaluateExpression(astNode(node, 'target'), scope, depth + 1);
-        const key = await this.#evaluateExpression(astNode(node, 'val'), scope, depth + 1);
+        const valueNode = astNode(node, 'val');
+        if (valueNode.type === 'Slice') {
+          return await this.#evaluateSlice(target, valueNode, scope, depth + 1);
+        }
+        if (valueNode.type === 'Array') {
+          const children = astNodes(valueNode, 'children');
+          if (children.length === 1 && children[0]?.type === 'Slice') {
+            return await this.#evaluateSlice(target, children[0], scope, depth + 1);
+          }
+        }
+        const key = await this.#evaluateExpression(valueNode, scope, depth + 1);
+        if (target instanceof RuntimeCallable && target.callableKind === 'builtin') {
+          return this.#lookupBuiltinCallable(target.id, renderRuntimeValue(key));
+        }
         return lookupRuntimeValue(target, key);
       }
       case 'InlineIf': {
@@ -568,6 +646,50 @@ class Evaluator {
     }
   }
 
+  async #evaluateSlice(
+    target: RuntimeValue,
+    slice: AstNode,
+    scope: RuntimeScope,
+    depth: number,
+  ): Promise<RuntimeValue> {
+    const startValue = await this.#evaluateExpression(astNode(slice, 'start'), scope, depth + 1);
+    const stopValue = await this.#evaluateExpression(astNode(slice, 'stop'), scope, depth + 1);
+    const stepValue = await this.#evaluateExpression(astNode(slice, 'step'), scope, depth + 1);
+    const values = target instanceof RuntimeArray
+      ? [...target.values()]
+      : typeof target === 'string' || target instanceof RuntimeSafeString
+        ? [...renderRuntimeValue(target)]
+        : [];
+    const step = Math.trunc(runtimeNumber(stepValue));
+    if (!Number.isFinite(step) || step === 0) {
+      throw new Error('Slice step must be a non-zero finite integer');
+    }
+    let start = startValue === null
+      ? (step < 0 ? values.length - 1 : 0)
+      : Math.trunc(runtimeNumber(startValue));
+    let stop = stopValue === null
+      ? (step < 0 ? -1 : values.length)
+      : Math.trunc(runtimeNumber(stopValue));
+    if (start < 0) {
+      start += values.length;
+    }
+    if (stopValue !== null && stop < 0) {
+      stop += values.length;
+    }
+    const output: RuntimeValue[] = [];
+    for (let index = start; ; index += step) {
+      if (index < 0 || index >= values.length) {
+        break;
+      }
+      if ((step > 0 && index >= stop) || (step < 0 && index <= stop)) {
+        break;
+      }
+      output.push(values[index]);
+      this.#charge(depth);
+    }
+    return new RuntimeArray(output);
+  }
+
   async #evaluateBinary(node: AstNode, scope: RuntimeScope, depth: number): Promise<RuntimeValue> {
     const left = await this.#evaluateExpression(astNode(node, 'left'), scope, depth + 1);
     const right = await this.#evaluateExpression(astNode(node, 'right'), scope, depth + 1);
@@ -612,17 +734,21 @@ class Evaluator {
     const name = symbolName(astNode(node, 'name'));
     const arguments_ = await this.#evaluateArguments(astNode(node, 'args'), scope, depth + 1);
     const [input, ...positional] = arguments_.positional;
-    const hostResult = await this.#options.host?.filter?.(
-      name,
-      input,
-      Object.freeze({ positional: Object.freeze(positional), keyword: arguments_.keyword }),
-      this.#options.signal,
-    );
-    if (hostResult?.found) {
-      return hostResult.value;
+    this.#assertScratch([input, ...positional, ...arguments_.keyword.values()]);
+    if (this.#options.host?.hasFilter?.(name)) {
+      this.#chargeCapability();
+      const hostResult = await this.#options.host.filter?.(
+        name,
+        input,
+        Object.freeze({ positional: Object.freeze(positional), keyword: arguments_.keyword }),
+        this.#options.signal,
+      );
+      if (hostResult?.found) {
+        return hostResult.value;
+      }
     }
     const builtin = applyBuiltinFilter(name, input, positional, arguments_.keyword);
-    if (builtin === undefined) {
+    if (builtin === undefined && !hasBuiltinFilter(name)) {
       throw new Error(`Unknown template filter ${name}`);
     }
     return builtin;
@@ -631,7 +757,7 @@ class Evaluator {
   async #evaluateInclude(
     node: AstNode,
     scope: RuntimeScope,
-    output: string[],
+    output: OutputTarget,
     depth: number,
     canonicalName: string | undefined,
   ): Promise<void> {
@@ -688,6 +814,9 @@ class Evaluator {
       const targetName = imported.type === 'Pair'
         ? symbolName(astNode(imported, 'value'))
         : sourceName;
+      if (!exports.has(sourceName)) {
+        throw new Error(`Template ${name} does not export ${sourceName}`);
+      }
       scope.assign(targetName, exports.get(sourceName));
     }
   }
@@ -695,7 +824,7 @@ class Evaluator {
   async #evaluateTag(
     node: AstNode,
     scope: RuntimeScope,
-    output: string[],
+    output: OutputTarget,
     depth: number,
     canonicalName: string | undefined,
   ): Promise<void> {
@@ -725,7 +854,11 @@ class Evaluator {
         throw new Error(`Invalid custom tag content for ${name}`);
       }
     }
-    const result = await this.#options.host?.tag?.(
+    if (!this.#options.host?.hasTag?.(name)) {
+      throw new Error(`Unknown custom tag ${name}`);
+    }
+    this.#chargeCapability();
+    const result = await this.#options.host.tag?.(
       name,
       arguments_,
       Object.freeze(content),
@@ -737,7 +870,7 @@ class Evaluator {
     const value = result.value;
     const rendered = renderRuntimeValue(value);
     const autoescape = astField(node, 'autoescape') !== false;
-    this.#append(
+    await this.#append(
       output,
       autoescape && this.#options.autoescape && !(value instanceof RuntimeSafeString)
         ? escapeHtml(rendered)
@@ -750,6 +883,10 @@ class Evaluator {
     canonicalName: string | undefined,
     ignoreMissing: boolean,
   ): Promise<{ readonly source: string; readonly canonicalName: string } | undefined> {
+    const cacheKey = `${canonicalName ?? ''}\0${name}`;
+    if (this.#loadedTemplates.has(cacheKey)) {
+      return this.#loadedTemplates.get(cacheKey) ?? undefined;
+    }
     if (!this.#options.host?.load) {
       if (ignoreMissing) {
         return undefined;
@@ -763,12 +900,14 @@ class Evaluator {
     ) {
       throw new NunjitsuLimitError('loaderCalls');
     }
-    return await this.#options.host.load(
+    const loaded = await this.#options.host.load(
       name,
       canonicalName,
       ignoreMissing,
       this.#options.signal,
     );
+    this.#loadedTemplates.set(cacheKey, loaded ?? null);
+    return loaded;
   }
 
   #parseLoaded(loaded: { readonly source: string; readonly canonicalName: string }): AstNode {
@@ -792,18 +931,26 @@ class Evaluator {
     if (test.type === 'FunCall') {
       name = symbolName(astNode(test, 'name'));
       arguments_ = await this.#evaluateArguments(astNode(test, 'args'), scope, depth + 1);
-    } else {
+    } else if (test.type === 'Symbol') {
       name = symbolName(test);
       arguments_ = Object.freeze({ positional: Object.freeze([]), keyword: new Map() });
+    } else if (test.type === 'Literal') {
+      const expected = await this.#evaluateExpression(test, scope, depth + 1);
+      return runtimeEqual(input, expected, true);
+    } else {
+      throw new Error(`Invalid template test ${test.type}`);
     }
-    const host = await this.#options.host?.test?.(
-      name,
-      input,
-      arguments_,
-      this.#options.signal,
-    );
-    if (host !== undefined) {
-      return host;
+    if (this.#options.host?.hasTest?.(name)) {
+      this.#chargeCapability();
+      const host = await this.#options.host.test?.(
+        name,
+        input,
+        arguments_,
+        this.#options.signal,
+      );
+      if (host !== undefined) {
+        return host;
+      }
     }
     const builtin = applyBuiltinTest(name, input, arguments_.positional);
     if (builtin === undefined) {
@@ -829,7 +976,11 @@ class Evaluator {
       if (target.callableKind === 'macro' || target.callableKind === 'caller') {
         return await this.#invokeMacro(target.id, arguments_, depth + 1);
       }
+      if (target.callableKind === 'builtin') {
+        return this.#invokeBuiltinCallable(target.id);
+      }
       if (target.callableKind === 'capability' && name && this.#options.host?.global) {
+        this.#chargeCapability();
         const result = await this.#options.host.global(name, arguments_, this.#options.signal);
         if (result.found) {
           return result.value;
@@ -841,9 +992,12 @@ class Evaluator {
       if (builtin !== undefined) {
         return builtin;
       }
-      const result = await this.#options.host?.global?.(name, arguments_, this.#options.signal);
-      if (result?.found) {
-        return result.value;
+      if (this.#options.host?.hasGlobal?.(name)) {
+        this.#chargeCapability();
+        const result = await this.#options.host.global?.(name, arguments_, this.#options.signal);
+        if (result?.found) {
+          return result.value;
+        }
       }
     }
     throw new Error(`Unable to call template value${name ? ` ${name}` : ''}`);
@@ -961,7 +1115,71 @@ class Evaluator {
       }
       return new RuntimeArray(output);
     }
+    if (name === 'cycler') {
+      const id = this.#nextCallableId++;
+      this.#builtinCallables.set(id, {
+        type: 'cycler',
+        values: Object.freeze([...arguments_.positional]),
+        index: -1,
+      });
+      return new RuntimeCallable('builtin', id);
+    }
+    if (name === 'joiner') {
+      const id = this.#nextCallableId++;
+      this.#builtinCallables.set(id, {
+        type: 'joiner',
+        separator: renderRuntimeValue(arguments_.positional[0] ?? ','),
+        used: false,
+      });
+      return new RuntimeCallable('builtin', id);
+    }
     return undefined;
+  }
+
+  #lookupBuiltinCallable(id: number, key: string): RuntimeValue {
+    const definition = this.#builtinCallables.get(id);
+    if (!definition || definition.type !== 'cycler') {
+      return undefined;
+    }
+    if (key === 'current') {
+      return definition.index < 0 ? null : definition.values[definition.index];
+    }
+    if (key !== 'next' && key !== 'reset') {
+      return undefined;
+    }
+    const methodId = this.#nextCallableId++;
+    this.#builtinCallables.set(methodId, { type: 'cycler-method', owner: id, method: key });
+    return new RuntimeCallable('builtin', methodId);
+  }
+
+  #invokeBuiltinCallable(id: number): RuntimeValue {
+    const definition = this.#builtinCallables.get(id);
+    if (!definition) {
+      throw new Error('Unknown interpreter builtin callable');
+    }
+    if (definition.type === 'joiner') {
+      if (!definition.used) {
+        definition.used = true;
+        return '';
+      }
+      return definition.separator;
+    }
+    if (definition.type === 'cycler-method') {
+      const owner = this.#builtinCallables.get(definition.owner);
+      if (!owner || owner.type !== 'cycler') {
+        throw new Error('Unknown interpreter cycler');
+      }
+      if (definition.method === 'reset') {
+        owner.index = -1;
+        return null;
+      }
+      if (owner.values.length === 0) {
+        return undefined;
+      }
+      owner.index = (owner.index + 1) % owner.values.length;
+      return owner.values[owner.index];
+    }
+    throw new Error('Interpreter builtin object is not directly callable');
   }
 
   async #capture(
@@ -977,7 +1195,7 @@ class Evaluator {
     return safe ? new RuntimeSafeString(value) : value;
   }
 
-  #append(output: string[], value: string): void {
+  async #append(output: OutputTarget, value: string): Promise<void> {
     this.#outputBytes += Buffer.byteLength(value);
     if (
       this.#options.limits.outputBytes !== Number.POSITIVE_INFINITY &&
@@ -985,7 +1203,11 @@ class Evaluator {
     ) {
       throw new NunjitsuLimitError('outputBytes');
     }
-    output.push(value);
+    if (Array.isArray(output)) {
+      output.push(value);
+    } else {
+      await output(value);
+    }
   }
 
   #charge(depth: number): void {
@@ -994,15 +1216,35 @@ class Evaluator {
         ? this.#options.signal.reason
         : new DOMException('The operation was aborted', 'AbortError');
     }
-    if (depth > this.#options.limits.includeDepth) {
-      throw new NunjitsuLimitError('includeDepth');
-    }
     this.#workUnits += 1;
     if (
       this.#options.limits.workUnits !== Number.POSITIVE_INFINITY &&
       this.#workUnits > this.#options.limits.workUnits
     ) {
       throw new NunjitsuLimitError('workUnits');
+    }
+  }
+
+  #chargeCapability(): void {
+    this.#capabilityCalls += 1;
+    if (
+      this.#options.limits.capabilityCalls !== Number.POSITIVE_INFINITY &&
+      this.#capabilityCalls > this.#options.limits.capabilityCalls
+    ) {
+      throw new NunjitsuLimitError('capabilityCalls');
+    }
+  }
+
+  #assertScratch(values: Iterable<RuntimeValue>): void {
+    if (this.#options.limits.scratchBytes === Number.POSITIVE_INFINITY) {
+      return;
+    }
+    let bytes = 0;
+    for (const value of values) {
+      bytes += runtimeValueBytes(value);
+      if (bytes > this.#options.limits.scratchBytes) {
+        throw new NunjitsuLimitError('scratchBytes');
+      }
     }
   }
 }
@@ -1145,7 +1387,25 @@ function runtimeContains(container: RuntimeValue, needle: RuntimeValue): boolean
   if (container instanceof RuntimeRecord) {
     return container.get(renderRuntimeValue(needle)) !== undefined;
   }
-  return false;
+  throw new Error('Membership requires an array, record, or string');
+}
+
+function runtimeValueBytes(value: RuntimeValue): number {
+  if (value instanceof RuntimeArray) {
+    let bytes = 0;
+    for (const item of value.values()) {
+      bytes += runtimeValueBytes(item);
+    }
+    return bytes;
+  }
+  if (value instanceof RuntimeRecord) {
+    let bytes = 0;
+    for (const [key, item] of value.entries()) {
+      bytes += Buffer.byteLength(key) + runtimeValueBytes(item);
+    }
+    return bytes;
+  }
+  return Buffer.byteLength(renderRuntimeValue(value));
 }
 
 function collectBlocks(
@@ -1156,9 +1416,10 @@ function collectBlocks(
   visitAst(ast, node => {
     if (node.type === 'Block') {
       const name = symbolName(astNode(node, 'name'));
-      if (!blocks.has(name)) {
-        blocks.set(name, Object.freeze([{ node, canonicalName }]));
+      if (blocks.has(name)) {
+        throw new Error(`Template defines block ${name} more than once`);
       }
+      blocks.set(name, Object.freeze([{ node, canonicalName }]));
     }
   });
   return blocks;

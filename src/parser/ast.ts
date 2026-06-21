@@ -12,6 +12,7 @@ export type AstNodeType =
   | 'KeywordArgs'
   | 'Pair'
   | 'LookupVal'
+  | 'Slice'
   | 'If'
   | 'IfAsync'
   | 'InlineIf'
