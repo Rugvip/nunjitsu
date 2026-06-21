@@ -217,8 +217,8 @@ fn selection_test_call<'a>(state_offset: u32, call: Call<'a>) -> Result<Call<'a>
         next_macro_argument(call.arguments, 0).map_err(|_| ERROR_INVALID_EXPRESSION)?
     else {
         return Ok(Call {
-            name: b"truthy",
-            arguments: b"",
+            name: utf8_as_code_units(b"truthy")?,
+            arguments: &call.arguments[..0],
         });
     };
     if argument.name.is_some() {
@@ -229,7 +229,7 @@ fn selection_test_call<'a>(state_offset: u32, call: Call<'a>) -> Result<Call<'a>
         .string_bytes()
         .ok_or(ERROR_INVALID_EXPRESSION)?;
     Ok(Call {
-        name,
+        name: utf8_as_code_units(name)?,
         arguments: &call.arguments[argument.next_cursor..],
     })
 }
@@ -242,7 +242,12 @@ fn select_or_reject_value(
 ) -> Result<u32, u32> {
     let array = selection_source(value_offset)?;
     let test_call = selection_test_call(state_offset, call)?;
-    if resolve_capability(state_field(state_offset, STATE_TESTS)?, test_call.name)?.is_some() {
+    if resolve_capability(
+        state_field(state_offset, STATE_TESTS)?,
+        code_units_as_utf8(test_call.name)?,
+    )?
+    .is_some()
+    {
         return Err(ERROR_UNKNOWN_CAPABILITY);
     }
     let mut count = 0usize;
@@ -806,11 +811,12 @@ fn join_value(
 }
 
 fn lookup_value_path(mut value_offset: u32, path: &[u8]) -> Result<Option<u32>, u32> {
+    let path = utf8_as_code_units(path)?;
     let mut cursor = 0usize;
     while let Some((segment, next)) =
         next_lookup_segment(path, cursor).map_err(|_| ERROR_INVALID_EXPRESSION)?
     {
-        let Some(next_offset) = Value::at(value_offset)?.get_offset(segment) else {
+        let Some(next_offset) = Value::at(value_offset)?.get_offset(code_units_as_utf8(segment)?) else {
             return Ok(None);
         };
         value_offset = next_offset;

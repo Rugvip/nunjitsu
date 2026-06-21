@@ -1,4 +1,4 @@
-fn start_for(state_offset: u32, source: &[u8]) -> Result<(), u32> {
+fn start_for(state_offset: u32, source: &[u16]) -> Result<(), u32> {
     let clause = parse_for_clause(source).map_err(|_| ERROR_UNSUPPORTED_TAG)?;
     let frame_offset = state_field(state_offset, STATE_CURRENT_FRAME)?;
     let frame = record_at(frame_offset, TAG_FRAME)?;
@@ -46,7 +46,7 @@ fn start_for(state_offset: u32, source: &[u8]) -> Result<(), u32> {
     Ok(())
 }
 
-fn write_bindings(bindings: &[u8]) -> Result<u32, u32> {
+fn write_bindings(bindings: &[u16]) -> Result<u32, u32> {
     let mut count = 0usize;
     let mut cursor = 0usize;
     while let Some((_, next)) = next_binding(bindings, cursor).map_err(|_| ERROR_UNSUPPORTED_TAG)? {
@@ -66,7 +66,7 @@ fn write_bindings(bindings: &[u8]) -> Result<u32, u32> {
     while let Some((name, next)) =
         next_binding(bindings, cursor).map_err(|_| ERROR_UNSUPPORTED_TAG)?
     {
-        let name_offset = write_bytes_record(TAG_STRING, name)?;
+        let name_offset = write_code_units_record(TAG_STRING, name)?;
         write_u32(
             mutable_record_at(offset, TAG_BINDINGS)?,
             4 + index * 4,

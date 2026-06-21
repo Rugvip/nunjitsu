@@ -378,7 +378,7 @@ fn run_active_render() -> Result<u32, u32> {
             TemplateItem::Expression(expression) => {
                 if let Some(state) = start_expression(
                     state_offset,
-                    code_units_as_utf8(expression)?,
+                    expression,
                     EXPRESSION_OUTPUT,
                 )? {
                     return Ok(state);
@@ -402,14 +402,14 @@ fn run_active_render() -> Result<u32, u32> {
                 )?;
                 if let Some(state) = start_expression(
                     state_offset,
-                    code_units_as_utf8(expression)?,
+                    expression,
                     EXPRESSION_INCLUDE,
                 )? {
                     return Ok(state);
                 }
             }
             TemplateItem::Tag(directive) => {
-                if let Some(state) = handle_tag(state_offset, code_units_as_utf8(directive)?)? {
+                if let Some(state) = handle_tag(state_offset, directive)? {
                     return Ok(state);
                 }
             }

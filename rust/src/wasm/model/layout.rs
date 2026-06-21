@@ -190,7 +190,7 @@ fn configure_pool(cursor: &mut u32, capacity: u32, width: u32) -> Option<PoolSta
 
 fn slot_payload_length(tag: u32) -> Option<u32> {
     match tag {
-        TAG_SOURCE => Some(8),
+        TAG_SOURCE | TAG_EXPRESSION => Some(8),
         TAG_UNDEFINED | TAG_NULL => Some(0),
         TAG_BOOLEAN => Some(1),
         TAG_NUMBER => Some(8),
@@ -222,7 +222,7 @@ fn member_backed_tag(tag: u32) -> bool {
 
 fn slot_category_mask(tag: u32) -> u32 {
     match tag {
-        TAG_SOURCE => 16,
+        TAG_SOURCE | TAG_EXPRESSION => 16,
         TAG_UNDEFINED
         | TAG_NULL
         | TAG_BOOLEAN
@@ -265,6 +265,86 @@ fn source_at(index: u32) -> Result<&'static [u16], u32> {
         offset,
         length
             .checked_mul(SOURCE_CODE_UNIT_LENGTH)
+            .ok_or(ERROR_INVALID_RECORD)?,
+    )?;
+    Ok(unsafe { slice::from_raw_parts(bytes.as_ptr().cast::<u16>(), length as usize) })
+}
+
+fn allocate_value_code_units(length: u32) -> Result<(u32, &'static mut [u16]), u32> {
+    let prefix = memory_prefix();
+    let pool = unsafe { (*prefix).values };
+    let start = pool.cursor;
+    let end = start.checked_add(length).ok_or(ERROR_RESOURCE_LIMIT)?;
+    if end > pool.capacity {
+        return Err(ERROR_RESOURCE_LIMIT);
+    }
+    let offset = pool
+        .offset
+        .checked_add(
+            start
+                .checked_mul(VALUE_CODE_UNIT_LENGTH)
+                .ok_or(ERROR_RESOURCE_LIMIT)?,
+        )
+        .ok_or(ERROR_RESOURCE_LIMIT)?;
+    let bytes = mutable_memory(
+        offset,
+        length
+            .checked_mul(VALUE_CODE_UNIT_LENGTH)
+            .ok_or(ERROR_RESOURCE_LIMIT)?,
+    )?;
+    unsafe {
+        (*prefix).values.cursor = end;
+    }
+    Ok((
+        start,
+        unsafe { slice::from_raw_parts_mut(bytes.as_mut_ptr().cast::<u16>(), length as usize) },
+    ))
+}
+
+fn write_expression(code_units: &[u16]) -> Result<u32, u32> {
+    write_expression_parts(&[], code_units)
+}
+
+fn write_expression_parts(first: &[u16], second: &[u16]) -> Result<u32, u32> {
+    let length = first
+        .len()
+        .checked_add(second.len())
+        .and_then(|length| u32::try_from(length).ok())
+        .ok_or(ERROR_RESOURCE_LIMIT)?;
+    let (start, destination) = allocate_value_code_units(length)?;
+    destination[..first.len()].copy_from_slice(first);
+    destination[first.len()..].copy_from_slice(second);
+    let index = allocate_slot(TAG_EXPRESSION, 8)?;
+    let payload = mutable_slot_record(index, TAG_EXPRESSION)?.ok_or(ERROR_INVALID_RECORD)?;
+    write_u32(payload, 0, start)?;
+    write_u32(payload, 4, length)?;
+    Ok(index)
+}
+
+fn expression_at(index: u32) -> Result<&'static [u16], u32> {
+    let (tag, payload) = slot_record(index)?.ok_or(ERROR_INVALID_RECORD)?;
+    if tag != TAG_EXPRESSION || payload.len() != 8 {
+        return Err(ERROR_INVALID_RECORD);
+    }
+    let start = read_u32(payload, 0)?;
+    let length = read_u32(payload, 4)?;
+    let pool = unsafe { (*memory_prefix()).values };
+    let end = start.checked_add(length).ok_or(ERROR_INVALID_RECORD)?;
+    if end > pool.cursor {
+        return Err(ERROR_INVALID_RECORD);
+    }
+    let offset = pool
+        .offset
+        .checked_add(
+            start
+                .checked_mul(VALUE_CODE_UNIT_LENGTH)
+                .ok_or(ERROR_INVALID_RECORD)?,
+        )
+        .ok_or(ERROR_INVALID_RECORD)?;
+    let bytes = memory(
+        offset,
+        length
+            .checked_mul(VALUE_CODE_UNIT_LENGTH)
             .ok_or(ERROR_INVALID_RECORD)?,
     )?;
     Ok(unsafe { slice::from_raw_parts(bytes.as_ptr().cast::<u16>(), length as usize) })

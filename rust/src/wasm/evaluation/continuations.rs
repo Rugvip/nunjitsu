@@ -1,6 +1,6 @@
 fn continue_expression(state_offset: u32) -> Result<Option<u32>, u32> {
     let expression_offset = state_field(state_offset, STATE_PENDING_EXPRESSION)?;
-    let expression = record_at(expression_offset, TAG_STRING)?;
+    let expression = expression_at(expression_offset)?;
     let cursor = state_field(state_offset, STATE_EXPRESSION_CURSOR)? as usize;
     let Some((operation, next_cursor)) =
         next_operation(expression, cursor).map_err(|_| ERROR_INVALID_EXPRESSION)?
@@ -50,8 +50,11 @@ fn continue_expression(state_offset: u32) -> Result<Option<u32>, u32> {
     let input = state_field(state_offset, STATE_CURRENT_VALUE)?;
     match operation {
         Operation::Filter(call) => {
-            let registered =
-                resolve_capability(state_field(state_offset, STATE_FILTERS)?, call.name)?.is_some();
+            let registered = resolve_capability(
+                state_field(state_offset, STATE_FILTERS)?,
+                code_units_as_utf8(call.name)?,
+            )?
+            .is_some();
             if !registered
                 && let Some(value_offset) = apply_builtin_filter(state_offset, call, input)?
             {
@@ -71,8 +74,11 @@ fn continue_expression(state_offset: u32) -> Result<Option<u32>, u32> {
             }
         }
         Operation::Test { call, negated } => {
-            let registered =
-                resolve_capability(state_field(state_offset, STATE_TESTS)?, call.name)?.is_some();
+            let registered = resolve_capability(
+                state_field(state_offset, STATE_TESTS)?,
+                code_units_as_utf8(call.name)?,
+            )?
+            .is_some();
             if !registered && let Some(result) = apply_builtin_test(state_offset, call, input)? {
                 let value_offset = write_boolean(if negated { !result } else { result })?;
                 set_state_field(state_offset, STATE_CURRENT_VALUE, value_offset)?;
@@ -176,7 +182,7 @@ fn apply_if_condition(state_offset: u32, value_offset: u32) -> Result<Option<u32
         }
         ConditionalBoundary::ElseIf(condition, next_cursor) => {
             set_frame_field(frame_offset, FRAME_CURSOR, next_cursor as u32)?;
-            start_expression(state_offset, code_units_as_utf8(condition)?, EXPRESSION_IF)
+            start_expression(state_offset, condition, EXPRESSION_IF)
         }
     }
 }
@@ -194,10 +200,9 @@ fn apply_switch_condition(state_offset: u32, value_offset: u32) -> Result<(), u3
             next_item_utf16(source, cursor, parse_options(state_offset)?)
                 .map_err(render_error_code)?;
         if let TemplateItem::Tag(directive) = item {
-            let directive = code_units_as_utf8(directive)?;
             if directive_keyword(directive, b"switch").is_some() {
                 depth = depth.checked_add(1).ok_or(ERROR_RESOURCE_LIMIT)?;
-            } else if directive == b"endswitch" {
+            } else if ascii_eq(directive, b"endswitch") {
                 if depth == 0 {
                     set_frame_field(
                         frame_offset,
@@ -216,7 +221,7 @@ fn apply_switch_condition(state_offset: u32, value_offset: u32) -> Result<(), u3
                         set_frame_field(frame_offset, FRAME_CURSOR, branch_cursor as u32)?;
                         return Ok(());
                     }
-                } else if directive == b"default" && default_cursor.is_none() {
+                } else if ascii_eq(directive, b"default") && default_cursor.is_none() {
                     default_cursor = Some(next_cursor);
                 }
             }
@@ -237,12 +242,12 @@ fn switch_branch_cursor(
         let (item, next_cursor) =
             next_item_utf16(source, cursor, parse_options(state_offset)?)
                 .map_err(render_error_code)?;
-        if let TemplateItem::Tag(directive) = item {
-            let directive = code_units_as_utf8(directive)?;
-            if directive_keyword(directive, b"case").is_some() || directive == b"default" {
-                cursor = next_cursor;
-                continue;
-            }
+        if let TemplateItem::Tag(directive) = item
+            && (directive_keyword(directive, b"case").is_some()
+                || ascii_eq(directive, b"default"))
+        {
+            cursor = next_cursor;
+            continue;
         }
         return Ok(cursor);
     }
@@ -260,10 +265,9 @@ fn skip_active_switch(state_offset: u32) -> Result<(), u32> {
             next_item_utf16(source, cursor, parse_options(state_offset)?)
                 .map_err(render_error_code)?;
         if let TemplateItem::Tag(directive) = item {
-            let directive = code_units_as_utf8(directive)?;
             if directive_keyword(directive, b"switch").is_some() {
                 depth = depth.checked_add(1).ok_or(ERROR_RESOURCE_LIMIT)?;
-            } else if directive == b"endswitch" {
+            } else if ascii_eq(directive, b"endswitch") {
                 if depth == 0 {
                     return set_frame_field(frame_offset, FRAME_CURSOR, next_cursor as u32);
                 }
@@ -307,12 +311,13 @@ fn issue_capability(
         _ => return Err(ERROR_INVALID_EXPRESSION),
     };
     let registry_offset = state_field(state_offset, registry_field)?;
+    let name = code_units_as_utf8(call.name)?;
     let capability_id = if kind == CAPABILITY_TAG {
-        resolve_tag(registry_offset, call.name)?
+        resolve_tag(registry_offset, name)?
             .map(|schema| schema.capability_id)
             .ok_or(ERROR_UNSUPPORTED_TAG)?
     } else {
-        resolve_capability(registry_offset, call.name)?.ok_or(ERROR_UNKNOWN_CAPABILITY)?
+        resolve_capability(registry_offset, name)?.ok_or(ERROR_UNKNOWN_CAPABILITY)?
     };
 
     let mut argument_count = usize::from(input.is_some());
@@ -392,14 +397,16 @@ fn apply_builtin_call(state_offset: u32, call: Call<'_>) -> Result<Option<u32>, 
         return Ok(None);
     }
     for (suffix, reset) in [(b".next".as_slice(), false), (b".reset".as_slice(), true)] {
-        if let Some(owner) = call.name.strip_suffix(suffix)
+        if call.name.len() >= suffix.len()
+            && ascii_eq(&call.name[call.name.len() - suffix.len()..], suffix)
+            && let owner = &call.name[..call.name.len() - suffix.len()]
             && let Some(value_offset) = context.lookup_offset(owner)
             && matches!(Value::at(value_offset)?, Value::Cycler(_))
         {
             return call_cycler(value_offset, call, reset).map(Some);
         }
     }
-    match call.name {
+    match code_units_as_utf8(call.name)? {
         b"range" => range_value(state_offset, call).map(Some),
         b"cycler" => create_cycler(state_offset, call).map(Some),
         b"joiner" => create_joiner(state_offset, call).map(Some),

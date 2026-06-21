@@ -1,4 +1,4 @@
-fn evaluate_sync_expression(state_offset: u32, expression: &[u8]) -> Result<u32, u32> {
+fn evaluate_sync_expression(state_offset: u32, expression: &[u16]) -> Result<u32, u32> {
     let (atom, mut cursor, negated) =
         parse_base(expression).map_err(|_| ERROR_INVALID_EXPRESSION)?;
     let mut current = resolve_operand(state_offset, Operand { atom, negated })?;
@@ -36,7 +36,7 @@ fn evaluate_sync_expression(state_offset: u32, expression: &[u8]) -> Result<u32,
     Ok(current)
 }
 
-fn evaluate_binary_expression(state_offset: u32, expression: &[u8]) -> Result<u32, u32> {
+fn evaluate_binary_expression(state_offset: u32, expression: &[u16]) -> Result<u32, u32> {
     let binary = split_binary_expression(expression)
         .map_err(|_| ERROR_INVALID_EXPRESSION)?
         .ok_or(ERROR_INVALID_EXPRESSION)?;
@@ -185,7 +185,7 @@ fn resolve_atom(state_offset: u32, atom: Atom<'_>) -> Result<u32, u32> {
                 .filter(|(_, cursor)| *cursor == path.len())
                 .map(|(name, _)| name);
             if let Some(name) = simple_name
-                && let Some(definition) = resolve_macro(state_offset, name)?
+                && let Some(definition) = resolve_macro(state_offset, code_units_as_utf8(name)?)?
             {
                 return Ok(definition);
             }
@@ -202,12 +202,17 @@ fn resolve_atom(state_offset: u32, atom: Atom<'_>) -> Result<u32, u32> {
         }
         Atom::String(value) => write_string_literal(value),
         Atom::Number(value) => write_number(value),
-        Atom::Regex(value) => write_bytes_record(TAG_REGEX, value),
+        Atom::Regex(value) => write_code_units_record(TAG_REGEX, value),
         Atom::Boolean(value) => write_boolean(value),
         Atom::Null => allocate_record(TAG_NULL, 0),
         Atom::Undefined => allocate_record(TAG_UNDEFINED, 0),
         Atom::Call(call) => {
-            if resolve_capability(state_field(state_offset, STATE_GLOBALS)?, call.name)?.is_some() {
+            if resolve_capability(
+                state_field(state_offset, STATE_GLOBALS)?,
+                code_units_as_utf8(call.name)?,
+            )?
+            .is_some()
+            {
                 return Err(ERROR_INVALID_EXPRESSION);
             }
             apply_builtin_call(state_offset, call)?.ok_or(ERROR_INVALID_EXPRESSION)
@@ -242,9 +247,9 @@ fn resolve_atom(state_offset: u32, atom: Atom<'_>) -> Result<u32, u32> {
 fn slice_lookup_value(
     state_offset: u32,
     value_offset: u32,
-    start: Option<&[u8]>,
-    stop: Option<&[u8]>,
-    step: Option<&[u8]>,
+    start: Option<&[u16]>,
+    stop: Option<&[u16]>,
+    step: Option<&[u16]>,
 ) -> Result<u32, u32> {
     let source_offset = match Value::at(value_offset)? {
         Value::Array(_) => value_offset,
@@ -300,7 +305,7 @@ fn slice_lookup_value(
 
 fn slice_expression_number(
     state_offset: u32,
-    expression: Option<&[u8]>,
+    expression: Option<&[u16]>,
 ) -> Result<Option<f64>, u32> {
     let Some(expression) = expression else {
         return Ok(None);
@@ -324,7 +329,8 @@ fn slice_index_in_bounds(index: f64, stop: f64, step: f64, length: f64) -> bool 
     }
 }
 
-fn write_string_literal(value: &[u8]) -> Result<u32, u32> {
+fn write_string_literal(value: &[u16]) -> Result<u32, u32> {
+    let value = code_units_as_utf8(value)?;
     let text = core::str::from_utf8(value).map_err(|_| ERROR_INVALID_EXPRESSION)?;
     let mut length = 0usize;
     string_literal_emit(text, &mut |segment| {
@@ -370,7 +376,7 @@ fn string_literal_emit(
     Ok(())
 }
 
-fn write_array_literal(state_offset: u32, elements: &[u8]) -> Result<u32, u32> {
+fn write_array_literal(state_offset: u32, elements: &[u16]) -> Result<u32, u32> {
     let mut count = 0usize;
     let mut cursor = 0usize;
     while let Some((_, next)) =
@@ -401,7 +407,7 @@ fn write_array_literal(state_offset: u32, elements: &[u8]) -> Result<u32, u32> {
     Ok(offset)
 }
 
-fn write_record_literal(state_offset: u32, entries: &[u8]) -> Result<u32, u32> {
+fn write_record_literal(state_offset: u32, entries: &[u16]) -> Result<u32, u32> {
     let mut count = 0usize;
     let mut cursor = 0usize;
     while let Some(entry) =
@@ -420,7 +426,7 @@ fn write_record_literal(state_offset: u32, entries: &[u8]) -> Result<u32, u32> {
     while let Some(entry) =
         next_record_entry(entries, cursor).map_err(|_| ERROR_INVALID_EXPRESSION)?
     {
-        let key_offset = write_bytes_record(TAG_STRING, entry.key)?;
+        let key_offset = write_code_units_record(TAG_STRING, entry.key)?;
         let value_offset = resolve_atom(state_offset, entry.value)?;
         let record = mutable_record_at(offset, TAG_RECORD)?;
         write_u32(record, 4 + index * 8, key_offset)?;

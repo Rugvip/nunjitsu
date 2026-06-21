@@ -1,11 +1,11 @@
 /// Parses a complete custom-tag directive using parenthesized or legacy arguments.
-pub fn parse_tag_call(directive: &[u8]) -> Result<Call<'_>, ExpressionError> {
+pub fn parse_tag_call(directive: &[u16]) -> Result<Call<'_>, ExpressionError> {
     let cursor = skip_whitespace(directive, 0);
     let name_start = cursor;
     let name_end = parse_identifier(directive, cursor)?;
     let name = &directive[name_start..name_end];
     let cursor = skip_whitespace(directive, name_end);
-    if directive.get(cursor) == Some(&b'(') {
+    if directive.get(cursor) == Some(&CU_OPEN_PAREN) {
         let (arguments, cursor) = parse_parenthesized(directive, cursor)?;
         if skip_whitespace(directive, cursor) != directive.len() {
             return Err(ExpressionError);
@@ -20,16 +20,16 @@ pub fn parse_tag_call(directive: &[u8]) -> Result<Call<'_>, ExpressionError> {
 
 /// Returns the leading identifier of a custom-tag directive.
 #[cfg(target_arch = "wasm32")]
-pub fn parse_tag_name(directive: &[u8]) -> Result<&[u8], ExpressionError> {
+pub fn parse_tag_name(directive: &[u16]) -> Result<&[u16], ExpressionError> {
     let start = skip_whitespace(directive, 0);
     let end = parse_identifier(directive, start)?;
     Ok(&directive[start..end])
 }
 
 /// Parses `(optional, bindings) macro(arguments)` call-block syntax.
-pub fn parse_call_block(source: &[u8]) -> Result<CallBlock<'_>, ExpressionError> {
+pub fn parse_call_block(source: &[u16]) -> Result<CallBlock<'_>, ExpressionError> {
     let mut cursor = skip_whitespace(source, 0);
-    let bindings = if source.get(cursor) == Some(&b'(') {
+    let bindings = if source.get(cursor) == Some(&CU_OPEN_PAREN) {
         let (bindings, next) = parse_parenthesized(source, cursor)?;
         let mut binding_cursor = 0usize;
         while let Some((_, next)) = next_binding(bindings, binding_cursor)? {
@@ -38,7 +38,7 @@ pub fn parse_call_block(source: &[u8]) -> Result<CallBlock<'_>, ExpressionError>
         cursor = skip_whitespace(source, next);
         bindings
     } else {
-        b""
+        &source[0..0]
     };
     let (call, cursor) = parse_named_call(source, cursor)?;
     if skip_whitespace(source, cursor) != source.len() {
@@ -48,7 +48,7 @@ pub fn parse_call_block(source: &[u8]) -> Result<CallBlock<'_>, ExpressionError>
 }
 
 /// Parses `template-expression as namespace [with|without context]`.
-pub fn parse_import_clause(source: &[u8]) -> Result<ImportClause<'_>, ExpressionError> {
+pub fn parse_import_clause(source: &[u16]) -> Result<ImportClause<'_>, ExpressionError> {
     let start = skip_whitespace(source, 0);
     let expression_end = find_top_level_keyword(source, start, b"as")?;
     let template = trim_whitespace(&source[start..expression_end]);
@@ -90,7 +90,7 @@ pub fn parse_import_clause(source: &[u8]) -> Result<ImportClause<'_>, Expression
 }
 
 /// Parses `template-expression import names [with|without context]`.
-pub fn parse_from_import_clause(source: &[u8]) -> Result<FromImportClause<'_>, ExpressionError> {
+pub fn parse_from_import_clause(source: &[u16]) -> Result<FromImportClause<'_>, ExpressionError> {
     let start = skip_whitespace(source, 0);
     let expression_end = find_top_level_keyword(source, start, b"import")?;
     let template = trim_whitespace(&source[start..expression_end]);
@@ -135,7 +135,7 @@ pub fn parse_from_import_clause(source: &[u8]) -> Result<FromImportClause<'_>, E
 
 /// Parses one `name [as alias]` entry from an import binding list.
 pub fn next_import_binding(
-    bindings: &[u8],
+    bindings: &[u16],
     cursor: usize,
 ) -> Result<Option<ImportBinding<'_>>, ExpressionError> {
     let cursor = skip_whitespace(bindings, cursor);
@@ -145,7 +145,7 @@ pub fn next_import_binding(
     let name_start = cursor;
     let mut cursor = parse_identifier(bindings, cursor)?;
     let name = &bindings[name_start..cursor];
-    if name.starts_with(b"_") {
+    if starts_with_ascii(name, b"_") {
         return Err(ExpressionError);
     }
     cursor = skip_whitespace(bindings, cursor);
@@ -164,7 +164,7 @@ pub fn next_import_binding(
     {
         cursor
     } else {
-        if bindings.get(cursor) != Some(&b',') {
+        if bindings.get(cursor) != Some(&CU_COMMA) {
             return Err(ExpressionError);
         }
         let next = skip_whitespace(bindings, cursor + 1);
@@ -182,9 +182,9 @@ pub fn next_import_binding(
 
 /// Parses one identifier from a validated comma-separated binding list.
 pub fn next_binding(
-    bindings: &[u8],
+    bindings: &[u16],
     cursor: usize,
-) -> Result<Option<(&[u8], usize)>, ExpressionError> {
+) -> Result<Option<(&[u16], usize)>, ExpressionError> {
     let cursor = skip_whitespace(bindings, cursor);
     if cursor == bindings.len() {
         return Ok(None);
@@ -196,7 +196,7 @@ pub fn next_binding(
     if cursor == bindings.len() {
         return Ok(Some((name, cursor)));
     }
-    if bindings.get(cursor) != Some(&b',') {
+    if bindings.get(cursor) != Some(&CU_COMMA) {
         return Err(ExpressionError);
     }
     cursor = skip_whitespace(bindings, cursor + 1);
@@ -207,13 +207,13 @@ pub fn next_binding(
 }
 
 /// Parses `name [ , name ... ] in expression` without evaluating the iterable.
-pub fn parse_for_clause(source: &[u8]) -> Result<ForClause<'_>, ExpressionError> {
+pub fn parse_for_clause(source: &[u16]) -> Result<ForClause<'_>, ExpressionError> {
     let mut cursor = skip_whitespace(source, 0);
     let bindings_start = cursor;
     loop {
         cursor = parse_identifier(source, cursor)?;
         cursor = skip_whitespace(source, cursor);
-        if source.get(cursor) != Some(&b',') {
+        if source.get(cursor) != Some(&CU_COMMA) {
             break;
         }
         cursor = skip_whitespace(source, cursor + 1);
@@ -230,13 +230,13 @@ pub fn parse_for_clause(source: &[u8]) -> Result<ForClause<'_>, ExpressionError>
 }
 
 /// Parses `name [ , name ... ] [ = expression ]` for assignment or capture.
-pub fn parse_set_clause(source: &[u8]) -> Result<SetClause<'_>, ExpressionError> {
+pub fn parse_set_clause(source: &[u16]) -> Result<SetClause<'_>, ExpressionError> {
     let mut cursor = skip_whitespace(source, 0);
     let targets_start = cursor;
     loop {
         cursor = parse_identifier(source, cursor)?;
         cursor = skip_whitespace(source, cursor);
-        if source.get(cursor) != Some(&b',') {
+        if source.get(cursor) != Some(&CU_COMMA) {
             break;
         }
         cursor = skip_whitespace(source, cursor + 1);
@@ -248,7 +248,7 @@ pub fn parse_set_clause(source: &[u8]) -> Result<SetClause<'_>, ExpressionError>
             expression: None,
         });
     }
-    if source.get(cursor) != Some(&b'=') || source.get(cursor + 1) == Some(&b'=') {
+    if source.get(cursor) != Some(&CU_EQUALS) || source.get(cursor + 1) == Some(&CU_EQUALS) {
         return Err(ExpressionError);
     }
     let expression = trim_whitespace(&source[cursor + 1..]);

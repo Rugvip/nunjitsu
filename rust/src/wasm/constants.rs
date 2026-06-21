@@ -1,5 +1,5 @@
-const ABI_VERSION: u32 = 27;
-const MEMORY_LAYOUT_VERSION: u32 = 2;
+const ABI_VERSION: u32 = 28;
+const MEMORY_LAYOUT_VERSION: u32 = 3;
 const PAGE_SIZE: usize = 65_536;
 const MEMORY_PREFIX_ALIGNMENT: u32 = 64;
 const SLOT_LENGTH: u32 = 72;
@@ -51,6 +51,7 @@ const TAG_REGEX: u32 = 31;
 const TAG_CYCLER: u32 = 32;
 const TAG_JOINER: u32 = 33;
 const TAG_LOAD_REQUEST: u32 = 34;
+const TAG_EXPRESSION: u32 = 35;
 
 #[link(wasm_import_module = "env")]
 unsafe extern "C" {

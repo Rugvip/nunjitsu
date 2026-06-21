@@ -1,12 +1,15 @@
-fn start_tag(state_offset: u32, directive: &[u8]) -> Result<Option<u32>, u32> {
+fn start_tag(state_offset: u32, directive: &[u16]) -> Result<Option<u32>, u32> {
     let call = parse_tag_call(directive).map_err(|_| ERROR_UNSUPPORTED_TAG)?;
-    let schema = resolve_tag(state_field(state_offset, STATE_TAGS)?, call.name)?
+    let schema = resolve_tag(
+        state_field(state_offset, STATE_TAGS)?,
+        code_units_as_utf8(call.name)?,
+    )?
         .ok_or(ERROR_UNSUPPORTED_TAG)?;
     if schema.kind == 1 {
         start_body_tag(state_offset, call, schema)?;
         return Ok(None);
     }
-    let directive_offset = write_bytes_record(TAG_STRING, directive)?;
+    let directive_offset = write_expression(directive)?;
     set_state_field(state_offset, STATE_PENDING_EXPRESSION, directive_offset)?;
     set_state_field(
         state_offset,
@@ -99,7 +102,7 @@ fn start_body_tag(state_offset: u32, call: Call<'_>, schema: TagSchema) -> Resul
     begin_capture(state_offset, 0)
 }
 
-fn write_tag_arguments(state_offset: u32, arguments: &[u8]) -> Result<u32, u32> {
+fn write_tag_arguments(state_offset: u32, arguments: &[u16]) -> Result<u32, u32> {
     let mut positional_count = 0usize;
     let mut keyword_count = 0usize;
     let mut cursor = 0usize;
@@ -154,7 +157,7 @@ fn write_tag_arguments(state_offset: u32, arguments: &[u8]) -> Result<u32, u32> 
     {
         let value_offset = resolve_atom(state_offset, argument.value)?;
         if let Some(name) = argument.name {
-            let name_offset = write_bytes_record(TAG_STRING, name)?;
+            let name_offset = write_code_units_record(TAG_STRING, name)?;
             let keywords = mutable_record_at(keyword_offset, TAG_RECORD)?;
             write_u32(keywords, 4 + keyword_index * 8, name_offset)?;
             write_u32(keywords, 8 + keyword_index * 8, value_offset)?;
@@ -224,13 +227,13 @@ fn find_tag_boundaries(
                 .map_err(render_error_code)?;
         match item {
             TemplateItem::Tag(directive) => {
-                let directive = code_units_as_utf8(directive)?;
                 let Ok(name) = parse_tag_name(directive) else {
                     cursor = next_cursor;
                     continue;
                 };
                 let opening_name = record_at(opening_name_offset, TAG_STRING)?;
                 let end_name = record_at(end_name_offset, TAG_STRING)?;
+                let name = code_units_as_utf8(name)?;
                 if name == opening_name {
                     depth = depth.checked_add(1).ok_or(ERROR_RESOURCE_LIMIT)?;
                 } else if name == end_name {
@@ -396,7 +399,7 @@ fn issue_body_tag(state_offset: u32, call_offset: u32) -> Result<u32, u32> {
         }
     }
 
-    let expression_offset = allocate_record(TAG_STRING, 0)?;
+    let expression_offset = write_expression(&[])?;
     set_state_field(state_offset, STATE_PENDING_EXPRESSION, expression_offset)?;
     set_state_field(state_offset, STATE_EXPRESSION_CURSOR, 0)?;
     set_state_field(state_offset, STATE_CURRENT_VALUE, 0)?;

@@ -4,7 +4,8 @@ fn apply_builtin_filter(
     input_offset: u32,
 ) -> Result<Option<u32>, u32> {
     let input = Value::at(input_offset)?;
-    let output = match call.name {
+    let name = code_units_as_utf8(call.name)?;
+    let output = match name {
         b"abs" => {
             require_argument_count(call, 0)?;
             let number = input.as_number();
@@ -169,13 +170,13 @@ fn apply_builtin_filter(
             reverse_value(input)?
         }
         b"reject" | b"select" => {
-            select_or_reject_value(state_offset, input_offset, call, call.name == b"select")?
+            select_or_reject_value(state_offset, input_offset, call, name == b"select")?
         }
         b"rejectattr" | b"selectattr" => {
             require_argument_count(call, 1)?;
             let attribute =
                 call_positional_argument(state_offset, call, 0)?.ok_or(ERROR_INVALID_EXPRESSION)?;
-            select_or_reject_attribute_value(input_offset, attribute, call.name == b"selectattr")?
+            select_or_reject_attribute_value(input_offset, attribute, name == b"selectattr")?
         }
         b"upper" => {
             require_argument_count(call, 0)?;
@@ -382,7 +383,8 @@ fn apply_builtin_test(
     input_offset: u32,
 ) -> Result<Option<bool>, u32> {
     let input = Value::at(input_offset)?;
-    let result = match call.name {
+    let name = code_units_as_utf8(call.name)?;
+    let result = match name {
         b"defined" => {
             require_argument_count(call, 0)?;
             !matches!(input, Value::Undefined)
@@ -437,7 +439,7 @@ fn apply_builtin_test(
         b"even" | b"odd" => {
             require_argument_count(call, 0)?;
             let number = input.as_number();
-            if call.name == b"even" {
+            if name == b"even" {
                 number.is_finite() && number % 2.0 == 0.0
             } else {
                 number.is_finite() && number % 2.0 == 1.0
@@ -462,12 +464,12 @@ fn apply_builtin_test(
             require_argument_count(call, 1)?;
             let right = call_argument(state_offset, call, 0)?.ok_or(ERROR_INVALID_EXPRESSION)?;
             let equal = values_equal(input_offset, right, true)?;
-            if call.name == b"ne" { !equal } else { equal }
+            if name == b"ne" { !equal } else { equal }
         }
         b"lt" | b"lessthan" | b"le" | b"lteq" | b"gt" | b"greaterthan" | b"ge" | b"gteq" => {
             require_argument_count(call, 1)?;
             let right = call_argument(state_offset, call, 0)?.ok_or(ERROR_INVALID_EXPRESSION)?;
-            let operator = match call.name {
+            let operator = match name {
                 b"lt" | b"lessthan" => Comparison::Less,
                 b"le" | b"lteq" => Comparison::LessOrEqual,
                 b"gt" | b"greaterthan" => Comparison::Greater,
@@ -480,7 +482,7 @@ fn apply_builtin_test(
             let Some(value) = input.string_bytes() else {
                 return Ok(Some(false));
             };
-            if call.name == b"lower" {
+            if name == b"lower" {
                 !value.iter().any(u8::is_ascii_uppercase)
             } else {
                 !value.iter().any(u8::is_ascii_lowercase)
@@ -535,7 +537,7 @@ fn call_named_argument(
     while let Some(argument) =
         next_macro_argument(call.arguments, cursor).map_err(|_| ERROR_INVALID_EXPRESSION)?
     {
-        if argument.name == Some(requested) {
+        if argument.name.is_some_and(|name| ascii_eq(name, requested)) {
             return resolve_atom(state_offset, argument.value).map(Some);
         }
         cursor = argument.next_cursor;

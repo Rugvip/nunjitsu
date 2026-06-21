@@ -1,4 +1,4 @@
-fn start_call_block(state_offset: u32, source: &[u8]) -> Result<(), u32> {
+fn start_call_block(state_offset: u32, source: &[u16]) -> Result<(), u32> {
     let clause = parse_call_block(source).map_err(|_| ERROR_UNSUPPORTED_TAG)?;
     let frame_offset = state_field(state_offset, STATE_CURRENT_FRAME)?;
     let frame = record_at(frame_offset, TAG_FRAME)?;
@@ -13,7 +13,7 @@ fn start_call_block(state_offset: u32, source: &[u8]) -> Result<(), u32> {
     set_frame_field(frame_offset, FRAME_CURSOR, end_cursor)?;
 
     let caller_name = write_bytes_record(TAG_STRING, b"caller")?;
-    let parameters = write_bytes_record(TAG_STRING, clause.bindings)?;
+    let parameters = write_expression(clause.bindings)?;
     let caller_definition = allocate_record(TAG_MACRO_DEFINITION, MACRO_DEFINITION_LENGTH)?;
     let definition = mutable_record_at(caller_definition, TAG_MACRO_DEFINITION)?;
     write_u32(definition, MACRO_DEFINITION_PARENT, 0)?;
@@ -40,10 +40,11 @@ fn start_call_block(state_offset: u32, source: &[u8]) -> Result<(), u32> {
     {
         offset
     } else {
-        resolve_macro(state_offset, clause.call.name)?.ok_or(ERROR_INVALID_EXPRESSION)?
+        resolve_macro(state_offset, code_units_as_utf8(clause.call.name)?)?
+            .ok_or(ERROR_INVALID_EXPRESSION)?
     };
 
-    let pending_expression = write_bytes_record(TAG_STRING, b"")?;
+    let pending_expression = write_expression(&[])?;
     set_state_field(state_offset, STATE_PENDING_EXPRESSION, pending_expression)?;
     set_state_field(state_offset, STATE_EXPRESSION_CURSOR, 0)?;
     set_state_field(state_offset, STATE_CURRENT_VALUE, 0)?;
@@ -57,7 +58,7 @@ fn start_call_block(state_offset: u32, source: &[u8]) -> Result<(), u32> {
     )
 }
 
-fn define_macro(state_offset: u32, signature: &[u8]) -> Result<(), u32> {
+fn define_macro(state_offset: u32, signature: &[u16]) -> Result<(), u32> {
     let frame_offset = state_field(state_offset, STATE_CURRENT_FRAME)?;
     let frame = record_at(frame_offset, TAG_FRAME)?;
     let source_offset = read_u32(frame, FRAME_SOURCE)?;
@@ -81,7 +82,7 @@ fn define_macro(state_offset: u32, signature: &[u8]) -> Result<(), u32> {
 
 fn register_macro_definition(
     state_offset: u32,
-    signature: &[u8],
+    signature: &[u16],
     frame_offset: u32,
     source_offset: u32,
     canonical_offset: u32,
@@ -99,8 +100,8 @@ fn register_macro_definition(
     let end_cursor = find_macro_end(source, body_cursor as usize, parse_options(state_offset)?)
         .map_err(render_error_code)?;
 
-    let name_offset = write_bytes_record(TAG_STRING, macro_signature.name)?;
-    let parameters_offset = write_bytes_record(TAG_STRING, macro_signature.arguments)?;
+    let name_offset = write_code_units_record(TAG_STRING, macro_signature.name)?;
+    let parameters_offset = write_expression(macro_signature.arguments)?;
     let definition_offset = allocate_record(TAG_MACRO_DEFINITION, MACRO_DEFINITION_LENGTH)?;
     let definition = mutable_record_at(definition_offset, TAG_MACRO_DEFINITION)?;
     write_u32(
@@ -168,9 +169,8 @@ fn write_macro_arguments(
     definition_offset: u32,
     call: Call<'_>,
 ) -> Result<u32, u32> {
-    let parameters = record_at(
+    let parameters = expression_at(
         macro_definition_field(definition_offset, MACRO_DEFINITION_PARAMETERS)?,
-        TAG_STRING,
     )?;
     let mut count = 0usize;
     let mut parameter_cursor = 0usize;
@@ -203,7 +203,7 @@ fn write_macro_arguments(
         } else {
             0
         };
-        let name_offset = write_bytes_record(TAG_STRING, parameter.name)?;
+        let name_offset = write_code_units_record(TAG_STRING, parameter.name)?;
         let arguments = mutable_record_at(arguments_offset, TAG_MACRO_ARGUMENTS)?;
         write_u32(arguments, 4 + index * 8, name_offset)?;
         write_u32(arguments, 8 + index * 8, value_offset)?;
@@ -214,8 +214,8 @@ fn write_macro_arguments(
 }
 
 fn validate_macro_arguments(
-    parameters: &[u8],
-    arguments: &[u8],
+    parameters: &[u16],
+    arguments: &[u16],
     parameter_count: usize,
 ) -> Result<(), u32> {
     let mut cursor = 0usize;
@@ -257,7 +257,7 @@ fn validate_macro_arguments(
     Ok(())
 }
 
-fn macro_parameter_index(parameters: &[u8], name: &[u8]) -> Result<Option<usize>, u32> {
+fn macro_parameter_index(parameters: &[u16], name: &[u16]) -> Result<Option<usize>, u32> {
     let mut cursor = 0usize;
     let mut index = 0usize;
     while let Some(parameter) =
@@ -273,9 +273,9 @@ fn macro_parameter_index(parameters: &[u8], name: &[u8]) -> Result<Option<usize>
 }
 
 fn macro_argument_for_parameter<'a>(
-    arguments: &'a [u8],
+    arguments: &'a [u16],
     parameter_index: usize,
-    parameter_name: &[u8],
+    parameter_name: &[u16],
 ) -> Result<Option<Atom<'a>>, u32> {
     let mut cursor = 0usize;
     let mut positional_index = 0usize;
@@ -422,7 +422,7 @@ fn start_macro_call(
     let mut parameter_cursor = 0usize;
     for index in 0..count {
         let parameter =
-            next_macro_parameter(record_at(parameters_offset, TAG_STRING)?, parameter_cursor)
+            next_macro_parameter(expression_at(parameters_offset)?, parameter_cursor)
                 .map_err(|_| ERROR_INVALID_EXPRESSION)?
                 .ok_or(ERROR_INVALID_EXPRESSION)?;
         let arguments = record_at(arguments_offset, TAG_MACRO_ARGUMENTS)?;

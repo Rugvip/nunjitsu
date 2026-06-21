@@ -1,6 +1,6 @@
 /// Parses one comma-separated call argument from a raw call argument slice.
 pub fn next_argument(
-    arguments: &[u8],
+    arguments: &[u16],
     cursor: usize,
 ) -> Result<Option<(Atom<'_>, usize)>, ExpressionError> {
     let cursor = skip_whitespace(arguments, cursor);
@@ -12,7 +12,7 @@ pub fn next_argument(
     if cursor == arguments.len() {
         return Ok(Some((atom, cursor)));
     }
-    if arguments[cursor] != b',' {
+    if arguments[cursor] != CU_COMMA {
         return Err(ExpressionError);
     }
     cursor = skip_whitespace(arguments, cursor + 1);
@@ -24,7 +24,7 @@ pub fn next_argument(
 
 /// Parses one macro definition parameter from a comma-separated signature.
 pub fn next_macro_parameter(
-    parameters: &[u8],
+    parameters: &[u16],
     cursor: usize,
 ) -> Result<Option<MacroParameter<'_>>, ExpressionError> {
     let cursor = skip_whitespace(parameters, cursor);
@@ -36,7 +36,7 @@ pub fn next_macro_parameter(
     let name = &parameters[start..cursor];
     cursor = skip_whitespace(parameters, cursor);
     let default =
-        if parameters.get(cursor) == Some(&b'=') && parameters.get(cursor + 1) != Some(&b'=') {
+        if parameters.get(cursor) == Some(&CU_EQUALS) && parameters.get(cursor + 1) != Some(&CU_EQUALS) {
             cursor = skip_whitespace(parameters, cursor + 1);
             let (default, next) = parse_atom(parameters, cursor)?;
             cursor = skip_whitespace(parameters, next);
@@ -54,7 +54,7 @@ pub fn next_macro_parameter(
 
 /// Parses one positional or keyword macro call argument.
 pub fn next_macro_argument(
-    arguments: &[u8],
+    arguments: &[u16],
     cursor: usize,
 ) -> Result<Option<MacroArgument<'_>>, ExpressionError> {
     let cursor = skip_whitespace(arguments, cursor);
@@ -69,7 +69,7 @@ pub fn next_macro_argument(
     {
         let end = parse_identifier(arguments, cursor)?;
         let following = skip_whitespace(arguments, end);
-        if arguments.get(following) == Some(&b'=') && arguments.get(following + 1) != Some(&b'=') {
+        if arguments.get(following) == Some(&CU_EQUALS) && arguments.get(following + 1) != Some(&CU_EQUALS) {
             value_cursor = skip_whitespace(arguments, following + 1);
             Some(&arguments[cursor..end])
         } else {
@@ -88,11 +88,11 @@ pub fn next_macro_argument(
     }))
 }
 
-fn next_list_cursor(bytes: &[u8], cursor: usize) -> Result<usize, ExpressionError> {
+fn next_list_cursor(bytes: &[u16], cursor: usize) -> Result<usize, ExpressionError> {
     if cursor == bytes.len() {
         return Ok(cursor);
     }
-    if bytes.get(cursor) != Some(&b',') {
+    if bytes.get(cursor) != Some(&CU_COMMA) {
         return Err(ExpressionError);
     }
     let cursor = skip_whitespace(bytes, cursor + 1);
@@ -104,19 +104,22 @@ fn next_list_cursor(bytes: &[u8], cursor: usize) -> Result<usize, ExpressionErro
 
 /// Parses one object-literal entry from a comma-separated entry slice.
 pub fn next_record_entry(
-    entries: &[u8],
+    entries: &[u16],
     cursor: usize,
 ) -> Result<Option<RecordEntry<'_>>, ExpressionError> {
     let mut cursor = skip_whitespace(entries, cursor);
     if cursor == entries.len() {
         return Ok(None);
     }
-    let (key, next) = if matches!(entries.get(cursor), Some(b'\'' | b'"')) {
+    let (key, next) = if matches!(
+        entries.get(cursor).copied(),
+        Some(CU_APOSTROPHE | CU_QUOTE)
+    ) {
         let quote = entries[cursor];
         let start = cursor + 1;
         let mut end = start;
         while entries.get(end).is_some_and(|byte| *byte != quote) {
-            if entries[end] == b'\\' {
+            if entries[end] == CU_BACKSLASH {
                 return Err(ExpressionError);
             }
             end += 1;
@@ -131,7 +134,7 @@ pub fn next_record_entry(
         (&entries[start..end], end)
     };
     cursor = skip_whitespace(entries, next);
-    if entries.get(cursor) != Some(&b':') {
+    if entries.get(cursor) != Some(&CU_COLON) {
         return Err(ExpressionError);
     }
     cursor = skip_whitespace(entries, cursor + 1);
@@ -144,7 +147,7 @@ pub fn next_record_entry(
             next_cursor: cursor,
         }));
     }
-    if entries.get(cursor) != Some(&b',') {
+    if entries.get(cursor) != Some(&CU_COMMA) {
         return Err(ExpressionError);
     }
     cursor = skip_whitespace(entries, cursor + 1);

@@ -1,5 +1,5 @@
 /// Parses the base atom, its unary negation, and the following operation cursor.
-pub fn parse_base(expression: &[u8]) -> Result<(Atom<'_>, usize, bool), ExpressionError> {
+pub fn parse_base(expression: &[u16]) -> Result<(Atom<'_>, usize, bool), ExpressionError> {
     if let Some(atom) = parse_inline_if(expression)? {
         return Ok((atom, expression.len(), false));
     }
@@ -7,7 +7,7 @@ pub fn parse_base(expression: &[u8]) -> Result<(Atom<'_>, usize, bool), Expressi
     Ok((operand.atom, cursor, operand.negated))
 }
 
-fn parse_inline_if(expression: &[u8]) -> Result<Option<Atom<'_>>, ExpressionError> {
+fn parse_inline_if(expression: &[u16]) -> Result<Option<Atom<'_>>, ExpressionError> {
     let mut cursor = 0usize;
     let mut quote = None;
     let mut parentheses = 0usize;
@@ -17,7 +17,7 @@ fn parse_inline_if(expression: &[u8]) -> Result<Option<Atom<'_>>, ExpressionErro
     let mut else_position = None;
     while let Some(byte) = expression.get(cursor).copied() {
         if let Some(active_quote) = quote {
-            if byte == b'\\' {
+            if byte == CU_BACKSLASH {
                 cursor = cursor.checked_add(2).ok_or(ExpressionError)?;
                 continue;
             }
@@ -27,18 +27,18 @@ fn parse_inline_if(expression: &[u8]) -> Result<Option<Atom<'_>>, ExpressionErro
             cursor += 1;
             continue;
         }
-        if matches!(byte, b'\'' | b'"') {
+        if matches!(byte, CU_APOSTROPHE | CU_QUOTE) {
             quote = Some(byte);
             cursor += 1;
             continue;
         }
         match byte {
-            b'(' => parentheses += 1,
-            b'[' => brackets += 1,
-            b'{' => braces += 1,
-            b')' => parentheses = parentheses.checked_sub(1).ok_or(ExpressionError)?,
-            b']' => brackets = brackets.checked_sub(1).ok_or(ExpressionError)?,
-            b'}' => braces = braces.checked_sub(1).ok_or(ExpressionError)?,
+            CU_OPEN_PAREN => parentheses += 1,
+            CU_OPEN_BRACKET => brackets += 1,
+            CU_OPEN_BRACE => braces += 1,
+            CU_CLOSE_PAREN => parentheses = parentheses.checked_sub(1).ok_or(ExpressionError)?,
+            CU_CLOSE_BRACKET => brackets = brackets.checked_sub(1).ok_or(ExpressionError)?,
+            CU_CLOSE_BRACE => braces = braces.checked_sub(1).ok_or(ExpressionError)?,
             _ => {}
         }
         if parentheses == 0 && brackets == 0 && braces == 0 {
@@ -83,7 +83,7 @@ fn parse_inline_if(expression: &[u8]) -> Result<Option<Atom<'_>>, ExpressionErro
 
 /// Splits an arithmetic expression at its lowest-precedence, rightmost operator.
 pub fn split_binary_expression(
-    expression: &[u8],
+    expression: &[u16],
 ) -> Result<Option<BinaryExpression<'_>>, ExpressionError> {
     let mut positions = [None; 8];
     let mut cursor = 0usize;
@@ -93,7 +93,7 @@ pub fn split_binary_expression(
     let mut braces = 0usize;
     while let Some(byte) = expression.get(cursor).copied() {
         if let Some(active_quote) = quote {
-            if byte == b'\\' {
+            if byte == CU_BACKSLASH {
                 cursor = cursor.checked_add(2).ok_or(ExpressionError)?;
                 continue;
             }
@@ -103,18 +103,18 @@ pub fn split_binary_expression(
             cursor += 1;
             continue;
         }
-        if matches!(byte, b'\'' | b'"') {
+        if matches!(byte, CU_APOSTROPHE | CU_QUOTE) {
             quote = Some(byte);
             cursor += 1;
             continue;
         }
         match byte {
-            b'(' => parentheses += 1,
-            b'[' => brackets += 1,
-            b'{' => braces += 1,
-            b')' => parentheses = parentheses.checked_sub(1).ok_or(ExpressionError)?,
-            b']' => brackets = brackets.checked_sub(1).ok_or(ExpressionError)?,
-            b'}' => braces = braces.checked_sub(1).ok_or(ExpressionError)?,
+            CU_OPEN_PAREN => parentheses += 1,
+            CU_OPEN_BRACKET => brackets += 1,
+            CU_OPEN_BRACE => braces += 1,
+            CU_CLOSE_PAREN => parentheses = parentheses.checked_sub(1).ok_or(ExpressionError)?,
+            CU_CLOSE_BRACKET => brackets = brackets.checked_sub(1).ok_or(ExpressionError)?,
+            CU_CLOSE_BRACE => braces = braces.checked_sub(1).ok_or(ExpressionError)?,
             _ => {}
         }
         if parentheses != 0 || brackets != 0 || braces != 0 {
@@ -122,24 +122,24 @@ pub fn split_binary_expression(
             continue;
         }
         match byte {
-            b'~' => positions[BinaryOperator::Concat as usize] = Some(cursor),
-            b'+' if !is_unary_sign(expression, cursor) => {
+            CU_TILDE => positions[BinaryOperator::Concat as usize] = Some(cursor),
+            CU_PLUS if !is_unary_sign(expression, cursor) => {
                 positions[BinaryOperator::Add as usize] = Some(cursor);
             }
-            b'-' if !is_unary_sign(expression, cursor) => {
+            CU_MINUS if !is_unary_sign(expression, cursor) => {
                 positions[BinaryOperator::Subtract as usize] = Some(cursor);
             }
-            b'*' if expression.get(cursor + 1) == Some(&b'*') => {
+            CU_STAR if expression.get(cursor + 1) == Some(&CU_STAR) => {
                 positions[BinaryOperator::Power as usize] = Some(cursor);
                 cursor += 1;
             }
-            b'*' => positions[BinaryOperator::Multiply as usize] = Some(cursor),
-            b'/' if expression.get(cursor + 1) == Some(&b'/') => {
+            CU_STAR => positions[BinaryOperator::Multiply as usize] = Some(cursor),
+            CU_SLASH if expression.get(cursor + 1) == Some(&CU_SLASH) => {
                 positions[BinaryOperator::FloorDivide as usize] = Some(cursor);
                 cursor += 1;
             }
-            b'/' => positions[BinaryOperator::Divide as usize] = Some(cursor),
-            b'%' => positions[BinaryOperator::Remainder as usize] = Some(cursor),
+            CU_SLASH => positions[BinaryOperator::Divide as usize] = Some(cursor),
+            CU_PERCENT => positions[BinaryOperator::Remainder as usize] = Some(cursor),
             _ => {}
         }
         cursor += 1;
@@ -179,25 +179,25 @@ pub fn split_binary_expression(
 
 /// Returns each validated dotted or bracketed lookup segment in order.
 pub fn next_lookup_segment(
-    path: &[u8],
+    path: &[u16],
     cursor: usize,
-) -> Result<Option<(&[u8], usize)>, ExpressionError> {
+) -> Result<Option<(&[u16], usize)>, ExpressionError> {
     if cursor == path.len() {
         return Ok(None);
     }
     let mut cursor = cursor;
-    if cursor != 0 && path.get(cursor) == Some(&b'.') {
+    if cursor != 0 && path.get(cursor) == Some(&CU_DOT) {
         cursor += 1;
     }
-    if path.get(cursor) == Some(&b'[') {
+    if path.get(cursor) == Some(&CU_OPEN_BRACKET) {
         cursor = skip_whitespace(path, cursor + 1);
         let quote = path.get(cursor).copied();
-        let (segment, next) = if matches!(quote, Some(b'\'' | b'"')) {
+        let (segment, next) = if matches!(quote, Some(CU_APOSTROPHE | CU_QUOTE)) {
             let quote = quote.ok_or(ExpressionError)?;
             let start = cursor + 1;
             let mut end = start;
             while path.get(end).is_some_and(|byte| *byte != quote) {
-                if path[end] == b'\\' {
+                if path[end] == CU_BACKSLASH {
                     return Err(ExpressionError);
                 }
                 end += 1;
@@ -208,7 +208,7 @@ pub fn next_lookup_segment(
             (&path[start..end], end + 1)
         } else {
             let start = cursor;
-            while path.get(cursor).is_some_and(u8::is_ascii_digit) {
+            while path.get(cursor).is_some_and(|unit| is_ascii_digit(*unit)) {
                 cursor += 1;
             }
             if cursor == start {
@@ -217,7 +217,7 @@ pub fn next_lookup_segment(
             (&path[start..cursor], cursor)
         };
         let next = skip_whitespace(path, next);
-        if path.get(next) != Some(&b']') {
+        if path.get(next) != Some(&CU_CLOSE_BRACKET) {
             return Err(ExpressionError);
         }
         return Ok(Some((segment, next + 1)));
@@ -229,14 +229,14 @@ pub fn next_lookup_segment(
 
 /// Parses the next filter or test operation from a previously returned cursor.
 pub fn next_operation(
-    expression: &[u8],
+    expression: &[u16],
     cursor: usize,
 ) -> Result<Option<(Operation<'_>, usize)>, ExpressionError> {
     let mut cursor = skip_whitespace(expression, cursor);
     if cursor == expression.len() {
         return Ok(None);
     }
-    if expression[cursor] == b'|' {
+    if expression[cursor] == CU_PIPE {
         cursor = skip_whitespace(expression, cursor + 1);
         let (call, cursor) = parse_named_call(expression, cursor)?;
         return Ok(Some((
@@ -297,7 +297,10 @@ pub fn next_operation(
         (b"<".as_slice(), Comparison::Less),
         (b">".as_slice(), Comparison::Greater),
     ] {
-        if expression.get(cursor..cursor + symbol.len()) == Some(symbol) {
+        if expression
+            .get(cursor..cursor + symbol.len())
+            .is_some_and(|units| ascii_eq(units, symbol))
+        {
             let (operand, cursor) = parse_operand(expression, cursor + symbol.len())?;
             return Ok(Some((Operation::Compare { operator, operand }, cursor)));
         }

@@ -1,5 +1,5 @@
-fn start_expression(state_offset: u32, expression: &[u8], action: u32) -> Result<Option<u32>, u32> {
-    let expression_offset = write_bytes_record(TAG_STRING, expression)?;
+fn start_expression(state_offset: u32, expression: &[u16], action: u32) -> Result<Option<u32>, u32> {
+    let expression_offset = write_expression(expression)?;
     let (base, cursor, negated) = parse_base(expression).map_err(|_| ERROR_INVALID_EXPRESSION)?;
     set_state_field(state_offset, STATE_PENDING_EXPRESSION, expression_offset)?;
     set_state_field(state_offset, STATE_EXPRESSION_CURSOR, cursor as u32)?;
@@ -15,12 +15,15 @@ fn start_expression(state_offset: u32, expression: &[u8], action: u32) -> Result
             start_macro_call(state_offset, definition_offset, call, negated, 0)?;
             return Ok(None);
         }
-        if let Some(definition_offset) = resolve_macro(state_offset, call.name)? {
+        if let Some(definition_offset) = resolve_macro(state_offset, code_units_as_utf8(call.name)?)? {
             start_macro_call(state_offset, definition_offset, call, negated, 0)?;
             return Ok(None);
         }
-        let registered =
-            resolve_capability(state_field(state_offset, STATE_GLOBALS)?, call.name)?.is_some();
+        let registered = resolve_capability(
+            state_field(state_offset, STATE_GLOBALS)?,
+            code_units_as_utf8(call.name)?,
+        )?
+        .is_some();
         if !registered && let Some(mut value_offset) = apply_builtin_call(state_offset, call)? {
             if negated {
                 value_offset = write_boolean(!Value::at(value_offset)?.truthy())?;
@@ -50,10 +53,10 @@ fn start_expression(state_offset: u32, expression: &[u8], action: u32) -> Result
     continue_expression(state_offset)
 }
 
-fn handle_tag(state_offset: u32, directive: &[u8]) -> Result<Option<u32>, u32> {
+fn handle_tag(state_offset: u32, directive: &[u16]) -> Result<Option<u32>, u32> {
     if let Some(source) = directive_keyword(directive, b"from") {
         let clause = parse_from_import_clause(source).map_err(|_| ERROR_UNSUPPORTED_TAG)?;
-        let bindings = write_bytes_record(TAG_STRING, clause.bindings)?;
+        let bindings = write_expression(clause.bindings)?;
         set_state_field(state_offset, STATE_PENDING_IMPORT_ALIAS, 0)?;
         set_state_field(state_offset, STATE_PENDING_IMPORT_BINDINGS, bindings)?;
         set_state_field(
@@ -66,7 +69,7 @@ fn handle_tag(state_offset: u32, directive: &[u8]) -> Result<Option<u32>, u32> {
     }
     if let Some(source) = directive_keyword(directive, b"import") {
         let clause = parse_import_clause(source).map_err(|_| ERROR_UNSUPPORTED_TAG)?;
-        let alias = write_bytes_record(TAG_STRING, clause.alias)?;
+        let alias = write_code_units_record(TAG_STRING, clause.alias)?;
         set_state_field(state_offset, STATE_PENDING_IMPORT_ALIAS, alias)?;
         set_state_field(state_offset, STATE_PENDING_IMPORT_BINDINGS, 0)?;
         set_state_field(
@@ -92,20 +95,20 @@ fn handle_tag(state_offset: u32, directive: &[u8]) -> Result<Option<u32>, u32> {
     }
     if let Some(clause) = directive_keyword(directive, b"call").or_else(|| {
         directive
-            .strip_prefix(b"call")
-            .filter(|remainder| remainder.first() == Some(&b'('))
+            .get(4..)
+            .filter(|remainder| ascii_eq(&directive[..4], b"call") && remainder.first() == Some(&0x28))
     }) {
         start_call_block(state_offset, clause)?;
         return Ok(None);
     }
-    if directive == b"endcall" {
+    if ascii_eq(directive, b"endcall") {
         return finish_macro_call(state_offset);
     }
     if let Some(signature) = directive_keyword(directive, b"macro") {
         define_macro(state_offset, signature)?;
         return Ok(None);
     }
-    if directive == b"endmacro" {
+    if ascii_eq(directive, b"endmacro") {
         return finish_macro_call(state_offset);
     }
     if let Some(condition) = directive_keyword(directive, b"if") {
@@ -135,52 +138,49 @@ fn handle_tag(state_offset: u32, directive: &[u8]) -> Result<Option<u32>, u32> {
         start_filter_block(state_offset, filter)?;
         return Ok(None);
     }
-    if directive == b"endfilter" {
+    if ascii_eq(directive, b"endfilter") {
         return finish_filter_block(state_offset);
     }
-    if directive == b"endset" {
+    if ascii_eq(directive, b"endset") {
         finish_capture(state_offset)?;
         return Ok(None);
     }
-    if matches!(directive, b"endfor" | b"endeach" | b"endall") {
+    if ascii_eq(directive, b"endfor")
+        || ascii_eq(directive, b"endeach")
+        || ascii_eq(directive, b"endall")
+    {
         advance_for(state_offset)?;
         return Ok(None);
     }
-    if directive == b"else"
+    if ascii_eq(directive, b"else")
         || directive_keyword(directive, b"elif").is_some()
         || directive_keyword(directive, b"elseif").is_some()
     {
-        if directive == b"else" && is_current_loop_else(state_offset)? {
+        if ascii_eq(directive, b"else") && is_current_loop_else(state_offset)? {
             advance_for(state_offset)?;
         } else {
             skip_active_conditional(state_offset)?;
         }
         return Ok(None);
     }
-    if directive == b"endif" {
+    if ascii_eq(directive, b"endif") {
         return Ok(None);
     }
-    if directive_keyword(directive, b"case").is_some() || directive == b"default" {
+    if directive_keyword(directive, b"case").is_some() || ascii_eq(directive, b"default") {
         skip_active_switch(state_offset)?;
         return Ok(None);
     }
-    if directive == b"endswitch" {
+    if ascii_eq(directive, b"endswitch") {
         return Ok(None);
     }
     start_tag(state_offset, directive)
 }
 
-fn start_filter_block(state_offset: u32, filter: &[u8]) -> Result<(), u32> {
+fn start_filter_block(state_offset: u32, filter: &[u16]) -> Result<(), u32> {
     if filter.is_empty() {
         return Err(ERROR_UNSUPPORTED_TAG);
     }
-    let expression_length = 2u32
-        .checked_add(filter.len() as u32)
-        .ok_or(ERROR_RESOURCE_LIMIT)?;
-    let expression_offset = allocate_record(TAG_STRING, expression_length)?;
-    let expression = mutable_record_at(expression_offset, TAG_STRING)?;
-    expression[..2].copy_from_slice(b"| ");
-    expression[2..].copy_from_slice(filter);
+    let expression_offset = write_expression_parts(&[0x7c, 0x20], filter)?;
 
     let block_offset = allocate_record(TAG_FILTER_BLOCK, FILTER_BLOCK_LENGTH)?;
     let block = mutable_record_at(block_offset, TAG_FILTER_BLOCK)?;
@@ -238,7 +238,6 @@ fn prepare_extending_template(state_offset: u32) -> Result<(), u32> {
                 .map_err(render_error_code)?;
         match item {
             TemplateItem::Tag(directive) => {
-                let directive = code_units_as_utf8(directive)?;
                 if let Some(name) = directive_keyword(directive, b"block") {
                     register_block_definition(
                         state_offset,
@@ -301,13 +300,15 @@ fn write_import_namespace(
                 .map_err(render_error_code)?;
         match item {
             TemplateItem::Tag(directive) => {
-                let directive = code_units_as_utf8(directive)?;
                 if directive_keyword(directive, b"block").is_some()
                     || directive_keyword(directive, b"for").is_some()
                     || directive_keyword(directive, b"if").is_some()
                 {
                     nested_depth = nested_depth.checked_add(1).ok_or(ERROR_RESOURCE_LIMIT)?;
-                } else if is_endblock(directive) || matches!(directive, b"endfor" | b"endif") {
+                } else if is_endblock(directive)
+                    || ascii_eq(directive, b"endfor")
+                    || ascii_eq(directive, b"endif")
+                {
                     nested_depth = nested_depth.saturating_sub(1);
                 } else if directive_keyword(directive, b"macro").is_some() {
                     let end_cursor =
@@ -327,7 +328,7 @@ fn write_import_namespace(
                         while let Some((name, next)) = next_binding(clause.targets, binding_cursor)
                             .map_err(|_| ERROR_UNSUPPORTED_TAG)?
                         {
-                            if !name.starts_with(b"_") {
+                            if !starts_with_ascii(name, b"_") {
                                 count = count.checked_add(1).ok_or(ERROR_RESOURCE_LIMIT)?;
                             }
                             binding_cursor = next;
@@ -360,13 +361,15 @@ fn write_import_namespace(
                 .map_err(render_error_code)?;
         match item {
             TemplateItem::Tag(directive) => {
-                let directive = code_units_as_utf8(directive)?;
                 if directive_keyword(directive, b"block").is_some()
                     || directive_keyword(directive, b"for").is_some()
                     || directive_keyword(directive, b"if").is_some()
                 {
                     nested_depth = nested_depth.checked_add(1).ok_or(ERROR_RESOURCE_LIMIT)?;
-                } else if is_endblock(directive) || matches!(directive, b"endfor" | b"endif") {
+                } else if is_endblock(directive)
+                    || ascii_eq(directive, b"endfor")
+                    || ascii_eq(directive, b"endif")
+                {
                     nested_depth = nested_depth.saturating_sub(1);
                 } else if directive_keyword(directive, b"macro").is_some() {
                     cursor = find_macro_end(source, next_cursor, parse_options(state_offset)?)
@@ -385,8 +388,8 @@ fn write_import_namespace(
                         while let Some((name, next)) = next_binding(clause.targets, binding_cursor)
                             .map_err(|_| ERROR_UNSUPPORTED_TAG)?
                         {
-                            if !name.starts_with(b"_") {
-                                let name_offset = write_bytes_record(TAG_STRING, name)?;
+                            if !starts_with_ascii(name, b"_") {
+                                let name_offset = write_code_units_record(TAG_STRING, name)?;
                                 if with_context {
                                     set_state_field(
                                         state_offset,
@@ -430,13 +433,15 @@ fn write_import_namespace(
                 .map_err(render_error_code)?;
         match item {
             TemplateItem::Tag(directive) => {
-                let directive = code_units_as_utf8(directive)?;
                 if directive_keyword(directive, b"block").is_some()
                     || directive_keyword(directive, b"for").is_some()
                     || directive_keyword(directive, b"if").is_some()
                 {
                     nested_depth = nested_depth.checked_add(1).ok_or(ERROR_RESOURCE_LIMIT)?;
-                } else if is_endblock(directive) || matches!(directive, b"endfor" | b"endif") {
+                } else if is_endblock(directive)
+                    || ascii_eq(directive, b"endfor")
+                    || ascii_eq(directive, b"endif")
+                {
                     nested_depth = nested_depth.saturating_sub(1);
                 } else if let Some(signature) = directive_keyword(directive, b"macro") {
                     let end_cursor =
@@ -474,16 +479,16 @@ fn assign_import_bindings(
     bindings_offset: u32,
     namespace_offset: u32,
 ) -> Result<(), u32> {
-    let bindings = record_at(bindings_offset, TAG_STRING)?;
+    let bindings = expression_at(bindings_offset)?;
     let namespace = Record::new(record_at(namespace_offset, TAG_RECORD)?)?;
     let mut cursor = 0usize;
     while let Some(binding) =
         next_import_binding(bindings, cursor).map_err(|_| ERROR_UNSUPPORTED_TAG)?
     {
         let value = namespace
-            .get_offset(binding.name)
+            .get_offset(code_units_as_utf8(binding.name)?)
             .ok_or(ERROR_INVALID_EXPRESSION)?;
-        let alias = write_bytes_record(TAG_STRING, binding.alias)?;
+        let alias = write_code_units_record(TAG_STRING, binding.alias)?;
         assign_scope(state_offset, alias, value)?;
         cursor = binding.next_cursor;
     }
@@ -491,7 +496,7 @@ fn assign_import_bindings(
 }
 
 fn write_imported_macro_definition(
-    signature: &[u8],
+    signature: &[u16],
     owner_frame: u32,
     source_offset: u32,
     canonical_offset: u32,
@@ -505,8 +510,8 @@ fn write_imported_macro_definition(
     {
         parameter_cursor = parameter.next_cursor;
     }
-    let name = write_bytes_record(TAG_STRING, macro_signature.name)?;
-    let parameters = write_bytes_record(TAG_STRING, macro_signature.arguments)?;
+    let name = write_code_units_record(TAG_STRING, macro_signature.name)?;
+    let parameters = write_expression(macro_signature.arguments)?;
     let definition_offset = allocate_record(TAG_MACRO_DEFINITION, MACRO_DEFINITION_LENGTH)?;
     let definition = mutable_record_at(definition_offset, TAG_MACRO_DEFINITION)?;
     write_u32(definition, MACRO_DEFINITION_PARENT, 0)?;
@@ -526,7 +531,7 @@ fn write_imported_macro_definition(
 
 fn register_block_definition(
     state_offset: u32,
-    name: &[u8],
+    name: &[u16],
     frame_offset: u32,
     source_offset: u32,
     body_cursor: u32,
@@ -535,11 +540,12 @@ fn register_block_definition(
     if !block.arguments.is_empty() {
         return Err(ERROR_UNSUPPORTED_TAG);
     }
+    let block_name = code_units_as_utf8(block.name)?;
     let end_cursor = find_block_end_utf8(
         source_at(source_offset)?,
         body_cursor as usize,
         parse_options(state_offset)?,
-        block.name,
+        block_name,
     )
     .map_err(render_error_code)? as u32;
     let mut existing_definition = state_field(state_offset, STATE_CURRENT_BLOCK_DEFINITION)?;
@@ -548,13 +554,13 @@ fn register_block_definition(
             && record_at(
                 block_definition_field(existing_definition, BLOCK_DEFINITION_NAME)?,
                 TAG_STRING,
-            )? == block.name
+            )? == block_name
         {
             return Err(ERROR_UNSUPPORTED_TAG);
         }
         existing_definition = block_definition_field(existing_definition, BLOCK_DEFINITION_PARENT)?;
     }
-    let name_offset = write_bytes_record(TAG_STRING, block.name)?;
+    let name_offset = write_bytes_record(TAG_STRING, block_name)?;
     let definition_offset = allocate_record(TAG_BLOCK_DEFINITION, BLOCK_DEFINITION_LENGTH)?;
     let definition = mutable_record_at(definition_offset, TAG_BLOCK_DEFINITION)?;
     write_u32(definition, BLOCK_DEFINITION_PARENT, 0)?;
@@ -617,7 +623,7 @@ fn write_super_definition(
     next_super: u32,
 ) -> Result<u32, u32> {
     let name = write_bytes_record(TAG_STRING, b"super")?;
-    let parameters = write_bytes_record(TAG_STRING, b"")?;
+    let parameters = write_expression(&[])?;
     let definition_offset = allocate_record(TAG_MACRO_DEFINITION, MACRO_DEFINITION_LENGTH)?;
     let definition = mutable_record_at(definition_offset, TAG_MACRO_DEFINITION)?;
     write_u32(definition, MACRO_DEFINITION_PARENT, 0)?;
@@ -688,7 +694,7 @@ fn write_super_chain(
     Ok(chain)
 }
 
-fn start_block(state_offset: u32, name: &[u8]) -> Result<(), u32> {
+fn start_block(state_offset: u32, name: &[u16]) -> Result<(), u32> {
     let block = parse_tag_call(name).map_err(|_| ERROR_UNSUPPORTED_TAG)?;
     if !block.arguments.is_empty() {
         return Err(ERROR_UNSUPPORTED_TAG);
@@ -698,17 +704,18 @@ fn start_block(state_offset: u32, name: &[u8]) -> Result<(), u32> {
     let source_offset = read_u32(frame, FRAME_SOURCE)?;
     let body_cursor = read_u32(frame, FRAME_CURSOR)?;
     let canonical_offset = frame_canonical_name(frame_offset)?;
+    let block_name = code_units_as_utf8(block.name)?;
     let end_cursor = find_block_end_utf8(
         source_at(source_offset)?,
         body_cursor as usize,
         parse_options(state_offset)?,
-        block.name,
+        block_name,
     )
     .map_err(render_error_code)? as u32;
     set_frame_field(frame_offset, FRAME_CURSOR, end_cursor)?;
     let current_scope = state_field(state_offset, STATE_CURRENT_SCOPE)?;
 
-    let definition_offset = resolve_block(state_offset, block.name)?;
+    let definition_offset = resolve_block(state_offset, block_name)?;
     let is_override = if let Some(definition_offset) = definition_offset {
         block_definition_field(definition_offset, BLOCK_DEFINITION_SOURCE)? != source_offset
     } else {
@@ -744,7 +751,7 @@ fn start_block(state_offset: u32, name: &[u8]) -> Result<(), u32> {
         0,
     )?;
     let super_definition =
-        write_super_chain(definition_offset, block.name, base_super, current_scope)?;
+        write_super_chain(definition_offset, block_name, base_super, current_scope)?;
 
     let block_frame = allocate_record(TAG_FRAME, FRAME_LENGTH)?;
     write_frame(

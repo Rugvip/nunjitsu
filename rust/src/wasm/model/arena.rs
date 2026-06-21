@@ -50,13 +50,26 @@ fn code_units_as_utf8(code_units: &[u16]) -> Result<&'static [u8], u32> {
     record_at(offset, TAG_STRING)
 }
 
+fn utf8_as_code_units(bytes: &[u8]) -> Result<&'static [u16], u32> {
+    let text = core::str::from_utf8(bytes).map_err(|_| ERROR_INVALID_RECORD)?;
+    let length = text.encode_utf16().count();
+    let (_, output) = allocate_value_code_units(
+        u32::try_from(length).map_err(|_| ERROR_RESOURCE_LIMIT)?,
+    )?;
+    for (destination, code_unit) in output.iter_mut().zip(text.encode_utf16()) {
+        *destination = code_unit;
+    }
+    Ok(output)
+}
+
 fn write_boolean(value: bool) -> Result<u32, u32> {
     let offset = allocate_record(TAG_BOOLEAN, 1)?;
     mutable_record_at(offset, TAG_BOOLEAN)?[0] = u8::from(value);
     Ok(offset)
 }
 
-fn write_number(source: &[u8]) -> Result<u32, u32> {
+fn write_number(source: &[u16]) -> Result<u32, u32> {
+    let source = code_units_as_utf8(source)?;
     let text = core::str::from_utf8(source).map_err(|_| ERROR_INVALID_EXPRESSION)?;
     let value = text.parse::<f64>().map_err(|_| ERROR_INVALID_EXPRESSION)?;
     write_number_value(value)
@@ -85,7 +98,7 @@ fn write_u32_number(value: u32) -> Result<u32, u32> {
             break;
         }
     }
-    write_number(&bytes[cursor..])
+    write_computed_number(value as f64)
 }
 
 fn record_at(offset: u32, expected_tag: u32) -> Result<&'static [u8], u32> {

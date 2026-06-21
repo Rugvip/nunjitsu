@@ -11,26 +11,31 @@ impl Context {
         })
     }
 
-    fn lookup_offset(&self, path: &[u8]) -> Option<u32> {
+    fn lookup_offset(&self, path: &[u16]) -> Option<u32> {
         let (first, mut cursor) = next_lookup_segment(path, 0).ok()??;
-        if first == b"loop" {
+        if ascii_eq(first, b"loop") {
             let (metadata, next) = next_lookup_segment(path, cursor).ok()??;
-            let mut offset = loop_metadata_offset(self.state_offset, metadata)
+            let mut offset = loop_metadata_offset(self.state_offset, code_units_as_utf8(metadata).ok()?)
                 .ok()
                 .flatten()?;
             cursor = next;
             while let Some((segment, next)) = next_lookup_segment(path, cursor).ok()? {
-                offset = Value::at(offset).ok()?.get_offset(segment)?;
+                offset = Value::at(offset)
+                    .ok()?
+                    .get_offset(code_units_as_utf8(segment).ok()?)?;
                 cursor = next;
             }
             return Some(offset);
         }
+        let first = code_units_as_utf8(first).ok()?;
         let mut offset = self
             .lookup_scope(first)
             .or_else(|| self.lookup_local(first))
             .or_else(|| self.root.get_offset(first))?;
         while let Some((segment, next)) = next_lookup_segment(path, cursor).ok()? {
-            offset = Value::at(offset).ok()?.get_offset(segment)?;
+            offset = Value::at(offset)
+                .ok()?
+                .get_offset(code_units_as_utf8(segment).ok()?)?;
             cursor = next;
         }
         Some(offset)

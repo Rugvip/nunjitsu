@@ -1,9 +1,9 @@
 use crate::expression::{
-    Atom, BinaryOperator, Call, Comparison, Operand, Operation, has_top_level_comma, next_argument,
-    next_binding, next_import_binding, next_lookup_segment, next_macro_argument,
+    Atom, BinaryOperator, Call, Comparison, Operand, Operation, ascii_eq, has_top_level_comma,
+    next_argument, next_binding, next_import_binding, next_lookup_segment, next_macro_argument,
     next_macro_parameter, next_operation, next_record_entry, parse_base, parse_call_block,
     parse_for_clause, parse_from_import_clause, parse_import_clause, parse_set_clause,
-    parse_tag_call, parse_tag_name, split_binary_expression,
+    parse_tag_call, parse_tag_name, split_binary_expression, starts_with_ascii,
 };
 use crate::template::{
     ConditionalBoundary, ParseOptions, RenderError, RenderedValue, TemplateItem, contains_extends,
