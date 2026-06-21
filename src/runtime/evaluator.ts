@@ -33,6 +33,16 @@ export interface RuntimeArguments {
 
 /** Trusted operations available to the closed interpreter by explicit name. */
 export interface RuntimeHost {
+  /** Resolves one named template through explicitly configured trusted loaders. */
+  load?(
+    name: string,
+    from: string | undefined,
+    ignoreMissing: boolean,
+    signal: AbortSignal,
+  ): Promise<{
+    readonly source: string;
+    readonly canonicalName: string;
+  } | undefined>;
   /** Invokes a configured filter, returning `undefined` when no filter exists. */
   filter?(
     name: string,
@@ -63,6 +73,7 @@ export interface EvaluateOptions {
   readonly limits: NormalizedRenderLimits;
   readonly signal: AbortSignal;
   readonly host?: RuntimeHost;
+  readonly canonicalName?: string;
 }
 
 interface MacroDefinition {
@@ -81,27 +92,33 @@ export async function evaluateTemplate(
     lstripBlocks: options.lstripBlocks,
   });
   const evaluator = new Evaluator(options);
-  return await evaluator.render(ast, copyRuntimeContext(context));
+  return await evaluator.render(ast, copyRuntimeContext(context), options.canonicalName);
 }
 
 class Evaluator {
   readonly #options: EvaluateOptions;
   readonly #macros = new Map<number, MacroDefinition>();
+  readonly #templates = new Map<string, AstNode>();
   #nextCallableId = 1;
   #workUnits = 0;
   #outputBytes = 0;
+  #loaderCalls = 0;
 
   constructor(options: EvaluateOptions) {
     this.#options = options;
   }
 
-  async render(ast: AstNode, context: RuntimeRecord): Promise<string> {
+  async render(
+    ast: AstNode,
+    context: RuntimeRecord,
+    canonicalName?: string,
+  ): Promise<string> {
     const scope = new RuntimeScope();
     for (const [name, value] of context.entries()) {
       scope.set(name, value);
     }
     const output: string[] = [];
-    await this.#evaluateNode(ast, scope, output, 0);
+    await this.#evaluateNode(ast, scope, output, 0, canonicalName);
     return output.join('');
   }
 
@@ -110,12 +127,13 @@ class Evaluator {
     scope: RuntimeScope,
     output: string[],
     depth: number,
+    canonicalName?: string,
   ): Promise<void> {
     this.#charge(depth);
     switch (node.type) {
       case 'Root':
       case 'NodeList':
-        await this.#evaluateSequence(astNodes(node, 'children'), scope, output, depth);
+        await this.#evaluateSequence(astNodes(node, 'children'), scope, output, depth, canonicalName);
         return;
       case 'Output':
         for (const child of astNodes(node, 'children')) {
@@ -137,11 +155,17 @@ class Evaluator {
       case 'IfAsync': {
         const condition = await this.#evaluateExpression(astNode(node, 'cond'), scope, depth + 1);
         if (runtimeTruthy(condition)) {
-          await this.#evaluateNode(astNode(node, 'body'), scope.child(), output, depth + 1);
+          await this.#evaluateNode(
+            astNode(node, 'body'),
+            scope.child(),
+            output,
+            depth + 1,
+            canonicalName,
+          );
         } else {
           const otherwise = optionalAstNode(node, 'else_');
           if (otherwise) {
-            await this.#evaluateNode(otherwise, scope.child(), output, depth + 1);
+            await this.#evaluateNode(otherwise, scope.child(), output, depth + 1, canonicalName);
           }
         }
         return;
@@ -149,7 +173,7 @@ class Evaluator {
       case 'For':
       case 'AsyncEach':
       case 'AsyncAll':
-        await this.#evaluateFor(node, scope, output, depth + 1);
+        await this.#evaluateFor(node, scope, output, depth + 1, canonicalName);
         return;
       case 'Set':
         await this.#evaluateSet(node, scope, depth + 1);
@@ -162,7 +186,13 @@ class Evaluator {
         return;
       }
       case 'Block':
-        await this.#evaluateNode(astNode(node, 'body'), scope.child(), output, depth + 1);
+        await this.#evaluateNode(
+          astNode(node, 'body'),
+          scope.child(),
+          output,
+          depth + 1,
+          canonicalName,
+        );
         return;
       case 'Switch': {
         const value = await this.#evaluateExpression(astNode(node, 'expr'), scope, depth + 1);
@@ -180,20 +210,28 @@ class Evaluator {
             depth + 1,
           );
           if (runtimeEqual(value, condition, false)) {
-            await this.#evaluateNode(astNode(candidate, 'body'), scope.child(), output, depth + 1);
+            await this.#evaluateNode(
+              astNode(candidate, 'body'),
+              scope.child(),
+              output,
+              depth + 1,
+              canonicalName,
+            );
             return;
           }
         }
         const fallback = optionalAstNode(node, 'default');
         if (fallback) {
-          await this.#evaluateNode(fallback, scope.child(), output, depth + 1);
+          await this.#evaluateNode(fallback, scope.child(), output, depth + 1, canonicalName);
         }
         return;
       }
+      case 'Include':
+        await this.#evaluateInclude(node, scope, output, depth + 1, canonicalName);
+        return;
       case 'Import':
       case 'FromImport':
       case 'Extends':
-      case 'Include':
       case 'CallExtension':
       case 'CallExtensionAsync':
         throw new Error(`${node.type} is not implemented by the native evaluator yet`);
@@ -207,9 +245,10 @@ class Evaluator {
     scope: RuntimeScope,
     output: string[],
     depth: number,
+    canonicalName?: string,
   ): Promise<void> {
     for (const node of nodes) {
-      await this.#evaluateNode(node, scope, output, depth + 1);
+      await this.#evaluateNode(node, scope, output, depth + 1, canonicalName);
     }
   }
 
@@ -218,13 +257,14 @@ class Evaluator {
     scope: RuntimeScope,
     output: string[],
     depth: number,
+    canonicalName?: string,
   ): Promise<void> {
     const value = await this.#evaluateExpression(astNode(node, 'arr'), scope, depth + 1);
     const entries = iterableEntries(value);
     if (entries.length === 0) {
       const otherwise = optionalAstNode(node, 'else_');
       if (otherwise) {
-        await this.#evaluateNode(otherwise, scope.child(), output, depth + 1);
+        await this.#evaluateNode(otherwise, scope.child(), output, depth + 1, canonicalName);
       }
       return;
     }
@@ -241,7 +281,13 @@ class Evaluator {
         ['last', index === entries.length - 1],
         ['length', entries.length],
       ]));
-      await this.#evaluateNode(astNode(node, 'body'), iteration, output, depth + 1);
+      await this.#evaluateNode(
+        astNode(node, 'body'),
+        iteration,
+        output,
+        depth + 1,
+        canonicalName,
+      );
     }
   }
 
@@ -456,6 +502,50 @@ class Evaluator {
       throw new Error(`Unknown template filter ${name}`);
     }
     return builtin;
+  }
+
+  async #evaluateInclude(
+    node: AstNode,
+    scope: RuntimeScope,
+    output: string[],
+    depth: number,
+    canonicalName: string | undefined,
+  ): Promise<void> {
+    const name = renderRuntimeValue(
+      await this.#evaluateExpression(astNode(node, 'template'), scope, depth + 1),
+    );
+    const ignoreMissing = astField(node, 'ignoreMissing') === true;
+    if (!this.#options.host?.load) {
+      if (ignoreMissing) {
+        return;
+      }
+      throw new Error(`No template loader is configured for ${name}`);
+    }
+    this.#loaderCalls += 1;
+    if (
+      this.#options.limits.loaderCalls !== Number.POSITIVE_INFINITY &&
+      this.#loaderCalls > this.#options.limits.loaderCalls
+    ) {
+      throw new NunjitsuLimitError('loaderCalls');
+    }
+    const loaded = await this.#options.host.load(
+      name,
+      canonicalName,
+      ignoreMissing,
+      this.#options.signal,
+    );
+    if (!loaded) {
+      return;
+    }
+    let ast = this.#templates.get(loaded.canonicalName);
+    if (!ast) {
+      ast = parseTemplate(loaded.source, {
+        trimBlocks: this.#options.trimBlocks,
+        lstripBlocks: this.#options.lstripBlocks,
+      });
+      this.#templates.set(loaded.canonicalName, ast);
+    }
+    await this.#evaluateNode(ast, scope.child(), output, depth + 1, loaded.canonicalName);
   }
 
   async #evaluateTest(node: AstNode, scope: RuntimeScope, depth: number): Promise<boolean> {
