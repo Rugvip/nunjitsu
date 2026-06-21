@@ -56,7 +56,7 @@ fn nl2br_value(value_offset: u32) -> Result<u32, u32> {
         output_cursor += 7;
         input_cursor += line_width;
     }
-    Ok(offset)
+    finish_string_record(offset, tag)
 }
 
 fn sum_value(value_offset: u32, attribute_offset: Option<u32>, start: f64) -> Result<u32, u32> {
@@ -170,7 +170,7 @@ fn replace_value(
                 output_cursor += 1;
             }
         }
-        return Ok(offset);
+        return finish_string_record(offset, tag);
     }
     let mut count = 0usize;
     let mut cursor = 0usize;
@@ -223,7 +223,7 @@ fn replace_value(
         replaced += 1;
     }
     output[output_cursor..].copy_from_slice(&input.bytes[input_cursor..]);
-    Ok(offset)
+    finish_string_record(offset, tag)
 }
 
 fn random_value(value_offset: u32) -> Result<u32, u32> {
@@ -296,7 +296,7 @@ fn regex_replace_value(
     };
     let output_offset = allocate_record(tag, output_length)?;
     if output_length == 0 {
-        return Ok(output_offset);
+        return finish_string_record(output_offset, tag);
     }
     let output_pointer = output_offset
         .checked_add(RECORD_HEADER_LENGTH as u32)
@@ -317,5 +317,5 @@ fn regex_replace_value(
     if written != output_length {
         return Err(ERROR_INVALID_ARENA);
     }
-    Ok(output_offset)
+    finish_string_record(output_offset, tag)
 }
