@@ -182,7 +182,19 @@ export function renderRuntimeValue(value: RuntimeValue): string {
 
 /** Explicit truthiness over closed value variants. */
 export function runtimeTruthy(value: RuntimeValue): boolean {
-  return !(value === undefined || value === null || value === false);
+  if (value === undefined || value === null || value === false) {
+    return false;
+  }
+  if (typeof value === 'number') {
+    return value !== 0 && !Number.isNaN(value);
+  }
+  if (typeof value === 'string') {
+    return value.length > 0;
+  }
+  if (value instanceof RuntimeSafeString) {
+    return value.value.length > 0;
+  }
+  return true;
 }
 
 function copyValue(
