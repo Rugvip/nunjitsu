@@ -44,6 +44,10 @@ and the map-backed records on that path while structurally sharing unchanged
 closed values. Snapshots are immutable: evaluator scopes and template
 assignments never update them.
 
+Parser-validated constant attribute and index keys use a narrowed closed lookup
+operation. Computed keys continue through explicit runtime coercion. Both paths
+dispatch only over internal value kinds and reserve prototype gadget names.
+
 ## Scopes and calls
 
 Lexical scopes are engine-owned frames with private maps and explicit parent

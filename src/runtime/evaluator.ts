@@ -8,6 +8,7 @@ import {
   applyBuiltinFilter,
   applyBuiltinTest,
   hasBuiltinFilter,
+  lookupRuntimeConstantKey,
   lookupRuntimeValue,
   runtimeNumber,
 } from './builtins.ts';
@@ -479,6 +480,11 @@ class Evaluator {
           if (children.length === 1 && children[0]?.type === 'Slice') {
             return this.#evaluateSlice(target, children[0], scope, depth + 1);
           }
+        }
+        const constantKey = constantLookupKey(valueNode);
+        if (constantKey.found) {
+          this.#charge(depth + 1);
+          return lookupRuntimeConstantKey(target, constantKey.value);
         }
         const key = this.#evaluateExpression(valueNode, scope, depth + 1);
         if (target instanceof RuntimeCallable && target.callableKind === 'builtin') {
@@ -1009,6 +1015,29 @@ function isRegexLiteral(value: AstData): value is AstRegexLiteral {
     'type' in value &&
     value.type === 'regex-literal',
   );
+}
+
+function constantLookupKey(node: AstNode): (
+  | { readonly found: false }
+  | {
+    readonly found: true;
+    readonly value: undefined | null | boolean | number | string;
+  }
+) {
+  if (node.type !== 'Literal') {
+    return { found: false };
+  }
+  const value = astField(node, 'value');
+  if (
+    value === undefined ||
+    value === null ||
+    typeof value === 'boolean' ||
+    typeof value === 'number' ||
+    typeof value === 'string'
+  ) {
+    return { found: true, value };
+  }
+  return { found: false };
 }
 
 function isStringValue(value: RuntimeValue): boolean {

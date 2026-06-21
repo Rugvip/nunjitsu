@@ -323,6 +323,49 @@ export function lookupRuntimeValue(
   return undefined;
 }
 
+/** Resolves one parser-validated primitive lookup without generic coercion. */
+export function lookupRuntimeConstantKey(
+  target: RuntimeValue,
+  key: undefined | null | boolean | number | string,
+): RuntimeValue | undefined {
+  if (target instanceof RuntimeRecord) {
+    return target.get(renderRuntimeValue(key));
+  }
+  const index = constantKeyIndex(key);
+  if (target instanceof RuntimeArray) {
+    return index === undefined ? undefined : target.at(index);
+  }
+  if (typeof target === 'string' || target instanceof RuntimeSafeString) {
+    const text = typeof target === 'string' ? target : target.value;
+    if (index !== undefined) {
+      return text[index];
+    }
+    if (key === 'length') {
+      return [...text].length;
+    }
+  }
+  return undefined;
+}
+
+function constantKeyIndex(
+  key: undefined | null | boolean | number | string,
+): number | undefined {
+  let index: number;
+  if (key === undefined) {
+    return undefined;
+  }
+  if (key === null || key === false) {
+    index = 0;
+  } else if (key === true) {
+    index = 1;
+  } else if (typeof key === 'number') {
+    index = key;
+  } else {
+    index = key.trim() === '' ? 0 : Number(key);
+  }
+  return Number.isSafeInteger(index) && index >= 0 ? index : undefined;
+}
+
 function toBuiltinValue(value: RuntimeValue): unknown {
   if (
     value === undefined ||

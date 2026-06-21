@@ -110,6 +110,25 @@ test('uses fixed unescaped output and explicit escape filtering', () => {
   );
 });
 
+test('resolves constant and computed lookups through closed operations', () => {
+  const engine = createEngine();
+  assert.equal(
+    engine.render([
+      '${{ record.name }}:',
+      '${{ record["name"] }}:',
+      '${{ list[1] }}:',
+      '${{ text.length }}:',
+      '${{ record[key] }}',
+    ].join(''), {
+      record: { name: 'value' },
+      list: ['zero', 'one'],
+      text: 'four',
+      key: 'name',
+    }),
+    'value:value:one:4:value',
+  );
+});
+
 test('applies whitespace options to each complete inline source', () => {
   const engine = createEngine({ trimBlocks: true, lstripBlocks: true });
   assert.equal(
