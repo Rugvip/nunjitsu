@@ -66,7 +66,7 @@ fn write_bindings(bindings: &[u16]) -> Result<u32, u32> {
     while let Some((name, next)) =
         next_binding(bindings, cursor).map_err(|_| ERROR_UNSUPPORTED_TAG)?
     {
-        let name_offset = write_code_units_record(TAG_STRING, name)?;
+        let name_offset = write_identifier(name)?;
         write_u32(
             mutable_record_at(offset, TAG_BINDINGS)?,
             4 + index * 4,
@@ -294,7 +294,7 @@ fn pop_for(state_offset: u32, loop_offset: u32) -> Result<(), u32> {
 }
 
 fn assign_scope(state_offset: u32, name_offset: u32, value_offset: u32) -> Result<(), u32> {
-    record_at(name_offset, TAG_STRING)?;
+    validate_name(name_offset)?;
     Value::at(value_offset)?;
     let frame_offset = state_field(state_offset, STATE_CURRENT_FRAME)?;
     let frame = record_at(frame_offset, TAG_FRAME)?;
@@ -305,9 +305,7 @@ fn assign_scope(state_offset: u32, name_offset: u32, value_offset: u32) -> Resul
         if scope.len() != SCOPE_LENGTH as usize {
             return Err(ERROR_INVALID_RECORD);
         }
-        if record_at(read_u32(scope, SCOPE_NAME)?, TAG_STRING)?
-            == record_at(name_offset, TAG_STRING)?
-        {
+        if names_equal(read_u32(scope, SCOPE_NAME)?, name_offset)? {
             write_u32(
                 mutable_record_at(existing, TAG_SCOPE)?,
                 SCOPE_VALUE,

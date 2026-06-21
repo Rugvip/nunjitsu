@@ -58,6 +58,7 @@ const TAG_LOAD_REQUEST: u32 = 34;
 const TAG_EXPRESSION: u32 = 35;
 const TAG_STRING_VALUE: u32 = 36;
 const TAG_SAFE_STRING_VALUE: u32 = 37;
+const TAG_IDENTIFIER: u32 = 38;
 
 #[link(wasm_import_module = "env")]
 unsafe extern "C" {

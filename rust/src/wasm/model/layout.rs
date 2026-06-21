@@ -195,6 +195,7 @@ fn slot_payload_length(tag: u32) -> Option<u32> {
     match tag {
         TAG_SOURCE => Some(12),
         TAG_EXPRESSION => Some(8),
+        TAG_IDENTIFIER => Some(8),
         TAG_REQUEST => Some(56),
         TAG_UNDEFINED | TAG_NULL => Some(0),
         TAG_BOOLEAN => Some(1),
@@ -233,7 +234,7 @@ fn member_backed_tag(tag: u32) -> bool {
 
 fn slot_category_mask(tag: u32) -> u32 {
     match tag {
-        TAG_SOURCE | TAG_EXPRESSION => 16,
+        TAG_SOURCE | TAG_EXPRESSION | TAG_IDENTIFIER => 16,
         TAG_UNDEFINED
         | TAG_NULL
         | TAG_BOOLEAN

@@ -49,7 +49,7 @@ impl Context {
                 return None;
             }
             let name_offset = read_u32(scope, SCOPE_NAME).ok()?;
-            if record_at(name_offset, TAG_STRING).ok()? == name {
+            if name_eq_bytes(name_offset, name).ok()? {
                 return read_u32(scope, SCOPE_VALUE).ok();
             }
             scope_offset = read_u32(scope, SCOPE_PARENT).ok()?;
@@ -65,7 +65,7 @@ impl Context {
             let count = collection_count(bindings, 4).ok()?;
             for index in 0..count {
                 let name_offset = read_u32(bindings, 4 + index * 4).ok()?;
-                if record_at(name_offset, TAG_STRING).ok()? == name {
+                if name_eq_bytes(name_offset, name).ok()? {
                     return loop_binding(loop_offset, index, count).ok();
                 }
             }
