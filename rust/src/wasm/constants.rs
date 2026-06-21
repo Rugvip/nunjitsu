@@ -1,4 +1,4 @@
-const ABI_VERSION: u32 = 33;
+const ABI_VERSION: u32 = 34;
 const MEMORY_LAYOUT_VERSION: u32 = 6;
 const PAGE_SIZE: usize = 65_536;
 const MEMORY_PREFIX_ALIGNMENT: u32 = 64;

@@ -748,7 +748,16 @@ export function decodeCapabilityRequest(
   layout: FixedMemoryLayout,
   fixedCursors: FixedMemoryCursors,
 ): DecodedCapabilityRequest {
-  const payload = readRecord(memory, offset, recordTag.capabilityRequest, length);
+  const payload = offset > 0 && offset < fixedCursors.slots
+    ? readFixedMemberSlotPayload(
+      memory,
+      offset,
+      recordTag.capabilityRequest,
+      length,
+      layout,
+      fixedCursors,
+    )
+    : readRecord(memory, offset, recordTag.capabilityRequest, length);
   if (payload.byteLength < 12 || (payload.byteLength - 12) % 4 !== 0) {
     throw new Error('Wasm returned an invalid capability request');
   }
@@ -783,6 +792,44 @@ export function decodeCapabilityRequest(
     capabilityId: view.getUint32(4, true),
     arguments: Object.freeze(arguments_),
   });
+}
+
+function readFixedMemberSlotPayload(
+  memory: WebAssembly.Memory,
+  index: number,
+  expectedTag: number,
+  expectedLength: number,
+  layout: FixedMemoryLayout,
+  fixedCursors: FixedMemoryCursors,
+): Uint8Array {
+  if (index <= 0 || index >= fixedCursors.slots || index > layout.slotCapacity) {
+    throw new Error('Wasm returned an out-of-bounds member slot');
+  }
+  const slotOffset = layout.slotOffset + index * fixedSlotLength;
+  if (slotOffset + fixedSlotLength > memory.buffer.byteLength) {
+    throw new Error('Wasm returned an out-of-bounds member slot');
+  }
+  const view = new DataView(memory.buffer, slotOffset, fixedSlotLength);
+  if ((view.getUint32(0, true) & 0xff) !== expectedTag) {
+    throw new Error('Wasm returned an unexpected member slot type');
+  }
+  const memberStart = view.getUint32(4, true);
+  const byteLength = view.getUint32(8, true);
+  if (byteLength !== expectedLength || byteLength % memberLength !== 0) {
+    throw new Error('Wasm returned an inconsistent member slot length');
+  }
+  const memberCount = byteLength / memberLength;
+  if (
+    memberStart + memberCount > fixedCursors.members ||
+    memberStart + memberCount > layout.memberCapacity
+  ) {
+    throw new Error('Wasm returned an out-of-bounds member slot range');
+  }
+  return new Uint8Array(
+    memory.buffer,
+    layout.memberOffset + memberStart * memberLength,
+    byteLength,
+  );
 }
 
 function decodeValue(
