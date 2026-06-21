@@ -2,6 +2,9 @@ fn allocate_record(tag: u32, payload_length: u32) -> Result<u32, u32> {
     if slot_payload_length(tag).is_some() {
         return allocate_slot(tag, payload_length);
     }
+    if member_backed_tag(tag) {
+        return allocate_member_record(tag, payload_length);
+    }
     let total_length = (RECORD_HEADER_LENGTH as u32)
         .checked_add(payload_length)
         .ok_or(ERROR_OUTPUT_TOO_LARGE)?;

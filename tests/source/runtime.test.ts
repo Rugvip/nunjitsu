@@ -94,6 +94,29 @@ test('allocates immutable worker memory capacities without growing at render tim
   } finally {
     await engine.dispose();
   }
+
+  const memberLimitedEngine = await createEngine({
+    memory: {
+      slots: 64,
+      sourceCodeUnits: 1,
+      valueCodeUnits: 1,
+      members: 1,
+      stringOperations: 1,
+      stringQueries: 1,
+      outputRanges: 1,
+    },
+  });
+  try {
+    await assert.rejects(
+      memberLimitedEngine.render({
+        source: '{% for value in [1] %}{{ value }}{% endfor %}',
+      }),
+      error => error instanceof NunjitsuLimitError,
+    );
+    assert.equal(await memberLimitedEngine.render({ source: 'reset' }), 'reset');
+  } finally {
+    await memberLimitedEngine.dispose();
+  }
 });
 
 test('renders through reusable shared-memory workers', async () => {

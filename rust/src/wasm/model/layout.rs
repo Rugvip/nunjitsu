@@ -205,12 +205,20 @@ fn slot_payload_length(tag: u32) -> Option<u32> {
     }
 }
 
+fn member_backed_tag(tag: u32) -> bool {
+    matches!(tag, TAG_BINDINGS | TAG_MACRO_ARGUMENTS | TAG_TAG_BOUNDARIES)
+}
+
 fn slot_category_mask(tag: u32) -> u32 {
     match tag {
         TAG_JOINER => 1,
         TAG_FRAME | TAG_LOOP_STATE | TAG_CAPTURE | TAG_MACRO_CALL | TAG_TAG_CALL => 2,
         TAG_SCOPE | TAG_MACRO_DEFINITION | TAG_BLOCK_DEFINITION => 4,
-        TAG_TAG_ARGUMENTS | TAG_FILTER_BLOCK => 8,
+        TAG_TAG_ARGUMENTS
+        | TAG_FILTER_BLOCK
+        | TAG_BINDINGS
+        | TAG_MACRO_ARGUMENTS
+        | TAG_TAG_BOUNDARIES => 8,
         _ => 0,
     }
 }
@@ -239,6 +247,100 @@ fn allocate_slot(tag: u32, payload_length: u32) -> Result<u32, u32> {
     Ok(index)
 }
 
+fn allocate_member_record(tag: u32, payload_length: u32) -> Result<u32, u32> {
+    if !member_backed_tag(tag) || !payload_length.is_multiple_of(MEMBER_LENGTH) {
+        return Err(ERROR_INVALID_RECORD);
+    }
+    let prefix = memory_prefix();
+    let (slot_pool, slot_index, member_pool, member_start) = unsafe {
+        (
+            (*prefix).slots,
+            (*prefix).slots.cursor,
+            (*prefix).members,
+            (*prefix).members.cursor,
+        )
+    };
+    if slot_index == 0 || slot_index > slot_pool.capacity {
+        return Err(ERROR_RESOURCE_LIMIT);
+    }
+    let member_count = payload_length / MEMBER_LENGTH;
+    let member_end = member_start
+        .checked_add(member_count)
+        .ok_or(ERROR_RESOURCE_LIMIT)?;
+    if member_end > member_pool.capacity {
+        return Err(ERROR_RESOURCE_LIMIT);
+    }
+
+    let slot_offset = slot_pool
+        .offset
+        .checked_add(
+            slot_index
+                .checked_mul(SLOT_LENGTH)
+                .ok_or(ERROR_RESOURCE_LIMIT)?,
+        )
+        .ok_or(ERROR_RESOURCE_LIMIT)?;
+    let slot = mutable_memory(slot_offset, SLOT_LENGTH)?;
+    slot.fill(0);
+    write_u32(slot, 0, tag | (slot_category_mask(tag) << 8))?;
+    write_u32(slot, 4, member_start)?;
+    write_u32(slot, 8, payload_length)?;
+
+    let member_offset = member_pool
+        .offset
+        .checked_add(
+            member_start
+                .checked_mul(MEMBER_LENGTH)
+                .ok_or(ERROR_RESOURCE_LIMIT)?,
+        )
+        .ok_or(ERROR_RESOURCE_LIMIT)?;
+    mutable_memory(member_offset, payload_length)?.fill(0);
+    unsafe {
+        (*prefix).slots.cursor = slot_index.checked_add(1).ok_or(ERROR_RESOURCE_LIMIT)?;
+        (*prefix).members.cursor = member_end;
+    }
+    Ok(slot_index)
+}
+
+fn member_record(bytes: &[u8]) -> Result<&'static [u8], u32> {
+    let prefix = memory_prefix();
+    let pool = unsafe { (*prefix).members };
+    let start = read_u32(bytes, 4)?;
+    let length = read_u32(bytes, 8)?;
+    let count = length
+        .checked_div(MEMBER_LENGTH)
+        .ok_or(ERROR_INVALID_RECORD)?;
+    if !length.is_multiple_of(MEMBER_LENGTH)
+        || start.checked_add(count).ok_or(ERROR_INVALID_RECORD)? > pool.cursor
+    {
+        return Err(ERROR_INVALID_RECORD);
+    }
+    let offset = pool
+        .offset
+        .checked_add(start.checked_mul(MEMBER_LENGTH).ok_or(ERROR_INVALID_RECORD)?)
+        .ok_or(ERROR_INVALID_RECORD)?;
+    memory(offset, length)
+}
+
+fn mutable_member_record(bytes: &[u8]) -> Result<&'static mut [u8], u32> {
+    let prefix = memory_prefix();
+    let pool = unsafe { (*prefix).members };
+    let start = read_u32(bytes, 4)?;
+    let length = read_u32(bytes, 8)?;
+    let count = length
+        .checked_div(MEMBER_LENGTH)
+        .ok_or(ERROR_INVALID_RECORD)?;
+    if !length.is_multiple_of(MEMBER_LENGTH)
+        || start.checked_add(count).ok_or(ERROR_INVALID_RECORD)? > pool.cursor
+    {
+        return Err(ERROR_INVALID_RECORD);
+    }
+    let offset = pool
+        .offset
+        .checked_add(start.checked_mul(MEMBER_LENGTH).ok_or(ERROR_INVALID_RECORD)?)
+        .ok_or(ERROR_INVALID_RECORD)?;
+    mutable_memory(offset, length)
+}
+
 fn slot_record(index: u32) -> Result<Option<(u32, &'static [u8])>, u32> {
     let prefix = memory_prefix();
     let pool = unsafe { (*prefix).slots };
@@ -252,6 +354,9 @@ fn slot_record(index: u32) -> Result<Option<(u32, &'static [u8])>, u32> {
     let bytes = memory(offset, SLOT_LENGTH)?;
     let header = read_u32(bytes, 0)?;
     let tag = header & 0xff;
+    if member_backed_tag(tag) {
+        return Ok(Some((tag, member_record(bytes)?)));
+    }
     let length = slot_payload_length(tag).ok_or(ERROR_INVALID_RECORD)? as usize;
     Ok(Some((tag, &bytes[4..4 + length])))
 }
@@ -270,6 +375,9 @@ fn mutable_slot_record(index: u32, expected_tag: u32) -> Result<Option<&'static 
     let tag = read_u32(bytes, 0)? & 0xff;
     if tag != expected_tag {
         return Err(ERROR_INVALID_RECORD);
+    }
+    if member_backed_tag(tag) {
+        return Ok(Some(mutable_member_record(bytes)?));
     }
     let length = slot_payload_length(tag).ok_or(ERROR_INVALID_RECORD)? as usize;
     Ok(Some(&mut bytes[4..4 + length]))
