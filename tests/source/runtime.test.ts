@@ -56,6 +56,80 @@ test('matches built-in filters, tests, globals, comments, and raw regions', () =
   );
 });
 
+test('implements the closed Nunjucks filter and test standard library', () => {
+  const engine = createEngine({ cookiecutterCompat: true });
+  const filterCases: Array<readonly [string, string]> = [
+    ['{{ -3 | abs }}', '3'],
+    ['{{ [1,2,3] | batch(2, 0) | dump }}', '[[1,2],[3]]'],
+    ['{{ "hELLO" | capitalize }}', 'Hello'],
+    ['[{{ "x" | center(3) }}]', '[ x ]'],
+    ['{{ missing | default("fallback") }}|{{ "" | d("fallback", true) }}', 'fallback|fallback'],
+    ['{{ {"b":2,"A":1} | dictsort | dump }}', '[["A",1],["b",2]]'],
+    ['{{ {"value":[1,true]} | dump }}', '{"value":[1,true]}'],
+    ['{{ "<x>" | e }}|{{ "<x>" | forceescape }}', '&lt;x&gt;|&lt;x&gt;'],
+    ['{{ [1,2] | first }}:{{ [1,2] | last }}', '1:2'],
+    ['{{ "1.5x" | float(2) }}:{{ "ff" | int(0, 16) }}', '1.5:255'],
+    ['{{ [{"k":"a"},{"k":"a"}] | groupby("k") | dump }}', '{"a":[{"k":"a"},{"k":"a"}]}'],
+    ['{{ "a\\nb" | indent(2, true) }}', '  a\n  b'],
+    ['{{ [1,2] | join("-") }}', '1-2'],
+    ['{{ [1,2] | length }}:{{ {"a":1} | length }}:{{ "😀" | length }}', '2:1:1'],
+    ['{{ "ab" | list | dump }}', '["a","b"]'],
+    ['{{ "ABC" | lower }}:{{ "abc" | upper }}', 'abc:ABC'],
+    ['{{ "a\\nb" | nl2br }}', 'a<br />\nb'],
+    ['{{ [7] | random }}', '7'],
+    ['{{ [1,2,3,4] | select("even") | join }}:{{ [1,2,3,4] | reject("even") | join }}', '24:13'],
+    ['{{ rows | selectattr("ok") | join(",", "name") }}:{{ rows | rejectattr("ok") | join(",", "name") }}', 'a:c'],
+    ['{{ "a-a-a" | replace("a", "b", 2) }}', 'b-b-a'],
+    ['{{ "ab" | reverse }}:{{ [1,2] | reverse | join }}', 'ba:21'],
+    ['{{ 1.25 | round(1, "ceil") }}', '1.3'],
+    ['{{ [1,2,3,4,5] | slice(2) | dump }}', '[[1,2,3],[4,5]]'],
+    ['{{ [3,1,2] | sort | join }}', '123'],
+    ['{{ 12 | string }}', '12'],
+    ['{{ " <b>Hello</b>   world " | striptags }}', 'Hello world'],
+    ['{{ [1,2,3] | sum }}', '6'],
+    ['{{ "hello WORLD" | title }}', 'Hello World'],
+    ['[{{ " x " | trim }}]', '[x]'],
+    ['{{ "one two three" | truncate(7, false, "…") }}', 'one two…'],
+    ['{{ "a b" | urlencode }}', 'a%20b'],
+    ['{{ "https://example.com" | urlize }}', '<a href="https://example.com">https://example.com</a>'],
+    ['{{ "one, two" | wordcount }}', '2'],
+    ['{{ "<b>safe</b>" | safe }}', '<b>safe</b>'],
+  ];
+  const context = {
+    rows: [{ name: 'a', ok: true }, { name: 'c', ok: false }],
+  };
+  for (const [source, expected] of filterCases) {
+    let output: string | undefined;
+    assert.doesNotThrow(() => {
+      output = engine.render(source, context);
+    }, source);
+    assert.equal(output, expected, source);
+  }
+
+  const testCases: Array<readonly [string, string]> = [
+    ['{% macro fn() %}{% endmacro %}{{ fn is callable }}', 'true'],
+    ['{{ value is defined }}:{{ missing is undefined }}', 'true:true'],
+    ['{{ 6 is divisibleby(3) }}', 'true'],
+    ['{{ "x" | safe is escaped }}', 'true'],
+    ['{{ 2 is equalto(2) }}:{{ 2 is eq(2) }}:{{ 2 is sameas(2) }}', 'true:true:true'],
+    ['{{ 2 is even }}:{{ 3 is odd }}', 'true:true'],
+    ['{{ 0 is falsy }}:{{ 1 is truthy }}', 'true:true'],
+    ['{{ 2 is ge(2) }}:{{ 3 is gt(2) }}:{{ 3 is greaterthan(2) }}', 'true:true:true'],
+    ['{{ [1] is iterable }}:{{ {"a":1} is mapping }}', 'true:true'],
+    ['{{ 2 is le(2) }}:{{ 1 is lt(2) }}:{{ 1 is lessthan(2) }}', 'true:true:true'],
+    ['{{ "abc" is lower }}:{{ "ABC" is upper }}', 'true:true'],
+    ['{{ 1 is ne(2) }}:{{ None is null }}', 'true:true'],
+    ['{{ 1 is number }}:{{ "x" is string }}', 'true:true'],
+  ];
+  for (const [source, expected] of testCases) {
+    let output: string | undefined;
+    assert.doesNotThrow(() => {
+      output = engine.render(source, { value: 1 });
+    }, source);
+    assert.equal(output, expected, source);
+  }
+});
+
 test('dispatches only registered synchronous filters and globals', () => {
   const callbackInputs: unknown[] = [];
   const engine = createEngine({

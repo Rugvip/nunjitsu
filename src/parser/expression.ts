@@ -165,11 +165,26 @@ export class ExpressionParser {
   }
 
   #parsePower(): AstNode {
-    let left = this.#parseUnary();
+    let left = this.#parseFilter();
     if (this.#consume('**')) {
       left = this.#make('Pow', { left, right: this.#parsePower() }, left);
     }
     return left;
+  }
+
+  #parseFilter(): AstNode {
+    let expression = this.#parseUnary();
+    while (this.#consume('|')) {
+      const name = this.#symbol(this.#expect('name'));
+      const supplied = this.#consume('(') ? this.#parseArguments(')') : Object.freeze([]);
+      expression = this.#make('Filter', {
+        name,
+        args: this.#make('NodeList', {
+          children: Object.freeze([expression, ...supplied]),
+        }, expression),
+      }, expression);
+    }
+    return expression;
   }
 
   #parseUnary(): AstNode {
@@ -203,15 +218,6 @@ export class ExpressionParser {
         expression = this.#make('FunCall', {
           name: expression,
           args: this.#argumentList(),
-        }, expression);
-      } else if (this.#consume('|')) {
-        const name = this.#symbol(this.#expect('name'));
-        const supplied = this.#consume('(') ? this.#parseArguments(')') : Object.freeze([]);
-        expression = this.#make('Filter', {
-          name,
-          args: this.#make('NodeList', {
-            children: Object.freeze([expression, ...supplied]),
-          }, expression),
         }, expression);
       } else {
         return expression;
@@ -407,7 +413,7 @@ export class ExpressionParser {
   }
 
   #consume(value: string): boolean {
-    if (this.#peek().value !== value) {
+    if (this.#peek().kind !== 'operator' || this.#peek().value !== value) {
       return false;
     }
     this.#index += 1;
