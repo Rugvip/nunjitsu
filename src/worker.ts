@@ -11,6 +11,7 @@ const poolSources = 2;
 const poolValues = 3;
 const poolMembers = 4;
 const poolStringOperations = 5;
+const poolStringQueries = 6;
 const poolOutputRanges = 7;
 const poolScratch = 8;
 
@@ -495,6 +496,8 @@ function readFixedMemoryLayout(exports: NunjitsuExports): FixedMemoryLayout {
     memberCapacity: exports.poolCapacity(poolMembers),
     stringOperationOffset: exports.poolOffset(poolStringOperations),
     stringOperationCapacity: exports.poolCapacity(poolStringOperations),
+    stringQueryOffset: exports.poolOffset(poolStringQueries),
+    stringQueryCapacity: exports.poolCapacity(poolStringQueries),
     outputRangeOffset: exports.poolOffset(poolOutputRanges),
     outputRangeCapacity: exports.poolCapacity(poolOutputRanges),
     scratchOffset: exports.poolOffset(poolScratch),

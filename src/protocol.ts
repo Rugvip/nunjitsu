@@ -78,6 +78,8 @@ export interface FixedMemoryLayout {
   memberCapacity: number;
   stringOperationOffset: number;
   stringOperationCapacity: number;
+  stringQueryOffset: number;
+  stringQueryCapacity: number;
   outputRangeOffset: number;
   outputRangeCapacity: number;
   scratchOffset: number;

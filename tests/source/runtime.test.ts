@@ -34,6 +34,8 @@ test('validates parent-aware fixed loader request slots at the Wasm boundary', (
     memberCapacity: 1,
     stringOperationOffset: 1_664,
     stringOperationCapacity: 1,
+    stringQueryOffset: 1_696,
+    stringQueryCapacity: 1,
     outputRangeOffset: 1_728,
     outputRangeCapacity: 1,
     scratchOffset: 1_792,

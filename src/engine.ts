@@ -1366,8 +1366,12 @@ function isFixedMemoryLayout(value: unknown): value is FixedMemoryLayout {
     'memberCapacity',
     'stringOperationOffset',
     'stringOperationCapacity',
+    'stringQueryOffset',
+    'stringQueryCapacity',
     'outputRangeOffset',
     'outputRangeCapacity',
+    'scratchOffset',
+    'scratchCapacity',
   ].every(name => typeof layout[name] === 'number');
 }
 
@@ -1378,15 +1382,12 @@ function validFixedLayout(layout: FixedMemoryLayout, memory: WebAssembly.Memory)
     layout.valueOffset + layout.valueCapacity * 2,
     layout.memberOffset + layout.memberCapacity * memberBytes,
     layout.stringOperationOffset + layout.stringOperationCapacity * stringOperationBytes,
+    layout.stringQueryOffset + layout.stringQueryCapacity * stringQueryBytes,
     layout.outputRangeOffset + layout.outputRangeCapacity * outputRangeBytes,
+    layout.scratchOffset + layout.scratchCapacity,
   );
   return (
-    Object.values(layout).every(Number.isSafeInteger) &&
-    layout.slotOffset > 0 &&
-    layout.slotCapacity > 0 &&
-    layout.sourceCapacity > 0 &&
-    layout.valueCapacity > 0 &&
-    layout.memberCapacity > 0 &&
+    Object.values(layout).every(value => Number.isSafeInteger(value) && value > 0) &&
     end <= memory.buffer.byteLength
   );
 }
