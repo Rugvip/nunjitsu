@@ -48,6 +48,10 @@ Parser-validated constant attribute and index keys use a narrowed closed lookup
 operation. Computed keys continue through explicit runtime coercion. Both paths
 dispatch only over internal value kinds and reserve prototype gadget names.
 
+Loops and membership checks iterate internal collections directly. They do not
+materialize a second array containing the full collection; record loop pairs
+are created one at a time as the interpreter consumes them.
+
 ## Scopes and calls
 
 Lexical scopes are engine-owned frames with one private map of value and

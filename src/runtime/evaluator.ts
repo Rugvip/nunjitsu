@@ -79,6 +79,12 @@ interface BlockFrame {
   readonly scope: RuntimeScope;
 }
 
+/** One allocation-bounded view over values accepted by a template loop. */
+interface RuntimeIteration {
+  readonly length: number;
+  readonly values: IterableIterator<RuntimeValue>;
+}
+
 type BuiltinCallableDefinition =
   | {
     readonly type: 'cycler';
@@ -345,7 +351,8 @@ class Evaluator {
     }
     const binding = astNode(node, 'name');
     const loopScope = scope.child();
-    for (const [index, entry] of entries.entries()) {
+    let index = 0;
+    for (const entry of entries.values) {
       const iteration = loopScope;
       bindTarget(binding, entry, iteration);
       iteration.set('loop', new RuntimeRecord([
@@ -363,6 +370,7 @@ class Evaluator {
         output,
         depth + 1,
       );
+      index += 1;
     }
   }
 
@@ -1050,9 +1058,8 @@ function bindTarget(target: AstNode, value: RuntimeValue, scope: RuntimeScope): 
     return;
   }
   if (target.type === 'Array' || target.type === 'Group') {
-    const values = value instanceof RuntimeArray ? [...value.values()] : [];
     for (const [index, child] of astNodes(target, 'children').entries()) {
-      bindTarget(child, values[index], scope);
+      bindTarget(child, value instanceof RuntimeArray ? value.at(index) : undefined, scope);
     }
     return;
   }
@@ -1067,17 +1074,35 @@ function bindAssignment(target: AstNode, value: RuntimeValue, scope: RuntimeScop
   bindTarget(target, value, scope);
 }
 
-function iterableEntries(value: RuntimeValue): RuntimeValue[] {
+function iterableEntries(value: RuntimeValue): RuntimeIteration {
   if (value instanceof RuntimeArray) {
-    return [...value.values()];
+    return { length: value.length, values: value.values() };
   }
   if (value instanceof RuntimeRecord) {
-    return [...value.entries()].map(([key, item]) => new RuntimeArray([key, item]));
+    return { length: value.size, values: recordIterationValues(value) };
   }
   if (typeof value === 'string' || value instanceof RuntimeSafeString) {
-    return [...(typeof value === 'string' ? value : value.value)];
+    const text = typeof value === 'string' ? value : value.value;
+    return { length: codePointLength(text), values: text[Symbol.iterator]() };
   }
-  return [];
+  return { length: 0, values: emptyRuntimeValues() };
+}
+
+function* recordIterationValues(value: RuntimeRecord): IterableIterator<RuntimeValue> {
+  for (const [key, item] of value.entries()) {
+    yield new RuntimeArray([key, item]);
+  }
+}
+
+function* emptyRuntimeValues(): IterableIterator<RuntimeValue> {}
+
+function codePointLength(value: string): number {
+  let length = 0;
+  for (const unused of value) {
+    void unused;
+    length += 1;
+  }
+  return length;
 }
 
 function runtimeEqual(left: RuntimeValue, right: RuntimeValue, strict: boolean): boolean {
@@ -1124,7 +1149,12 @@ function runtimeContains(container: RuntimeValue, needle: RuntimeValue): boolean
     return renderRuntimeValue(container).includes(renderRuntimeValue(needle));
   }
   if (container instanceof RuntimeArray) {
-    return [...container.values()].some(value => runtimeEqual(value, needle, false));
+    for (const value of container.values()) {
+      if (runtimeEqual(value, needle, false)) {
+        return true;
+      }
+    }
+    return false;
   }
   if (container instanceof RuntimeRecord) {
     return container.get(renderRuntimeValue(needle)) !== undefined;

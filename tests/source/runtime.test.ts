@@ -29,6 +29,16 @@ test('renders control flow, loops, macros, call blocks, and assignments', () => 
     }),
     'empty',
   );
+  assert.equal(
+    engine.render([
+      '{% for character in text %}${{ loop.index }}:${{ character }}:${{ loop.length }};{% endfor %}',
+      '{% for key, value in record %}${{ key }}=${{ value }};{% endfor %}',
+    ].join(''), {
+      text: 'A😀',
+      record: { first: 1, second: 2 },
+    }),
+    '1:A:2;2:😀:2;first=1;second=2;',
+  );
 });
 
 test('matches built-in filters, tests, globals, comments, and raw regions', () => {
