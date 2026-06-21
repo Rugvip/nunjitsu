@@ -107,8 +107,8 @@ Do not create additional packages without a documented architectural reason.
   executes `.ts` directly.
 - Add TSDoc to every declared type and every exported API. Document ownership,
   lifetime, units, failure behavior, and security implications where relevant.
-- Keep ESM and CommonJS behavior in one implementation. Format-specific code is
-  limited to entry and asset-resolution adapters.
+- Build ESM and CommonJS from the same TypeScript entrypoint. Do not add
+  format-specific source implementations, entry adapters, or runtime behavior.
 - Use braced control flow unless the surrounding file has an established
   different style. Avoid `any` at safe-value and capability boundaries.
 
@@ -181,9 +181,9 @@ Do not create additional packages without a documented architectural reason.
 
 - Follow the existing style of each file and language. Do not mix styles within
   a file.
-- Keep `index.ts` and `index.cts` files as thin public entrypoints that
-  generally only re-export declarations from responsibility-focused modules.
-  Do not place substantial implementation in index files.
+- Keep `index.ts` files as thin public entrypoints that generally only
+  re-export declarations from responsibility-focused modules. Do not place
+  substantial implementation in index files or add format-specific entrypoints.
 - When a module exists primarily to provide one main export, name the file
   after that export, including its casing, such as `createEngine.ts` for
   `createEngine`.

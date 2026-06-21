@@ -9,10 +9,10 @@
   },
   "main": "./dist/cjs/index.cjs",
   "module": "./dist/esm/index.js",
-  "types": "./dist/esm/index.d.ts",
+  "types": "./dist/types/index.d.ts",
   "exports": {
     ".": {
-      "types": "./dist/esm/index.d.ts",
+      "types": "./dist/types/index.d.ts",
       "import": "./dist/esm/index.js",
       "require": "./dist/cjs/index.cjs"
     }
@@ -25,8 +25,7 @@
   "scripts": {
     "benchmark": "node benchmarks/run.ts",
     "benchmark:quick": "node benchmarks/run.ts --warmup=1 --iterations=3 --loops=1",
-    "build": "npm run clean && npm run build:typescript && node scripts/finalize-build.mjs",
-    "build:typescript": "tsgo -p tsconfig.esm.json && tsgo -p tsconfig.cjs.json && node scripts/build-cjs.mjs",
+    "build": "node scripts/build.mjs",
     "clean": "node scripts/clean.mjs",
     "test": "npm run typecheck && npm run test:source && npm run test:benchmark && npm run test:package",
     "test:benchmark": "node benchmarks/run.ts --warmup=0 --iterations=1 --loops=1 --json",

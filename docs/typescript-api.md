@@ -100,6 +100,8 @@ options.
 ## Source and build constraints
 
 The package is authored in erasable `.ts`, targets Node.js 24.12 or newer, and
-builds tested ESM and CommonJS outputs with declarations. Parser and interpreter
-sources must reject dynamic execution, generated code, Node `vm`, dynamic
-imports, and host-object reflection.
+has one format-neutral source entrypoint. The build bundles that same entrypoint
+into tested ESM and CommonJS outputs and emits one shared declaration tree.
+Source code must not branch on or provide adapters for the package module
+format. Parser and interpreter sources must reject dynamic execution, generated
+code, Node `vm`, dynamic imports, and host-object reflection.
