@@ -62,8 +62,9 @@ version at startup:
 3. fixed UTF-16 source and input code-unit arrays;
 4. a fixed member/index array for collection entries and variable-length
    relationships;
-5. fixed command and query arrays for the host string graph; and
-6. a fixed circular array of output range descriptors.
+5. fixed command and query arrays for the host string graph;
+6. a fixed circular array of output range descriptors; and
+7. a fixed-capacity scratch byte pool for temporary UTF-8 materialization.
 
 The prefix owns singleton state. A large render-state structure must never
 inflate the repeated slot width. The slot width is instead the smallest aligned
@@ -87,6 +88,9 @@ The public engine provides a balanced default capacity profile and immutable
 advanced overrides for at least repeated slots, UTF-16 source/input code units,
 members/indices, string operations, string queries, and output descriptors.
 Per-render limits may be lower than worker capacity but cannot enlarge it.
+Scratch allocation is cursor-based inside its preallocated pool and is rewound
+at defined continuation and output boundaries. Scratch bytes never contain
+durable entities or references that survive those boundaries.
 
 ## Parse and evaluation pipeline
 
