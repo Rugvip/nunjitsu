@@ -28,15 +28,15 @@ Contributors should also read [`AGENTS.md`](AGENTS.md).
 
 ## Setup
 
-Development requires Node.js 22.18 or newer and npm. The repository uses its
-pinned TypeScript 7 native compiler for authoring and TypeScript 5.7 for package
-consumer compatibility tests.
+Development requires Node.js 22.18 or newer and pnpm 11.3. The repository uses
+its pinned TypeScript 7 native compiler for authoring and TypeScript 5.7 for
+package consumer compatibility tests.
 
 Install dependencies and run the complete source and package test matrix:
 
 ```sh
-npm install
-npm test
+pnpm install
+pnpm test
 ```
 
 ## License

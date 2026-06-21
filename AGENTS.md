@@ -17,9 +17,11 @@ implementation and documentation aligned with the architecture in
 
 - Target Node.js 22 or newer. Browser support is out of scope, and Node APIs
   may be used throughout the package outside the closed interpreter boundary.
-- Keep the TypeScript/npm package at the repository root. Author one erasable
-  `.ts` source tree and compile it into tested ESM and CommonJS builds with
-  generated declarations using the lockfile-pinned TypeScript 7.0 RC.
+- Keep the TypeScript package at the repository root and manage it with the
+  `packageManager`-pinned pnpm version and `pnpm-lock.yaml`. Do not add another
+  package-manager lockfile. Author one erasable `.ts` source tree and compile it
+  into tested ESM and CommonJS builds with generated declarations using the
+  lockfile-pinned TypeScript 7.0 RC.
 - Construct engines synchronously and render synchronously. Engine-level
   filters and globals are immutable after creation.
 - Implement template execution as a closed native TypeScript interpreter in

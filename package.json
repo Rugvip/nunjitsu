@@ -4,6 +4,7 @@
   "description": "A secure direct string template engine written in TypeScript",
   "license": "Apache-2.0",
   "type": "module",
+  "packageManager": "pnpm@11.3.0",
   "sideEffects": false,
   "publishConfig": {
     "access": "public",
@@ -39,9 +40,9 @@
     "benchmark:quick": "node benchmarks/run.ts --warmup=1 --iterations=3 --loops=1",
     "build": "node scripts/build.mjs",
     "clean": "node scripts/clean.mjs",
-    "test": "npm run typecheck && npm run test:source && npm run test:benchmark && npm run test:package",
+    "test": "pnpm run typecheck && pnpm run test:source && pnpm run test:benchmark && pnpm run test:package",
     "test:benchmark": "node benchmarks/run.ts --warmup=0 --iterations=1 --loops=1 --silent",
-    "test:package": "npm run build && npm run test:package:types && node --test tests/package/esm.test.mjs tests/package/commonjs.test.cjs",
+    "test:package": "pnpm run build && pnpm run test:package:types && node --test tests/package/esm.test.mjs tests/package/commonjs.test.cjs",
     "test:package:types": "node scripts/test-package-types.mjs",
     "test:source": "node --test tests/source/*.test.ts",
     "typecheck": "tsgo -p tsconfig.json"
