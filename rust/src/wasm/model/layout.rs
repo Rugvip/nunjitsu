@@ -1063,7 +1063,7 @@ pub extern "C" fn nunjitsu_configure_layout(
     if cursor as usize > linear_memory_length() {
         return 0;
     }
-    let Some(legacy_arena_base) = align_up(cursor, RECORD_ALIGNMENT) else {
+    let Some(legacy_arena_base) = align_up(cursor, SCRATCH_ALIGNMENT) else {
         return 0;
     };
 

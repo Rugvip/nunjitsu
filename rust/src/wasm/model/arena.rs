@@ -5,14 +5,7 @@ fn allocate_record(tag: u32, payload_length: u32) -> Result<u32, u32> {
     if member_backed_tag(tag) {
         return allocate_member_record(tag, payload_length);
     }
-    let total_length = (RECORD_HEADER_LENGTH as u32)
-        .checked_add(payload_length)
-        .ok_or(ERROR_OUTPUT_TOO_LARGE)?;
-    let offset = arena_alloc(total_length, RECORD_ALIGNMENT)?;
-    write_record_header(offset, tag, payload_length)?;
-    let payload = mutable_memory(offset + RECORD_HEADER_LENGTH as u32, payload_length)?;
-    payload.fill(0);
-    Ok(offset)
+    Err(ERROR_INVALID_RECORD)
 }
 
 fn write_materialized_string_value(bytes: &[u8], safe: bool) -> Result<u32, u32> {
@@ -298,16 +291,7 @@ fn mutable_record_at(offset: u32, expected_tag: u32) -> Result<&'static mut [u8]
     if let Some(payload) = mutable_slot_record(offset, expected_tag)? {
         return Ok(payload);
     }
-    let header = memory(offset, RECORD_HEADER_LENGTH as u32)?;
-    let tag = read_u32(header, 0)?;
-    let payload_length = read_u32(header, 4)?;
-    if tag != expected_tag {
-        return Err(ERROR_INVALID_RECORD);
-    }
-    let payload_offset = offset
-        .checked_add(RECORD_HEADER_LENGTH as u32)
-        .ok_or(ERROR_INVALID_RECORD)?;
-    mutable_memory(payload_offset, payload_length)
+    Err(ERROR_INVALID_RECORD)
 }
 
 fn raw_record_at(offset: u32) -> Result<(u32, &'static [u8]), u32> {
@@ -317,13 +301,7 @@ fn raw_record_at(offset: u32) -> Result<(u32, &'static [u8]), u32> {
     if let Some(record) = slot_record(offset)? {
         return Ok(record);
     }
-    let header = memory(offset, RECORD_HEADER_LENGTH as u32)?;
-    let tag = read_u32(header, 0)?;
-    let payload_length = read_u32(header, 4)?;
-    let payload_offset = offset
-        .checked_add(RECORD_HEADER_LENGTH as u32)
-        .ok_or(ERROR_INVALID_RECORD)?;
-    Ok((tag, memory(payload_offset, payload_length)?))
+    Err(ERROR_INVALID_RECORD)
 }
 
 fn collection_count(payload: &[u8], entry_length: usize) -> Result<usize, u32> {
@@ -366,12 +344,6 @@ fn trim_ascii_whitespace(mut bytes: &[u8]) -> &[u8] {
         bytes = &bytes[..bytes.len() - 1];
     }
     bytes
-}
-
-fn write_record_header(offset: u32, tag: u32, payload_length: u32) -> Result<(), u32> {
-    let header = mutable_memory(offset, RECORD_HEADER_LENGTH as u32)?;
-    write_u32(header, 0, tag)?;
-    write_u32(header, 4, payload_length)
 }
 
 fn memory(offset: u32, length: u32) -> Result<&'static [u8], u32> {
@@ -424,7 +396,7 @@ fn arena_alloc(length: u32, alignment: u32) -> Result<u32, u32> {
     let cursor = legacy_arena_cursor();
     let start = align_up(cursor, alignment).ok_or(ERROR_INVALID_ARENA)?;
     let end = start.checked_add(length).ok_or(ERROR_OUTPUT_TOO_LARGE)?;
-    let aligned_end = align_up(end, RECORD_ALIGNMENT).ok_or(ERROR_OUTPUT_TOO_LARGE)?;
+    let aligned_end = align_up(end, SCRATCH_ALIGNMENT).ok_or(ERROR_OUTPUT_TOO_LARGE)?;
     if let Ok(limit) = active_limit(STATE_LIMIT_ARENA_BYTES) {
         let used = aligned_end
             .checked_sub(nunjitsu_arena_base())

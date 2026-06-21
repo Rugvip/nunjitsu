@@ -469,16 +469,7 @@ export class ArenaWriter {
     ) {
       return this.#writeMemberSlot(tag, payload);
     }
-    const offset = align(this.#cursor, recordAlignment);
-    const end = offset + recordHeaderLength + payload.byteLength;
-    const nextCursor = align(end, recordAlignment);
-    this.#ensureCapacity(nextCursor);
-
-    this.#view.setUint32(offset, tag, true);
-    this.#view.setUint32(offset + 4, payload.byteLength, true);
-    new Uint8Array(this.#memory.buffer, offset + recordHeaderLength, payload.byteLength).set(payload);
-    this.#cursor = nextCursor;
-    return offset;
+    throw new Error(`Unsupported variable record tag ${tag}`);
   }
 
   #writeFixedSlot(tag: number, payload: Uint8Array): number {
@@ -568,15 +559,6 @@ export class ArenaWriter {
     return this.#hostStrings.length;
   }
 
-  #ensureCapacity(requiredLength: number): void {
-    if (!Number.isSafeInteger(requiredLength) || requiredLength > 0xffff_ffff) {
-      throw new RangeError('The render request exceeds the Wasm32 address space');
-    }
-    const currentLength = this.#memory.buffer.byteLength;
-    if (requiredLength > currentLength) {
-      throw new NunjitsuLimitError('arenaBytes');
-    }
-  }
 }
 
 /** Decodes and validates an output record produced by Wasm. */

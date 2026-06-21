@@ -28,7 +28,7 @@ pub extern "C" fn nunjitsu_arena_reset() {
 pub extern "C" fn nunjitsu_arena_set_cursor(cursor: u32) -> u32 {
     let base = nunjitsu_arena_base();
     let memory_length = linear_memory_length();
-    if cursor < base || cursor as usize > memory_length || !cursor.is_multiple_of(RECORD_ALIGNMENT)
+    if cursor < base || cursor as usize > memory_length || !cursor.is_multiple_of(SCRATCH_ALIGNMENT)
     {
         return 0;
     }
