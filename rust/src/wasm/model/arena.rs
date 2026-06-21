@@ -203,17 +203,8 @@ fn arena_alloc(length: u32, alignment: u32) -> Result<u32, u32> {
 }
 
 fn ensure_memory(required_length: usize) -> Result<(), u32> {
-    let current_length = linear_memory_length();
-    if required_length <= current_length {
-        return Ok(());
-    }
-    let additional_bytes = required_length
-        .checked_sub(current_length)
-        .ok_or(ERROR_OUTPUT_TOO_LARGE)?;
-    let additional_pages = additional_bytes.div_ceil(PAGE_SIZE);
-    let previous_pages = memory_grow::<0>(additional_pages);
-    if previous_pages == usize::MAX {
-        return Err(ERROR_OUTPUT_TOO_LARGE);
+    if required_length > linear_memory_length() {
+        return Err(ERROR_RESOURCE_LIMIT);
     }
     Ok(())
 }

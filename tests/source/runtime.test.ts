@@ -59,6 +59,38 @@ test('validates parent-aware loader request records at the Wasm boundary', () =>
   assert.throws(() => decodeLoadRequest(memory, requestOffset, 8), /out-of-bounds record/);
 });
 
+test('allocates immutable worker memory capacities without growing at render time', async () => {
+  await assert.rejects(
+    createEngine({ memory: { slots: 0 } }),
+    error => error instanceof RangeError && /memory\.slots/.test(error.message),
+  );
+  await assert.rejects(
+    createEngine({ memory: { sourceCodeUnits: 0x1_0000_0000 } }),
+    error => error instanceof RangeError && /memory\.sourceCodeUnits/.test(error.message),
+  );
+
+  const engine = await createEngine({
+    memory: {
+      slots: 1,
+      sourceCodeUnits: 1,
+      valueCodeUnits: 1,
+      members: 1,
+      stringOperations: 1,
+      stringQueries: 1,
+      outputRanges: 1,
+    },
+  });
+  try {
+    await assert.rejects(
+      engine.render({ source: 'x'.repeat(2_100_000) }),
+      error => error instanceof NunjitsuLimitError,
+    );
+    assert.equal(await engine.render({ source: 'clean' }), 'clean');
+  } finally {
+    await engine.dispose();
+  }
+});
+
 test('renders through reusable shared-memory workers', async () => {
   const templates = {
     'named.njk': 'Loaded {{ value }}',

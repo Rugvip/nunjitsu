@@ -7,12 +7,12 @@ import {
 } from './capabilities.ts';
 import {
   encodeRenderLimit,
+  NunjitsuLimitError,
   type NormalizedRenderLimits,
 } from './limits.ts';
 
 const recordHeaderLength = 8;
 const recordAlignment = 8;
-const wasmPageSize = 65_536;
 
 const recordTag = {
   source: 1,
@@ -362,9 +362,7 @@ export class ArenaWriter {
     }
     const currentLength = this.#memory.buffer.byteLength;
     if (requiredLength > currentLength) {
-      const pages = Math.ceil((requiredLength - currentLength) / wasmPageSize);
-      this.#memory.grow(pages);
-      this.#view = new DataView(this.#memory.buffer);
+      throw new NunjitsuLimitError('arenaBytes');
     }
   }
 }

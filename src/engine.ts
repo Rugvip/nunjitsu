@@ -24,9 +24,15 @@ import {
 import { ArenaWriter, decodeCapabilityRequest, decodeOutput } from './protocol.ts';
 import type { TemplateContext, TemplateValue } from './values.ts';
 
-const initialMemoryPages = 32;
+const wasmPageBytes = 65_536;
+const minimumMemoryPages = 32;
 const maximumMemoryPages = 4096;
-const defaultRetainedMemoryBytes = 16 * 1024 * 1024;
+const memoryPrefixBytes = 4096;
+const repeatedSlotBytes = 64;
+const memberBytes = 4;
+const stringOperationBytes = 32;
+const stringQueryBytes = 32;
+const outputRangeBytes = 16;
 const expectedAbiVersion = 24;
 
 /** Identifies the runtime assets used to start workers. */
@@ -45,12 +51,30 @@ export interface WorkerPoolOptions {
   maxWorkers?: number;
 }
 
+/** Configures immutable fixed capacities for each worker's shared Wasm memory. */
+export interface WorkerMemoryOptions {
+  /** Maximum repeated fixed-width entity slots. Defaults to 524,288. */
+  slots?: number;
+  /** Maximum UTF-16 code units occupied by loaded template sources. Defaults to 4,194,304. */
+  sourceCodeUnits?: number;
+  /** Maximum UTF-16 code units submitted for values and resolved queries. Defaults to 2,097,152. */
+  valueCodeUnits?: number;
+  /** Maximum 32-bit collection members and relationship indices. Defaults to 1,048,576. */
+  members?: number;
+  /** Maximum lazy host string operation descriptors. Defaults to 262,144. */
+  stringOperations?: number;
+  /** Maximum pending host string query descriptors. Defaults to 16,384. */
+  stringQueries?: number;
+  /** Capacity of the circular output range descriptor array. Defaults to 65,536. */
+  outputRanges?: number;
+}
+
 /** Configures an immutable Nunjitsu engine. */
 export interface EngineOptions extends TemplateCapabilities {
   /** Lazy worker pool bounds. */
   workerPool?: WorkerPoolOptions;
-  /** Worker memory retained after a render before that worker is recycled. */
-  retainedMemoryBytes?: number;
+  /** Fixed shared-memory capacities selected before workers are created. */
+  memory?: WorkerMemoryOptions;
   /** Trusted template loaders fixed for the lifetime of this engine. */
   loaders?: readonly TemplateLoader[];
   /** Escapes interpolated values. Defaults to `true`, matching Nunjucks. */
@@ -63,7 +87,7 @@ export interface EngineOptions extends TemplateCapabilities {
 
 /** An inline template accepted by the initial rendering surface. */
 export interface InlineTemplate {
-  /** UTF-8 template source compiled and rendered for this call only. */
+  /** UTF-16 template source compiled and rendered for this call only. */
   source: string;
   /**
    * Stable identity used as the base for relative dependencies and cycle detection.
@@ -99,8 +123,8 @@ export interface Engine {
   ): Promise<string>;
 
   /**
-   * Compiles and renders through a pull-driven Web stream. UTF-8-safe chunks are at most 64 KiB,
-   * and a later failure may reject the stream after earlier chunks were consumed.
+   * Compiles and renders through a pull-driven Web stream of host string ranges, where a later
+   * failure may reject the stream after earlier chunks were consumed.
    */
   renderStream(
     template: TemplateInput,
@@ -131,15 +155,12 @@ export async function createEngineWithRuntime(
   options: EngineOptions = {},
 ): Promise<Engine> {
   const pool = normalizePoolOptions(options.workerPool);
-  const retainedMemoryBytes = options.retainedMemoryBytes ?? defaultRetainedMemoryBytes;
-  if (!Number.isSafeInteger(retainedMemoryBytes) || retainedMemoryBytes < initialMemoryPages * 65_536) {
-    throw new RangeError('retainedMemoryBytes must be at least the initial Wasm memory size');
-  }
+  const memory = normalizeMemoryOptions(options.memory);
 
   const engine = new EngineImplementation(
     runtime,
     pool,
-    retainedMemoryBytes,
+    memory,
     options.loaders ?? [],
     options.autoescape ?? true,
     options.trimBlocks ?? false,
@@ -154,6 +175,11 @@ export async function createEngineWithRuntime(
 interface NormalizedPoolOptions {
   minWorkers: number;
   maxWorkers: number;
+}
+
+/** Fully populated fixed-memory capacities and final Wasm page count. */
+interface NormalizedWorkerMemoryOptions extends Required<WorkerMemoryOptions> {
+  pages: number;
 }
 
 /** A queued request waiting for an available worker. */
@@ -283,7 +309,7 @@ type WorkerMessage =
 class EngineImplementation implements Engine {
   readonly #runtime: RuntimeAssets;
   readonly #pool: NormalizedPoolOptions;
-  readonly #retainedMemoryBytes: number;
+  readonly #memory: NormalizedWorkerMemoryOptions;
   readonly #loaders: readonly TemplateLoader[];
   readonly #autoescape: boolean;
   readonly #trimBlocks: boolean;
@@ -297,7 +323,7 @@ class EngineImplementation implements Engine {
   constructor(
     runtime: RuntimeAssets,
     pool: NormalizedPoolOptions,
-    retainedMemoryBytes: number,
+    memory: NormalizedWorkerMemoryOptions,
     loaders: readonly TemplateLoader[],
     autoescape: boolean,
     trimBlocks: boolean,
@@ -306,7 +332,7 @@ class EngineImplementation implements Engine {
   ) {
     this.#runtime = runtime;
     this.#pool = pool;
-    this.#retainedMemoryBytes = retainedMemoryBytes;
+    this.#memory = memory;
     this.#loaders = Object.freeze([...loaders]);
     this.#autoescape = autoescape;
     this.#trimBlocks = trimBlocks;
@@ -522,8 +548,7 @@ class EngineImplementation implements Engine {
   }
 
   #release(slot: WorkerSlot): void {
-    const shouldRecycle = slot.failed || slot.memory.buffer.byteLength > this.#retainedMemoryBytes;
-    if (shouldRecycle) {
+    if (slot.failed) {
       const index = this.#slots.indexOf(slot);
       if (index !== -1) {
         this.#slots.splice(index, 1);
@@ -572,7 +597,7 @@ class EngineImplementation implements Engine {
     if (!wasmModule) {
       throw new Error('The Nunjitsu Wasm module is not initialized');
     }
-    const slot = new WorkerSlot(this.#runtime.workerUrl, wasmModule);
+    const slot = new WorkerSlot(this.#runtime.workerUrl, wasmModule, this.#memory.pages);
     this.#slots.push(slot);
     return slot;
   }
@@ -663,10 +688,10 @@ class WorkerSlot {
   #rejectReady: ((error: Error) => void) | undefined;
   #closed = false;
 
-  constructor(workerUrl: URL, wasmModule: WebAssembly.Module) {
+  constructor(workerUrl: URL, wasmModule: WebAssembly.Module, memoryPages: number) {
     this.memory = new WebAssembly.Memory({
-      initial: initialMemoryPages,
-      maximum: maximumMemoryPages,
+      initial: memoryPages,
+      maximum: memoryPages,
       shared: true,
     });
     this.ready = new Promise<void>((resolve, reject) => {
@@ -1150,6 +1175,77 @@ function normalizePoolOptions(options: WorkerPoolOptions | undefined): Normalize
     throw new RangeError('maxWorkers must be an integer greater than or equal to minWorkers');
   }
   return { minWorkers, maxWorkers };
+}
+
+function normalizeMemoryOptions(
+  options: WorkerMemoryOptions | undefined,
+): NormalizedWorkerMemoryOptions {
+  const normalized = {
+    slots: memoryCapacity(options?.slots, 524_288, 'memory.slots'),
+    sourceCodeUnits: memoryCapacity(
+      options?.sourceCodeUnits,
+      4_194_304,
+      'memory.sourceCodeUnits',
+    ),
+    valueCodeUnits: memoryCapacity(
+      options?.valueCodeUnits,
+      2_097_152,
+      'memory.valueCodeUnits',
+    ),
+    members: memoryCapacity(options?.members, 1_048_576, 'memory.members'),
+    stringOperations: memoryCapacity(
+      options?.stringOperations,
+      262_144,
+      'memory.stringOperations',
+    ),
+    stringQueries: memoryCapacity(
+      options?.stringQueries,
+      16_384,
+      'memory.stringQueries',
+    ),
+    outputRanges: memoryCapacity(
+      options?.outputRanges,
+      65_536,
+      'memory.outputRanges',
+    ),
+  };
+  const requiredBytes = [
+    memoryPrefixBytes,
+    checkedCapacityBytes(normalized.slots, repeatedSlotBytes),
+    checkedCapacityBytes(normalized.sourceCodeUnits, 2),
+    checkedCapacityBytes(normalized.valueCodeUnits, 2),
+    checkedCapacityBytes(normalized.members, memberBytes),
+    checkedCapacityBytes(normalized.stringOperations, stringOperationBytes),
+    checkedCapacityBytes(normalized.stringQueries, stringQueryBytes),
+    checkedCapacityBytes(normalized.outputRanges, outputRangeBytes),
+  ].reduce((total, bytes) => {
+    const next = total + bytes;
+    if (!Number.isSafeInteger(next)) {
+      throw new RangeError('Configured worker memory exceeds the safe integer range');
+    }
+    return next;
+  }, 0);
+  const pages = Math.max(minimumMemoryPages, Math.ceil(requiredBytes / wasmPageBytes));
+  if (pages > maximumMemoryPages) {
+    throw new RangeError(`Configured worker memory exceeds ${maximumMemoryPages} Wasm pages`);
+  }
+  return Object.freeze({ ...normalized, pages });
+}
+
+function memoryCapacity(value: number | undefined, fallback: number, name: string): number {
+  const normalized = value ?? fallback;
+  if (!Number.isSafeInteger(normalized) || normalized < 1 || normalized > 0xffff_ffff) {
+    throw new RangeError(`${name} must be a positive 32-bit integer`);
+  }
+  return normalized;
+}
+
+function checkedCapacityBytes(capacity: number, width: number): number {
+  const bytes = capacity * width;
+  if (!Number.isSafeInteger(bytes)) {
+    throw new RangeError('Configured worker memory exceeds the safe integer range');
+  }
+  return bytes;
 }
 
 function isWorkerMessage(value: unknown): value is WorkerMessage {

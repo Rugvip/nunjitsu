@@ -12,6 +12,7 @@ export {
   type NamedTemplate,
   type RenderOptions,
   type TemplateInput,
+  type WorkerMemoryOptions,
   type WorkerPoolOptions,
 } from './engine.ts';
 export type {

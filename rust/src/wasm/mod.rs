@@ -10,7 +10,7 @@ use crate::template::{
     directive_keyword, emit_escaped, find_block_end, find_call_end, find_conditional_boundary,
     find_loop_boundaries, find_macro_end, is_endblock, next_item_with_options,
 };
-use core::arch::wasm32::{memory_grow, memory_size};
+use core::arch::wasm32::memory_size;
 use core::mem::{align_of, size_of};
 use core::ptr::{addr_of, addr_of_mut, read_unaligned, write_unaligned};
 use core::slice;
