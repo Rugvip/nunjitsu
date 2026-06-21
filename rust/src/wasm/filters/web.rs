@@ -38,7 +38,7 @@ fn striptags_value(value_offset: u32, preserve_linebreaks: bool) -> Result<u32, 
     normalize_stripped_emit(stripped, preserve_linebreaks, &mut |segment| {
         write_coerced_bytes(output, &mut cursor, segment)
     })?;
-    Ok(output_offset)
+    finish_string_record(output_offset, tag)
 }
 
 fn strip_tags_emit(
@@ -223,7 +223,7 @@ fn truncate_value(
     let output = mutable_record_at(output_offset, tag)?;
     output[..end].copy_from_slice(&rendered.bytes[..end]);
     output[end..].copy_from_slice(suffix);
-    Ok(output_offset)
+    finish_string_record(output_offset, tag)
 }
 
 fn utf8_prefix_length(text: &str, characters: usize) -> usize {
@@ -276,7 +276,7 @@ fn urlencode_array(array: Array) -> Result<u32, u32> {
         write_coerced_bytes(output, &mut cursor, b"=")?;
         write_encoded_value(read_u32(pair.payload, 8)?, output, &mut cursor)?;
     }
-    Ok(output_offset)
+    finish_string_record(output_offset, TAG_STRING)
 }
 
 fn urlencode_record(record: Record) -> Result<u32, u32> {
@@ -309,7 +309,7 @@ fn urlencode_record(record: Record) -> Result<u32, u32> {
             &mut cursor,
         )?;
     }
-    Ok(output_offset)
+    finish_string_record(output_offset, TAG_STRING)
 }
 
 fn encode_url_component(bytes: &[u8]) -> Result<u32, u32> {
@@ -321,7 +321,7 @@ fn encode_url_component(bytes: &[u8]) -> Result<u32, u32> {
     let output = mutable_record_at(output_offset, TAG_STRING)?;
     let mut cursor = 0usize;
     write_encoded_bytes(bytes, output, &mut cursor)?;
-    Ok(output_offset)
+    finish_string_record(output_offset, TAG_STRING)
 }
 
 fn encoded_value_length(value_offset: u32) -> Result<usize, u32> {
@@ -396,7 +396,7 @@ fn urlize_value(value_offset: u32, length: usize, nofollow: bool) -> Result<u32,
     urlize_emit(input, length, nofollow, &mut |segment| {
         write_coerced_bytes(output, &mut cursor, segment)
     })?;
-    Ok(output_offset)
+    finish_string_record(output_offset, TAG_STRING)
 }
 
 fn urlize_emit(
