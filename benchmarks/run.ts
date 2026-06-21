@@ -21,6 +21,7 @@ interface BenchmarkOptions {
   loops: number;
   cases: readonly BenchmarkCaseId[];
   json: boolean;
+  silent: boolean;
 }
 
 interface BenchmarkRunner {
@@ -387,6 +388,7 @@ function parseOptions(arguments_: readonly string[]): BenchmarkOptions {
       ? benchmarkWorkloads.map(workload => workload.id)
       : caseOption.split(',').map(parseCaseId),
     json: arguments_.includes('--json'),
+    silent: arguments_.includes('--silent'),
   };
 }
 
@@ -455,5 +457,7 @@ if (workerArguments) {
 } else {
   const options = parseOptions(process.argv.slice(2));
   const report = await runBenchmarks(options);
-  process.stdout.write(options.json ? `${JSON.stringify(report, null, 2)}\n` : formatReport(report));
+  if (!options.silent) {
+    process.stdout.write(options.json ? `${JSON.stringify(report, null, 2)}\n` : formatReport(report));
+  }
 }

@@ -37,7 +37,7 @@
     "build": "node scripts/build.mjs",
     "clean": "node scripts/clean.mjs",
     "test": "npm run typecheck && npm run test:source && npm run test:benchmark && npm run test:package",
-    "test:benchmark": "node benchmarks/run.ts --warmup=0 --iterations=1 --loops=1 --json",
+    "test:benchmark": "node benchmarks/run.ts --warmup=0 --iterations=1 --loops=1 --silent",
     "test:package": "npm run build && npm run test:package:types && node --test tests/package/esm.test.mjs tests/package/commonjs.test.cjs",
     "test:package:types": "node scripts/test-package-types.mjs",
     "test:source": "node --test tests/source/*.test.ts",
