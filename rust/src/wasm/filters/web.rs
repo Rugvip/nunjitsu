@@ -185,12 +185,7 @@ fn truncate_value(
         255
     };
     if text.chars().count() <= requested {
-        let tag = if rendered.safe {
-            TAG_SAFE_STRING
-        } else {
-            TAG_STRING
-        };
-        return write_bytes_record(tag, rendered.bytes);
+        return write_materialized_string_value(rendered.bytes, rendered.safe);
     }
     let killwords =
         killwords_offset.is_some_and(|offset| Value::at(offset).is_ok_and(Value::truthy));
@@ -559,12 +554,10 @@ fn edge_value(value: Value, last: bool) -> Result<u32, u32> {
             } else {
                 0
             };
-            let tag = if matches!(value, Value::SafeString(_)) {
-                TAG_SAFE_STRING
-            } else {
-                TAG_STRING
-            };
-            write_bytes_record(tag, &bytes[start..start + character.len_utf8()])
+            write_materialized_string_value(
+                &bytes[start..start + character.len_utf8()],
+                matches!(value, Value::SafeString(_)),
+            )
         }
         Value::Undefined | Value::Null | Value::Array(_) => allocate_record(TAG_UNDEFINED, 0),
         _ => Err(ERROR_INVALID_EXPRESSION),

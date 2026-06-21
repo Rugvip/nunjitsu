@@ -29,6 +29,10 @@ fn write_materialized_string_value(bytes: &[u8], safe: bool) -> Result<u32, u32>
     write_computed_string_value(handle, 0, length, safe)
 }
 
+fn write_string_value(bytes: &[u8]) -> Result<u32, u32> {
+    write_materialized_string_value(bytes, false)
+}
+
 fn write_materialized_code_unit_value(
     value_start: u32,
     code_unit_length: u32,

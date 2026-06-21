@@ -132,22 +132,12 @@ fn replace_value(
         Value::at(from_offset)?,
         Value::String(_) | Value::SafeString(_) | Value::Number { .. }
     ) {
-        let tag = if input.safe {
-            TAG_SAFE_STRING
-        } else {
-            TAG_STRING
-        };
-        return write_bytes_record(tag, input.bytes);
+        return write_materialized_string_value(input.bytes, input.safe);
     }
     let from = rendered_value(from_offset)?.bytes;
     let to = rendered_value(to_offset)?.bytes;
     if limit == 0 || (from.is_empty() && to.is_empty()) {
-        let tag = if input.safe {
-            TAG_SAFE_STRING
-        } else {
-            TAG_STRING
-        };
-        return write_bytes_record(tag, input.bytes);
+        return write_materialized_string_value(input.bytes, input.safe);
     }
     if from.is_empty() {
         let insertion_count = input.bytes.len().saturating_add(1).min(limit);

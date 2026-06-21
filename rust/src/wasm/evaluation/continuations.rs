@@ -537,10 +537,10 @@ fn create_joiner(state_offset: u32, call: Call<'_>) -> Result<u32, u32> {
         if Value::at(value)?.truthy() {
             value
         } else {
-            write_bytes_record(TAG_STRING, b",")?
+            write_string_value(b",")?
         }
     } else {
-        write_bytes_record(TAG_STRING, b",")?
+        write_string_value(b",")?
     };
     let offset = allocate_record(TAG_JOINER, JOINER_LENGTH)?;
     let joiner = mutable_record_at(offset, TAG_JOINER)?;
@@ -555,7 +555,7 @@ fn call_joiner(value_offset: u32, call: Call<'_>) -> Result<u32, u32> {
     let used = read_u32(joiner, JOINER_USED)?;
     write_u32(joiner, JOINER_USED, 1)?;
     if used == 0 {
-        write_bytes_record(TAG_STRING, b"")
+        write_string_value(b"")
     } else {
         read_u32(joiner, JOINER_SEPARATOR)
     }

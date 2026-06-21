@@ -165,7 +165,7 @@ fn list_value(value_offset: u32) -> Result<u32, u32> {
             for (index, character) in text.chars().enumerate() {
                 let mut encoded = [0u8; 4];
                 let item =
-                    write_bytes_record(TAG_STRING, character.encode_utf8(&mut encoded).as_bytes())?;
+                    write_string_value(character.encode_utf8(&mut encoded).as_bytes())?;
                 write_u32(mutable_record_at(output, TAG_ARRAY)?, 4 + index * 4, item)?;
             }
             Ok(output)
@@ -698,14 +698,7 @@ fn parse_integer(value_offset: u32, base: usize) -> Result<Option<i64>, u32> {
 fn indent_value(value_offset: u32, width: usize, first: bool) -> Result<u32, u32> {
     let rendered = rendered_value(value_offset)?;
     if rendered.bytes.is_empty() {
-        return write_bytes_record(
-            if rendered.safe {
-                TAG_SAFE_STRING
-            } else {
-                TAG_STRING
-            },
-            b"",
-        );
+        return write_materialized_string_value(b"", rendered.safe);
     }
     let line_count = rendered.bytes.iter().filter(|byte| **byte == b'\n').count();
     let indent_count = line_count + usize::from(first);
@@ -756,7 +749,7 @@ fn join_value(
 ) -> Result<u32, u32> {
     let Value::Array(array) = Value::at(value_offset)? else {
         if matches!(Value::at(value_offset)?, Value::Undefined | Value::Null) {
-            return write_bytes_record(TAG_STRING, b"");
+            return write_string_value(b"");
         }
         return Err(ERROR_INVALID_EXPRESSION);
     };

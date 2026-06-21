@@ -10,7 +10,7 @@ fn rendered_value(value_offset: u32) -> Result<RenderedValue<'static>, u32> {
     let value = Value::at(value_offset)?;
     if let Value::Number { numeric } = value {
         let mut buffer = ryu_js::Buffer::new();
-        let rendered_offset = write_bytes_record(TAG_STRING, buffer.format(numeric).as_bytes())?;
+        let rendered_offset = write_string_value(buffer.format(numeric).as_bytes())?;
         return Value::at(rendered_offset)?
             .rendered()
             .ok_or(ERROR_INVALID_EXPRESSION);
