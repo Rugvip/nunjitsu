@@ -338,7 +338,7 @@ fn apply_builtin_filter(
         b"wordcount" => {
             require_argument_count(call, 0)?;
             if matches!(input, Value::Undefined | Value::Null) {
-                write_bytes_record(TAG_STRING, b"")?
+                write_string_value(b"")?
             } else {
                 let rendered = rendered_value(input_offset)?;
                 let count = rendered

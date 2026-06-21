@@ -448,11 +448,11 @@ fn groupby_value(value_offset: u32, attribute_offset: u32) -> Result<u32, u32> {
     for rank in 0..group_count {
         let key_index = group_key_index_at_rank(keys, rank)?.ok_or(ERROR_INVALID_ARENA)?;
         let key = read_u32(keys.payload, 4 + key_index * 4)?;
-        let key_bytes = record_at(key, TAG_STRING)?;
+        let key_bytes = rendered_value(key)?.bytes;
         let mut item_count = 0usize;
         for index in 0..keys.count {
             let candidate = read_u32(keys.payload, 4 + index * 4)?;
-            if record_at(candidate, TAG_STRING)? == key_bytes {
+            if rendered_value(candidate)?.bytes == key_bytes {
                 item_count = item_count.checked_add(1).ok_or(ERROR_RESOURCE_LIMIT)?;
             }
         }
@@ -460,7 +460,7 @@ fn groupby_value(value_offset: u32, attribute_offset: u32) -> Result<u32, u32> {
         let mut item_index = 0usize;
         for index in 0..keys.count {
             let candidate = read_u32(keys.payload, 4 + index * 4)?;
-            if record_at(candidate, TAG_STRING)? == key_bytes {
+            if rendered_value(candidate)?.bytes == key_bytes {
                 write_u32(
                     mutable_record_at(items, TAG_ARRAY)?,
                     4 + item_index * 4,
@@ -479,19 +479,19 @@ fn groupby_value(value_offset: u32, attribute_offset: u32) -> Result<u32, u32> {
 
 fn property_key_value(value_offset: Option<u32>) -> Result<u32, u32> {
     let Some(value_offset) = value_offset else {
-        return write_bytes_record(TAG_STRING, b"undefined");
+        return write_string_value(b"undefined");
     };
     match Value::at(value_offset)? {
-        Value::Undefined => write_bytes_record(TAG_STRING, b"undefined"),
-        Value::Null => write_bytes_record(TAG_STRING, b"null"),
-        _ => write_bytes_record(TAG_STRING, rendered_value(value_offset)?.bytes),
+        Value::Undefined => write_string_value(b"undefined"),
+        Value::Null => write_string_value(b"null"),
+        _ => write_string_value(rendered_value(value_offset)?.bytes),
     }
 }
 
 fn first_key_index(keys: Array, candidate: usize) -> Result<usize, u32> {
-    let key = record_at(read_u32(keys.payload, 4 + candidate * 4)?, TAG_STRING)?;
+    let key = rendered_value(read_u32(keys.payload, 4 + candidate * 4)?)?.bytes;
     for index in 0..candidate {
-        let existing = record_at(read_u32(keys.payload, 4 + index * 4)?, TAG_STRING)?;
+        let existing = rendered_value(read_u32(keys.payload, 4 + index * 4)?)?.bytes;
         if existing == key {
             return Ok(index);
         }
@@ -504,14 +504,14 @@ fn group_key_index_at_rank(keys: Array, requested_rank: usize) -> Result<Option<
         if first_key_index(keys, candidate)? != candidate {
             continue;
         }
-        let key = record_at(read_u32(keys.payload, 4 + candidate * 4)?, TAG_STRING)?;
+        let key = rendered_value(read_u32(keys.payload, 4 + candidate * 4)?)?.bytes;
         let numeric = property_index(key);
         let mut rank = 0usize;
         for other in 0..keys.count {
             if first_key_index(keys, other)? != other || other == candidate {
                 continue;
             }
-            let other_key = record_at(read_u32(keys.payload, 4 + other * 4)?, TAG_STRING)?;
+            let other_key = rendered_value(read_u32(keys.payload, 4 + other * 4)?)?.bytes;
             let other_numeric = property_index(other_key);
             let precedes = match (numeric, other_numeric) {
                 (Some(candidate), Some(other)) => other < candidate,
