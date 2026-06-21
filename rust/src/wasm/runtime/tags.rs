@@ -231,12 +231,10 @@ fn find_tag_boundaries(
                     cursor = next_cursor;
                     continue;
                 };
-                let opening_name = record_at(opening_name_offset, TAG_STRING)?;
-                let end_name = record_at(end_name_offset, TAG_STRING)?;
                 let name = code_units_as_utf8(name)?;
-                if name == opening_name {
+                if name_eq_bytes(opening_name_offset, name)? {
                     depth = depth.checked_add(1).ok_or(ERROR_RESOURCE_LIMIT)?;
-                } else if name == end_name {
+                } else if name_eq_bytes(end_name_offset, name)? {
                     if depth == 0 {
                         write_u32(
                             mutable_record_at(boundaries_offset, TAG_TAG_BOUNDARIES)?,
@@ -276,8 +274,7 @@ fn tag_name_index(intermediate_tags_offset: u32, name: &[u8]) -> Result<Option<u
     let intermediate_tags = record_at(intermediate_tags_offset, TAG_ARRAY)?;
     let count = collection_count(intermediate_tags, 4)?;
     for index in 0..count {
-        let registered = record_at(read_u32(intermediate_tags, 4 + index * 4)?, TAG_STRING)?;
-        if registered == name {
+        if name_eq_bytes(read_u32(intermediate_tags, 4 + index * 4)?, name)? {
             return Ok(Some(index));
         }
     }

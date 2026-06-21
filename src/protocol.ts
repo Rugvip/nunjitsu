@@ -276,7 +276,31 @@ export class ArenaWriter {
     if (tag === recordTag.source) {
       return this.#writeSourceSlot(value);
     }
+    if (tag === recordTag.string) {
+      return this.#writeIdentifierSlot(value);
+    }
     return this.#writeRecord(tag, new TextEncoder().encode(value));
+  }
+
+  #writeIdentifierSlot(value: string): number {
+    const start = this.#fixedCursors.values;
+    const end = start + value.length;
+    if (end > this.#layout.valueCapacity) {
+      throw new NunjitsuLimitError('arenaBytes');
+    }
+    const index = this.#reserveSlot();
+    const slotOffset = this.#layout.slotOffset + index * fixedSlotLength;
+    const slot = new Uint8Array(this.#memory.buffer, slotOffset, fixedSlotLength);
+    slot.fill(0);
+    this.#view.setUint32(slotOffset, recordTag.identifier | (16 << 8), true);
+    this.#view.setUint32(slotOffset + 4, start, true);
+    this.#view.setUint32(slotOffset + 8, value.length, true);
+    const codeUnitOffset = this.#layout.valueOffset + start * 2;
+    for (let cursor = 0; cursor < value.length; cursor += 1) {
+      this.#view.setUint16(codeUnitOffset + cursor * 2, value.charCodeAt(cursor), true);
+    }
+    this.#fixedCursors.values = end;
+    return index;
   }
 
   #writeSourceSlot(value: string): number {
@@ -719,11 +743,23 @@ export function decodeLoadRequest(
     throw new Error('Wasm returned an invalid loader request');
   }
   const view = new DataView(payload.buffer, payload.byteOffset, payload.byteLength);
-  const name = decodeNestedString(memory, view.getUint32(0, true), 'loader name');
+  const name = decodeNestedName(
+    memory,
+    view.getUint32(0, true),
+    'loader name',
+    layout,
+    fixedCursors,
+  );
   const fromOffset = view.getUint32(4, true);
   const from = fromOffset === 0
     ? undefined
-    : decodeNestedString(memory, fromOffset, 'loader parent identity');
+    : decodeNestedName(
+      memory,
+      fromOffset,
+      'loader parent identity',
+      layout,
+      fixedCursors,
+    );
   return Object.freeze({ name, ...(from === undefined ? {} : { from }) });
 }
 
@@ -1088,7 +1124,16 @@ function readAnyRecord(
   };
 }
 
-function decodeNestedString(memory: WebAssembly.Memory, offset: number, label: string): string {
+function decodeNestedName(
+  memory: WebAssembly.Memory,
+  offset: number,
+  label: string,
+  layout?: FixedMemoryLayout,
+  fixedCursors?: FixedMemoryCursors,
+): string {
+  if (layout && fixedCursors) {
+    return decodeRecordKey(memory, offset, layout, fixedCursors);
+  }
   const record = readAnyRecord(memory, offset);
   if (record.tag !== recordTag.string) {
     throw new Error(`Wasm returned a non-string ${label}`);

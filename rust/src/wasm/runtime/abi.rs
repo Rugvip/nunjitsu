@@ -129,7 +129,7 @@ fn start_render(request_offset: u32) -> Result<(), u32> {
     source_at(source_offset)?;
     record_at(context_offset, TAG_RECORD)?;
     if canonical_offset != 0 {
-        record_at(canonical_offset, TAG_STRING)?;
+        validate_name(canonical_offset)?;
     }
     validate_capability_registry(filters_offset)?;
     validate_capability_registry(tests_offset)?;
@@ -189,7 +189,7 @@ fn resume_include(source_offset: u32, canonical_offset: u32) -> Result<(), u32> 
         return Err(ERROR_INVALID_ARENA);
     }
     source_at(source_offset)?;
-    record_at(canonical_offset, TAG_STRING)?;
+    validate_name(canonical_offset)?;
     let parent = state_field(state_offset, STATE_CURRENT_FRAME)?;
     if include_cycle(parent, canonical_offset)? {
         return Err(ERROR_INCLUDE_CYCLE);

@@ -149,7 +149,7 @@ fn issue_include(state_offset: u32, value_offset: u32) -> Result<u32, u32> {
     let frame = record_at(frame_offset, TAG_FRAME)?;
     let canonical_offset = read_u32(frame, FRAME_CANONICAL_NAME)?;
     if canonical_offset != 0 {
-        record_at(canonical_offset, TAG_STRING)?;
+        validate_name(canonical_offset)?;
     }
     let request_offset = allocate_record(TAG_LOAD_REQUEST, 8)?;
     let request = mutable_record_at(request_offset, TAG_LOAD_REQUEST)?;

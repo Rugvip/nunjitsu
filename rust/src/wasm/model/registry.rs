@@ -6,7 +6,7 @@ fn validate_capability_registry(offset: u32) -> Result<(), u32> {
         if read_u32(registry, entry)? == 0 {
             return Err(ERROR_INVALID_RECORD);
         }
-        record_at(read_u32(registry, entry + 4)?, TAG_STRING)?;
+        validate_name(read_u32(registry, entry + 4)?)?;
     }
     Ok(())
 }
@@ -28,21 +28,18 @@ fn validate_tag_registry(offset: u32) -> Result<(), u32> {
         if read_u32(registry, entry)? == 0 {
             return Err(ERROR_INVALID_RECORD);
         }
-        record_at(read_u32(registry, entry + 4)?, TAG_STRING)?;
+        validate_name(read_u32(registry, entry + 4)?)?;
         let kind = read_u32(registry, entry + 8)?;
         let end_tag_offset = read_u32(registry, entry + 12)?;
         let intermediate_tags = record_at(read_u32(registry, entry + 16)?, TAG_ARRAY)?;
         let intermediate_count = collection_count(intermediate_tags, 4)?;
         for intermediate_index in 0..intermediate_count {
-            record_at(
-                read_u32(intermediate_tags, 4 + intermediate_index * 4)?,
-                TAG_STRING,
-            )?;
+            validate_name(read_u32(intermediate_tags, 4 + intermediate_index * 4)?)?;
         }
         match kind {
             0 if end_tag_offset == 0 && intermediate_count == 0 => {}
             1 if end_tag_offset != 0 => {
-                record_at(end_tag_offset, TAG_STRING)?;
+                validate_name(end_tag_offset)?;
             }
             _ => return Err(ERROR_INVALID_RECORD),
         }
@@ -55,8 +52,7 @@ fn resolve_tag(registry_offset: u32, name: &[u8]) -> Result<Option<TagSchema>, u
     let count = collection_count(registry, 20)?;
     for index in 0..count {
         let entry = 4 + index * 20;
-        let registered_name = record_at(read_u32(registry, entry + 4)?, TAG_STRING)?;
-        if registered_name == name {
+        if name_eq_bytes(read_u32(registry, entry + 4)?, name)? {
             return Ok(Some(TagSchema {
                 capability_id: read_u32(registry, entry)?,
                 name_offset: read_u32(registry, entry + 4)?,
@@ -75,8 +71,7 @@ fn resolve_capability(registry_offset: u32, name: &[u8]) -> Result<Option<u32>, 
     for index in 0..count {
         let entry = 4 + index * 8;
         let capability_id = read_u32(registry, entry)?;
-        let registered_name = record_at(read_u32(registry, entry + 4)?, TAG_STRING)?;
-        if registered_name == name {
+        if name_eq_bytes(read_u32(registry, entry + 4)?, name)? {
             return Ok(Some(capability_id));
         }
     }
@@ -84,14 +79,14 @@ fn resolve_capability(registry_offset: u32, name: &[u8]) -> Result<Option<u32>, 
 }
 
 fn include_cycle(mut frame_offset: u32, canonical_offset: u32) -> Result<bool, u32> {
-    let canonical = record_at(canonical_offset, TAG_STRING)?;
+    validate_name(canonical_offset)?;
     while frame_offset != 0 {
         let frame = record_at(frame_offset, TAG_FRAME)?;
         if frame.len() != FRAME_LENGTH as usize {
             return Err(ERROR_INVALID_RECORD);
         }
         let existing_offset = read_u32(frame, FRAME_CANONICAL_NAME)?;
-        if existing_offset != 0 && record_at(existing_offset, TAG_STRING)? == canonical {
+        if existing_offset != 0 && names_equal(existing_offset, canonical_offset)? {
             return Ok(true);
         }
         frame_offset = read_u32(frame, FRAME_PARENT)?;
@@ -132,7 +127,7 @@ fn frame_canonical_name(offset: u32) -> Result<u32, u32> {
     }
     let canonical_offset = read_u32(frame, FRAME_CANONICAL_NAME)?;
     if canonical_offset != 0 {
-        record_at(canonical_offset, TAG_STRING)?;
+        validate_name(canonical_offset)?;
     }
     Ok(canonical_offset)
 }
