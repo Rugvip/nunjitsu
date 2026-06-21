@@ -3,7 +3,7 @@ export type TemplatePrimitive = undefined | null | boolean | number | string;
 
 /** A string explicitly authorized to bypass template autoescaping. */
 export class SafeString {
-  /** Trusted string content copied into the fixed value pool. */
+  /** Trusted string content copied into the interpreter value graph. */
   readonly value: string;
 
   /** Creates an explicitly trusted string. Prefer the descriptive `markSafe` helper. */
@@ -21,7 +21,7 @@ export function markSafe(value: string): SafeString {
 /**
  * A recursively owned value accepted by the Nunjitsu sandbox boundary.
  *
- * Arrays and records are copied into Wasm. Functions, accessors, symbols,
+ * Arrays and records are copied into the interpreter. Functions, accessors, symbols,
  * prototypes other than `Object.prototype` or `null`, exotic objects, and
  * cyclic graphs are rejected at runtime.
  */

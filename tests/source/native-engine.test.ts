@@ -21,6 +21,13 @@ test('constructs synchronously and renders inline and loaded templates', async (
     await engine.render({ name: 'entry.njk' }, { value: markSafe('<x>') }),
     'loaded <x>',
   );
+  assert.equal(
+    await engine.render(
+      { source: '{{ "v.0" }}|{% raw %}{{ values.0 }}{% endraw %}|{{ values.0 }}' },
+      { values: ['first'] },
+    ),
+    'v.0|{{ values.0 }}|first',
+  );
 });
 
 test('invokes only explicit copied capabilities', async () => {

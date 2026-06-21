@@ -136,12 +136,8 @@ export async function evaluateTemplate(
   context: TemplateContext,
   options: EvaluateOptions,
 ): Promise<string> {
-  const ast = parseTemplate(source, {
-    trimBlocks: options.trimBlocks,
-    lstripBlocks: options.lstripBlocks,
-    ...(options.host?.tags ? { tags: options.host.tags } : {}),
-  });
   const evaluator = new Evaluator(options);
+  const ast = evaluator.parse(source);
   return await evaluator.render(ast, copyRuntimeContext(context), options.canonicalName);
 }
 
@@ -152,12 +148,8 @@ export async function evaluateTemplateStream(
   options: EvaluateOptions,
   emit: (value: string) => Promise<void>,
 ): Promise<void> {
-  const ast = parseTemplate(source, {
-    trimBlocks: options.trimBlocks,
-    lstripBlocks: options.lstripBlocks,
-    ...(options.host?.tags ? { tags: options.host.tags } : {}),
-  });
   const evaluator = new Evaluator(options);
+  const ast = evaluator.parse(source);
   await evaluator.render(ast, copyRuntimeContext(context), options.canonicalName, emit);
 }
 
@@ -180,9 +172,36 @@ class Evaluator {
   #outputBytes = 0;
   #loaderCalls = 0;
   #capabilityCalls = 0;
+  #sourceCodeUnits = 0;
+  #astNodeCount = 0;
 
   constructor(options: EvaluateOptions) {
     this.#options = options;
+  }
+
+  parse(source: string): AstNode {
+    this.#sourceCodeUnits += source.length;
+    if (
+      this.#options.limits.sourceCodeUnits !== Number.POSITIVE_INFINITY &&
+      this.#sourceCodeUnits > this.#options.limits.sourceCodeUnits
+    ) {
+      throw new NunjitsuLimitError('sourceCodeUnits');
+    }
+    const ast = parseTemplate(source, {
+      trimBlocks: this.#options.trimBlocks,
+      lstripBlocks: this.#options.lstripBlocks,
+      ...(this.#options.host?.tags ? { tags: this.#options.host.tags } : {}),
+    });
+    visitAst(ast, () => {
+      this.#astNodeCount += 1;
+      if (
+        this.#options.limits.astNodes !== Number.POSITIVE_INFINITY &&
+        this.#astNodeCount > this.#options.limits.astNodes
+      ) {
+        throw new NunjitsuLimitError('astNodes');
+      }
+    });
+    return ast;
   }
 
   async render(
@@ -913,11 +932,7 @@ class Evaluator {
   #parseLoaded(loaded: { readonly source: string; readonly canonicalName: string }): AstNode {
     let ast = this.#templates.get(loaded.canonicalName);
     if (!ast) {
-      ast = parseTemplate(loaded.source, {
-        trimBlocks: this.#options.trimBlocks,
-        lstripBlocks: this.#options.lstripBlocks,
-        ...(this.#options.host?.tags ? { tags: this.#options.host.tags } : {}),
-      });
+      ast = this.parse(loaded.source);
       this.#templates.set(loaded.canonicalName, ast);
     }
     return ast;

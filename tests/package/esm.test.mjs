@@ -4,7 +4,7 @@ import test from 'node:test';
 import { createEngine, markSafe, memoryLoader } from '../../dist/esm/index.js';
 
 test('renders through the ESM package entry', async () => {
-  const engine = await createEngine({
+  const engine = createEngine({
     autoescape: true,
     filters: {
       upper(input) {
@@ -16,18 +16,14 @@ test('renders through the ESM package entry', async () => {
       'value.njk': '{{ value }}',
     })],
   });
-  try {
-    assert.equal(
-      await engine.render({ name: 'entry.njk' }, { value: markSafe('<b>works</b>') }),
-      'ESM <b>works</b>',
-    );
-    assert.equal(
-      (await Array.fromAsync(
-        engine.renderStream({ source: 'stream {{ value | upper }}' }, { value: 'works' }),
-      )).join(''),
-      'stream WORKS',
-    );
-  } finally {
-    await engine.dispose();
-  }
+  assert.equal(
+    await engine.render({ name: 'entry.njk' }, { value: markSafe('<b>works</b>') }),
+    'ESM <b>works</b>',
+  );
+  assert.equal(
+    (await Array.fromAsync(
+      engine.renderStream({ source: 'stream {{ value | upper }}' }, { value: 'works' }),
+    )).join(''),
+    'stream WORKS',
+  );
 });

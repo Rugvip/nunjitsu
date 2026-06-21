@@ -155,10 +155,87 @@ export function parseTemplate(
 }
 
 function normalizeNumericLookups(source: string): string {
-  return source.replace(
-    /{[{%][\s\S]*?[}%]}/g,
-    tag => tag.replace(/(?<=[A-Za-z_\])])\.(\d+)\b/g, '[$1]'),
-  );
+  let output = '';
+  let cursor = 0;
+  const opening = /{%-?\s*(raw|verbatim)\s*-?%}/g;
+  for (;;) {
+    const match = opening.exec(source);
+    if (!match) {
+      output += normalizeNumericTags(source.slice(cursor));
+      return output;
+    }
+    output += normalizeNumericTags(source.slice(cursor, match.index));
+    const name = match[1]!;
+    const closing = new RegExp(`{%-?\\s*end${name}\\s*-?%}`, 'g');
+    closing.lastIndex = opening.lastIndex;
+    const end = closing.exec(source);
+    if (!end) {
+      return source;
+    }
+    output += source.slice(match.index, closing.lastIndex);
+    cursor = closing.lastIndex;
+    opening.lastIndex = cursor;
+  }
+}
+
+function normalizeNumericTags(source: string): string {
+  return source.replace(/{{[\s\S]*?}}|{%[\s\S]*?%}/g, normalizeNumericTag);
+}
+
+function normalizeNumericTag(tag: string): string {
+  let output = '';
+  let quote: '"' | "'" | undefined;
+  let regex = false;
+  let escaped = false;
+  for (let index = 0; index < tag.length; index += 1) {
+    const character = tag[index]!;
+    if (escaped) {
+      output += character;
+      escaped = false;
+      continue;
+    }
+    if ((quote || regex) && character === '\\') {
+      output += character;
+      escaped = true;
+      continue;
+    }
+    if (quote) {
+      output += character;
+      if (character === quote) {
+        quote = undefined;
+      }
+      continue;
+    }
+    if (regex) {
+      output += character;
+      if (character === '/') {
+        regex = false;
+      }
+      continue;
+    }
+    if (character === '"' || character === "'") {
+      quote = character;
+      output += character;
+      continue;
+    }
+    if (
+      character === 'r' &&
+      tag[index + 1] === '/' &&
+      (index === 0 || /[\s(,=:[{]/.test(tag[index - 1]!))
+    ) {
+      regex = true;
+      output += character;
+      continue;
+    }
+    const numericLookup = character === '.' ? /^(\d+)\b/.exec(tag.slice(index + 1)) : null;
+    if (numericLookup && /[A-Za-z_\])]/.test(tag[index - 1] ?? '')) {
+      output += `[${numericLookup[1]}]`;
+      index += numericLookup[1]!.length;
+      continue;
+    }
+    output += character;
+  }
+  return output;
 }
 
 function normalizeRawWhitespace(source: string): string {

@@ -513,7 +513,7 @@ test('autoescaping requires an explicit safe string to bypass', async () => {
     );
 });
 
-test('evaluates Rust-native filters and tests without host capability calls', async () => {
+test('evaluates interpreter-native filters and tests without host capability calls', async () => {
   const engine = createEngine({ autoescape: true });
     assert.equal(
       await engine.render(
@@ -1344,7 +1344,7 @@ test('renders declarative custom tag bodies and ordered intermediate sections', 
     );
 });
 
-test('evaluates nested and resumable if branches without rendering inactive bodies', async () => {
+test('evaluates nested async if branches without rendering inactive bodies', async () => {
   const engine = createEngine({
     tests: {
       async enabled(input) {
@@ -1467,7 +1467,7 @@ test('evaluates nested and resumable if branches without rendering inactive bodi
     );
 });
 
-test('iterates slot-backed arrays and records with nested local scopes', async () => {
+test('iterates closed arrays and records with nested local scopes', async () => {
   const engine = createEngine({
     loaders: [memoryLoader({ 'item.njk': '<{{ item }}>' })],
   });
@@ -1543,7 +1543,7 @@ test('iterates slot-backed arrays and records with nested local scopes', async (
     );
 });
 
-test('keeps resumable assignments scoped across loops and includes', async () => {
+test('keeps async assignments scoped across loops and includes', async () => {
   const engine = createEngine({
     autoescape: false,
     loaders: [memoryLoader({
@@ -1633,7 +1633,7 @@ test('keeps resumable assignments scoped across loops and includes', async () =>
     );
 });
 
-test('executes deferred macros in isolated captured scopes', async () => {
+test('executes macros in isolated captured scopes', async () => {
   const engine = createEngine({
     autoescape: true,
     loaders: [memoryLoader({ 'macro-include.njk': 'included {{ value }}' })],
@@ -1691,7 +1691,7 @@ test('executes deferred macros in isolated captured scopes', async () => {
     );
 });
 
-test('resolves inherited blocks through bounded one-shot frames', async () => {
+test('resolves inherited blocks through bounded render frames', async () => {
   const engine = createEngine({
     loaders: [memoryLoader({
       'base.njk': 'A{% block content %}base{% endblock %}B{% block footer %}base footer{% endblock %}C',
@@ -1751,7 +1751,7 @@ test('loads imported macro namespaces without rendering module text', async () =
     );
 });
 
-test('rejects invalid expressions and calls across deferred template frames', async () => {
+test('rejects invalid expressions and calls across template frames', async () => {
   const engine = createEngine({
     loaders: [memoryLoader({
       'undefined-macro.njk': '{{ undef() }}',
@@ -1804,7 +1804,7 @@ test('rejects invalid expressions and calls across deferred template frames', as
     }
 });
 
-test('handles trailing macro values through the safe slot boundary', async () => {
+test('handles trailing undefined macro values through the closed value boundary', async () => {
   const noPrototype = Object.assign(Object.create(null) as Record<string, string>, {
     qux: 'world',
   });
@@ -1848,7 +1848,7 @@ test('handles trailing macro values through the safe slot boundary', async () =>
   }
 });
 
-test('cancels a render while its worker is suspended on an include loader', async () => {
+test('cancels a render while its interpreter is suspended on an include loader', async () => {
   let markLoadStarted: (() => void) | undefined;
   const loadStarted = new Promise<void>(resolve => {
     markLoadStarted = resolve;
@@ -1887,7 +1887,7 @@ test('cancels a render while its worker is suspended on an include loader', asyn
     assert.equal(await engine.render({ source: 'clean' }), 'clean');
 });
 
-test('cancels a partially consumed stream and recycles its reserved worker', async () => {
+test('cancels a partially consumed stream and releases its render state', async () => {
   let markLoadStarted: (() => void) | undefined;
   const loadStarted = new Promise<void>(resolve => {
     markLoadStarted = resolve;
@@ -1936,6 +1936,8 @@ test('enforces finite per-render limits and permits explicit unlimited values', 
     ],
   });
     for (const [template, limits] of [
+      [{ source: 'source' }, { sourceCodeUnits: 3 }],
+      [{ source: '{{ value }}' }, { astNodes: 2 }],
       [{ source: 'output' }, { outputBytes: 3 }],
       [{ source: 'work' }, { workUnits: 1 }],
       [{ source: '{{ value | upper }}' }, { scratchBytes: 64 }],

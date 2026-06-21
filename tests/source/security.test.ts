@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
+import { createEngine } from '../../src/index.ts';
 import { markSafe } from '../../src/values.ts';
 import { RuntimeScope } from '../../src/runtime/scope.ts';
 import {
@@ -114,4 +116,66 @@ test('scope lookup never falls through to host globals or prototypes', () => {
   assert.equal(child.get('globalThis'), undefined);
   assert.equal(child.get('toString'), undefined);
   assert.equal(child.get('constructor'), undefined);
+});
+
+test('templates cannot reach ambient authority or invoke looked-up values', async () => {
+  const engine = createEngine();
+  for (const source of [
+    '{{ globalThis }}',
+    '{{ process }}',
+    '{{ require }}',
+    '{{ module }}',
+    '{{ value["con" + "structor"] }}',
+    '{{ value["proto" + "type"] }}',
+    '{{ value["__pro" + "to__"] }}',
+  ]) {
+    assert.equal(await engine.render({ source }, { value: { safe: 'data' } }), '', source);
+  }
+
+  for (const source of [
+    '{{ value.toString() }}',
+    '{{ value["to" + "String"]() }}',
+    '{{ process.mainModule.require("node:fs") }}',
+    '{{ value.constructor.constructor("return process")() }}',
+  ]) {
+    await assert.rejects(engine.render({ source }, { value: { toString: 'data' } }), source);
+  }
+
+  await assert.rejects(
+    engine.render({ source: '{{ expose() }}' }, {}, {
+      limits: { capabilityCalls: 1 },
+    }),
+  );
+  const guarded = createEngine({
+    globals: {
+      expose() {
+        const value = Object.create(null) as Record<string, string>;
+        Object.defineProperty(value, 'constructor', { enumerable: true, value: 'blocked' });
+        return value;
+      },
+    },
+  });
+  await assert.rejects(guarded.render({ source: '{{ expose() }}' }), /constructor is reserved/);
+});
+
+test('parser and evaluator sources contain no dynamic execution primitive', async () => {
+  const files = [
+    '../../src/parser/index.ts',
+    '../../src/runtime/evaluator.ts',
+    '../../src/runtime/builtins.ts',
+    '../../src/runtime/scope.ts',
+  ];
+  const prohibited = [
+    /\beval\s*\(/,
+    /\bFunction\s*\(/,
+    /\bnew\s+Function\b/,
+    /node:vm/,
+    /\bimport\s*\(/,
+  ];
+  for (const file of files) {
+    const source = await readFile(new URL(file, import.meta.url), 'utf8');
+    for (const pattern of prohibited) {
+      assert.doesNotMatch(source, pattern, `${file} contains ${pattern}`);
+    }
+  }
 });

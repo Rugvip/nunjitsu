@@ -18,6 +18,11 @@ Trusted code outside the guarantee includes:
 - custom filters, tests, globals, and tag renderers; and
 - Nunjitsu and its production dependencies.
 
+The lockfile-pinned Nunjucks 3.2.4 parser is therefore part of the trusted
+computing base. Its mutable parser objects never cross into evaluation: an
+exhaustive converter copies only allowlisted primitive and child-node fields
+into frozen data-only nodes, rejecting every other value.
+
 Strings, numbers, booleans, nulls, arrays, and record data supplied through
 trusted application code may contain hostile data. Hostile JavaScript proxies
 are outside the boundary because JavaScript provides no trap-free way to

@@ -4,25 +4,21 @@ const test = require('node:test');
 const { createEngine } = require('../../dist/cjs/index.cjs');
 
 test('renders through the CommonJS package entry', async () => {
-  const engine = await createEngine({
+  const engine = createEngine({
     globals: {
       value() {
         return 'works';
       },
     },
   });
-  try {
-    assert.equal(
-      await engine.render({ source: 'CommonJS {{ value }}' }, { value: 'works' }),
-      'CommonJS works',
-    );
-    assert.equal(
-      (await Array.fromAsync(
-        engine.renderStream({ source: 'stream {{ value() }}' }),
-      )).join(''),
-      'stream works',
-    );
-  } finally {
-    await engine.dispose();
-  }
+  assert.equal(
+    await engine.render({ source: 'CommonJS {{ value }}' }, { value: 'works' }),
+    'CommonJS works',
+  );
+  assert.equal(
+    (await Array.fromAsync(
+      engine.renderStream({ source: 'stream {{ value() }}' }),
+    )).join(''),
+    'stream works',
+  );
 });

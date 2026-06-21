@@ -1,7 +1,7 @@
 {
   "name": "nunjitsu",
   "version": "0.0.0",
-  "description": "A Nunjucks-compatible template engine backed by Rust and WebAssembly",
+  "description": "A secure Nunjucks-compatible template engine written in TypeScript",
   "type": "module",
   "private": true,
   "engines": {
@@ -26,17 +26,15 @@
     "nunjucks": "3.2.4"
   },
   "scripts": {
-    "benchmark": "npm run build:wasm && node benchmarks/run.ts",
-    "benchmark:quick": "npm run build:wasm && node benchmarks/run.ts --warmup=1 --iterations=3",
-    "build": "npm run clean && npm run build:wasm && npm run build:typescript && node scripts/finalize-build.mjs",
+    "benchmark": "node benchmarks/run.ts",
+    "benchmark:quick": "node benchmarks/run.ts --warmup=1 --iterations=3",
+    "build": "npm run clean && npm run build:typescript && node scripts/finalize-build.mjs",
     "build:typescript": "tsgo -p tsconfig.esm.json && tsgo -p tsconfig.cjs.json && node scripts/build-cjs.mjs",
-    "build:wasm": "cargo build --manifest-path rust/Cargo.toml --target wasm32-unknown-unknown --release -Z build-std=core,compiler_builtins",
     "clean": "node scripts/clean.mjs",
-    "test": "npm run typecheck && npm run test:rust && npm run test:source && npm run test:benchmark && npm run test:package",
-    "test:benchmark": "npm run build:wasm && node benchmarks/run.ts --warmup=0 --iterations=1 --json",
+    "test": "npm run typecheck && npm run test:source && npm run test:benchmark && npm run test:package",
+    "test:benchmark": "node benchmarks/run.ts --warmup=0 --iterations=1 --json",
     "test:package": "npm run build && node --test tests/package/esm.test.mjs tests/package/commonjs.test.cjs",
-    "test:rust": "cargo test --manifest-path rust/Cargo.toml",
-    "test:source": "npm run build:wasm && node --test tests/source/runtime.test.ts tests/source/compat.test.ts",
+    "test:source": "node --test tests/source/*.test.ts",
     "typecheck": "tsgo -p tsconfig.json"
   },
   "devDependencies": {

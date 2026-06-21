@@ -23,6 +23,6 @@ schema rather than encoded as executable JavaScript.
 
 Cases that require trusted host behavior name a deterministic
 `capabilityFixture` and set `nativeRender` to `false`; the TypeScript harness
-provides the fixture while still exercising the Rust/Wasm evaluator. Omitting
+provides the fixture while exercising the closed native interpreter. Omitting
 `autoescape` verifies the engine default, while an explicit boolean fixes the
 mode for all other cases.

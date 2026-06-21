@@ -41,12 +41,13 @@ no mandatory worker, Wasm module, or process resource to dispose.
 
 ### Parser
 
-The parser is a closed grammar implementation. It tokenizes template and
-expression syntax without invoking a JavaScript parser, generating JavaScript,
-or evaluating source. Parsing produces a complete immutable AST composed only
-of discriminated data nodes, primitive fields, child arrays, and source spans.
-AST nodes never contain functions, host objects, property descriptors, or
-executable closures.
+The parser uses the lockfile-pinned Nunjucks 3.2.4 grammar as trusted input to a
+strict conversion boundary. It does not invoke a JavaScript-language parser,
+generate JavaScript, or evaluate source. The converter recognizes an exhaustive
+node allowlist and immediately copies the result into a complete immutable AST
+composed only of discriminated data nodes, primitive fields, child arrays, and
+source spans. Foreign nodes, executable fields, functions, host objects, and
+property descriptors are rejected.
 
 Every loaded template is fully parsed and validated before it executes. The AST
 is owned by one render and discarded when that render ends. Nunjitsu does not

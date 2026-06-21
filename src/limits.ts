@@ -1,5 +1,9 @@
 /** Configurable denial-of-service limits for one render. */
 export interface RenderLimits {
+  /** Maximum total UTF-16 source code units parsed across one render. */
+  sourceCodeUnits: number;
+  /** Maximum total immutable AST nodes parsed across one render. */
+  astNodes: number;
   /** Maximum parser/evaluator work units. */
   workUnits: number;
   /** Maximum active root/include frame depth. */
@@ -14,7 +18,7 @@ export interface RenderLimits {
   capabilityCalls: number;
 }
 
-/** Fully populated limits passed to the fixed-memory encoder and evaluator. */
+/** Fully populated limits passed to the native parser and evaluator. */
 export type NormalizedRenderLimits = Readonly<RenderLimits>;
 
 /** A render rejected after exceeding one configured resource dimension. */
@@ -31,6 +35,8 @@ export class NunjitsuLimitError extends Error {
 }
 
 const defaultLimits: NormalizedRenderLimits = Object.freeze({
+  sourceCodeUnits: 4 * 1024 * 1024,
+  astNodes: 1_000_000,
   workUnits: 1_000_000,
   includeDepth: 64,
   outputBytes: 16 * 1024 * 1024,
@@ -51,14 +57,6 @@ export function normalizeRenderLimits(
     if (value !== Number.POSITIVE_INFINITY && (!Number.isSafeInteger(value) || value < 0)) {
       throw new RangeError(`${name} must be a non-negative integer or Infinity`);
     }
-    if (value > 0xffff_fffe && value !== Number.POSITIVE_INFINITY) {
-      throw new RangeError(`${name} exceeds the Wasm32 limit range`);
-    }
   }
   return Object.freeze(normalized);
-}
-
-/** Encodes a validated limit for the raw Wasm ABI. */
-export function encodeRenderLimit(value: number): number {
-  return value === Number.POSITIVE_INFINITY ? 0xffff_ffff : value;
 }

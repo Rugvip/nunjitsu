@@ -33,7 +33,7 @@
     {
       "upstream": { "id": "tests/loader.js:2", "file": "tests/loader.js", "test": "should catch loader error" },
       "status": "adapted",
-      "reason": "Asynchronous loader exceptions reject the render promise, recycle a suspended worker, and leave the engine usable for the next render."
+      "reason": "Asynchronous loader exceptions reject the render promise, release render-local state, and leave the engine usable for the next render."
     },
     {
       "upstream": { "id": "tests/loader.js:3", "file": "tests/loader.js", "test": "should have default opts for WebLoader" },
@@ -1475,7 +1475,7 @@
     {
       "upstream": { "id": "tests/filters.js:38", "file": "tests/filters.js", "test": "should output the length of an array created with \"new Array\" with user-defined properties" },
       "status": "not applicable",
-      "reason": "Nunjitsu rejects arrays with custom properties at the copied-value boundary rather than exposing ambient JavaScript object state to Wasm."
+      "reason": "Nunjitsu rejects arrays with custom properties at the copied-value boundary rather than exposing ambient JavaScript object state to the interpreter."
     },
     {
       "upstream": { "id": "tests/filters.js:39", "file": "tests/filters.js", "test": "should output the length of a Map" },
@@ -1702,7 +1702,7 @@
     {
       "upstream": { "id": "tests/globals.js:11", "file": "tests/globals.js", "test": "should return errors from globals" },
       "status": "adapted",
-      "reason": "Nunjitsu propagates trusted global callback failures as promise rejections and verifies worker cleanup through its asynchronous API."
+      "reason": "Nunjitsu propagates trusted global callback failures as promise rejections and verifies render-state cleanup through its asynchronous API."
     },
     {
       "upstream": { "id": "tests/jinja-compat.js:1", "file": "tests/jinja-compat.js", "test": "should support array slices with start and stop" },
