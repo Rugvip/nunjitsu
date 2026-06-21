@@ -7,8 +7,8 @@ use crate::expression::{
 };
 use crate::template::{
     ConditionalBoundary, ParseOptions, RenderError, RenderedValue, TemplateItem, contains_extends,
-    directive_keyword, emit_escaped, find_block_end, find_call_end, find_conditional_boundary,
-    find_loop_boundaries, find_macro_end, is_endblock, next_item_with_options,
+    directive_keyword, emit_escaped, find_block_end_utf8, find_call_end, find_conditional_boundary,
+    find_loop_boundaries, find_macro_end, is_endblock, next_item_utf16,
 };
 use core::arch::wasm32::memory_size;
 use core::mem::{align_of, size_of};

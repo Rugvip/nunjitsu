@@ -39,8 +39,8 @@ const memberBytes = 4;
 const stringOperationBytes = 32;
 const stringQueryBytes = 32;
 const outputRangeBytes = 16;
-const expectedAbiVersion = 26;
-const expectedMemoryLayoutVersion = 1;
+const expectedAbiVersion = 27;
+const expectedMemoryLayoutVersion = 2;
 
 /** Identifies the runtime assets used to start workers. */
 export interface RuntimeAssets {

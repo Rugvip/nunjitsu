@@ -4,7 +4,7 @@ fn start_for(state_offset: u32, source: &[u8]) -> Result<(), u32> {
     let frame = record_at(frame_offset, TAG_FRAME)?;
     let source_offset = read_u32(frame, FRAME_SOURCE)?;
     let body_cursor = read_u32(frame, FRAME_CURSOR)?;
-    let template = record_at(source_offset, TAG_SOURCE)?;
+    let template = source_at(source_offset)?;
     let boundaries =
         find_loop_boundaries(template, body_cursor as usize, parse_options(state_offset)?)
             .map_err(render_error_code)?;

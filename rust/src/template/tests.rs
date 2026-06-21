@@ -242,3 +242,19 @@ mod tests {
         );
     }
 }
+#[test]
+fn parses_utf16_source_with_code_unit_cursors() {
+    let source: Vec<u16> = "A😀{{ value }}終".encode_utf16().collect();
+    let (text, cursor) = next_item_utf16(&source, 0, ParseOptions::default()).unwrap();
+    assert_eq!(text, TemplateItem::Text(&source[..3]));
+    assert_eq!(cursor, 3);
+
+    let (expression, cursor) = next_item_utf16(&source, cursor, ParseOptions::default()).unwrap();
+    let expected: Vec<u16> = "value".encode_utf16().collect();
+    assert_eq!(expression, TemplateItem::Expression(expected.as_slice()));
+    assert_eq!(cursor, 14);
+
+    let (text, cursor) = next_item_utf16(&source, cursor, ParseOptions::default()).unwrap();
+    assert_eq!(text, TemplateItem::Text(&source[14..]));
+    assert_eq!(cursor, source.len());
+}

@@ -21,6 +21,35 @@ fn write_bytes_record(tag: u32, bytes: &[u8]) -> Result<u32, u32> {
     Ok(offset)
 }
 
+fn write_code_units_record(tag: u32, code_units: &[u16]) -> Result<u32, u32> {
+    let length = core::char::decode_utf16(code_units.iter().copied()).try_fold(
+        0usize,
+        |length, character| {
+            length.checked_add(character.unwrap_or(char::REPLACEMENT_CHARACTER).len_utf8())
+        },
+    ).ok_or(ERROR_RESOURCE_LIMIT)?;
+    let offset = allocate_record(
+        tag,
+        u32::try_from(length).map_err(|_| ERROR_RESOURCE_LIMIT)?,
+    )?;
+    let output = mutable_record_at(offset, tag)?;
+    let mut cursor = 0usize;
+    for character in core::char::decode_utf16(code_units.iter().copied()) {
+        let character = character.unwrap_or(char::REPLACEMENT_CHARACTER);
+        let end = cursor
+            .checked_add(character.len_utf8())
+            .ok_or(ERROR_RESOURCE_LIMIT)?;
+        character.encode_utf8(&mut output[cursor..end]);
+        cursor = end;
+    }
+    Ok(offset)
+}
+
+fn code_units_as_utf8(code_units: &[u16]) -> Result<&'static [u8], u32> {
+    let offset = write_code_units_record(TAG_STRING, code_units)?;
+    record_at(offset, TAG_STRING)
+}
+
 fn write_boolean(value: bool) -> Result<u32, u32> {
     let offset = allocate_record(TAG_BOOLEAN, 1)?;
     mutable_record_at(offset, TAG_BOOLEAN)?[0] = u8::from(value);

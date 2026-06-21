@@ -228,16 +228,17 @@ fn prepare_extending_template(state_offset: u32) -> Result<(), u32> {
         return Err(ERROR_UNSUPPORTED_TAG);
     }
     let source_offset = read_u32(frame, FRAME_SOURCE)?;
-    let source_length = record_at(source_offset, TAG_SOURCE)?.len();
+    let source_length = source_at(source_offset)?.len();
     let mut cursor = 0usize;
     let mut block_depth = 0usize;
     loop {
-        let source = record_at(source_offset, TAG_SOURCE)?;
+        let source = source_at(source_offset)?;
         let (item, next_cursor) =
-            next_item_with_options(source, cursor, parse_options(state_offset)?)
+            next_item_utf16(source, cursor, parse_options(state_offset)?)
                 .map_err(render_error_code)?;
         match item {
             TemplateItem::Tag(directive) => {
+                let directive = code_units_as_utf8(directive)?;
                 if let Some(name) = directive_keyword(directive, b"block") {
                     register_block_definition(
                         state_offset,
@@ -294,12 +295,13 @@ fn write_import_namespace(
     let mut cursor = 0usize;
     let mut nested_depth = 0usize;
     loop {
-        let source = record_at(source_offset, TAG_SOURCE)?;
+        let source = source_at(source_offset)?;
         let (item, next_cursor) =
-            next_item_with_options(source, cursor, parse_options(state_offset)?)
+            next_item_utf16(source, cursor, parse_options(state_offset)?)
                 .map_err(render_error_code)?;
         match item {
             TemplateItem::Tag(directive) => {
+                let directive = code_units_as_utf8(directive)?;
                 if directive_keyword(directive, b"block").is_some()
                     || directive_keyword(directive, b"for").is_some()
                     || directive_keyword(directive, b"if").is_some()
@@ -352,12 +354,13 @@ fn write_import_namespace(
     nested_depth = 0;
     let mut index = 0usize;
     loop {
-        let source = record_at(source_offset, TAG_SOURCE)?;
+        let source = source_at(source_offset)?;
         let (item, next_cursor) =
-            next_item_with_options(source, cursor, parse_options(state_offset)?)
+            next_item_utf16(source, cursor, parse_options(state_offset)?)
                 .map_err(render_error_code)?;
         match item {
             TemplateItem::Tag(directive) => {
+                let directive = code_units_as_utf8(directive)?;
                 if directive_keyword(directive, b"block").is_some()
                     || directive_keyword(directive, b"for").is_some()
                     || directive_keyword(directive, b"if").is_some()
@@ -421,12 +424,13 @@ fn write_import_namespace(
     cursor = 0;
     nested_depth = 0;
     loop {
-        let source = record_at(source_offset, TAG_SOURCE)?;
+        let source = source_at(source_offset)?;
         let (item, next_cursor) =
-            next_item_with_options(source, cursor, parse_options(state_offset)?)
+            next_item_utf16(source, cursor, parse_options(state_offset)?)
                 .map_err(render_error_code)?;
         match item {
             TemplateItem::Tag(directive) => {
+                let directive = code_units_as_utf8(directive)?;
                 if directive_keyword(directive, b"block").is_some()
                     || directive_keyword(directive, b"for").is_some()
                     || directive_keyword(directive, b"if").is_some()
@@ -531,8 +535,8 @@ fn register_block_definition(
     if !block.arguments.is_empty() {
         return Err(ERROR_UNSUPPORTED_TAG);
     }
-    let end_cursor = find_block_end(
-        record_at(source_offset, TAG_SOURCE)?,
+    let end_cursor = find_block_end_utf8(
+        source_at(source_offset)?,
         body_cursor as usize,
         parse_options(state_offset)?,
         block.name,
@@ -694,8 +698,8 @@ fn start_block(state_offset: u32, name: &[u8]) -> Result<(), u32> {
     let source_offset = read_u32(frame, FRAME_SOURCE)?;
     let body_cursor = read_u32(frame, FRAME_CURSOR)?;
     let canonical_offset = frame_canonical_name(frame_offset)?;
-    let end_cursor = find_block_end(
-        record_at(source_offset, TAG_SOURCE)?,
+    let end_cursor = find_block_end_utf8(
+        source_at(source_offset)?,
         body_cursor as usize,
         parse_options(state_offset)?,
         block.name,

@@ -190,6 +190,7 @@ fn configure_pool(cursor: &mut u32, capacity: u32, width: u32) -> Option<PoolSta
 
 fn slot_payload_length(tag: u32) -> Option<u32> {
     match tag {
+        TAG_SOURCE => Some(8),
         TAG_UNDEFINED | TAG_NULL => Some(0),
         TAG_BOOLEAN => Some(1),
         TAG_NUMBER => Some(8),
@@ -221,6 +222,7 @@ fn member_backed_tag(tag: u32) -> bool {
 
 fn slot_category_mask(tag: u32) -> u32 {
     match tag {
+        TAG_SOURCE => 16,
         TAG_UNDEFINED
         | TAG_NULL
         | TAG_BOOLEAN
@@ -237,6 +239,35 @@ fn slot_category_mask(tag: u32) -> u32 {
         | TAG_TAG_BOUNDARIES => 8,
         _ => 0,
     }
+}
+
+fn source_at(index: u32) -> Result<&'static [u16], u32> {
+    let (tag, payload) = slot_record(index)?.ok_or(ERROR_INVALID_RECORD)?;
+    if tag != TAG_SOURCE || payload.len() != 8 {
+        return Err(ERROR_INVALID_RECORD);
+    }
+    let start = read_u32(payload, 0)?;
+    let length = read_u32(payload, 4)?;
+    let pool = unsafe { (*memory_prefix()).sources };
+    let end = start.checked_add(length).ok_or(ERROR_INVALID_RECORD)?;
+    if end > pool.cursor {
+        return Err(ERROR_INVALID_RECORD);
+    }
+    let offset = pool
+        .offset
+        .checked_add(
+            start
+                .checked_mul(SOURCE_CODE_UNIT_LENGTH)
+                .ok_or(ERROR_INVALID_RECORD)?,
+        )
+        .ok_or(ERROR_INVALID_RECORD)?;
+    let bytes = memory(
+        offset,
+        length
+            .checked_mul(SOURCE_CODE_UNIT_LENGTH)
+            .ok_or(ERROR_INVALID_RECORD)?,
+    )?;
+    Ok(unsafe { slice::from_raw_parts(bytes.as_ptr().cast::<u16>(), length as usize) })
 }
 
 fn allocate_slot(tag: u32, payload_length: u32) -> Result<u32, u32> {

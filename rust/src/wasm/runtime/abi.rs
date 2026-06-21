@@ -126,7 +126,7 @@ fn start_render(request_offset: u32) -> Result<(), u32> {
     if flags & !15 != 0 {
         return Err(ERROR_INVALID_RECORD);
     }
-    record_at(source_offset, TAG_SOURCE)?;
+    source_at(source_offset)?;
     record_at(context_offset, TAG_RECORD)?;
     if canonical_offset != 0 {
         record_at(canonical_offset, TAG_STRING)?;
@@ -164,7 +164,7 @@ fn start_render(request_offset: u32) -> Result<(), u32> {
     set_active_render(state_offset);
     if matches!(
         contains_extends(
-            record_at(source_offset, TAG_SOURCE)?,
+            source_at(source_offset)?,
             parse_options(state_offset)?,
         ),
         Ok(true)
@@ -188,7 +188,7 @@ fn resume_include(source_offset: u32, canonical_offset: u32) -> Result<(), u32> 
     if pending_name == 0 {
         return Err(ERROR_INVALID_ARENA);
     }
-    record_at(source_offset, TAG_SOURCE)?;
+    source_at(source_offset)?;
     record_at(canonical_offset, TAG_STRING)?;
     let parent = state_field(state_offset, STATE_CURRENT_FRAME)?;
     if include_cycle(parent, canonical_offset)? {
@@ -240,7 +240,7 @@ fn resume_include(source_offset: u32, canonical_offset: u32) -> Result<(), u32> 
     if load_kind == LOAD_EXTENDS
         && matches!(
             contains_extends(
-                record_at(source_offset, TAG_SOURCE)?,
+                source_at(source_offset)?,
                 parse_options(state_offset)?,
             ),
             Ok(true)
@@ -347,11 +347,11 @@ fn run_active_render() -> Result<u32, u32> {
         let source_offset = read_u32(frame, FRAME_SOURCE)?;
         let cursor = read_u32(frame, FRAME_CURSOR)? as usize;
         let end_cursor = read_u32(frame, FRAME_END_CURSOR)? as usize;
-        let source = record_at(source_offset, TAG_SOURCE)?;
+        let source = source_at(source_offset)?;
         let (item, next_cursor) = if end_cursor != 0 && cursor >= end_cursor {
             (TemplateItem::End, cursor)
         } else {
-            next_item_with_options(source, cursor, parse_options(state_offset)?)
+            next_item_utf16(source, cursor, parse_options(state_offset)?)
                 .map_err(render_error_code)?
         };
         let work = match item {
@@ -370,14 +370,17 @@ fn run_active_render() -> Result<u32, u32> {
 
         match item {
             TemplateItem::Text(text) => {
-                append_output(state_offset, text)?;
+                append_output(state_offset, code_units_as_utf8(text)?)?;
                 if should_yield_output(state_offset)? {
                     return yield_output(state_offset);
                 }
             }
             TemplateItem::Expression(expression) => {
-                if let Some(state) = start_expression(state_offset, expression, EXPRESSION_OUTPUT)?
-                {
+                if let Some(state) = start_expression(
+                    state_offset,
+                    code_units_as_utf8(expression)?,
+                    EXPRESSION_OUTPUT,
+                )? {
                     return Ok(state);
                 }
                 if should_yield_output(state_offset)? {
@@ -397,13 +400,16 @@ fn run_active_render() -> Result<u32, u32> {
                         LOAD_INCLUDE
                     },
                 )?;
-                if let Some(state) = start_expression(state_offset, expression, EXPRESSION_INCLUDE)?
-                {
+                if let Some(state) = start_expression(
+                    state_offset,
+                    code_units_as_utf8(expression)?,
+                    EXPRESSION_INCLUDE,
+                )? {
                     return Ok(state);
                 }
             }
             TemplateItem::Tag(directive) => {
-                if let Some(state) = handle_tag(state_offset, directive)? {
+                if let Some(state) = handle_tag(state_offset, code_units_as_utf8(directive)?)? {
                     return Ok(state);
                 }
             }

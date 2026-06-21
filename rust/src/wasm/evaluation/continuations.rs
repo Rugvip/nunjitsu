@@ -166,7 +166,7 @@ fn apply_if_condition(state_offset: u32, value_offset: u32) -> Result<Option<u32
     let frame = record_at(frame_offset, TAG_FRAME)?;
     let source_offset = read_u32(frame, FRAME_SOURCE)?;
     let cursor = read_u32(frame, FRAME_CURSOR)? as usize;
-    let source = record_at(source_offset, TAG_SOURCE)?;
+    let source = source_at(source_offset)?;
     match find_conditional_boundary(source, cursor, true, parse_options(state_offset)?)
         .map_err(render_error_code)?
     {
@@ -176,7 +176,7 @@ fn apply_if_condition(state_offset: u32, value_offset: u32) -> Result<Option<u32
         }
         ConditionalBoundary::ElseIf(condition, next_cursor) => {
             set_frame_field(frame_offset, FRAME_CURSOR, next_cursor as u32)?;
-            start_expression(state_offset, condition, EXPRESSION_IF)
+            start_expression(state_offset, code_units_as_utf8(condition)?, EXPRESSION_IF)
         }
     }
 }
@@ -189,11 +189,12 @@ fn apply_switch_condition(state_offset: u32, value_offset: u32) -> Result<(), u3
     let mut depth = 0usize;
     let mut default_cursor = None;
     loop {
-        let source = record_at(source_offset, TAG_SOURCE)?;
+        let source = source_at(source_offset)?;
         let (item, next_cursor) =
-            next_item_with_options(source, cursor, parse_options(state_offset)?)
+            next_item_utf16(source, cursor, parse_options(state_offset)?)
                 .map_err(render_error_code)?;
         if let TemplateItem::Tag(directive) = item {
+            let directive = code_units_as_utf8(directive)?;
             if directive_keyword(directive, b"switch").is_some() {
                 depth = depth.checked_add(1).ok_or(ERROR_RESOURCE_LIMIT)?;
             } else if directive == b"endswitch" {
@@ -232,18 +233,18 @@ fn switch_branch_cursor(
     mut cursor: usize,
 ) -> Result<usize, u32> {
     loop {
-        let source = record_at(source_offset, TAG_SOURCE)?;
+        let source = source_at(source_offset)?;
         let (item, next_cursor) =
-            next_item_with_options(source, cursor, parse_options(state_offset)?)
+            next_item_utf16(source, cursor, parse_options(state_offset)?)
                 .map_err(render_error_code)?;
-        match item {
-            TemplateItem::Tag(directive)
-                if directive_keyword(directive, b"case").is_some() || directive == b"default" =>
-            {
+        if let TemplateItem::Tag(directive) = item {
+            let directive = code_units_as_utf8(directive)?;
+            if directive_keyword(directive, b"case").is_some() || directive == b"default" {
                 cursor = next_cursor;
+                continue;
             }
-            _ => return Ok(cursor),
         }
+        return Ok(cursor);
     }
 }
 
@@ -254,11 +255,12 @@ fn skip_active_switch(state_offset: u32) -> Result<(), u32> {
     let mut cursor = read_u32(frame, FRAME_CURSOR)? as usize;
     let mut depth = 0usize;
     loop {
-        let source = record_at(source_offset, TAG_SOURCE)?;
+        let source = source_at(source_offset)?;
         let (item, next_cursor) =
-            next_item_with_options(source, cursor, parse_options(state_offset)?)
+            next_item_utf16(source, cursor, parse_options(state_offset)?)
                 .map_err(render_error_code)?;
         if let TemplateItem::Tag(directive) = item {
+            let directive = code_units_as_utf8(directive)?;
             if directive_keyword(directive, b"switch").is_some() {
                 depth = depth.checked_add(1).ok_or(ERROR_RESOURCE_LIMIT)?;
             } else if directive == b"endswitch" {
@@ -279,7 +281,7 @@ fn skip_active_conditional(state_offset: u32) -> Result<(), u32> {
     let frame = record_at(frame_offset, TAG_FRAME)?;
     let source_offset = read_u32(frame, FRAME_SOURCE)?;
     let cursor = read_u32(frame, FRAME_CURSOR)? as usize;
-    let source = record_at(source_offset, TAG_SOURCE)?;
+    let source = source_at(source_offset)?;
     let ConditionalBoundary::EndIf(next_cursor) =
         find_conditional_boundary(source, cursor, false, parse_options(state_offset)?)
             .map_err(render_error_code)?

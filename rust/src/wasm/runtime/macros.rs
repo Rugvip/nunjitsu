@@ -5,7 +5,7 @@ fn start_call_block(state_offset: u32, source: &[u8]) -> Result<(), u32> {
     let source_offset = read_u32(frame, FRAME_SOURCE)?;
     let body_cursor = read_u32(frame, FRAME_CURSOR)?;
     let end_cursor = find_call_end(
-        record_at(source_offset, TAG_SOURCE)?,
+        source_at(source_offset)?,
         body_cursor as usize,
         parse_options(state_offset)?,
     )
@@ -95,7 +95,7 @@ fn register_macro_definition(
         parameter_cursor = parameter.next_cursor;
     }
 
-    let source = record_at(source_offset, TAG_SOURCE)?;
+    let source = source_at(source_offset)?;
     let end_cursor = find_macro_end(source, body_cursor as usize, parse_options(state_offset)?)
         .map_err(render_error_code)?;
 

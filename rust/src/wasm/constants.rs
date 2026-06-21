@@ -1,5 +1,5 @@
-const ABI_VERSION: u32 = 26;
-const MEMORY_LAYOUT_VERSION: u32 = 1;
+const ABI_VERSION: u32 = 27;
+const MEMORY_LAYOUT_VERSION: u32 = 2;
 const PAGE_SIZE: usize = 65_536;
 const MEMORY_PREFIX_ALIGNMENT: u32 = 64;
 const SLOT_LENGTH: u32 = 72;

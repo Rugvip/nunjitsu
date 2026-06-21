@@ -39,20 +39,20 @@ pub struct ParseOptions {
 
 /// One parser event consumed by the streaming evaluator.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum TemplateItem<'a> {
+pub enum TemplateItem<'a, T = u8> {
     /// Literal template source copied directly to output.
-    Text(&'a [u8]),
+    Text(&'a [T]),
     /// A context expression between interpolation delimiters.
-    Expression(&'a [u8]),
+    Expression(&'a [T]),
     /// A template-name expression requested by an include tag.
     Include {
         /// Expression resolving to the requested template name.
-        expression: &'a [u8],
+        expression: &'a [T],
         /// Whether an absent template should produce no output.
         ignore_missing: bool,
     },
     /// A non-built-in block directive resolved against declarative tag schemas.
-    Tag(&'a [u8]),
+    Tag(&'a [T]),
     /// The parser reached the end of this source.
     End,
 }
@@ -60,11 +60,11 @@ pub enum TemplateItem<'a> {
 /// A branch boundary found while skipping an inactive conditional body.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[cfg(any(target_arch = "wasm32", test))]
-pub(crate) enum ConditionalBoundary<'a> {
+pub(crate) enum ConditionalBoundary<'a, T = u8> {
     /// An unconditional else body begins after this cursor.
     Else(usize),
     /// An else-if condition and the cursor after its directive.
-    ElseIf(&'a [u8], usize),
+    ElseIf(&'a [T], usize),
     /// The conditional ends after this cursor.
     EndIf(usize),
 }
@@ -90,6 +90,23 @@ pub fn next_item_with_options(
     cursor: usize,
     options: ParseOptions,
 ) -> Result<(TemplateItem<'_>, usize), RenderError> {
+    next_item_with_options_impl(source, cursor, options)
+}
+
+#[cfg(any(target_arch = "wasm32", test))]
+pub(crate) fn next_item_utf16(
+    source: &[u16],
+    cursor: usize,
+    options: ParseOptions,
+) -> Result<(TemplateItem<'_, u16>, usize), RenderError> {
+    next_item_with_options_impl(source, cursor, options)
+}
+
+fn next_item_with_options_impl<T: SourceCodeUnit>(
+    source: &[T],
+    cursor: usize,
+    options: ParseOptions,
+) -> Result<(TemplateItem<'_, T>, usize), RenderError> {
     if cursor >= source.len() {
         return Ok((TemplateItem::End, source.len()));
     }
@@ -98,16 +115,19 @@ pub fn next_item_with_options(
     };
     if open > cursor {
         let mut text_end = open;
-        if source.get(open + 2) == Some(&b'-') {
+        if source.get(open + 2).copied() == Some(T::from_ascii(b'-')) {
             while text_end > cursor && source[text_end - 1].is_ascii_whitespace() {
                 text_end -= 1;
             }
         } else if options.lstrip_blocks && delimiter == Delimiter::Block {
             let line_start = source[..open]
                 .iter()
-                .rposition(|byte| *byte == b'\n')
+                .rposition(|unit| *unit == T::from_ascii(b'\n'))
                 .map_or(0, |index| index + 1);
-            if line_start >= cursor && source[line_start..open].iter().all(u8::is_ascii_whitespace)
+            if line_start >= cursor
+                && source[line_start..open]
+                    .iter()
+                    .all(|unit| unit.is_ascii_whitespace())
             {
                 text_end = line_start;
             }
@@ -115,14 +135,14 @@ pub fn next_item_with_options(
         return Ok((TemplateItem::Text(&source[cursor..text_end]), open));
     }
 
-    let left_trim = source.get(open + 2) == Some(&b'-');
+    let left_trim = source.get(open + 2).copied() == Some(T::from_ascii(b'-'));
     let content_start = open + 2 + usize::from(left_trim);
     match delimiter {
         Delimiter::Expression => {
             let close = find_pair(&source[content_start..], b'}', b'}')
                 .map(|relative| content_start + relative)
                 .ok_or(RenderError::UnclosedInterpolation)?;
-            let right_trim = close > content_start && source[close - 1] == b'-';
+            let right_trim = close > content_start && source[close - 1] == T::from_ascii(b'-');
             let content_end = close - usize::from(right_trim);
             Ok((
                 TemplateItem::Expression(trim_ascii_whitespace(
@@ -135,12 +155,12 @@ pub fn next_item_with_options(
             let close = find_pair(&source[content_start..], b'%', b'}')
                 .map(|relative| content_start + relative)
                 .ok_or(RenderError::UnclosedBlockTag)?;
-            let right_trim = close > content_start && source[close - 1] == b'-';
+            let right_trim = close > content_start && source[close - 1] == T::from_ascii(b'-');
             let content_end = close - usize::from(right_trim);
             let next_cursor = following_cursor(source, close + 2, right_trim, options.trim_blocks);
             let directive = trim_ascii_whitespace(&source[content_start..content_end]);
-            if matches!(directive, b"raw" | b"verbatim") {
-                let end_name = if directive == b"raw" {
+            if ascii_eq(directive, b"raw") || ascii_eq(directive, b"verbatim") {
+                let end_name = if ascii_eq(directive, b"raw") {
                     b"endraw".as_slice()
                 } else {
                     b"endverbatim".as_slice()
@@ -152,11 +172,14 @@ pub fn next_item_with_options(
                     next_cursor,
                 ));
             }
-            if directive == b"include" {
+            if ascii_eq(directive, b"include") {
                 Err(RenderError::InvalidInclude)
-            } else if let Some(include) = directive
-                .strip_prefix(b"include")
-                .filter(|remainder| remainder.first().is_some_and(u8::is_ascii_whitespace))
+            } else if let Some(include) =
+                strip_ascii_prefix(directive, b"include").filter(|remainder| {
+                    remainder
+                        .first()
+                        .is_some_and(|unit| unit.is_ascii_whitespace())
+                })
             {
                 let (expression, ignore_missing) = parse_include(include)?;
                 Ok((
@@ -174,9 +197,9 @@ pub fn next_item_with_options(
             let close = find_pair(&source[content_start..], b'#', b'}')
                 .map(|relative| content_start + relative)
                 .ok_or(RenderError::UnclosedComment)?;
-            let right_trim = close > content_start && source[close - 1] == b'-';
+            let right_trim = close > content_start && source[close - 1] == T::from_ascii(b'-');
             Ok((
-                TemplateItem::Text(b""),
+                TemplateItem::Text(&source[content_start..content_start]),
                 following_cursor(source, close + 2, right_trim, false),
             ))
         }

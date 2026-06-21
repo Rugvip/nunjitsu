@@ -218,12 +218,13 @@ fn find_tag_boundaries(
     let mut active_segment = 0usize;
     loop {
         let item_cursor = cursor;
-        let source = record_at(source_offset, TAG_SOURCE)?;
+        let source = source_at(source_offset)?;
         let (item, next_cursor) =
-            next_item_with_options(source, cursor, parse_options(state_offset)?)
+            next_item_utf16(source, cursor, parse_options(state_offset)?)
                 .map_err(render_error_code)?;
         match item {
             TemplateItem::Tag(directive) => {
+                let directive = code_units_as_utf8(directive)?;
                 let Ok(name) = parse_tag_name(directive) else {
                     cursor = next_cursor;
                     continue;

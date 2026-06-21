@@ -262,7 +262,31 @@ export class ArenaWriter {
   }
 
   #writeTextRecord(tag: number, value: string): number {
+    if (tag === recordTag.source) {
+      return this.#writeSourceSlot(value);
+    }
     return this.#writeRecord(tag, new TextEncoder().encode(value));
+  }
+
+  #writeSourceSlot(value: string): number {
+    const start = this.#fixedCursors.sources;
+    const end = start + value.length;
+    if (end > this.#layout.sourceCapacity) {
+      throw new NunjitsuLimitError('arenaBytes');
+    }
+    const index = this.#reserveSlot();
+    const slotOffset = this.#layout.slotOffset + index * fixedSlotLength;
+    const slot = new Uint8Array(this.#memory.buffer, slotOffset, fixedSlotLength);
+    slot.fill(0);
+    this.#view.setUint32(slotOffset, recordTag.source | (16 << 8), true);
+    this.#view.setUint32(slotOffset + 4, start, true);
+    this.#view.setUint32(slotOffset + 8, value.length, true);
+    const codeUnitOffset = this.#layout.sourceOffset + start * 2;
+    for (let cursor = 0; cursor < value.length; cursor += 1) {
+      this.#view.setUint16(codeUnitOffset + cursor * 2, value.charCodeAt(cursor), true);
+    }
+    this.#fixedCursors.sources = end;
+    return index;
   }
 
   #writeValue(
