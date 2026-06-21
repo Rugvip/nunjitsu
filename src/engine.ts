@@ -27,13 +27,13 @@ import type { TemplateContext, TemplateValue } from './values.ts';
 const wasmPageBytes = 65_536;
 const minimumMemoryPages = 32;
 const maximumMemoryPages = 4096;
-const memoryPrefixBytes = 4096;
 const repeatedSlotBytes = 64;
 const memberBytes = 4;
 const stringOperationBytes = 32;
 const stringQueryBytes = 32;
 const outputRangeBytes = 16;
-const expectedAbiVersion = 24;
+const expectedAbiVersion = 25;
+const expectedMemoryLayoutVersion = 1;
 
 /** Identifies the runtime assets used to start workers. */
 export interface RuntimeAssets {
@@ -252,6 +252,9 @@ interface ReadyMessage {
   type: 'ready';
   abiVersion: number;
   arenaBase: number;
+  layoutVersion: number;
+  prefixOffset: number;
+  slotSize: number;
 }
 
 /** Successful terminal response for a render. */
@@ -597,7 +600,7 @@ class EngineImplementation implements Engine {
     if (!wasmModule) {
       throw new Error('The Nunjitsu Wasm module is not initialized');
     }
-    const slot = new WorkerSlot(this.#runtime.workerUrl, wasmModule, this.#memory.pages);
+    const slot = new WorkerSlot(this.#runtime.workerUrl, wasmModule, this.#memory);
     this.#slots.push(slot);
     return slot;
   }
@@ -688,10 +691,14 @@ class WorkerSlot {
   #rejectReady: ((error: Error) => void) | undefined;
   #closed = false;
 
-  constructor(workerUrl: URL, wasmModule: WebAssembly.Module, memoryPages: number) {
+  constructor(
+    workerUrl: URL,
+    wasmModule: WebAssembly.Module,
+    memory: NormalizedWorkerMemoryOptions,
+  ) {
     this.memory = new WebAssembly.Memory({
-      initial: memoryPages,
-      maximum: memoryPages,
+      initial: memory.pages,
+      maximum: memory.pages,
       shared: true,
     });
     this.ready = new Promise<void>((resolve, reject) => {
@@ -702,6 +709,15 @@ class WorkerSlot {
       workerData: {
         memory: this.memory,
         wasmModule,
+        memoryLayout: {
+          slots: memory.slots,
+          sourceCodeUnits: memory.sourceCodeUnits,
+          valueCodeUnits: memory.valueCodeUnits,
+          members: memory.members,
+          stringOperations: memory.stringOperations,
+          stringQueries: memory.stringQueries,
+          outputRanges: memory.outputRanges,
+        },
       },
     });
     this.#worker.on('message', message => this.#handleMessage(message));
@@ -931,7 +947,13 @@ class WorkerSlot {
       return;
     }
     if (value.type === 'ready') {
-      if (value.abiVersion !== expectedAbiVersion || value.arenaBase <= 0) {
+      if (
+        value.abiVersion !== expectedAbiVersion ||
+        value.layoutVersion !== expectedMemoryLayoutVersion ||
+        value.prefixOffset <= 0 ||
+        value.slotSize !== repeatedSlotBytes ||
+        value.arenaBase <= 0
+      ) {
         this.#fail(new Error('Nunjitsu worker reported an incompatible Wasm ABI'));
         return;
       }
@@ -1210,8 +1232,8 @@ function normalizeMemoryOptions(
     ),
   };
   const requiredBytes = [
-    memoryPrefixBytes,
-    checkedCapacityBytes(normalized.slots, repeatedSlotBytes),
+    minimumMemoryPages * wasmPageBytes + 8 * 64,
+    checkedCapacityBytes(normalized.slots + 1, repeatedSlotBytes),
     checkedCapacityBytes(normalized.sourceCodeUnits, 2),
     checkedCapacityBytes(normalized.valueCodeUnits, 2),
     checkedCapacityBytes(normalized.members, memberBytes),
@@ -1254,7 +1276,13 @@ function isWorkerMessage(value: unknown): value is WorkerMessage {
   }
   const message = value as Record<string, unknown>;
   if (message.type === 'ready') {
-    return typeof message.abiVersion === 'number' && typeof message.arenaBase === 'number';
+    return (
+      typeof message.abiVersion === 'number' &&
+      typeof message.arenaBase === 'number' &&
+      typeof message.layoutVersion === 'number' &&
+      typeof message.prefixOffset === 'number' &&
+      typeof message.slotSize === 'number'
+    );
   }
   if (message.type === 'load') {
     return (

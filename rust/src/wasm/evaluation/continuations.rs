@@ -39,12 +39,10 @@ fn continue_expression(state_offset: u32) -> Result<Option<u32>, u32> {
             && state_field(state_offset, STATE_OUTPUT_LENGTH)? == 0
         {
             let transient_base = state_field(state_offset, STATE_TRANSIENT_BASE)?;
-            if transient_base > unsafe { ARENA_CURSOR } {
+            if transient_base > legacy_arena_cursor() {
                 return Err(ERROR_INVALID_ARENA);
             }
-            unsafe {
-                ARENA_CURSOR = transient_base;
-            }
+            set_legacy_arena_cursor(transient_base);
         }
         return Ok(next_state);
     };

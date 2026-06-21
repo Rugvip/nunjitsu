@@ -115,9 +115,11 @@ fn should_yield_output(state_offset: u32) -> Result<bool, u32> {
 }
 
 fn yield_output(state_offset: u32) -> Result<u32, u32> {
-    set_state_field(state_offset, STATE_MATERIALIZATION_BASE, unsafe {
-        ARENA_CURSOR
-    })?;
+    set_state_field(
+        state_offset,
+        STATE_MATERIALIZATION_BASE,
+        legacy_arena_cursor(),
+    )?;
     let (output_offset, output_length) = materialize_stream_output(state_offset)?;
     if output_length == 0 {
         return Err(ERROR_INVALID_ARENA);

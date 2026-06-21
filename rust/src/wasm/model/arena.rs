@@ -185,7 +185,7 @@ fn arena_alloc(length: u32, alignment: u32) -> Result<u32, u32> {
     if alignment == 0 || !alignment.is_power_of_two() || alignment as usize > align_of::<u128>() {
         return Err(ERROR_INVALID_ARENA);
     }
-    let cursor = unsafe { ARENA_CURSOR };
+    let cursor = legacy_arena_cursor();
     let start = align_up(cursor, alignment).ok_or(ERROR_INVALID_ARENA)?;
     let end = start.checked_add(length).ok_or(ERROR_OUTPUT_TOO_LARGE)?;
     let aligned_end = align_up(end, RECORD_ALIGNMENT).ok_or(ERROR_OUTPUT_TOO_LARGE)?;
@@ -196,9 +196,7 @@ fn arena_alloc(length: u32, alignment: u32) -> Result<u32, u32> {
         enforce_limit(used, limit)?;
     }
     ensure_memory(aligned_end as usize)?;
-    unsafe {
-        ARENA_CURSOR = aligned_end;
-    }
+    set_legacy_arena_cursor(aligned_end);
     Ok(start)
 }
 
@@ -231,11 +229,5 @@ fn render_error_code(error: RenderError) -> u32 {
 }
 
 fn set_control(state: u32, payload_offset: u32, payload_length: u32, error_code: u32) {
-    let control = addr_of_mut!(CONTROL);
-    unsafe {
-        (*control).state = state;
-        (*control).payload_offset = payload_offset;
-        (*control).payload_length = payload_length;
-        (*control).error_code = error_code;
-    }
+    set_control_fields(state, payload_offset, payload_length, error_code);
 }

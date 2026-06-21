@@ -1,25 +1,3 @@
-#[repr(C)]
-struct Control {
-    state: u32,
-    payload_offset: u32,
-    payload_length: u32,
-    error_code: u32,
-}
-
-static mut CONTROL: Control = Control {
-    state: STATE_IDLE,
-    payload_offset: 0,
-    payload_length: 0,
-    error_code: ERROR_NONE,
-};
-
-static mut ARENA_CURSOR: u32 = 0;
-static mut ACTIVE_RENDER: u32 = 0;
-
-unsafe extern "C" {
-    static __heap_base: u8;
-}
-
 #[unsafe(no_mangle)]
 pub extern "C" fn nunjitsu_abi_version() -> u32 {
     ABI_VERSION
@@ -27,7 +5,7 @@ pub extern "C" fn nunjitsu_abi_version() -> u32 {
 
 #[unsafe(no_mangle)]
 pub extern "C" fn nunjitsu_control_offset() -> u32 {
-    addr_of!(CONTROL) as u32
+    memory_prefix() as u32
 }
 
 #[unsafe(no_mangle)]
@@ -37,15 +15,12 @@ pub extern "C" fn nunjitsu_arena_base() -> u32 {
 
 #[unsafe(no_mangle)]
 pub extern "C" fn nunjitsu_arena_cursor() -> u32 {
-    unsafe { ARENA_CURSOR }
+    legacy_arena_cursor()
 }
 
 #[unsafe(no_mangle)]
 pub extern "C" fn nunjitsu_arena_reset() {
-    unsafe {
-        ARENA_CURSOR = nunjitsu_arena_base();
-        ACTIVE_RENDER = 0;
-    }
+    reset_memory_cursors();
     set_control(STATE_IDLE, 0, 0, ERROR_NONE);
 }
 
@@ -63,16 +38,14 @@ pub extern "C" fn nunjitsu_arena_set_cursor(cursor: u32) -> u32 {
     {
         return 2;
     }
-    unsafe {
-        ARENA_CURSOR = cursor;
-    }
+    set_legacy_arena_cursor(cursor);
     1
 }
 
 #[unsafe(no_mangle)]
 pub extern "C" fn nunjitsu_render(request_offset: u32) -> u32 {
     set_control(STATE_IDLE, 0, 0, ERROR_NONE);
-    if unsafe { ACTIVE_RENDER } != 0 {
+    if active_render() != 0 {
         return fail(ERROR_INVALID_ARENA);
     }
     match start_render(request_offset).and_then(|()| run_active_render()) {
@@ -83,7 +56,7 @@ pub extern "C" fn nunjitsu_render(request_offset: u32) -> u32 {
 #[unsafe(no_mangle)]
 pub extern "C" fn nunjitsu_resume_include(source_offset: u32, canonical_offset: u32) -> u32 {
     if !matches!(
-        unsafe { CONTROL.state },
+        control_state(),
         STATE_LOAD_TEMPLATE | STATE_LOAD_OPTIONAL_TEMPLATE
     ) {
         return fail(ERROR_INVALID_ARENA);
@@ -97,7 +70,7 @@ pub extern "C" fn nunjitsu_resume_include(source_offset: u32, canonical_offset: 
 
 #[unsafe(no_mangle)]
 pub extern "C" fn nunjitsu_resume_include_missing() -> u32 {
-    if unsafe { CONTROL.state } != STATE_LOAD_OPTIONAL_TEMPLATE {
+    if control_state() != STATE_LOAD_OPTIONAL_TEMPLATE {
         return fail(ERROR_INVALID_ARENA);
     }
     set_control(STATE_IDLE, 0, 0, ERROR_NONE);
@@ -109,7 +82,7 @@ pub extern "C" fn nunjitsu_resume_include_missing() -> u32 {
 
 #[unsafe(no_mangle)]
 pub extern "C" fn nunjitsu_resume_output() -> u32 {
-    if unsafe { CONTROL.state } != STATE_OUTPUT_AVAILABLE {
+    if control_state() != STATE_OUTPUT_AVAILABLE {
         return fail(ERROR_INVALID_ARENA);
     }
     set_control(STATE_IDLE, 0, 0, ERROR_NONE);
@@ -121,7 +94,7 @@ pub extern "C" fn nunjitsu_resume_output() -> u32 {
 
 #[unsafe(no_mangle)]
 pub extern "C" fn nunjitsu_resume_capability(value_offset: u32) -> u32 {
-    if unsafe { CONTROL.state } != STATE_CALL_CAPABILITY {
+    if control_state() != STATE_CALL_CAPABILITY {
         return fail(ERROR_INVALID_ARENA);
     }
     set_control(STATE_IDLE, 0, 0, ERROR_NONE);
@@ -187,9 +160,7 @@ fn start_render(request_offset: u32) -> Result<(), u32> {
         STATE_LIMIT_CAPABILITY_CALLS,
         limit_capability_calls,
     )?;
-    unsafe {
-        ACTIVE_RENDER = state_offset;
-    }
+    set_active_render(state_offset);
     if matches!(
         contains_extends(
             record_at(source_offset, TAG_SOURCE)?,
@@ -204,8 +175,8 @@ fn start_render(request_offset: u32) -> Result<(), u32> {
             state_field(state_offset, STATE_CURRENT_CAPTURE)?,
         )?;
     }
-    set_state_field(state_offset, STATE_TRANSIENT_BASE, unsafe { ARENA_CURSOR })?;
-    enforce_arena_limit(state_offset, unsafe { ARENA_CURSOR })?;
+    set_state_field(state_offset, STATE_TRANSIENT_BASE, legacy_arena_cursor())?;
+    enforce_arena_limit(state_offset, legacy_arena_cursor())?;
     Ok(())
 }
 
@@ -242,7 +213,7 @@ fn resume_include(source_offset: u32, canonical_offset: u32) -> Result<(), u32> 
         set_state_field(state_offset, STATE_PENDING_IMPORT_ALIAS, 0)?;
         set_state_field(state_offset, STATE_PENDING_IMPORT_BINDINGS, 0)?;
         set_state_field(state_offset, STATE_IMPORT_WITH_CONTEXT, 0)?;
-        set_state_field(state_offset, STATE_TRANSIENT_BASE, unsafe { ARENA_CURSOR })?;
+        set_state_field(state_offset, STATE_TRANSIENT_BASE, legacy_arena_cursor())?;
         return Ok(());
     }
     let depth = state_field(state_offset, STATE_INCLUDE_DEPTH)?;
@@ -281,7 +252,7 @@ fn resume_include(source_offset: u32, canonical_offset: u32) -> Result<(), u32> 
             state_field(state_offset, STATE_CURRENT_CAPTURE)?,
         )?;
     }
-    set_state_field(state_offset, STATE_TRANSIENT_BASE, unsafe { ARENA_CURSOR })?;
+    set_state_field(state_offset, STATE_TRANSIENT_BASE, legacy_arena_cursor())?;
     Ok(())
 }
 
@@ -303,13 +274,11 @@ fn resume_output() -> Result<(), u32> {
     }
     let materialization_base = state_field(state_offset, STATE_MATERIALIZATION_BASE)?;
     if materialization_base < nunjitsu_arena_base()
-        || materialization_base > unsafe { ARENA_CURSOR }
+        || materialization_base > legacy_arena_cursor()
     {
         return Err(ERROR_INVALID_ARENA);
     }
-    unsafe {
-        ARENA_CURSOR = materialization_base;
-    }
+    set_legacy_arena_cursor(materialization_base);
     if state_field(state_offset, STATE_OUTPUT_LENGTH)? != 0 {
         return Ok(());
     }
@@ -318,9 +287,7 @@ fn resume_output() -> Result<(), u32> {
     if transient_base > materialization_base {
         return Err(ERROR_INVALID_ARENA);
     }
-    unsafe {
-        ARENA_CURSOR = transient_base;
-    }
+    set_legacy_arena_cursor(transient_base);
     set_state_field(state_offset, STATE_FIRST_CHUNK, 0)?;
     set_state_field(state_offset, STATE_LAST_CHUNK, 0)?;
     set_state_field(state_offset, STATE_MATERIALIZATION_BASE, 0)

@@ -313,7 +313,7 @@ fn assign_scope(state_offset: u32, name_offset: u32, value_offset: u32) -> Resul
                 SCOPE_VALUE,
                 value_offset,
             )?;
-            set_state_field(state_offset, STATE_TRANSIENT_BASE, unsafe { ARENA_CURSOR })?;
+            set_state_field(state_offset, STATE_TRANSIENT_BASE, legacy_arena_cursor())?;
             return Ok(());
         }
         existing = read_u32(scope, SCOPE_PARENT)?;
@@ -330,5 +330,5 @@ fn assign_scope(state_offset: u32, name_offset: u32, value_offset: u32) -> Resul
     if loop_offset != 0 && loop_field(loop_offset, LOOP_FRAME)? == frame_offset {
         set_loop_field(loop_offset, LOOP_SCOPE_BASE, scope_offset)?;
     }
-    set_state_field(state_offset, STATE_TRANSIENT_BASE, unsafe { ARENA_CURSOR })
+    set_state_field(state_offset, STATE_TRANSIENT_BASE, legacy_arena_cursor())
 }

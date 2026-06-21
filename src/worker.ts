@@ -6,6 +6,18 @@ import { decodeLoadRequest, decodeOutput } from './protocol.ts';
 interface NunjitsuWorkerData {
   memory: WebAssembly.Memory;
   wasmModule: WebAssembly.Module;
+  memoryLayout: NunjitsuWorkerMemoryLayout;
+}
+
+/** Fixed capacities used to configure the Wasm singleton prefix and storage pools. */
+interface NunjitsuWorkerMemoryLayout {
+  slots: number;
+  sourceCodeUnits: number;
+  valueCodeUnits: number;
+  members: number;
+  stringOperations: number;
+  stringQueries: number;
+  outputRanges: number;
 }
 
 /** Initial render command accepted by an idle worker. */
@@ -56,6 +68,18 @@ type WorkerCommand =
 /** Numeric exports in the Nunjitsu raw Wasm ABI. */
 interface NunjitsuExports {
   abiVersion: () => number;
+  layoutVersion: () => number;
+  memoryPrefixOffset: () => number;
+  slotSize: () => number;
+  configureLayout: (
+    slots: number,
+    sourceCodeUnits: number,
+    valueCodeUnits: number,
+    members: number,
+    stringOperations: number,
+    stringQueries: number,
+    outputRanges: number,
+  ) => number;
   arenaBase: () => number;
   arenaCursor: () => number;
   arenaReset: () => void;
@@ -107,6 +131,20 @@ async function start(port: MessagePort): Promise<void> {
     },
   });
   const exports = parseExports(instance.exports);
+  const layout = data.memoryLayout;
+  if (
+    exports.configureLayout(
+      layout.slots,
+      layout.sourceCodeUnits,
+      layout.valueCodeUnits,
+      layout.members,
+      layout.stringOperations,
+      layout.stringQueries,
+      layout.outputRanges,
+    ) !== 1
+  ) {
+    throw new Error('Nunjitsu worker memory capacities do not fit the Wasm memory');
+  }
   exports.arenaReset();
   const controlOffset = exports.controlOffset();
 
@@ -114,6 +152,9 @@ async function start(port: MessagePort): Promise<void> {
     type: 'ready',
     abiVersion: exports.abiVersion(),
     arenaBase: exports.arenaBase(),
+    layoutVersion: exports.layoutVersion(),
+    prefixOffset: exports.memoryPrefixOffset(),
+    slotSize: exports.slotSize(),
   });
 
   let activeRenderId: number | undefined;
@@ -370,7 +411,31 @@ function parseWorkerData(value: unknown): NunjitsuWorkerData {
   if (!(wasmModule instanceof WebAssembly.Module)) {
     throw new Error('Nunjitsu worker requires a compiled Wasm module');
   }
-  return { memory, wasmModule };
+  const memoryLayout = parseMemoryLayout(candidate.memoryLayout);
+  return { memory, wasmModule, memoryLayout };
+}
+
+function parseMemoryLayout(value: unknown): NunjitsuWorkerMemoryLayout {
+  if (!value || typeof value !== 'object') {
+    throw new Error('Nunjitsu worker requires fixed memory capacities');
+  }
+  const candidate = value as Record<string, unknown>;
+  const names = [
+    'slots',
+    'sourceCodeUnits',
+    'valueCodeUnits',
+    'members',
+    'stringOperations',
+    'stringQueries',
+    'outputRanges',
+  ] as const;
+  for (const name of names) {
+    const capacity = candidate[name];
+    if (!Number.isSafeInteger(capacity) || (capacity as number) < 1) {
+      throw new Error(`Nunjitsu worker received an invalid ${name} capacity`);
+    }
+  }
+  return candidate as unknown as NunjitsuWorkerMemoryLayout;
 }
 
 function parseCommand(value: unknown): WorkerCommand {
@@ -430,6 +495,10 @@ function parseCommand(value: unknown): WorkerCommand {
 function parseExports(value: WebAssembly.Exports): NunjitsuExports {
   return {
     abiVersion: exportedFunction(value, 'nunjitsu_abi_version'),
+    layoutVersion: exportedFunction(value, 'nunjitsu_layout_version'),
+    memoryPrefixOffset: exportedFunction(value, 'nunjitsu_memory_prefix_offset'),
+    slotSize: exportedFunction(value, 'nunjitsu_slot_size'),
+    configureLayout: exportedFunction(value, 'nunjitsu_configure_layout'),
     arenaBase: exportedFunction(value, 'nunjitsu_arena_base'),
     arenaCursor: exportedFunction(value, 'nunjitsu_arena_cursor'),
     arenaReset: exportedFunction(value, 'nunjitsu_arena_reset'),

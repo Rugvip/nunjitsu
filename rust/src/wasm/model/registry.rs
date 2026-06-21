@@ -219,7 +219,7 @@ fn set_state_field(offset: u32, field: usize, value: u32) -> Result<(), u32> {
 }
 
 fn active_state() -> Result<u32, u32> {
-    let offset = unsafe { ACTIVE_RENDER };
+    let offset = active_render();
     if offset == 0 {
         return Err(ERROR_INVALID_ARENA);
     }
@@ -227,7 +227,7 @@ fn active_state() -> Result<u32, u32> {
 }
 
 fn active_limit(field: usize) -> Result<u32, u32> {
-    let state_offset = unsafe { ACTIVE_RENDER };
+    let state_offset = active_render();
     if state_offset == 0 {
         return Err(ERROR_INVALID_ARENA);
     }

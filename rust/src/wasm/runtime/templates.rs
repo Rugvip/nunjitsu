@@ -722,7 +722,7 @@ fn start_block(state_offset: u32, name: &[u8]) -> Result<(), u32> {
             end_cursor,
         )?;
         set_state_field(state_offset, STATE_CURRENT_FRAME, block_frame)?;
-        set_state_field(state_offset, STATE_TRANSIENT_BASE, unsafe { ARENA_CURSOR })?;
+        set_state_field(state_offset, STATE_TRANSIENT_BASE, legacy_arena_cursor())?;
         return Ok(());
     }
     let definition_offset = definition_offset.ok_or(ERROR_INVALID_ARENA)?;
@@ -753,7 +753,7 @@ fn start_block(state_offset: u32, name: &[u8]) -> Result<(), u32> {
         block_definition_field(definition_offset, BLOCK_DEFINITION_END_CURSOR)?,
     )?;
     set_state_field(state_offset, STATE_CURRENT_FRAME, block_frame)?;
-    set_state_field(state_offset, STATE_TRANSIENT_BASE, unsafe { ARENA_CURSOR })?;
+    set_state_field(state_offset, STATE_TRANSIENT_BASE, legacy_arena_cursor())?;
     let super_name = write_bytes_record(TAG_STRING, b"super")?;
     assign_scope(state_offset, super_name, super_definition)
 }

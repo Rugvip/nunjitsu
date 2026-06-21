@@ -16,6 +16,7 @@ use core::ptr::{addr_of, addr_of_mut, read_unaligned, write_unaligned};
 use core::slice;
 
 include!("constants.rs");
+include!("model/layout.rs");
 include!("runtime/abi.rs");
 include!("runtime/templates.rs");
 include!("runtime/macros.rs");
