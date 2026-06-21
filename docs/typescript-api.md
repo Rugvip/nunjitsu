@@ -13,6 +13,10 @@ const engine = await createEngine({
     },
   },
   workerPool: { minWorkers: 1, maxWorkers: 4 },
+  memory: {
+    slots: 1_000_000,
+    sourceCodeUnits: 16_000_000,
+  },
 });
 
 try {
@@ -37,6 +41,8 @@ Public API design may refine names while preserving these contracts:
 
 - `createEngine` initializes the compiled Wasm module and minimum worker pool.
 - Engine-level loaders and capabilities are immutable after creation.
+- Engine-level fixed-memory capacities are immutable after creation. Omitted
+  fields use a balanced default profile.
 - `render` resolves to one string or rejects without returning a partial value.
 - `renderStream` returns a Web `ReadableStream<string>` with pull-based
   backpressure and may error after emitting earlier chunks.
@@ -85,8 +91,9 @@ Render-local capabilities, if present in context, use a render-local namespace
 and expire with that render. They do not alter global registrations.
 
 Host callbacks may be asynchronous. They receive decoded safe values, not raw
-arena offsets, and their results are validated and encoded before evaluation
-resumes. Callbacks and loaders are trusted application code.
+slot indices or string handles. Their results are encoded directly into
+ABI-reserved shared slots and typed ranges, then validated by Rust before
+evaluation resumes. Callbacks and loaders are trusted application code.
 
 `filters`, `tests`, and callable `globals` are immutable name-to-function
 records on `EngineOptions`. A filter receives its input separately from its
@@ -109,11 +116,33 @@ record of intermediate sections that appeared. Neither schema exposes parser
 hooks or internal syntax records.
 
 Each configured name receives a stable numeric engine-lifetime identity. The
-name tables are copied into each render arena so Rust resolves syntax before it
-yields a numeric request. The main thread validates the request category and
-identity, invokes exactly one registered callback, copies the result into the
-arena, and resumes the recorded expression continuation. Capability calls are
-charged against the per-render `capabilityCalls` limit.
+name tables are encoded into fixed slots and member ranges so Rust resolves
+syntax before it yields a numeric request. The main thread validates the
+request category and identity, invokes exactly one registered callback, writes
+the result into reserved shared ranges, and resumes the recorded expression
+continuation. Capability calls are charged against the per-render
+`capabilityCalls` limit.
+
+## Fixed worker memory
+
+`EngineOptions.memory` exposes immutable advanced capacity overrides for each
+worker. The stable conceptual fields are repeated slot count, UTF-16 source and
+input code units, members/indices, lazy string operations, string queries, and
+output range descriptors. Exact names remain part of the typed API and must be
+documented in units rather than as an undifferentiated byte budget.
+
+Worker creation validates the complete layout, allocates one shared
+`WebAssembly.Memory` at its final size, and passes the same initial and maximum
+page count. Capacity exhaustion fails the render with a resource-limit error;
+the engine does not grow or silently replace the memory. Per-render resource
+limits may be lower than these capacities but cannot increase them.
+
+The worker retains original JavaScript strings in a render-local table. Wasm
+uses deterministic numeric handles and UTF-16 ranges, submits lazy string
+operations, and emits output range descriptors. Buffered rendering joins those
+ranges at completion; streaming rendering drains the same circular descriptor
+array under backpressure. All handles and retained strings are discarded when
+the render finishes, fails, or is cancelled.
 
 ## Source and build constraints
 

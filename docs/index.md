@@ -9,7 +9,7 @@ constraints, and cross-cutting decisions belong here.
 | Area | Document | Scope |
 | --- | --- | --- |
 | System design | [Architecture](architecture.md) | Components, ownership, render lifecycle, and repository boundaries |
-| Execution core | [Runtime and memory](runtime-and-memory.md) | Workers, Wasm ABI, arena layout, parsing, evaluation, and reclamation |
+| Execution core | [Runtime and memory](runtime-and-memory.md) | Workers, Wasm ABI, fixed memory layout, parsing, evaluation, and reclamation |
 | Trust boundary | [Security](security.md) | Threat model, safe values, capabilities, loaders, and resource limits |
 | Compatibility | [Nunjucks compatibility](compatibility.md) | v3.2.4 contract, intentional deviations, and attribution |
 | Host API | [TypeScript API](typescript-api.md) | Engine lifecycle, rendering, streams, packaging, and source constraints |

@@ -19,18 +19,20 @@ Nunjitsu cannot make an arbitrary callback safe.
 
 ## Safe value boundary
 
-Template context is copied into the render arena. Templates never receive a
-live JavaScript object proxy.
+Template context is validated and encoded into reserved slots and typed ranges
+in the worker's fixed shared memory. Templates never receive a live JavaScript
+object proxy.
 
-Repeated references to the same non-cyclic array or record are copied once per
-render and retain alias identity inside the arena. This supports strict
+Repeated references to the same non-cyclic array or record are encoded once per
+render and retain alias identity through slot indices. This supports strict
 `sameas` behavior without retaining or exposing the original host object.
 
 The portable value model consists of:
 
 - `undefined` and `null`;
 - booleans and JavaScript-number-compatible numeric values;
-- UTF-8 strings and explicitly marked safe strings;
+- render-local host string handles with validated UTF-16 ranges, including
+  explicitly marked safe strings;
 - arrays;
 - plain own-key records; and
 - explicit opaque capability handles.
@@ -41,9 +43,10 @@ a registered capability. Property access operates only on the copied safe
 representation. Security takes precedence where this differs from Nunjucks
 behavior on arbitrary live JavaScript objects.
 
-Encoders must bound nesting, element counts, key sizes, string sizes, and total
-bytes while copying input. A rejected input must not leave a partially usable
-render in the worker.
+Encoders must bound nesting, slot and member counts, key sizes, UTF-16 code
+units, host string operations, and submitted ranges while encoding input. Rust
+must validate and freeze the host-written cursors before using them. A rejected
+input must not leave a partially usable render in the worker.
 
 ## Capabilities
 
@@ -96,7 +99,8 @@ The profile must account for at least:
 
 - evaluator work units;
 - parser, expression, call, include, and inheritance nesting;
-- arena bytes and collection sizes;
+- fixed-pool slots, UTF-16 code units, members, operations, queries, and
+  collection sizes;
 - output bytes;
 - loader and capability calls; and
 - outstanding asynchronous work.
@@ -105,13 +109,13 @@ An `AbortSignal` or deadline complements deterministic accounting but does not
 replace it. Exceeding a limit, cancellation, a callback failure, or a malformed
 ABI response must all terminate the render and run full cleanup.
 
-Nunjucks-compatible regular-expression replacement executes synchronously in
-the isolated render worker through a range-validated numeric Wasm import. This
-preserves JavaScript `RegExp` flags, captures, and replacement syntax without
-granting templates a host capability. Because backtracking cost is not
-predictable from input size, callers accepting untrusted regex literals must
-provide an `AbortSignal` with an application deadline; cancellation terminates
-and recycles the affected worker.
+Nunjucks-compatible regular-expression replacement is a trusted lazy string
+operation in the isolated render worker's host graph. This preserves JavaScript
+`RegExp` flags, captures, and replacement syntax without granting templates a
+user-defined capability. Because backtracking cost is not predictable from
+input size, callers accepting untrusted regex literals must provide an
+`AbortSignal` with an application deadline; cancellation terminates and
+recreates the affected worker.
 
 Choosing unlimited limits is an explicit opt-out from denial-of-service
 protection. The API documentation must state that clearly.

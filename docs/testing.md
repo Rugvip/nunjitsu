@@ -4,12 +4,12 @@
 
 Nunjitsu uses a small number of thorough suites with clear ownership:
 
-1. **Rust unit and property tests** cover lexing, parsing, safe values, arena
-   records, evaluator semantics, budgets, and cleanup. They run natively where
-   possible for speed.
+1. **Rust unit and property tests** cover lexing, parsing, safe values, fixed
+   slots and typed ranges, evaluator semantics, budgets, and cleanup. They run
+   natively where possible for speed.
 2. **Wasm ABI tests** compile the production artifact and exercise versioning,
-   offset validation, state transitions, continuation handling, cancellation,
-   and malformed host data.
+   pool and range validation, type masks, state transitions, continuation
+   handling, cancellation, and malformed host data.
 3. **Shared compatibility tests** execute the attributed Nunjucks v3.2.4 corpus
    directly against Rust behavior and through the TypeScript engine.
 4. **TypeScript source tests** run erasable `.ts` directly on the minimum
@@ -66,7 +66,8 @@ Security tests must cover behavior, not just successful isolation:
 - filesystem traversal and canonical-root enforcement;
 - evaluator, nesting, output, memory, and capability budgets;
 - cancellation at parser, evaluator, output, and callback yield points;
-- stale continuation responses and render-epoch offsets;
+- stale continuation responses, slot indices, string handles, and render-epoch
+  ranges;
 - worker cleanup after callback failure or malformed ABI data; and
 - explicit unlimited-limit opt-out behavior.
 
@@ -75,13 +76,15 @@ render assigned to the same worker.
 
 ## Fuzzing and property testing
 
-The lexer, parser, heterogeneous record decoder, safe-value decoder, and raw ABI
-are fuzzing targets. Useful invariants include:
+The lexer, parser, slot/range decoder, safe-value decoder, string command/query
+decoder, and raw ABI are fuzzing targets. Useful invariants include:
 
 - malformed input never causes out-of-bounds memory access or panic across the
   host boundary;
-- every accepted record round-trips through its canonical encoding;
-- cleanup invalidates all prior offsets and continuations; and
+- every accepted slot, range, and string operation round-trips through its
+  canonical encoding;
+- cleanup invalidates all prior indices, ranges, string handles, and
+  continuations;
 - resource accounting is monotonic and cannot overflow into a lower value.
 
 Fuzz regressions become permanent focused tests.

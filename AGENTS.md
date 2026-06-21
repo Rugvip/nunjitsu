@@ -28,16 +28,25 @@ implementation and documentation aligned with the architecture in
   memory, runs exactly one render at a time, and remains reserved across async
   capability yields.
 - Cross the TypeScript/Rust boundary through the versioned raw Wasm ABI. Pass
-  primitive numbers and validated offset/length records, not JavaScript object
-  bindings.
-- Store render data in one heterogeneous byte arena per worker. Use bounded
-  integer offsets, explicit record tags and lengths, and render epochs. Never
-  persist or expose an arena offset after cleanup.
-- Parse and evaluate ordinary nodes as a stream. Retain compact AST records
+  primitive numbers, validated slot indices, and validated typed ranges, not
+  JavaScript object bindings.
+- Allocate each worker's shared Wasm memory once from immutable configured
+  capacities. Do not call `memory.grow` during a render or retain a growable
+  fallback allocator.
+- Put singleton control and render state in a fixed prefix. Store repeated
+  entities in one append-only fixed-width slot array, use slot index zero as
+  null, and reset its cursor only when the render ends.
+- Use a 32-bit slot header with an 8-bit type ID and 24 category/state mask
+  bits. Slots contain indices, ranges, numeric values, types, and flags only;
+  never inline text or variable-length payloads.
+- Store UTF-16 input in fixed shared arrays and variable-size relationships in
+  fixed member/index arrays. Represent strings as deterministic render-local
+  host handles plus UTF-16 ranges.
+- Parse and evaluate ordinary nodes as a stream. Retain compact AST slots
   only for bodies whose semantics require deferred or repeated evaluation.
-- Never retain template sources, dependency graphs, AST, values, or output
-  between renders. Reset render state wholesale. Recycle workers that exceed
-  the retained-memory threshold instead of pinning outlier allocations.
+- Never retain template sources, dependency graphs, AST, values, host string
+  handles, or output descriptors between renders. Reset all logical cursors
+  and invalidate the render epoch wholesale.
 - Treat template source as fully untrusted. Copy context into the safe value
   model; do not expose prototypes, getters, arbitrary functions, or live host
   objects. Host behavior requires explicit capability handles.
@@ -106,20 +115,27 @@ architectural reason.
 
 ## Rust and Wasm rules
 
-- Keep parser, evaluator, arena, values, limits, and ABI in separate logical
-  modules within the one crate. Domain logic must remain natively testable where
-  practical.
+- Keep parser, evaluator, memory layout, values, limits, and ABI in separate
+  logical modules within the one crate. Domain logic must remain natively
+  testable where practical.
 - Treat `expression/mod.rs`, `template/mod.rs`, and `wasm/mod.rs` as assembly
   points. Keep implementations in responsibility-focused included files rather
   than widening internal visibility solely to create more Rust modules.
 - Keep the Wasm export surface small, numeric, versioned, and validated.
-- Treat all host-provided offsets, lengths, tags, continuation IDs, and state
-  transitions as untrusted input.
-- Prefer arena offsets and explicit indices over pointer-linked object graphs.
-  Do not expose Rust layout as an accidental ABI.
-- Avoid `unsafe`. When it is necessary for measured arena or ABI behavior,
-  document the invariant at the unsafe boundary and add focused tests that
-  exercise invalid inputs.
+- Treat all host-provided slot indices, ranges, type IDs, masks, continuation
+  IDs, cursors, and state transitions as untrusted input.
+- Prefer fixed-layout slots and explicit indices over byte-record envelopes or
+  pointer-linked object graphs. Keep the layout versioned and assert every
+  public size, alignment, pool boundary, and field width.
+- Allocate repeated slots monotonically and never reuse one within a render.
+  Large singleton state belongs in the fixed prefix rather than inflating the
+  repeated slot width; repeated entities must not use extension slots.
+- Keep template and value text as UTF-16 ranges. Lazy string operations belong
+  to the worker host's render-local string graph; Wasm yields only when control
+  flow requires a resolved scalar, range, or code-unit sequence.
+- Avoid `unsafe`. When it is necessary for measured memory-layout or ABI
+  behavior, document the invariant at the unsafe boundary and add focused tests
+  that exercise invalid inputs.
 - Account for work and memory before performing it. Use checked arithmetic for
   sizes, offsets, counters, and limits.
 - Run formatting, linting, native tests, Wasm boundary tests, and relevant fuzz

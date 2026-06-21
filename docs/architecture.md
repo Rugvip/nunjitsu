@@ -59,7 +59,7 @@ reserved while that render is suspended on a trusted host capability.
 
 ### Rust/Wasm engine
 
-One Rust crate under `rust/` contains the parser, evaluator, arena, value model,
+One Rust crate under `rust/` contains the parser, evaluator, fixed memory model,
 resource accounting, and raw Wasm ABI. Logical modules must keep domain logic
 separate from ABI handling even though they live in one crate. The same crate
 must remain testable natively where behavior does not depend on Wasm.
@@ -71,10 +71,10 @@ The Rust source is organized by responsibility within those logical modules:
 - `wasm/runtime/` owns the ABI and suspended render control flow;
 - `wasm/evaluation/` owns continuations, expression evaluation, and output;
 - `wasm/filters/` groups built-in filters by behavior; and
-- `wasm/model/` owns registries, values, and arena storage.
+- `wasm/model/` owns registries, values, slots, and typed storage arrays.
 
 The three `mod.rs` files are assembly points. Their included source files share
-the parent module's privacy boundary, which keeps tightly coupled arena and
+the parent module's privacy boundary, which keeps tightly coupled storage and
 evaluator internals private without concentrating unrelated responsibilities in
 single large files.
 
@@ -84,26 +84,29 @@ A render is an isolated unit of ownership:
 
 1. The TypeScript engine assigns an idle worker and creates a render-local
    capability namespace.
-2. Context data and the entry template are encoded into that worker's shared
-   memory. Named templates are obtained only through explicitly configured
-   loaders.
+2. The host encodes context slots and UTF-16 entry-template code units directly
+   into reserved ranges of that worker's fixed shared memory. Rust validates
+   and freezes the submitted cursors. Named templates are obtained only through
+   explicitly configured loaders and follow the same ownership transfer.
 3. Rust parses and evaluates ordinary nodes as a stream. It retains compact AST
-   records only for bodies that must execute later or repeatedly, such as
+   slots only for bodies that must execute later or repeatedly, such as
    macros, blocks, loops, and inheritance overrides.
-4. A loader or host capability request yields an explicit evaluator
+4. A loader, host capability, or string query yields an explicit evaluator
    continuation. Loader requests carry the current source's canonical identity
    so relative dependencies resolve correctly through deferred frames. The
    worker remains reserved, and the main thread resumes it after encoding the
    response.
-5. Buffered rendering resolves to one string. Streaming rendering exposes
-   bounded chunks with backpressure.
-6. Completion, failure, or cancellation invalidates every render-local offset
-   and resets the arena wholesale. Template sources, AST records, context
-   values, evaluation frames, and output are never cached across renders.
+5. Wasm emits fixed-size descriptors containing a host string handle and UTF-16
+   range through a circular output array. Buffered rendering joins the drained
+   ranges; streaming rendering exposes them with backpressure.
+6. Completion, failure, or cancellation invalidates every render-local slot,
+   range, continuation, and host string handle, then resets all logical cursors
+   wholesale. Template sources, AST slots, context values, evaluation frames,
+   and output descriptors are never cached across renders.
 
-The worker, Wasm instance, and normal allocation capacity may be retained. A
-worker whose memory exceeds a configurable retained-memory threshold is
-recycled after the render so an outlier cannot pin its high-water allocation.
+The worker, Wasm instance, and configured fixed capacity may be retained. Its
+memory is allocated once when the worker is created and does not grow in
+response to a render.
 
 ## Repository boundary
 
