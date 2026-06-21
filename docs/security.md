@@ -17,12 +17,12 @@ Trusted code outside the guarantee includes:
 - custom filters and globals; and
 - Nunjitsu and its production dependencies.
 
-The lockfile-pinned Nunjucks 3.2.4 parser is therefore part of the trusted
-computing base. Its mutable parser objects never cross into evaluation: an
-exhaustive converter copies only allowlisted primitive and child-node fields
-into frozen data-only nodes, rejects every other value, and validates all field
-shapes before any node can execute. The evaluator only uses trusted field
-accessors over that private validated tree.
+The production parser and standard library are native project code with no
+runtime dependencies. The streaming scanner and closed expression parser can
+construct only the supported frozen data-only node variants. No foreign parser
+objects or host filter implementation crosses into evaluation. Nunjucks remains
+a development-only compatibility oracle and benchmark baseline outside the
+production trust boundary.
 
 Strings, numbers, booleans, nulls, arrays, and record data supplied through
 trusted application code may contain hostile data. Hostile JavaScript proxies
@@ -111,8 +111,7 @@ or encoded-output accounting.
 
 Interpreter nesting is checked at every statement and expression evaluation
 checkpoint. This bounds recursive evaluator frames; it does not replace source
-size and AST-node limits or claim control over the trusted Nunjucks parser's
-own native call stack.
+size and parser-side AST-node limits.
 
 Regular-expression literals preserve JavaScript-compatible behavior. A hostile
 pattern can cause excessive backtracking between interpreter checkpoints;

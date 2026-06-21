@@ -47,18 +47,22 @@ are not part of the template execution boundary.
 
 ### Parser
 
-The parser uses the lockfile-pinned Nunjucks 3.2.4 grammar as trusted input to a
-strict conversion boundary. It does not invoke a JavaScript-language parser,
-generate JavaScript, or evaluate source. The converter copies allowlisted nodes
-into a complete immutable AST containing only data.
+The native parser streams over template text, tokenizes expressions, and uses a
+closed precedence parser for the supported grammar. It does not invoke
+Nunjucks, a JavaScript-language parser, generated JavaScript, or host behavior.
+It constructs frozen discriminated-union object nodes with stable direct
+properties and child references. There is no generic foreign-node conversion
+boundary or packed numeric arena.
 
 Default variables use Backstage's `${{` and `}}` delimiters. Cookiecutter mode
 uses `{{` and `}}` with the supported Jinja compatibility behavior. Block and
 comment delimiters remain `{% ... %}` and `{# ... #}`.
 
-The complete inline source is parsed before execution. Template-loading nodes
-(`include`, `import`, `from`, and `extends`) and extension nodes are rejected.
-The AST is owned by one render and discarded when that render ends.
+The complete inline source is parsed before execution. The parser charges the
+AST-node resource limit as it creates each node, rejects template-loading tags
+(`include`, `import`, `from`, and `extends`) and extensions, and freezes every
+node and child collection. The AST is owned by one render and discarded when
+that render ends.
 
 ### Interpreter
 

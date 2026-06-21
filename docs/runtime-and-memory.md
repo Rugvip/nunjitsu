@@ -10,13 +10,16 @@ imports, or a JavaScript parser to execute expressions.
 ## Complete data-only AST
 
 Each inline source is fully parsed before execution. Template and expression
-nodes are closed discriminated unions containing only primitives, child nodes,
-and arrays of nodes. They cannot contain callbacks, descriptors, host values,
-or executable closures.
+nodes are frozen object-based discriminated unions containing only primitives,
+direct child references, and frozen arrays of nodes. Stable variants expose
+direct typed properties rather than generic field maps or packed storage. They
+cannot contain callbacks, descriptors, host values, or executable closures.
 
-The parser validates every node field shape across the complete tree before
-returning it. Evaluator field access trusts that private immutable result and
-does not repeat structural validation while executing loops.
+The native parser can construct only closed node variants and freezes each one
+before returning it. Evaluator property access trusts that private immutable
+result and does not repeat structural validation while executing loops. Node
+creation charges the AST limit immediately, rather than traversing an
+unbounded tree after parsing.
 
 Full parsing reports syntax errors in inactive branches and unused macros.
 Template-loading and extension nodes are rejected. No AST or source survives a
@@ -63,8 +66,8 @@ callable.
 ## Output
 
 Evaluation appends string slices to a render-owned array and joins it once at
-the end. Automatic escaping is disabled to match Backstage. Explicit Nunjucks
-filters such as `escape` still provide their documented behavior. Rendered
+the end. Automatic escaping is disabled to match Backstage. Native
+standard-library filters such as `escape` still provide their documented behavior. Rendered
 output remains attacker-controlled and is not a general HTML, SQL, or shell
 sanitizer.
 

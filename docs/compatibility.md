@@ -8,6 +8,11 @@ The compatibility target is the behavior exposed by Backstage's
 The Backstage renderer processes inline strings rather than exposing the full
 Nunjucks environment API.
 
+Nunjucks is retained only as a development dependency for output-equivalent
+benchmarks and compatibility verification. Production source does not import
+or package it: template scanning, expression parsing, filters, and tests are
+implemented by the closed native TypeScript runtime.
+
 Nunjitsu targets:
 
 - `${{ ... }}` interpolation, `{% ... %}` statements, and `{# ... #}` comments;

@@ -28,6 +28,10 @@ implementation and documentation aligned with the architecture in
 - Parse each complete source into an immutable, data-only AST before executing
   it. AST nodes must not contain functions, host objects, property descriptors,
   or executable closures.
+- Represent AST variants as frozen plain object nodes with stable direct typed
+  properties and direct child references. Do not add generic field bags,
+  packed numeric arenas, or ArrayBuffer storage without a measured end-to-end
+  benefit that justifies the additional evaluator complexity.
 - Do not use `eval`, `Function`, constructor-derived equivalents, `node:vm`,
   generated JavaScript, dynamic import, or a JavaScript parser to execute
   template syntax.
@@ -127,6 +131,9 @@ Do not create additional packages without a documented architectural reason.
   `toString`, iterators, or methods on unvalidated objects.
 - Treat every production dependency imported by parser or runtime code as part
   of the trusted computing base and review it accordingly.
+- Keep the production parser and standard library dependency-free. Nunjucks is
+  a development-only compatibility oracle and benchmark baseline and must not
+  be imported by `src/`.
 - Maintain automated static checks for prohibited dynamic execution and host
   reflection in parser and interpreter modules.
 - Add attack regression tests before fixing any discovered interpreter escape.
