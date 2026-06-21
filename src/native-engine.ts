@@ -1,8 +1,14 @@
 import type { TemplateCapabilities } from './capabilities.ts';
 import { NunjitsuLimitError, normalizeRenderLimits, type RenderLimits } from './limits.ts';
-import { evaluateTemplate } from './runtime/evaluator.ts';
+import { evaluateRuntimeTemplate } from './runtime/evaluator.ts';
 import { createRuntimeHost } from './runtime/host.ts';
-import type { TemplateContext } from './values.ts';
+import {
+  copyRuntimeContext,
+  copyRuntimeValue,
+  RuntimeRecord,
+  withRuntimeContextPath,
+} from './runtime/value.ts';
+import type { TemplateContext, TemplateValue } from './values.ts';
 
 /** Configures an immutable Backstage-compatible Nunjitsu engine. */
 export interface EngineOptions extends TemplateCapabilities {
@@ -20,15 +26,42 @@ export interface RenderOptions {
   limits?: Partial<RenderLimits>;
 }
 
+/**
+ * An immutable engine-owned copy of template context data.
+ *
+ * The snapshot retains copied values until it becomes unreachable. It can only
+ * be rendered by the engine that created it and never observes later host
+ * object mutation.
+ */
+export interface PreparedContext {
+  /**
+   * Returns a structurally shared snapshot with one nested value replaced.
+   *
+   * Missing record segments are created. Existing non-record segments,
+   * reserved names, accessors, behavior, and unsupported values are rejected.
+   */
+  withPath(path: readonly string[], value: TemplateValue): PreparedContext;
+}
+
 /** An immutable synchronous template engine. */
 export interface Engine {
+  /** Copies and validates context data once for reuse across renders. */
+  prepareContext(context?: TemplateContext): PreparedContext;
   /** Parses and renders one complete inline template source. */
   render(
     source: string,
-    context?: TemplateContext,
+    context?: TemplateContext | PreparedContext,
     options?: RenderOptions,
   ): string;
 }
+
+/** Internal ownership and value state for one opaque prepared context. */
+interface PreparedContextState {
+  readonly owner: object;
+  readonly value: RuntimeRecord;
+}
+
+const preparedContextStates = new WeakMap<object, PreparedContextState>();
 
 /** A structured parse or evaluation failure from the closed interpreter. */
 export class NunjitsuRenderError extends Error {
@@ -44,18 +77,27 @@ export function createNativeEngine(options: EngineOptions = {}): Engine {
   const trimBlocks = options.trimBlocks ?? false;
   const lstripBlocks = options.lstripBlocks ?? false;
   const host = createRuntimeHost(options);
+  const contextOwner = Object.freeze({});
+  const emptyContext = new RuntimeRecord([]);
 
   return Object.freeze({
+    prepareContext(context: TemplateContext = {}): PreparedContext {
+      return createPreparedContext(contextOwner, copyRuntimeContext(context));
+    },
     render(
       source: string,
-      context: TemplateContext = {},
+      context?: TemplateContext | PreparedContext,
       renderOptions: RenderOptions = {},
     ): string {
       if (typeof source !== 'string') {
         throw new TypeError('Template source must be a string');
       }
       try {
-        return evaluateTemplate(source, context, {
+        return evaluateRuntimeTemplate(source, resolveRuntimeContext(
+          contextOwner,
+          context,
+          emptyContext,
+        ), {
           cookiecutterCompat,
           trimBlocks,
           lstripBlocks,
@@ -75,4 +117,38 @@ export function createNativeEngine(options: EngineOptions = {}): Engine {
       }
     },
   });
+}
+
+function createPreparedContext(
+  owner: object,
+  value: RuntimeRecord,
+): PreparedContext {
+  const prepared = Object.freeze({
+    withPath(path: readonly string[], publicValue: TemplateValue): PreparedContext {
+      return createPreparedContext(
+        owner,
+        withRuntimeContextPath(value, path, copyRuntimeValue(publicValue)),
+      );
+    },
+  });
+  preparedContextStates.set(prepared, { owner, value });
+  return prepared;
+}
+
+function resolveRuntimeContext(
+  owner: object,
+  context: TemplateContext | PreparedContext | undefined,
+  emptyContext: RuntimeRecord,
+): RuntimeRecord {
+  if (context === undefined) {
+    return emptyContext;
+  }
+  const state = preparedContextStates.get(context);
+  if (state) {
+    if (state.owner !== owner) {
+      throw new TypeError('Prepared context belongs to a different engine');
+    }
+    return state.value;
+  }
+  return copyRuntimeContext(context as TemplateContext);
 }

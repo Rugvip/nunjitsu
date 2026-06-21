@@ -19,4 +19,6 @@ test('renders synchronously through the CommonJS package entry', () => {
     engine.render('global ${{ value() }}'),
     'global works',
   );
+  const context = engine.prepareContext({ value: 'prepared' });
+  assert.equal(engine.render('CommonJS ${{ value }}', context), 'CommonJS prepared');
 });

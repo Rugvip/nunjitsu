@@ -19,13 +19,27 @@ const engine = createEngine({
 const output = engine.render(templateSource, {
   values: { title: 'Nunjitsu' },
 });
+
+const prepared = engine.prepareContext({
+  parameters,
+  steps: {},
+});
+const next = prepared.withPath(
+  ['steps', stepId],
+  { output: stepOutput },
+);
+const laterOutput = engine.render(laterTemplateSource, next);
 ```
 
 The public contracts are:
 
 - `createEngine(options): Engine` validates immutable configuration;
+- `engine.prepareContext(context?): PreparedContext` copies context data once
+  into an opaque engine-owned snapshot;
+- `preparedContext.withPath(path, value): PreparedContext` returns a new
+  structurally shared snapshot with one copied update;
 - `engine.render(source, context?, options?): string` parses and renders one
-  complete inline source;
+  complete inline source using either a plain or prepared context;
 - filters and globals are synchronous and immutable for the engine lifetime;
 - render options carry cooperative resource limits; and
 - interpolation is never automatically escaped, matching Backstage.
@@ -42,6 +56,23 @@ filesystem or template-loading API.
 Context values are JSON-compatible primitives, arrays, and plain records.
 Runtime validation copies accepted values before evaluation. Unsupported
 objects, behavior, cycles, accessors, and reserved keys are rejected.
+
+A plain context is copied on every render and remains the convenient one-shot
+API. A prepared context retains only its closed copied value graph and can be
+reused without inspecting the host input again. Prepared contexts are bound to
+the engine that created them; passing one to another engine is rejected.
+
+`withPath` is the explicit update mechanism for workflow data such as
+`steps.<id>.output`. It copies and validates the replacement value, copies only
+the records along the updated path, and shares all unchanged closed values.
+Missing record segments are created, while traversing an existing non-record
+value fails. The original snapshot remains unchanged. Temporary `each`, secret,
+and redacted variants should be derived snapshots rather than mutations.
+
+Prepared snapshots become eligible for garbage collection when the caller
+releases them. Applications should keep secret-bearing snapshots scoped to one
+task. JavaScript does not provide reliable memory zeroization, so dropping a
+snapshot is not a secret-erasure guarantee.
 
 ## Capability configuration
 

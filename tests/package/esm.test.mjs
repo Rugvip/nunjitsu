@@ -15,4 +15,6 @@ test('renders synchronously through the ESM package entry', () => {
     engine.render('ESM ${{ value | upper }}', { value: 'works' }),
     'ESM WORKS',
   );
+  const context = engine.prepareContext({ value: 'prepared' });
+  assert.equal(engine.render('ESM ${{ value | upper }}', context), 'ESM PREPARED');
 });

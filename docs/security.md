@@ -59,6 +59,13 @@ sets, weak collections, promises, errors, and other exotic objects are
 rejected. Cycles and excessive depth are rejected. Repeated non-cyclic aliases
 may retain identity through internal graph references.
 
+Prepared contexts retain this copied graph across renders without retaining the
+host objects it came from. They are opaque, bound to one engine, and immutable.
+Explicit path updates pass the replacement through the same copier and derive a
+new snapshot; template execution cannot commit assignments into a snapshot.
+This prevents later host mutation, iteration overlays, and redacted views from
+changing one another.
+
 The names `constructor`, `prototype`, and `__proto__` are rejected at every
 ingress and syntax location and always fail closed during lookup. Prototype
 pollution of `Object.prototype` cannot affect interpreter lookup because host

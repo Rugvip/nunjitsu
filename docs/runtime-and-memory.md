@@ -33,6 +33,13 @@ JavaScript prototypes or accessed through `object[key]` inside the interpreter.
 `constructor`, `prototype`, and `__proto__` are reserved throughout parsing,
 copying, scopes, lookup, assignment, registries, and callback results.
 
+One-shot renders discard their copied value graph after rendering. Callers that
+render several sources against the same data may explicitly prepare an opaque,
+engine-bound context snapshot. Derived path updates copy the new public value
+and the map-backed records on that path while structurally sharing unchanged
+closed values. Snapshots are immutable: evaluator scopes and template
+assignments never update them.
+
 ## Scopes and calls
 
 Lexical scopes are engine-owned frames with private maps and explicit parent

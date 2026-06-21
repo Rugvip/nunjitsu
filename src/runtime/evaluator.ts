@@ -101,9 +101,18 @@ export function evaluateTemplate(
   context: TemplateContext,
   options: EvaluateOptions,
 ): string {
+  return evaluateRuntimeTemplate(source, copyRuntimeContext(context), options);
+}
+
+/** Parses and evaluates one inline source with an already copied context. */
+export function evaluateRuntimeTemplate(
+  source: string,
+  context: RuntimeRecord,
+  options: EvaluateOptions,
+): string {
   const evaluator = new Evaluator(options);
   const ast = evaluator.parse(source);
-  return evaluator.render(ast, copyRuntimeContext(context));
+  return evaluator.render(ast, context);
 }
 
 class Evaluator {

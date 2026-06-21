@@ -193,10 +193,11 @@ function createRunner(
 ): BenchmarkRunner {
   if (implementation === 'nunjitsu') {
     const engine = createEngine();
+    const context = engine.prepareContext(workload.context);
     return {
       render() {
         return workload.sources
-          .map(source => engine.render(source, workload.context))
+          .map(source => engine.render(source, context))
           .join('');
       },
     };

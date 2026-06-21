@@ -90,6 +90,16 @@ export class RuntimeRecord {
   entries(): IterableIterator<[string, RuntimeValue]> {
     return this.#entries.entries();
   }
+
+  /** Returns a derived record with one allowed own entry replaced. */
+  with(name: string, value: RuntimeValue): RuntimeRecord {
+    if (isReservedName(name)) {
+      throw new TypeError(`Template record key ${name} is reserved`);
+    }
+    const entries = new Map(this.#entries);
+    entries.set(name, value);
+    return new RuntimeRecord(entries);
+  }
 }
 
 /** An inert regular-expression literal interpreted only by approved built-ins. */
@@ -140,6 +150,27 @@ export function copyRuntimeContext(
     throw new TypeError('Template context must be a plain record');
   }
   return copied;
+}
+
+/** Derives a context by replacing one nested path with an already copied value. */
+export function withRuntimeContextPath(
+  context: RuntimeRecord,
+  path: readonly string[],
+  value: RuntimeValue,
+): RuntimeRecord {
+  if (!Array.isArray(path) || path.length === 0) {
+    throw new TypeError('Prepared context update path must be a non-empty array');
+  }
+  const names = path.map(name => {
+    if (typeof name !== 'string') {
+      throw new TypeError('Prepared context update path must contain only strings');
+    }
+    if (isReservedName(name)) {
+      throw new TypeError(`Template record key ${name} is reserved`);
+    }
+    return name;
+  });
+  return replaceRuntimeContextPath(context, names, 0, value);
 }
 
 /** Copies an internal value for a trusted host callback without leaking internals. */
@@ -296,6 +327,32 @@ function validateArrayKeys(value: readonly TemplateValue[]): void {
       throw new TypeError('Template values cannot contain accessors');
     }
   }
+}
+
+function replaceRuntimeContextPath(
+  context: RuntimeRecord,
+  path: readonly string[],
+  index: number,
+  value: RuntimeValue,
+): RuntimeRecord {
+  const name = path[index];
+  if (name === undefined) {
+    throw new TypeError('Prepared context update path cannot contain undefined');
+  }
+  if (index === path.length - 1) {
+    return context.with(name, value);
+  }
+  const existing = context.get(name);
+  if (existing !== undefined && !(existing instanceof RuntimeRecord)) {
+    throw new TypeError(`Prepared context path ${path.slice(0, index + 1).join('.')} is not a record`);
+  }
+  const child = existing instanceof RuntimeRecord
+    ? existing
+    : new RuntimeRecord([]);
+  return context.with(
+    name,
+    replaceRuntimeContextPath(child, path, index + 1, value),
+  );
 }
 
 function isArrayIndex(value: string, length: number): boolean {

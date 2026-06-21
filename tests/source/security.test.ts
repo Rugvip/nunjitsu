@@ -10,6 +10,7 @@ import {
   copyRuntimeValue,
   RuntimeArray,
   RuntimeRecord,
+  withRuntimeContextPath,
 } from '../../src/runtime/value.ts';
 
 test('copies only plain data without invoking accessors or host behavior', () => {
@@ -43,6 +44,7 @@ test('copies only plain data without invoking accessors or host behavior', () =>
 });
 
 test('reserves prototype gadget names across values, syntax, and scopes', () => {
+  const prepared = createEngine().prepareContext();
   for (const name of ['constructor', 'prototype', '__proto__']) {
     const context = Object.create(null) as Record<string, string>;
     context[name] = 'blocked';
@@ -51,6 +53,7 @@ test('reserves prototype gadget names across values, syntax, and scopes', () => 
     const scope = new RuntimeScope();
     assert.throws(() => scope.set(name, 'blocked'), /is reserved/);
     assert.equal(scope.get(name), undefined);
+    assert.throws(() => prepared.withPath(['steps', name], 'blocked'), /is reserved/);
   }
 
   const engine = createEngine();
@@ -63,6 +66,35 @@ test('reserves prototype gadget names across values, syntax, and scopes', () => 
   ]) {
     assert.throws(() => engine.render(source), /reserved/);
   }
+});
+
+test('prepared context updates copy data without invoking accessors', () => {
+  let getterCalls = 0;
+  const withGetter = Object.defineProperty({}, 'secret', {
+    enumerable: true,
+    get() {
+      getterCalls += 1;
+      return 'leaked';
+    },
+  });
+  const prepared = createEngine().prepareContext({ steps: {} });
+  assert.throws(
+    () => prepared.withPath(['steps', 'unsafe'], withGetter as never),
+    /cannot contain accessors/,
+  );
+  assert.equal(getterCalls, 0);
+
+  const original = copyRuntimeContext({
+    parameters: { stable: true },
+    steps: { first: { output: 1 } },
+  });
+  const updated = withRuntimeContextPath(
+    original,
+    ['steps', 'second'],
+    copyRuntimeValue({ output: 2 }),
+  );
+  assert.equal(updated.get('parameters'), original.get('parameters'));
+  assert.notEqual(updated.get('steps'), original.get('steps'));
 });
 
 test('owns aliases and exposes only frozen null-prototype callback copies', () => {

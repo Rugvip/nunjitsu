@@ -43,7 +43,9 @@ implementation and documentation aligned with the architecture in
   capabilities the only callable values. Context functions and object methods
   are unsupported.
 - Never retain template sources, ASTs, values, or output state between renders
-  by default.
+  by default. Retain values only through an explicit caller-owned prepared
+  context snapshot; keep snapshots immutable and engine-bound, and copy every
+  update through the safe value boundary.
 - Treat template source as fully untrusted. Copy context into the safe value
   model; do not expose prototypes, getters, arbitrary functions, or live host
   objects. Host behavior requires explicit capability handles.

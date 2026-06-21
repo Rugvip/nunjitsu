@@ -41,7 +41,9 @@ value kinds; and failures must leave the next render clean.
 
 The comparison harness renders output-equivalent workloads in separate
 processes with fresh parsing on every operation. `template-files` models the
-scaffolder's independent rendering of many comment-heavy files, while
-`expressions` stresses computed runtime expressions. Callback benchmarks are
-intentionally excluded because the Backstage-compatible API is synchronous and
-callback overhead is not a separate target.
+scaffolder's independent rendering of many comment-heavy files against one
+prepared context, while `expressions` stresses computed runtime expressions.
+Context preparation is reported as setup rather than repeated rendering work.
+Callback benchmarks are intentionally excluded because the
+Backstage-compatible API is synchronous and callback overhead is not a separate
+target.

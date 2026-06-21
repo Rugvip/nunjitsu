@@ -35,8 +35,10 @@ flowchart LR
 
 `createEngine` synchronously constructs an immutable registry of filters and
 globals. `render` accepts one inline source string and returns one string.
-Nunjitsu has no loaders, filesystem access, streams, workers, Wasm modules, or
-resource to dispose.
+`prepareContext` optionally copies reusable caller data into an opaque
+engine-bound snapshot; immutable path updates derive new snapshots with
+structural sharing. Nunjitsu has no loaders, filesystem access, streams,
+workers, Wasm modules, or resource to dispose.
 
 Backstage discovers and reads files outside the renderer, applies workspace
 path policy there, and renders each text file independently. Keeping that model
@@ -71,14 +73,17 @@ JavaScript function or constructor.
 
 ## Render lifecycle
 
-1. The caller supplies inline source and a JSON-compatible context.
-2. Context input is copied and validated into the closed value graph.
+1. The caller supplies inline source and either a JSON-compatible context or an
+   explicitly retained prepared snapshot.
+2. Plain context input is copied and validated into the closed value graph;
+   prepared input reuses its already validated graph.
 3. The complete source is parsed into a data-only AST.
 4. The synchronous interpreter evaluates the AST with cooperative limits.
 5. Trusted filter and global calls receive copied JSON-compatible values, and
    their results cross the same validator.
 6. The final string is returned.
-7. The AST, scopes, values, and output state become unreachable.
+7. The AST, scopes, one-shot values, and output state become unreachable.
+   Prepared context values remain reachable only through caller-held snapshots.
 
 ## Architectural non-goals
 

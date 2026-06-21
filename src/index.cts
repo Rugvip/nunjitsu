@@ -4,6 +4,7 @@ export {
   NunjitsuRenderError,
   type Engine,
   type EngineOptions,
+  type PreparedContext,
   type RenderOptions,
 } from './native-engine.ts';
 export type {
