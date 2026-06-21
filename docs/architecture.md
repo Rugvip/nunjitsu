@@ -64,6 +64,20 @@ resource accounting, and raw Wasm ABI. Logical modules must keep domain logic
 separate from ABI handling even though they live in one crate. The same crate
 must remain testable natively where behavior does not depend on Wasm.
 
+The Rust source is organized by responsibility within those logical modules:
+
+- `expression/` owns expression syntax, arguments, atoms, and directive calls;
+- `template/` owns template boundaries, syntax scanning, and rendering helpers;
+- `wasm/runtime/` owns the ABI and suspended render control flow;
+- `wasm/evaluation/` owns continuations, expression evaluation, and output;
+- `wasm/filters/` groups built-in filters by behavior; and
+- `wasm/model/` owns registries, values, and arena storage.
+
+The three `mod.rs` files are assembly points. Their included source files share
+the parent module's privacy boundary, which keeps tightly coupled arena and
+evaluator internals private without concentrating unrelated responsibilities in
+single large files.
+
 ## Render lifecycle
 
 A render is an isolated unit of ownership:

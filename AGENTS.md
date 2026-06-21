@@ -72,7 +72,9 @@ The rationale and detailed contracts live in:
 ## Repository structure
 
 - `src/`: TypeScript public API, engine, worker host, and built-in capabilities.
-- `rust/`: the single Rust engine and Wasm ABI crate.
+- `rust/`: the single Rust engine and Wasm ABI crate. Parsing is grouped under
+  `expression/` and `template/`; `wasm/` is divided into runtime, evaluation,
+  filter, and model responsibilities.
 - `benchmarks/`: equivalent one-shot workloads and the isolated Nunjucks
   comparison harness.
 - `tests/compat/`: shared Nunjucks v3.2.4 cases, provenance, manifest, and
@@ -107,6 +109,9 @@ architectural reason.
 - Keep parser, evaluator, arena, values, limits, and ABI in separate logical
   modules within the one crate. Domain logic must remain natively testable where
   practical.
+- Treat `expression/mod.rs`, `template/mod.rs`, and `wasm/mod.rs` as assembly
+  points. Keep implementations in responsibility-focused included files rather
+  than widening internal visibility solely to create more Rust modules.
 - Keep the Wasm export surface small, numeric, versioned, and validated.
 - Treat all host-provided offsets, lengths, tags, continuation IDs, and state
   transitions as untrusted input.
