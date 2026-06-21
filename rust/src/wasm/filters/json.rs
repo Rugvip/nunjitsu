@@ -26,7 +26,7 @@ fn dump_value(value_offset: u32, spaces_offset: Option<u32>) -> Result<u32, u32>
     if cursor != output.len() {
         return Err(ERROR_INVALID_ARENA);
     }
-    Ok(output_offset)
+    finish_string_record(output_offset, TAG_STRING)
 }
 
 fn dump_indent(spaces_offset: Option<u32>) -> Result<u32, u32> {
