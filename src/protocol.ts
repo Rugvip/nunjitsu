@@ -36,6 +36,7 @@ const recordTag = {
   loadRequest: 34,
   stringValue: 36,
   safeStringValue: 37,
+  identifier: 38,
 } as const;
 
 /** The offsets and cursor for one encoded render request. */
@@ -932,11 +933,12 @@ function decodeValue(
     const result: Record<string, TemplateValue> = Object.create(null) as Record<string, TemplateValue>;
     for (let index = 0; index < count; index += 1) {
       const entry = 4 + index * 8;
-      const keyRecord = readAnyRecord(memory, view.getUint32(entry, true));
-      if (keyRecord.tag !== recordTag.string) {
-        throw new Error('Wasm returned a non-string capability record key');
-      }
-      const key = new TextDecoder('utf-8', { fatal: true }).decode(keyRecord.payload);
+      const key = decodeRecordKey(
+        memory,
+        view.getUint32(entry, true),
+        layout,
+        fixedCursors,
+      );
       result[key] = decodeValue(
         memory,
         view.getUint32(entry + 4, true),
@@ -950,6 +952,35 @@ function decodeValue(
   } finally {
     ancestors.delete(offset);
   }
+}
+
+function decodeRecordKey(
+  memory: WebAssembly.Memory,
+  offset: number,
+  layout: FixedMemoryLayout,
+  fixedCursors: FixedMemoryCursors,
+): string {
+  if (offset > 0 && offset < fixedCursors.slots && offset <= layout.slotCapacity) {
+    const slotOffset = layout.slotOffset + offset * fixedSlotLength;
+    const view = new DataView(memory.buffer, slotOffset, fixedSlotLength);
+    if ((view.getUint32(0, true) & 0xff) === recordTag.identifier) {
+      const start = view.getUint32(4, true);
+      const length = view.getUint32(8, true);
+      if (start + length > fixedCursors.values || start + length > layout.valueCapacity) {
+        throw new Error('Wasm returned an out-of-bounds identifier range');
+      }
+      return new TextDecoder('utf-16le', { fatal: true }).decode(new Uint8Array(
+        memory.buffer,
+        layout.valueOffset + start * 2,
+        length * 2,
+      ));
+    }
+  }
+  const keyRecord = readAnyRecord(memory, offset);
+  if (keyRecord.tag !== recordTag.string) {
+    throw new Error('Wasm returned a non-string capability record key');
+  }
+  return new TextDecoder('utf-8', { fatal: true }).decode(keyRecord.payload);
 }
 
 function readAnyValue(

@@ -459,7 +459,7 @@ fn write_record_literal(state_offset: u32, entries: &[u16]) -> Result<u32, u32> 
     while let Some(entry) =
         next_record_entry(entries, cursor).map_err(|_| ERROR_INVALID_EXPRESSION)?
     {
-        let key_offset = write_code_units_record(TAG_STRING, entry.key)?;
+        let key_offset = write_identifier(entry.key)?;
         let value_offset = resolve_atom(state_offset, entry.value)?;
         let record = mutable_record_at(offset, TAG_RECORD)?;
         write_u32(record, 4 + index * 8, key_offset)?;

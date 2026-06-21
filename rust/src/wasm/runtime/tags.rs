@@ -157,7 +157,7 @@ fn write_tag_arguments(state_offset: u32, arguments: &[u16]) -> Result<u32, u32>
     {
         let value_offset = resolve_atom(state_offset, argument.value)?;
         if let Some(name) = argument.name {
-            let name_offset = write_code_units_record(TAG_STRING, name)?;
+            let name_offset = write_identifier(name)?;
             let keywords = mutable_record_at(keyword_offset, TAG_RECORD)?;
             write_u32(keywords, 4 + keyword_index * 8, name_offset)?;
             write_u32(keywords, 8 + keyword_index * 8, value_offset)?;

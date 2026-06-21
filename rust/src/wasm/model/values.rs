@@ -241,6 +241,7 @@ impl Value {
             TAG_SAFE_STRING_VALUE => {
                 Ok(Self::SafeString(code_units_as_utf8(value_code_units(payload)?)?))
             }
+            TAG_IDENTIFIER => Ok(Self::String(code_units_as_utf8(identifier_code_units(offset)?)?)),
             TAG_REGEX => Ok(Self::Regex(payload)),
             TAG_ARRAY => Ok(Self::Array(Array::new(payload)?)),
             TAG_RECORD => Ok(Self::Record(Record::new(payload)?)),

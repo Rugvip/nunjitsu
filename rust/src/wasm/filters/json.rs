@@ -118,7 +118,7 @@ fn json_value_length(value_offset: u32, indent: &[u8], depth: usize) -> Result<u
                 if matches!(Value::at(value)?, Value::Undefined | Value::Macro) {
                     continue;
                 }
-                let key = record_at(read_u32(record.payload, 4 + index * 8)?, TAG_STRING)?;
+                let key = rendered_value(read_u32(record.payload, 4 + index * 8)?)?.bytes;
                 let value_length = json_value_length(value, indent, child_depth)?;
                 length = length
                     .checked_add(json_string_length(key)?)
@@ -233,7 +233,7 @@ fn write_json_value(
                     write_coerced_bytes(output, cursor, b"\n")?;
                     write_json_indent(output, cursor, indent, child_depth)?;
                 }
-                let key = record_at(read_u32(record.payload, 4 + index * 8)?, TAG_STRING)?;
+                let key = rendered_value(read_u32(record.payload, 4 + index * 8)?)?.bytes;
                 write_json_string(key, output, cursor)?;
                 write_coerced_bytes(output, cursor, if indent.is_empty() { b":" } else { b": " })?;
                 write_json_value(value, indent, child_depth, output, cursor)?;
