@@ -1,10 +1,10 @@
-fn write_javascript_string_value(value_offset: u32) -> Result<u32, u32> {
+fn javascript_string_bytes(value_offset: u32) -> Result<&'static [u8], u32> {
     match Value::at(value_offset)? {
-        Value::Undefined => write_bytes_record(TAG_STRING, b"undefined"),
-        Value::Null => write_bytes_record(TAG_STRING, b"null"),
+        Value::Undefined => Ok(b"undefined"),
+        Value::Null => Ok(b"null"),
         _ => {
             let rendered = rendered_value(value_offset)?;
-            write_bytes_record(TAG_STRING, rendered.bytes)
+            Ok(rendered.bytes)
         }
     }
 }
@@ -13,25 +13,22 @@ fn dump_value(value_offset: u32, spaces_offset: Option<u32>) -> Result<u32, u32>
     if matches!(Value::at(value_offset)?, Value::Undefined | Value::Macro) {
         return allocate_record(TAG_UNDEFINED, 0);
     }
-    let indent_offset = dump_indent(spaces_offset)?;
-    let indent = record_at(indent_offset, TAG_STRING)?;
+    let indent = dump_indent(spaces_offset)?;
     let length = json_value_length(value_offset, indent, 0)?;
-    let output_offset = allocate_record(
-        TAG_STRING,
+    let (_, output) = allocate_scratch(
         u32::try_from(length).map_err(|_| ERROR_RESOURCE_LIMIT)?,
     )?;
-    let output = mutable_record_at(output_offset, TAG_STRING)?;
     let mut cursor = 0usize;
     write_json_value(value_offset, indent, 0, output, &mut cursor)?;
     if cursor != output.len() {
         return Err(ERROR_INVALID_ARENA);
     }
-    finish_string_record(output_offset, TAG_STRING)
+    write_string_value(output)
 }
 
-fn dump_indent(spaces_offset: Option<u32>) -> Result<u32, u32> {
+fn dump_indent(spaces_offset: Option<u32>) -> Result<&'static [u8], u32> {
     let Some(spaces_offset) = spaces_offset else {
-        return write_bytes_record(TAG_STRING, b"");
+        return Ok(b"");
     };
     match Value::at(spaces_offset)? {
         Value::Number { numeric, .. } => {
@@ -40,9 +37,9 @@ fn dump_indent(spaces_offset: Option<u32>) -> Result<u32, u32> {
             } else {
                 libm::trunc(numeric).min(10.0) as usize
             };
-            let offset = allocate_record(TAG_STRING, count as u32)?;
-            mutable_record_at(offset, TAG_STRING)?.fill(b' ');
-            Ok(offset)
+            let (_, output) = allocate_scratch(count as u32)?;
+            output.fill(b' ');
+            Ok(output)
         }
         Value::String(bytes) | Value::SafeString(bytes) => {
             let text = core::str::from_utf8(bytes).map_err(|_| ERROR_INVALID_RECORD)?;
@@ -50,9 +47,9 @@ fn dump_indent(spaces_offset: Option<u32>) -> Result<u32, u32> {
                 .char_indices()
                 .nth(10)
                 .map_or(bytes.len(), |(index, _)| index);
-            write_bytes_record(TAG_STRING, &bytes[..end])
+            Ok(&bytes[..end])
         }
-        _ => write_bytes_record(TAG_STRING, b""),
+        _ => Ok(b""),
     }
 }
 

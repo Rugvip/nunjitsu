@@ -7,8 +7,7 @@ fn reverse_value(value: Value) -> Result<u32, u32> {
             } else {
                 TAG_STRING
             };
-            let offset = allocate_record(tag, bytes.len() as u32)?;
-            let output = mutable_record_at(offset, tag)?;
+            let (_, output) = allocate_scratch(bytes.len() as u32)?;
             let mut cursor = 0usize;
             for character in text.chars().rev() {
                 let mut encoded = [0u8; 4];
@@ -17,7 +16,7 @@ fn reverse_value(value: Value) -> Result<u32, u32> {
                 output[cursor..end].copy_from_slice(encoded);
                 cursor = end;
             }
-            finish_string_record(offset, tag)
+            write_materialized_string_value(output, tag == TAG_SAFE_STRING)
         }
         Value::Array(array) => {
             let payload_length = 4u32
@@ -50,8 +49,7 @@ fn ascii_case_value(value_offset: u32, uppercase: bool, capitalize: bool) -> Res
     } else {
         TAG_STRING
     };
-    let offset = allocate_record(tag, rendered.bytes.len() as u32)?;
-    let output = mutable_record_at(offset, tag)?;
+    let (_, output) = allocate_scratch(rendered.bytes.len() as u32)?;
     for (index, byte) in rendered.bytes.iter().copied().enumerate() {
         output[index] = if uppercase || (capitalize && index == 0) {
             byte.to_ascii_uppercase()
@@ -59,7 +57,7 @@ fn ascii_case_value(value_offset: u32, uppercase: bool, capitalize: bool) -> Res
             byte.to_ascii_lowercase()
         };
     }
-    finish_string_record(offset, tag)
+    write_materialized_string_value(output, tag == TAG_SAFE_STRING)
 }
 
 fn title_value(value_offset: u32) -> Result<u32, u32> {
@@ -69,8 +67,7 @@ fn title_value(value_offset: u32) -> Result<u32, u32> {
     } else {
         TAG_STRING
     };
-    let offset = allocate_record(tag, rendered.bytes.len() as u32)?;
-    let output = mutable_record_at(offset, tag)?;
+    let (_, output) = allocate_scratch(rendered.bytes.len() as u32)?;
     let mut word_start = true;
     for (index, byte) in rendered.bytes.iter().copied().enumerate() {
         output[index] = if byte.is_ascii_alphabetic() {
@@ -86,7 +83,7 @@ fn title_value(value_offset: u32) -> Result<u32, u32> {
             byte
         };
     }
-    finish_string_record(offset, tag)
+    write_materialized_string_value(output, tag == TAG_SAFE_STRING)
 }
 
 fn numeric_usize(value_offset: u32) -> Result<usize, u32> {
@@ -639,14 +636,12 @@ fn center_value(value_offset: u32, width: usize) -> Result<u32, u32> {
     } else {
         TAG_STRING
     };
-    let offset = allocate_record(
-        tag,
+    let (_, output) = allocate_scratch(
         u32::try_from(length).map_err(|_| ERROR_RESOURCE_LIMIT)?,
     )?;
-    let output = mutable_record_at(offset, tag)?;
     output.fill(b' ');
     output[left..left + rendered.bytes.len()].copy_from_slice(rendered.bytes);
-    finish_string_record(offset, tag)
+    write_materialized_string_value(output, tag == TAG_SAFE_STRING)
 }
 
 fn parse_integer(value_offset: u32, base: usize) -> Result<Option<i64>, u32> {
@@ -716,11 +711,9 @@ fn indent_value(value_offset: u32, width: usize, first: bool) -> Result<u32, u32
     } else {
         TAG_STRING
     };
-    let offset = allocate_record(
-        tag,
+    let (_, output) = allocate_scratch(
         u32::try_from(length).map_err(|_| ERROR_RESOURCE_LIMIT)?,
     )?;
-    let output = mutable_record_at(offset, tag)?;
     let mut output_cursor = 0usize;
     if first {
         output[..width].fill(b' ');
@@ -739,7 +732,7 @@ fn indent_value(value_offset: u32, width: usize, first: bool) -> Result<u32, u32
         input_cursor = index + 1;
     }
     output[output_cursor..].copy_from_slice(&rendered.bytes[input_cursor..]);
-    finish_string_record(offset, tag)
+    write_materialized_string_value(output, tag == TAG_SAFE_STRING)
 }
 
 fn join_value(
@@ -780,11 +773,9 @@ fn join_value(
                 .ok_or(ERROR_RESOURCE_LIMIT)?;
         }
     }
-    let offset = allocate_record(
-        TAG_STRING,
+    let (_, output) = allocate_scratch(
         u32::try_from(length).map_err(|_| ERROR_RESOURCE_LIMIT)?,
     )?;
-    let output = mutable_record_at(offset, TAG_STRING)?;
     let mut cursor = 0usize;
     for index in 0..array.count {
         if index != 0 {
@@ -800,7 +791,7 @@ fn join_value(
             write_coerced_value_into(selected, output, &mut cursor)?;
         }
     }
-    finish_string_record(offset, TAG_STRING)
+    write_string_value(output)
 }
 
 fn lookup_value_path(mut value_offset: u32, path: &[u8]) -> Result<Option<u32>, u32> {

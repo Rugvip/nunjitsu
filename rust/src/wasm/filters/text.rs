@@ -34,11 +34,9 @@ fn nl2br_value(value_offset: u32) -> Result<u32, u32> {
     } else {
         TAG_STRING
     };
-    let offset = allocate_record(
-        tag,
+    let (_, output) = allocate_scratch(
         u32::try_from(length).map_err(|_| ERROR_RESOURCE_LIMIT)?,
     )?;
-    let output = mutable_record_at(offset, tag)?;
     let mut input_cursor = 0usize;
     let mut output_cursor = 0usize;
     while input_cursor < rendered.bytes.len() {
@@ -56,7 +54,7 @@ fn nl2br_value(value_offset: u32) -> Result<u32, u32> {
         output_cursor += 7;
         input_cursor += line_width;
     }
-    finish_string_record(offset, tag)
+    write_materialized_string_value(output, tag == TAG_SAFE_STRING)
 }
 
 fn sum_value(value_offset: u32, attribute_offset: Option<u32>, start: f64) -> Result<u32, u32> {
@@ -154,11 +152,9 @@ fn replace_value(
         } else {
             TAG_STRING
         };
-        let offset = allocate_record(
-            tag,
+        let (_, output) = allocate_scratch(
             u32::try_from(length).map_err(|_| ERROR_RESOURCE_LIMIT)?,
         )?;
-        let output = mutable_record_at(offset, tag)?;
         let mut output_cursor = 0usize;
         for index in 0..=input.bytes.len() {
             if index < insertion_count {
@@ -170,7 +166,7 @@ fn replace_value(
                 output_cursor += 1;
             }
         }
-        return finish_string_record(offset, tag);
+        return write_materialized_string_value(output, tag == TAG_SAFE_STRING);
     }
     let mut count = 0usize;
     let mut cursor = 0usize;
@@ -200,11 +196,9 @@ fn replace_value(
     } else {
         TAG_STRING
     };
-    let offset = allocate_record(
-        tag,
+    let (_, output) = allocate_scratch(
         u32::try_from(length).map_err(|_| ERROR_RESOURCE_LIMIT)?,
     )?;
-    let output = mutable_record_at(offset, tag)?;
     let mut input_cursor = 0usize;
     let mut output_cursor = 0usize;
     let mut replaced = 0usize;
@@ -223,7 +217,7 @@ fn replace_value(
         replaced += 1;
     }
     output[output_cursor..].copy_from_slice(&input.bytes[input_cursor..]);
-    finish_string_record(offset, tag)
+    write_materialized_string_value(output, tag == TAG_SAFE_STRING)
 }
 
 fn random_value(value_offset: u32) -> Result<u32, u32> {
@@ -261,19 +255,10 @@ fn regex_replace_value(
         Value::Regex(bytes) => bytes,
         _ => return Err(ERROR_INVALID_RECORD),
     };
-    let regex_record = write_bytes_record(TAG_STRING, regex)?;
-    let input_record = write_bytes_record(TAG_STRING, input)?;
-    let replacement_offset = write_javascript_string_value(replacement_offset)?;
-    let replacement = record_at(replacement_offset, TAG_STRING)?;
-    let input_pointer = input_record
-        .checked_add(RECORD_HEADER_LENGTH as u32)
-        .ok_or(ERROR_INVALID_RECORD)?;
-    let regex_pointer = regex_record
-        .checked_add(RECORD_HEADER_LENGTH as u32)
-        .ok_or(ERROR_INVALID_RECORD)?;
-    let replacement_pointer = replacement_offset
-        .checked_add(RECORD_HEADER_LENGTH as u32)
-        .ok_or(ERROR_INVALID_RECORD)?;
+    let (regex_pointer, regex) = write_scratch(regex)?;
+    let (input_pointer, input) = write_scratch(input)?;
+    let (replacement_pointer, replacement) =
+        write_scratch(javascript_string_bytes(replacement_offset)?)?;
     let input_length = u32::try_from(input.len()).map_err(|_| ERROR_RESOURCE_LIMIT)?;
     let regex_length = u32::try_from(regex.len()).map_err(|_| ERROR_RESOURCE_LIMIT)?;
     let replacement_length = u32::try_from(replacement.len()).map_err(|_| ERROR_RESOURCE_LIMIT)?;
@@ -298,13 +283,10 @@ fn regex_replace_value(
     } else {
         TAG_STRING
     };
-    let output_offset = allocate_record(tag, output_length)?;
+    let (output_offset, output) = allocate_scratch(output_length)?;
     if output_length == 0 {
-        return finish_string_record(output_offset, tag);
+        return write_materialized_string_value(output, tag == TAG_SAFE_STRING);
     }
-    let output_pointer = output_offset
-        .checked_add(RECORD_HEADER_LENGTH as u32)
-        .ok_or(ERROR_INVALID_RECORD)?;
     // The second call writes into the newly allocated payload and must reproduce the sized result.
     let written = unsafe {
         nunjitsu_regex_replace(
@@ -314,12 +296,12 @@ fn regex_replace_value(
             regex_length,
             replacement_pointer,
             replacement_length,
-            output_pointer,
+            output_offset,
             output_length,
         )
     };
     if written != output_length {
         return Err(ERROR_INVALID_ARENA);
     }
-    finish_string_record(output_offset, tag)
+    write_materialized_string_value(output, tag == TAG_SAFE_STRING)
 }

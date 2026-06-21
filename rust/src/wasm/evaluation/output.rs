@@ -10,31 +10,35 @@ fn rendered_value(value_offset: u32) -> Result<RenderedValue<'static>, u32> {
     let value = Value::at(value_offset)?;
     if let Value::Number { numeric } = value {
         let mut buffer = ryu_js::Buffer::new();
-        let rendered_offset = write_string_value(buffer.format(numeric).as_bytes())?;
-        return Value::at(rendered_offset)?
-            .rendered()
-            .ok_or(ERROR_INVALID_EXPRESSION);
+        let bytes = buffer.format(numeric).as_bytes();
+        let (_, output) = allocate_scratch(
+            u32::try_from(bytes.len()).map_err(|_| ERROR_RESOURCE_LIMIT)?,
+        )?;
+        output.copy_from_slice(bytes);
+        return Ok(RenderedValue {
+            bytes: output,
+            safe: false,
+        });
     }
     if matches!(value, Value::Array(_) | Value::Record(_)) {
-        let coerced_offset = write_coerced_value(value_offset)?;
-        return Value::at(coerced_offset)?
-            .rendered()
-            .ok_or(ERROR_INVALID_EXPRESSION);
+        return Ok(RenderedValue {
+            bytes: write_coerced_value(value_offset)?,
+            safe: false,
+        });
     }
     value.rendered().ok_or(ERROR_INVALID_EXPRESSION)
 }
 
-fn write_coerced_value(value_offset: u32) -> Result<u32, u32> {
+fn write_coerced_value(value_offset: u32) -> Result<&'static [u8], u32> {
     let length = coerced_value_length(value_offset)?;
     let length = u32::try_from(length).map_err(|_| ERROR_RESOURCE_LIMIT)?;
-    let offset = allocate_record(TAG_STRING, length)?;
-    let output = mutable_record_at(offset, TAG_STRING)?;
+    let (_, output) = allocate_scratch(length)?;
     let mut cursor = 0usize;
     write_coerced_value_into(value_offset, output, &mut cursor)?;
     if cursor != output.len() {
         return Err(ERROR_INVALID_ARENA);
     }
-    Ok(offset)
+    Ok(output)
 }
 
 fn coerced_value_length(value_offset: u32) -> Result<usize, u32> {

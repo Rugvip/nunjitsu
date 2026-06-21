@@ -15,15 +15,6 @@ fn allocate_record(tag: u32, payload_length: u32) -> Result<u32, u32> {
     Ok(offset)
 }
 
-fn write_bytes_record(tag: u32, bytes: &[u8]) -> Result<u32, u32> {
-    if tag == TAG_SAFE_STRING {
-        return write_materialized_string_value(bytes, true);
-    }
-    let offset = allocate_record(tag, bytes.len() as u32)?;
-    mutable_record_at(offset, tag)?.copy_from_slice(bytes);
-    Ok(offset)
-}
-
 fn write_materialized_string_value(bytes: &[u8], safe: bool) -> Result<u32, u32> {
     let (handle, length) = materialized_string_handle(bytes)?;
     write_computed_string_value(handle, 0, length, safe)
@@ -31,14 +22,6 @@ fn write_materialized_string_value(bytes: &[u8], safe: bool) -> Result<u32, u32>
 
 fn write_string_value(bytes: &[u8]) -> Result<u32, u32> {
     write_materialized_string_value(bytes, false)
-}
-
-fn finish_string_record(offset: u32, tag: u32) -> Result<u32, u32> {
-    let safe = tag == TAG_SAFE_STRING;
-    if !safe && tag != TAG_STRING {
-        return Err(ERROR_INVALID_RECORD);
-    }
-    write_materialized_string_value(record_at(offset, tag)?, safe)
 }
 
 fn write_materialized_code_unit_value(
@@ -456,6 +439,14 @@ fn arena_alloc(length: u32, alignment: u32) -> Result<u32, u32> {
 fn allocate_scratch(length: u32) -> Result<(u32, &'static mut [u8]), u32> {
     let offset = arena_alloc(length, 1)?;
     Ok((offset, mutable_memory(offset, length)?))
+}
+
+fn write_scratch(bytes: &[u8]) -> Result<(u32, &'static [u8]), u32> {
+    let (offset, output) = allocate_scratch(
+        u32::try_from(bytes.len()).map_err(|_| ERROR_RESOURCE_LIMIT)?,
+    )?;
+    output.copy_from_slice(bytes);
+    Ok((offset, output))
 }
 
 fn ensure_memory(required_length: usize) -> Result<(), u32> {

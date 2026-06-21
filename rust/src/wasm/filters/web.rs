@@ -7,16 +7,14 @@ fn striptags_value(value_offset: u32, preserve_linebreaks: bool) -> Result<u32, 
             .ok_or(ERROR_RESOURCE_LIMIT)?;
         Ok(())
     })?;
-    let stripped_offset = allocate_record(
-        TAG_STRING,
+    let (_, stripped) = allocate_scratch(
         u32::try_from(stripped_length).map_err(|_| ERROR_RESOURCE_LIMIT)?,
     )?;
-    let stripped = mutable_record_at(stripped_offset, TAG_STRING)?;
     let mut stripped_cursor = 0usize;
     strip_tags_emit(rendered.bytes, &mut |segment| {
         write_coerced_bytes(stripped, &mut stripped_cursor, segment)
     })?;
-    let stripped = trim_ascii_whitespace(record_at(stripped_offset, TAG_STRING)?);
+    let stripped = trim_ascii_whitespace(stripped);
     let mut length = 0usize;
     normalize_stripped_emit(stripped, preserve_linebreaks, &mut |segment| {
         length = length
@@ -29,16 +27,14 @@ fn striptags_value(value_offset: u32, preserve_linebreaks: bool) -> Result<u32, 
     } else {
         TAG_STRING
     };
-    let output_offset = allocate_record(
-        tag,
+    let (_, output) = allocate_scratch(
         u32::try_from(length).map_err(|_| ERROR_RESOURCE_LIMIT)?,
     )?;
-    let output = mutable_record_at(output_offset, tag)?;
     let mut cursor = 0usize;
     normalize_stripped_emit(stripped, preserve_linebreaks, &mut |segment| {
         write_coerced_bytes(output, &mut cursor, segment)
     })?;
-    finish_string_record(output_offset, tag)
+    write_materialized_string_value(output, tag == TAG_SAFE_STRING)
 }
 
 fn strip_tags_emit(
@@ -216,14 +212,12 @@ fn truncate_value(
     } else {
         TAG_STRING
     };
-    let output_offset = allocate_record(
-        tag,
+    let (_, output) = allocate_scratch(
         u32::try_from(length).map_err(|_| ERROR_RESOURCE_LIMIT)?,
     )?;
-    let output = mutable_record_at(output_offset, tag)?;
     output[..end].copy_from_slice(&rendered.bytes[..end]);
     output[end..].copy_from_slice(suffix);
-    finish_string_record(output_offset, tag)
+    write_materialized_string_value(output, tag == TAG_SAFE_STRING)
 }
 
 fn utf8_prefix_length(text: &str, characters: usize) -> usize {
@@ -258,11 +252,9 @@ fn urlencode_array(array: Array) -> Result<u32, u32> {
             .and_then(|value| value.checked_add(value_length))
             .ok_or(ERROR_RESOURCE_LIMIT)?;
     }
-    let output_offset = allocate_record(
-        TAG_STRING,
+    let (_, output) = allocate_scratch(
         u32::try_from(length).map_err(|_| ERROR_RESOURCE_LIMIT)?,
     )?;
-    let output = mutable_record_at(output_offset, TAG_STRING)?;
     let mut cursor = 0usize;
     for index in 0..array.count {
         if index != 0 {
@@ -276,7 +268,7 @@ fn urlencode_array(array: Array) -> Result<u32, u32> {
         write_coerced_bytes(output, &mut cursor, b"=")?;
         write_encoded_value(read_u32(pair.payload, 8)?, output, &mut cursor)?;
     }
-    finish_string_record(output_offset, TAG_STRING)
+    write_string_value(output)
 }
 
 fn urlencode_record(record: Record) -> Result<u32, u32> {
@@ -290,11 +282,9 @@ fn urlencode_record(record: Record) -> Result<u32, u32> {
             .and_then(|value| value.checked_add(value_length))
             .ok_or(ERROR_RESOURCE_LIMIT)?;
     }
-    let output_offset = allocate_record(
-        TAG_STRING,
+    let (_, output) = allocate_scratch(
         u32::try_from(length).map_err(|_| ERROR_RESOURCE_LIMIT)?,
     )?;
-    let output = mutable_record_at(output_offset, TAG_STRING)?;
     let mut cursor = 0usize;
     for index in 0..record.count {
         if index != 0 {
@@ -309,19 +299,17 @@ fn urlencode_record(record: Record) -> Result<u32, u32> {
             &mut cursor,
         )?;
     }
-    finish_string_record(output_offset, TAG_STRING)
+    write_string_value(output)
 }
 
 fn encode_url_component(bytes: &[u8]) -> Result<u32, u32> {
     let length = encoded_bytes_length(bytes)?;
-    let output_offset = allocate_record(
-        TAG_STRING,
+    let (_, output) = allocate_scratch(
         u32::try_from(length).map_err(|_| ERROR_RESOURCE_LIMIT)?,
     )?;
-    let output = mutable_record_at(output_offset, TAG_STRING)?;
     let mut cursor = 0usize;
     write_encoded_bytes(bytes, output, &mut cursor)?;
-    finish_string_record(output_offset, TAG_STRING)
+    write_string_value(output)
 }
 
 fn encoded_value_length(value_offset: u32) -> Result<usize, u32> {
@@ -387,16 +375,14 @@ fn urlize_value(value_offset: u32, length: usize, nofollow: bool) -> Result<u32,
             .ok_or(ERROR_RESOURCE_LIMIT)?;
         Ok(())
     })?;
-    let output_offset = allocate_record(
-        TAG_STRING,
+    let (_, output) = allocate_scratch(
         u32::try_from(output_length).map_err(|_| ERROR_RESOURCE_LIMIT)?,
     )?;
-    let output = mutable_record_at(output_offset, TAG_STRING)?;
     let mut cursor = 0usize;
     urlize_emit(input, length, nofollow, &mut |segment| {
         write_coerced_bytes(output, &mut cursor, segment)
     })?;
-    finish_string_record(output_offset, TAG_STRING)
+    write_string_value(output)
 }
 
 fn urlize_emit(

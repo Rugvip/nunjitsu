@@ -42,7 +42,7 @@ fn apply_builtin_filter(
         b"safe" => {
             require_argument_count(call, 0)?;
             let rendered = rendered_value(input_offset)?;
-            write_bytes_record(TAG_SAFE_STRING, rendered.bytes)?
+            write_materialized_string_value(rendered.bytes, true)?
         }
         b"escape" | b"e" => {
             require_argument_count(call, 0)?;
@@ -260,14 +260,7 @@ fn apply_builtin_filter(
         b"string" => {
             require_argument_count(call, 0)?;
             let rendered = rendered_value(input_offset)?;
-            write_bytes_record(
-                if rendered.safe {
-                    TAG_SAFE_STRING
-                } else {
-                    TAG_STRING
-                },
-                rendered.bytes,
-            )?
+            write_materialized_string_value(rendered.bytes, rendered.safe)?
         }
         b"striptags" => {
             if argument_count(call)? > 1 {
@@ -291,13 +284,9 @@ fn apply_builtin_filter(
         b"trim" => {
             require_argument_count(call, 0)?;
             let rendered = rendered_value(input_offset)?;
-            write_bytes_record(
-                if rendered.safe {
-                    TAG_SAFE_STRING
-                } else {
-                    TAG_STRING
-                },
+            write_materialized_string_value(
                 trim_ascii_whitespace(rendered.bytes),
+                rendered.safe,
             )?
         }
         b"truncate" => {
