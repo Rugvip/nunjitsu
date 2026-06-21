@@ -20,7 +20,9 @@ Trusted code outside the guarantee includes:
 The lockfile-pinned Nunjucks 3.2.4 parser is therefore part of the trusted
 computing base. Its mutable parser objects never cross into evaluation: an
 exhaustive converter copies only allowlisted primitive and child-node fields
-into frozen data-only nodes, rejecting every other value.
+into frozen data-only nodes, rejects every other value, and validates all field
+shapes before any node can execute. The evaluator only uses trusted field
+accessors over that private validated tree.
 
 Strings, numbers, booleans, nulls, arrays, and record data supplied through
 trusted application code may contain hostile data. Hostile JavaScript proxies

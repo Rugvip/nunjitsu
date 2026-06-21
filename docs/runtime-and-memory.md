@@ -14,6 +14,10 @@ nodes are closed discriminated unions containing only primitives, child nodes,
 and arrays of nodes. They cannot contain callbacks, descriptors, host values,
 or executable closures.
 
+The parser validates every node field shape across the complete tree before
+returning it. Evaluator field access trusts that private immutable result and
+does not repeat structural validation while executing loops.
+
 Full parsing reports syntax errors in inactive branches and unused macros.
 Template-loading and extension nodes are rejected. No AST or source survives a
 render.

@@ -77,11 +77,7 @@ export function astField(node: AstNode, name: string): AstData {
 
 /** Narrows one AST field to a node. */
 export function astNode(node: AstNode, name: string): AstNode {
-  const value = astField(node, name);
-  if (!isAstNode(value)) {
-    throw new Error(`Invalid ${node.type}.${name} AST field`);
-  }
-  return value;
+  return astField(node, name) as AstNode;
 }
 
 /** Narrows one AST field to an optional node. */
@@ -90,19 +86,12 @@ export function optionalAstNode(node: AstNode, name: string): AstNode | undefine
   if (value === null || value === undefined) {
     return undefined;
   }
-  if (!isAstNode(value)) {
-    throw new Error(`Invalid ${node.type}.${name} AST field`);
-  }
-  return value;
+  return value as AstNode;
 }
 
 /** Narrows one AST field to a node array. */
 export function astNodes(node: AstNode, name: string): readonly AstNode[] {
-  const value = astField(node, name);
-  if (!Array.isArray(value) || !value.every(isAstNode)) {
-    throw new Error(`Invalid ${node.type}.${name} AST field`);
-  }
-  return value;
+  return astField(node, name) as readonly AstNode[];
 }
 
 /** Returns whether a value is one of the parser's immutable nodes. */

@@ -46,54 +46,57 @@ interface NunjucksModule {
   installJinjaCompat(): () => void;
 }
 
+/** Closed field shapes validated before an AST can leave the parser. */
+type AstFieldKind = 'data' | 'literal' | 'node' | 'nodes' | 'optional-node' | 'string';
+
 const nativeNunjucks = (nunjucks as unknown as { default: NunjucksModule }).default;
 const parser = nativeNunjucks.parser;
 
 const nodeFields = Object.freeze({
-  Root: ['children'],
-  NodeList: ['children'],
-  Output: ['children'],
-  TemplateData: ['value'],
-  Literal: ['value'],
-  Symbol: ['value'],
-  Group: ['children'],
-  Array: ['children'],
-  Dict: ['children'],
-  KeywordArgs: ['children'],
-  Pair: ['key', 'value'],
-  LookupVal: ['target', 'val'],
-  Slice: ['start', 'stop', 'step'],
-  If: ['cond', 'body', 'else_'],
-  InlineIf: ['cond', 'body', 'else_'],
-  For: ['arr', 'name', 'body', 'else_'],
-  Macro: ['name', 'args', 'body'],
-  Caller: ['name', 'args', 'body'],
-  FunCall: ['name', 'args'],
-  Filter: ['name', 'args'],
-  Block: ['name', 'body'],
-  Super: ['blockName', 'symbol'],
-  Set: ['targets', 'value', 'body'],
-  Switch: ['expr', 'cases', 'default'],
-  Case: ['cond', 'body'],
-  Capture: ['body'],
-  In: ['left', 'right'],
-  Is: ['left', 'right'],
-  Or: ['left', 'right'],
-  And: ['left', 'right'],
-  Not: ['target'],
-  Add: ['left', 'right'],
-  Concat: ['left', 'right'],
-  Sub: ['left', 'right'],
-  Mul: ['left', 'right'],
-  Div: ['left', 'right'],
-  FloorDiv: ['left', 'right'],
-  Mod: ['left', 'right'],
-  Pow: ['left', 'right'],
-  Neg: ['target'],
-  Pos: ['target'],
-  Compare: ['expr', 'ops'],
-  CompareOperand: ['expr', 'type'],
-} as const satisfies Partial<Record<AstNodeType, readonly string[]>>);
+  Root: { children: 'nodes' },
+  NodeList: { children: 'nodes' },
+  Output: { children: 'nodes' },
+  TemplateData: { value: 'string' },
+  Literal: { value: 'literal' },
+  Symbol: { value: 'string' },
+  Group: { children: 'nodes' },
+  Array: { children: 'nodes' },
+  Dict: { children: 'nodes' },
+  KeywordArgs: { children: 'nodes' },
+  Pair: { key: 'node', value: 'node' },
+  LookupVal: { target: 'node', val: 'node' },
+  Slice: { start: 'node', stop: 'node', step: 'node' },
+  If: { cond: 'node', body: 'node', else_: 'optional-node' },
+  InlineIf: { cond: 'node', body: 'node', else_: 'optional-node' },
+  For: { arr: 'node', name: 'node', body: 'node', else_: 'optional-node' },
+  Macro: { name: 'node', args: 'node', body: 'node' },
+  Caller: { name: 'node', args: 'node', body: 'node' },
+  FunCall: { name: 'node', args: 'node' },
+  Filter: { name: 'node', args: 'node' },
+  Block: { name: 'node', body: 'node' },
+  Super: { blockName: 'data', symbol: 'data' },
+  Set: { targets: 'nodes', value: 'optional-node', body: 'optional-node' },
+  Switch: { expr: 'node', cases: 'nodes', default: 'optional-node' },
+  Case: { cond: 'node', body: 'node' },
+  Capture: { body: 'node' },
+  In: { left: 'node', right: 'node' },
+  Is: { left: 'node', right: 'node' },
+  Or: { left: 'node', right: 'node' },
+  And: { left: 'node', right: 'node' },
+  Not: { target: 'node' },
+  Add: { left: 'node', right: 'node' },
+  Concat: { left: 'node', right: 'node' },
+  Sub: { left: 'node', right: 'node' },
+  Mul: { left: 'node', right: 'node' },
+  Div: { left: 'node', right: 'node' },
+  FloorDiv: { left: 'node', right: 'node' },
+  Mod: { left: 'node', right: 'node' },
+  Pow: { left: 'node', right: 'node' },
+  Neg: { target: 'node' },
+  Pos: { target: 'node' },
+  Compare: { expr: 'node', ops: 'nodes' },
+  CompareOperand: { expr: 'node', type: 'string' },
+} as const satisfies Record<AstNodeType, Readonly<Record<string, AstFieldKind>>>);
 
 /** Parses and fully validates one untrusted template into a data-only AST. */
 export function parseTemplate(
@@ -110,7 +113,7 @@ export function parseTemplate(
     ? nativeNunjucks.installJinjaCompat()
     : () => {};
   try {
-    return convertNode(parser.parse(
+    const ast = convertNode(parser.parse(
       normalizedSource,
       [],
       {
@@ -119,6 +122,8 @@ export function parseTemplate(
         tags: { variableStart, variableEnd: '}}' },
       },
     ));
+    validateAst(ast);
+    return ast;
   } catch (error) {
     if (error instanceof NunjitsuParseError) {
       throw error;
@@ -256,12 +261,14 @@ function convertNode(value: unknown): AstNode {
     throw new NunjitsuParseError(`Parser returned unsupported syntax node ${String(type)}`);
   }
   const nodeType = type as AstNodeType;
-  const nodeFieldNames = (nodeFields as Partial<Record<AstNodeType, readonly string[]>>)[nodeType];
-  if (!nodeFieldNames) {
+  const nodeFieldShapes = (nodeFields as Partial<
+    Record<AstNodeType, Readonly<Record<string, AstFieldKind>>>
+  >)[nodeType];
+  if (!nodeFieldShapes) {
     throw new NunjitsuParseError(`Parser returned unsupported syntax node ${type}`);
   }
   const fields = Object.create(null) as Record<string, AstData>;
-  for (const name of nodeFieldNames) {
+  for (const name of Object.keys(nodeFieldShapes)) {
     fields[name] = convertData(value[name]);
   }
   if (nodeType === 'Symbol') {
@@ -334,4 +341,82 @@ function validateReservedSyntax(node: AstNode): void {
       throw new NunjitsuParseError(`Template name ${name} is reserved`);
     }
   }
+}
+
+function validateAst(node: AstNode): void {
+  const shapes = nodeFields[node.type];
+  for (const [name, shape] of Object.entries(shapes)) {
+    validateAstField(node, name, shape);
+  }
+}
+
+function validateAstField(node: AstNode, name: string, shape: AstFieldKind): void {
+  const value = node.fields[name];
+  if (shape === 'string') {
+    if (typeof value !== 'string') {
+      throw invalidAstField(node, name);
+    }
+    return;
+  }
+  if (shape === 'literal') {
+    if (!isAstLiteral(value)) {
+      throw invalidAstField(node, name);
+    }
+    return;
+  }
+  if (shape === 'optional-node' && (value === undefined || value === null)) {
+    return;
+  }
+  if (shape === 'node' || shape === 'optional-node') {
+    if (!isConvertedNode(value)) {
+      throw invalidAstField(node, name);
+    }
+    validateAst(value);
+    return;
+  }
+  if (shape === 'nodes') {
+    if (!Array.isArray(value) || !value.every(isConvertedNode)) {
+      throw invalidAstField(node, name);
+    }
+    for (const child of value) {
+      validateAst(child);
+    }
+    return;
+  }
+  validateAstData(value);
+}
+
+function validateAstData(value: AstData): void {
+  if (isConvertedNode(value)) {
+    validateAst(value);
+    return;
+  }
+  if (Array.isArray(value)) {
+    for (const child of value) {
+      validateAstData(child);
+    }
+  }
+}
+
+function isConvertedNode(value: AstData): value is AstNode {
+  return Boolean(value && typeof value === 'object' && !Array.isArray(value) && 'fields' in value);
+}
+
+function isAstLiteral(value: AstData): boolean {
+  return value === undefined ||
+    value === null ||
+    typeof value === 'string' ||
+    typeof value === 'boolean' ||
+    typeof value === 'number' ||
+    Boolean(
+      value &&
+      typeof value === 'object' &&
+      !Array.isArray(value) &&
+      'type' in value &&
+      value.type === 'regex-literal',
+    );
+}
+
+function invalidAstField(node: AstNode, name: string): NunjitsuParseError {
+  return new NunjitsuParseError(`Parser returned invalid ${node.type}.${name} syntax data`);
 }
