@@ -8,1752 +8,1738 @@
   "coverage": "complete",
   "entries": [
     {
-      "upstream": { "id": "tests/api.js:3", "file": "tests/api.js", "test": "should handle correctly relative paths" },
-      "status": "adapted",
-      "reason": "Equivalent named-template inheritance is exercised through Nunjitsu's immutable memory loader and asynchronous render API.",
-      "cases": ["api-relative-first-child", "api-relative-second-child"]
-    },
-    {
-      "upstream": { "id": "tests/api.js:4", "file": "tests/api.js", "test": "should handle correctly cache for relative paths" },
-      "status": "adapted",
-      "reason": "Nunjitsu has no persistent compiled-template cache; the equivalent parent-aware resolution and render-local canonical deduplication behavior is ported.",
-      "cases": ["api-relative-cache"]
-    },
-    {
-      "upstream": { "id": "tests/api.js:5", "file": "tests/api.js", "test": "should handle correctly relative paths in renderString" },
-      "status": "adapted",
-      "reason": "Inline source supplies an explicit canonicalName instead of the Nunjucks renderString path option, preserving equivalent relative inheritance behavior.",
-      "cases": ["api-relative-inline-source"]
-    },
-    {
-      "upstream": { "id": "tests/loader.js:1", "file": "tests/loader.js", "test": "should allow a simple loader to be created" },
-      "status": "adapted",
-      "reason": "The runtime suite renders a named template through Nunjitsu's minimal asynchronous TemplateLoader interface instead of subclassing a Nunjucks loader."
-    },
-    {
-      "upstream": { "id": "tests/loader.js:2", "file": "tests/loader.js", "test": "should catch loader error" },
-      "status": "adapted",
-      "reason": "Asynchronous loader exceptions reject the render promise, release render-local state, and leave the engine usable for the next render."
-    },
-    {
-      "upstream": { "id": "tests/loader.js:3", "file": "tests/loader.js", "test": "should have default opts for WebLoader" },
+      "upstream": {"id":"tests/api.js:3","file":"tests/api.js","test":"should handle correctly relative paths"},
       "status": "not applicable",
-      "reason": "Browser execution and the Nunjucks WebLoader class are outside the documented compatibility contract."
+      "reason": "Requires named-template loading, includes, imports, or inheritance, which the Backstage inline renderer does not support."
     },
     {
-      "upstream": { "id": "tests/loader.js:4", "file": "tests/loader.js", "test": "should emit a \"load\" event" },
+      "upstream": {"id":"tests/api.js:4","file":"tests/api.js","test":"should handle correctly cache for relative paths"},
       "status": "not applicable",
-      "reason": "Browser execution and Nunjucks loader event APIs are outside the documented compatibility contract."
+      "reason": "Requires named-template loading, includes, imports, or inheritance, which the Backstage inline renderer does not support."
     },
     {
-      "upstream": { "id": "tests/loader.js:5", "file": "tests/loader.js", "test": "should have default opts" },
+      "upstream": {"id":"tests/api.js:5","file":"tests/api.js","test":"should handle correctly relative paths in renderString"},
       "status": "not applicable",
-      "reason": "Nunjitsu deliberately has no implicit cwd loader or persistent loader cache; its filesystem loader requires explicit roots."
+      "reason": "Requires named-template loading, includes, imports, or inheritance, which the Backstage inline renderer does not support."
     },
     {
-      "upstream": { "id": "tests/loader.js:6", "file": "tests/loader.js", "test": "should emit a \"load\" event" },
+      "upstream": {"id":"tests/loader.js:1","file":"tests/loader.js","test":"should allow a simple loader to be created"},
       "status": "not applicable",
-      "reason": "The new loader capability is promise-based and does not emulate Nunjucks loader event emitters."
+      "reason": "Requires named-template loading, includes, imports, or inheritance, which the Backstage inline renderer does not support."
     },
     {
-      "upstream": { "id": "tests/loader.js:7", "file": "tests/loader.js", "test": "should have default opts" },
+      "upstream": {"id":"tests/loader.js:2","file":"tests/loader.js","test":"should catch loader error"},
       "status": "not applicable",
-      "reason": "The NodeResolveLoader class and its cache options are part of the replaced Nunjucks JavaScript loader API."
+      "reason": "Requires named-template loading, includes, imports, or inheritance, which the Backstage inline renderer does not support."
     },
     {
-      "upstream": { "id": "tests/loader.js:8", "file": "tests/loader.js", "test": "should emit a \"load\" event" },
+      "upstream": {"id":"tests/loader.js:3","file":"tests/loader.js","test":"should have default opts for WebLoader"},
       "status": "not applicable",
-      "reason": "The new loader capability does not emulate NodeResolveLoader or Nunjucks loader event emitters."
+      "reason": "Requires named-template loading, includes, imports, or inheritance, which the Backstage inline renderer does not support."
     },
     {
-      "upstream": { "id": "tests/loader.js:9", "file": "tests/loader.js", "test": "should render templates" },
-      "status": "adapted",
-      "reason": "The runtime suite verifies that an explicit custom loader can resolve a package-style template name and render its copied source."
+      "upstream": {"id":"tests/loader.js:4","file":"tests/loader.js","test":"should emit a \"load\" event"},
+      "status": "not applicable",
+      "reason": "Requires named-template loading, includes, imports, or inheritance, which the Backstage inline renderer does not support."
     },
     {
-      "upstream": { "id": "tests/loader.js:10", "file": "tests/loader.js", "test": "should not allow directory traversal" },
-      "status": "adapted",
-      "reason": "Nunjitsu's explicit-root filesystem loader rejects absolute names, lexical traversal, and canonical symlink escape through its documented security model."
+      "upstream": {"id":"tests/loader.js:5","file":"tests/loader.js","test":"should have default opts"},
+      "status": "not applicable",
+      "reason": "Requires named-template loading, includes, imports, or inheritance, which the Backstage inline renderer does not support."
     },
     {
-      "upstream": { "id": "tests/loader.js:11", "file": "tests/loader.js", "test": "should return null if no match" },
-      "status": "adapted",
-      "reason": "The runtime suite verifies ordered fallthrough when loaders return null and a terminal TemplateNotFoundError when none match."
+      "upstream": {"id":"tests/loader.js:6","file":"tests/loader.js","test":"should emit a \"load\" event"},
+      "status": "not applicable",
+      "reason": "Requires named-template loading, includes, imports, or inheritance, which the Backstage inline renderer does not support."
     },
     {
-      "upstream": { "id": "tests/runtime.js:1", "file": "tests/runtime.js", "test": "should report the failed function calls to symbols" },
+      "upstream": {"id":"tests/loader.js:7","file":"tests/loader.js","test":"should have default opts"},
+      "status": "not applicable",
+      "reason": "Requires named-template loading, includes, imports, or inheritance, which the Backstage inline renderer does not support."
+    },
+    {
+      "upstream": {"id":"tests/loader.js:8","file":"tests/loader.js","test":"should emit a \"load\" event"},
+      "status": "not applicable",
+      "reason": "Requires named-template loading, includes, imports, or inheritance, which the Backstage inline renderer does not support."
+    },
+    {
+      "upstream": {"id":"tests/loader.js:9","file":"tests/loader.js","test":"should render templates"},
+      "status": "not applicable",
+      "reason": "Requires named-template loading, includes, imports, or inheritance, which the Backstage inline renderer does not support."
+    },
+    {
+      "upstream": {"id":"tests/loader.js:10","file":"tests/loader.js","test":"should not allow directory traversal"},
+      "status": "not applicable",
+      "reason": "Requires named-template loading, includes, imports, or inheritance, which the Backstage inline renderer does not support."
+    },
+    {
+      "upstream": {"id":"tests/loader.js:11","file":"tests/loader.js","test":"should return null if no match"},
+      "status": "not applicable",
+      "reason": "Requires named-template loading, includes, imports, or inheritance, which the Backstage inline renderer does not support."
+    },
+    {
+      "upstream": {"id":"tests/runtime.js:1","file":"tests/runtime.js","test":"should report the failed function calls to symbols"},
       "status": "adapted",
       "reason": "Calling an undefined symbol rejects with Nunjitsu's structured render error; exact Nunjucks diagnostic text is outside the compatibility contract."
     },
     {
-      "upstream": { "id": "tests/runtime.js:2", "file": "tests/runtime.js", "test": "should report the failed function calls to lookups" },
+      "upstream": {"id":"tests/runtime.js:2","file":"tests/runtime.js","test":"should report the failed function calls to lookups"},
       "status": "adapted",
       "reason": "Calling an undefined bracket lookup rejects semantically; exact rendered function paths in diagnostic text are outside the compatibility contract."
     },
     {
-      "upstream": { "id": "tests/runtime.js:3", "file": "tests/runtime.js", "test": "should report the failed function calls to calls" },
+      "upstream": {"id":"tests/runtime.js:3","file":"tests/runtime.js","test":"should report the failed function calls to calls"},
       "status": "adapted",
       "reason": "Calling an undefined dotted lookup rejects semantically; exact rendered function paths in diagnostic text are outside the compatibility contract."
     },
     {
-      "upstream": { "id": "tests/runtime.js:4", "file": "tests/runtime.js", "test": "should report full function name in error" },
+      "upstream": {"id":"tests/runtime.js:4","file":"tests/runtime.js","test":"should report full function name in error"},
       "status": "adapted",
       "reason": "Long undefined lookup calls reject without truncation affecting evaluation; Nunjitsu does not claim compatibility for exact diagnostic formatting."
     },
     {
-      "upstream": { "id": "tests/runtime.js:5", "file": "tests/runtime.js", "test": "should report the failed function calls w/multiple args" },
+      "upstream": {"id":"tests/runtime.js:5","file":"tests/runtime.js","test":"should report the failed function calls w/multiple args"},
       "status": "adapted",
       "reason": "Undefined dotted and bracket calls reject with multiple arguments as they do with one; exact diagnostic paths are outside the compatibility contract."
     },
     {
-      "upstream": { "id": "tests/runtime.js:6", "file": "tests/runtime.js", "test": "should allow for undefined macro arguments in the last position" },
-      "status": "ported",
-      "cases": ["runtime-undefined-trailing-macro-argument"]
+      "upstream": {"id":"tests/runtime.js:6","file":"tests/runtime.js","test":"should allow for undefined macro arguments in the last position"},
+      "status": "not applicable",
+      "reason": "Requires automatic escaping, while Backstage fixes autoescape to false."
     },
     {
-      "upstream": { "id": "tests/runtime.js:7", "file": "tests/runtime.js", "test": "should allow for objects without a prototype macro arguments in the last position" },
+      "upstream": {"id":"tests/runtime.js:7","file":"tests/runtime.js","test":"should allow for objects without a prototype macro arguments in the last position"},
       "status": "adapted",
       "reason": "The runtime suite passes the same null-prototype record as the final macro argument through Nunjitsu's copied safe-value boundary and verifies its property output."
     },
     {
-      "upstream": { "id": "tests/runtime.js:8", "file": "tests/runtime.js", "test": "should not read variables property from Object.prototype" },
-      "status": "adapted",
-      "reason": "Nunjitsu intentionally copies own properties only and renders a polluted inherited property as undefined, enforcing the documented safe-value boundary instead of exposing prototype data."
+      "upstream": {"id":"tests/runtime.js:8","file":"tests/runtime.js","test":"should not read variables property from Object.prototype"},
+      "status": "not applicable",
+      "reason": "Requires named-template loading, includes, imports, or inheritance, which the Backstage inline renderer does not support."
     },
     {
-      "upstream": { "id": "tests/parser.js:1", "file": "tests/parser.js", "test": "should parse basic types" },
-      "status": "adapted",
-      "reason": "Nunjitsu does not expose Nunjucks AST nodes; the same numeric, string, boolean, none, symbol, and regex literals are rendered through the public engine.",
-      "cases": ["parser-basic-types"]
+      "upstream": {"id":"tests/parser.js:1","file":"tests/parser.js","test":"should parse basic types"},
+      "status": "not applicable",
+      "reason": "Requires automatic escaping, while Backstage fixes autoescape to false."
     },
     {
-      "upstream": { "id": "tests/parser.js:2", "file": "tests/parser.js", "test": "should parse aggregate types" },
-      "status": "adapted",
-      "reason": "Array, tuple-group, and record literals are verified through rendering rather than Nunjucks AST object shapes.",
-      "cases": ["parser-group-tuple", "compiler-loop-literal-record"]
+      "upstream": {"id":"tests/parser.js:2","file":"tests/parser.js","test":"should parse aggregate types"},
+      "status": "not applicable",
+      "reason": "Requires automatic escaping, while Backstage fixes autoescape to false."
     },
     {
-      "upstream": { "id": "tests/parser.js:3", "file": "tests/parser.js", "test": "should parse variables" },
+      "upstream": {"id":"tests/parser.js:3","file":"tests/parser.js","test":"should parse variables"},
       "status": "adapted",
       "reason": "Static text surrounding a symbol interpolation is verified through rendered output because Nunjitsu exposes no parser AST API.",
       "cases": ["compiler-interpolation"]
     },
     {
-      "upstream": { "id": "tests/parser.js:4", "file": "tests/parser.js", "test": "should parse operators" },
-      "status": "adapted",
-      "reason": "Comparison, boolean, membership, and built-in test operators are exercised through observable evaluation instead of AST node classes.",
-      "cases": ["compiler-comparison-operators", "compiler-if-boolean-operators", "compiler-in-arrays"]
+      "upstream": {"id":"tests/parser.js:4","file":"tests/parser.js","test":"should parse operators"},
+      "status": "not applicable",
+      "reason": "Requires a Nunjucks parser extension or host-defined tag, which Backstage does not expose."
     },
     {
-      "upstream": { "id": "tests/parser.js:5", "file": "tests/parser.js", "test": "should parse tilde" },
+      "upstream": {"id":"tests/parser.js:5","file":"tests/parser.js","test":"should parse tilde"},
       "status": "adapted",
       "reason": "Tilde concatenation is verified through rendered output rather than a Nunjucks Concat node.",
       "cases": ["compiler-string-concatenation"]
     },
     {
-      "upstream": { "id": "tests/parser.js:6", "file": "tests/parser.js", "test": "should parse operators with correct precedence" },
+      "upstream": {"id":"tests/parser.js:6","file":"tests/parser.js","test":"should parse operators with correct precedence"},
       "status": "adapted",
       "reason": "Boolean grouping and precedence are exercised through branch and inline-expression results rather than AST nesting.",
-      "cases": ["compiler-if-boolean-operators", "compiler-inline-if-group"]
+      "cases": ["compiler-inline-if-group"]
     },
     {
-      "upstream": { "id": "tests/parser.js:7", "file": "tests/parser.js", "test": "should parse blocks" },
-      "status": "adapted",
-      "reason": "If, block, extends, and include directives are exercised through rendering; matching named endblock validation is covered by the runtime error suite."
+      "upstream": {"id":"tests/parser.js:7","file":"tests/parser.js","test":"should parse blocks"},
+      "status": "not applicable",
+      "reason": "Requires named-template loading, includes, imports, or inheritance, which the Backstage inline renderer does not support."
     },
     {
-      "upstream": { "id": "tests/parser.js:8", "file": "tests/parser.js", "test": "should accept attributes and methods of static arrays, objects and primitives" },
+      "upstream": {"id":"tests/parser.js:8","file":"tests/parser.js","test":"should accept attributes and methods of static arrays, objects and primitives"},
       "status": "not applicable",
       "reason": "Nunjitsu deliberately does not expose JavaScript prototype methods to templates; equivalent safe operations use built-in filters under the documented copied-value security model."
     },
     {
-      "upstream": { "id": "tests/parser.js:9", "file": "tests/parser.js", "test": "should parse include tags" },
-      "status": "adapted",
-      "reason": "Literal and filtered include expressions are resolved and rendered through explicit loaders instead of inspected as Include AST nodes.",
-      "cases": ["compiler-include-basic", "parser-filtered-include-path"]
+      "upstream": {"id":"tests/parser.js:9","file":"tests/parser.js","test":"should parse include tags"},
+      "status": "not applicable",
+      "reason": "Requires named-template loading, includes, imports, or inheritance, which the Backstage inline renderer does not support."
     },
     {
-      "upstream": { "id": "tests/parser.js:10", "file": "tests/parser.js", "test": "should parse for loops" },
-      "status": "adapted",
-      "reason": "Array iteration and loop binding behavior are verified through rendered output instead of For AST nodes.",
-      "cases": ["compiler-loop-simple-array"]
+      "upstream": {"id":"tests/parser.js:10","file":"tests/parser.js","test":"should parse for loops"},
+      "status": "not applicable",
+      "reason": "Requires automatic escaping, while Backstage fixes autoescape to false."
     },
     {
-      "upstream": { "id": "tests/parser.js:11", "file": "tests/parser.js", "test": "should parse for loops with else" },
-      "status": "adapted",
-      "reason": "Empty and non-empty loop else behavior is verified through rendered output.",
-      "cases": ["compiler-loop-nonempty-else", "compiler-loop-empty-else"]
+      "upstream": {"id":"tests/parser.js:11","file":"tests/parser.js","test":"should parse for loops with else"},
+      "status": "not applicable",
+      "reason": "Requires automatic escaping, while Backstage fixes autoescape to false."
     },
     {
-      "upstream": { "id": "tests/parser.js:12", "file": "tests/parser.js", "test": "should parse filters" },
+      "upstream": {"id":"tests/parser.js:12","file":"tests/parser.js","test":"should parse filters"},
       "status": "adapted",
       "reason": "Chained and argument-bearing filters are exercised through the built-in filter corpus rather than Filter AST nodes."
     },
     {
-      "upstream": { "id": "tests/parser.js:13", "file": "tests/parser.js", "test": "should parse macro definitions" },
+      "upstream": {"id":"tests/parser.js:13","file":"tests/parser.js","test":"should parse macro definitions"},
       "status": "adapted",
       "reason": "Macro parameters, defaults, bodies, and calls are verified through rendered behavior rather than Macro AST nodes.",
-      "cases": ["compiler-macro-basic", "compiler-macro-default-arguments"]
+      "cases": ["compiler-macro-basic","compiler-macro-default-arguments"]
     },
     {
-      "upstream": { "id": "tests/parser.js:14", "file": "tests/parser.js", "test": "should parse call blocks" },
+      "upstream": {"id":"tests/parser.js:14","file":"tests/parser.js","test":"should parse call blocks"},
       "status": "adapted",
       "reason": "Caller-body behavior is verified through rendered call blocks instead of FunCall and Caller AST nodes.",
       "cases": ["compiler-call-block"]
     },
     {
-      "upstream": { "id": "tests/parser.js:15", "file": "tests/parser.js", "test": "should parse call blocks with args" },
+      "upstream": {"id":"tests/parser.js:15","file":"tests/parser.js","test":"should parse call blocks with args"},
       "status": "adapted",
       "reason": "Call-block bindings plus positional and keyword arguments are verified through rendered output.",
       "cases": ["compiler-call-block-arguments"]
     },
     {
-      "upstream": { "id": "tests/parser.js:16", "file": "tests/parser.js", "test": "should parse raw" },
-      "status": "adapted",
-      "reason": "Raw delimiter-like text is preserved in output rather than represented as TemplateData AST nodes.",
-      "cases": ["parser-raw-delimiter-text"]
+      "upstream": {"id":"tests/parser.js:16","file":"tests/parser.js","test":"should parse raw"},
+      "status": "not applicable",
+      "reason": "Requires automatic escaping, while Backstage fixes autoescape to false."
     },
     {
-      "upstream": { "id": "tests/parser.js:17", "file": "tests/parser.js", "test": "should parse raw with broken variables" },
-      "status": "adapted",
-      "reason": "Broken interpolation syntax inside raw is preserved literally.",
-      "cases": ["parser-raw-broken-variable"]
+      "upstream": {"id":"tests/parser.js:17","file":"tests/parser.js","test":"should parse raw with broken variables"},
+      "status": "not applicable",
+      "reason": "Requires automatic escaping, while Backstage fixes autoescape to false."
     },
     {
-      "upstream": { "id": "tests/parser.js:18", "file": "tests/parser.js", "test": "should parse raw with broken blocks" },
-      "status": "adapted",
-      "reason": "Broken block syntax inside raw is preserved literally without consuming the closing marker.",
-      "cases": ["parser-raw-broken-block"]
+      "upstream": {"id":"tests/parser.js:18","file":"tests/parser.js","test":"should parse raw with broken blocks"},
+      "status": "not applicable",
+      "reason": "Requires automatic escaping, while Backstage fixes autoescape to false."
     },
     {
-      "upstream": { "id": "tests/parser.js:19", "file": "tests/parser.js", "test": "should parse raw with pure text" },
-      "status": "adapted",
-      "reason": "Pure raw text is verified through exact rendered output.",
-      "cases": ["parser-raw-pure-text"]
+      "upstream": {"id":"tests/parser.js:19","file":"tests/parser.js","test":"should parse raw with pure text"},
+      "status": "not applicable",
+      "reason": "Requires automatic escaping, while Backstage fixes autoescape to false."
     },
     {
-      "upstream": { "id": "tests/parser.js:20", "file": "tests/parser.js", "test": "should parse raw with raw blocks" },
-      "status": "adapted",
-      "reason": "Nested raw markers are balanced and preserved in the outer raw output.",
-      "cases": ["parser-raw-nested-block"]
+      "upstream": {"id":"tests/parser.js:20","file":"tests/parser.js","test":"should parse raw with raw blocks"},
+      "status": "not applicable",
+      "reason": "Requires automatic escaping, while Backstage fixes autoescape to false."
     },
     {
-      "upstream": { "id": "tests/parser.js:21", "file": "tests/parser.js", "test": "should parse raw with comment blocks" },
-      "status": "adapted",
-      "reason": "Comment syntax inside raw is preserved literally.",
-      "cases": ["parser-raw-comment-text"]
+      "upstream": {"id":"tests/parser.js:21","file":"tests/parser.js","test":"should parse raw with comment blocks"},
+      "status": "not applicable",
+      "reason": "Requires automatic escaping, while Backstage fixes autoescape to false."
     },
     {
-      "upstream": { "id": "tests/parser.js:22", "file": "tests/parser.js", "test": "should parse multiple raw blocks" },
-      "status": "adapted",
-      "reason": "Multiple raw regions and the interpolation between them are verified through exact output.",
-      "cases": ["parser-raw-multiple"]
+      "upstream": {"id":"tests/parser.js:22","file":"tests/parser.js","test":"should parse multiple raw blocks"},
+      "status": "not applicable",
+      "reason": "Requires automatic escaping, while Backstage fixes autoescape to false."
     },
     {
-      "upstream": { "id": "tests/parser.js:23", "file": "tests/parser.js", "test": "should parse multiline multiple raw blocks" },
-      "status": "adapted",
-      "reason": "Newlines surrounding multiple raw regions are verified through exact output.",
-      "cases": ["parser-raw-multiline-multiple"]
+      "upstream": {"id":"tests/parser.js:23","file":"tests/parser.js","test":"should parse multiline multiple raw blocks"},
+      "status": "not applicable",
+      "reason": "Requires automatic escaping, while Backstage fixes autoescape to false."
     },
     {
-      "upstream": { "id": "tests/parser.js:24", "file": "tests/parser.js", "test": "should parse verbatim" },
-      "status": "adapted",
-      "reason": "Verbatim delimiter-like text is preserved in output rather than represented as TemplateData AST nodes.",
-      "cases": ["parser-verbatim-delimiter-text"]
+      "upstream": {"id":"tests/parser.js:24","file":"tests/parser.js","test":"should parse verbatim"},
+      "status": "not applicable",
+      "reason": "Requires automatic escaping, while Backstage fixes autoescape to false."
     },
     {
-      "upstream": { "id": "tests/parser.js:25", "file": "tests/parser.js", "test": "should parse verbatim with broken variables" },
-      "status": "adapted",
-      "reason": "Broken interpolation syntax inside verbatim is preserved literally.",
-      "cases": ["parser-verbatim-broken-variable"]
+      "upstream": {"id":"tests/parser.js:25","file":"tests/parser.js","test":"should parse verbatim with broken variables"},
+      "status": "not applicable",
+      "reason": "Requires automatic escaping, while Backstage fixes autoescape to false."
     },
     {
-      "upstream": { "id": "tests/parser.js:26", "file": "tests/parser.js", "test": "should parse verbatim with broken blocks" },
-      "status": "adapted",
-      "reason": "Broken block syntax inside verbatim is preserved literally without consuming the closing marker.",
-      "cases": ["parser-verbatim-broken-block"]
+      "upstream": {"id":"tests/parser.js:26","file":"tests/parser.js","test":"should parse verbatim with broken blocks"},
+      "status": "not applicable",
+      "reason": "Requires automatic escaping, while Backstage fixes autoescape to false."
     },
     {
-      "upstream": { "id": "tests/parser.js:27", "file": "tests/parser.js", "test": "should parse verbatim with pure text" },
-      "status": "adapted",
-      "reason": "Pure verbatim text is verified through exact rendered output.",
-      "cases": ["parser-verbatim-pure-text"]
+      "upstream": {"id":"tests/parser.js:27","file":"tests/parser.js","test":"should parse verbatim with pure text"},
+      "status": "not applicable",
+      "reason": "Requires automatic escaping, while Backstage fixes autoescape to false."
     },
     {
-      "upstream": { "id": "tests/parser.js:28", "file": "tests/parser.js", "test": "should parse verbatim with verbatim blocks" },
-      "status": "adapted",
-      "reason": "Nested verbatim markers are balanced and preserved in the outer verbatim output.",
-      "cases": ["parser-verbatim-nested-block"]
+      "upstream": {"id":"tests/parser.js:28","file":"tests/parser.js","test":"should parse verbatim with verbatim blocks"},
+      "status": "not applicable",
+      "reason": "Requires automatic escaping, while Backstage fixes autoescape to false."
     },
     {
-      "upstream": { "id": "tests/parser.js:29", "file": "tests/parser.js", "test": "should parse verbatim with comment blocks" },
-      "status": "adapted",
-      "reason": "Comment syntax inside verbatim is preserved literally.",
-      "cases": ["parser-verbatim-comment-text"]
+      "upstream": {"id":"tests/parser.js:29","file":"tests/parser.js","test":"should parse verbatim with comment blocks"},
+      "status": "not applicable",
+      "reason": "Requires automatic escaping, while Backstage fixes autoescape to false."
     },
     {
-      "upstream": { "id": "tests/parser.js:30", "file": "tests/parser.js", "test": "should parse multiple verbatim blocks" },
-      "status": "adapted",
-      "reason": "Multiple verbatim regions and the interpolation between them are verified through exact output.",
-      "cases": ["parser-verbatim-multiple"]
+      "upstream": {"id":"tests/parser.js:30","file":"tests/parser.js","test":"should parse multiple verbatim blocks"},
+      "status": "not applicable",
+      "reason": "Requires automatic escaping, while Backstage fixes autoescape to false."
     },
     {
-      "upstream": { "id": "tests/parser.js:31", "file": "tests/parser.js", "test": "should parse multiline multiple verbatim blocks" },
-      "status": "adapted",
-      "reason": "Newlines surrounding multiple verbatim regions are verified through exact output.",
-      "cases": ["parser-verbatim-multiline-multiple"]
+      "upstream": {"id":"tests/parser.js:31","file":"tests/parser.js","test":"should parse multiline multiple verbatim blocks"},
+      "status": "not applicable",
+      "reason": "Requires automatic escaping, while Backstage fixes autoescape to false."
     },
     {
-      "upstream": { "id": "tests/parser.js:32", "file": "tests/parser.js", "test": "should parse switch statements" },
-      "status": "adapted",
-      "reason": "Switch cases, default, no-match, and fallthrough behavior are verified through rendering rather than Switch AST nodes.",
-      "cases": ["compiler-switch-first-case", "compiler-switch-second-case", "compiler-switch-default"]
+      "upstream": {"id":"tests/parser.js:32","file":"tests/parser.js","test":"should parse switch statements"},
+      "status": "not applicable",
+      "reason": "Requires automatic escaping, while Backstage fixes autoescape to false."
     },
     {
-      "upstream": { "id": "tests/parser.js:33", "file": "tests/parser.js", "test": "should parse keyword and non-keyword arguments" },
+      "upstream": {"id":"tests/parser.js:33","file":"tests/parser.js","test":"should parse keyword and non-keyword arguments"},
       "status": "adapted",
       "reason": "Positional and keyword argument binding is verified through macro and custom-tag rendering rather than argument AST nodes.",
-      "cases": ["compiler-macro-keyword-argument", "compiler-custom-body-tag-keyword-argument"]
+      "cases": ["compiler-macro-keyword-argument"]
     },
     {
-      "upstream": { "id": "tests/parser.js:34", "file": "tests/parser.js", "test": "should parse imports" },
-      "status": "adapted",
-      "reason": "Namespace, aliased from-import, and filtered template-path imports are rendered through explicit loaders instead of inspected as Import AST nodes.",
-      "cases": ["compiler-import-namespace-values", "compiler-from-import-aliases", "parser-filtered-import-paths"]
+      "upstream": {"id":"tests/parser.js:34","file":"tests/parser.js","test":"should parse imports"},
+      "status": "not applicable",
+      "reason": "Requires named-template loading, includes, imports, or inheritance, which the Backstage inline renderer does not support."
     },
     {
-      "upstream": { "id": "tests/parser.js:35", "file": "tests/parser.js", "test": "should parse whitespace control" },
-      "status": "adapted",
-      "reason": "Left and right trim markers on expressions, comments, blocks, nested blocks, and imports are verified through exact rendered whitespace."
+      "upstream": {"id":"tests/parser.js:35","file":"tests/parser.js","test":"should parse whitespace control"},
+      "status": "not applicable",
+      "reason": "Requires named-template loading, includes, imports, or inheritance, which the Backstage inline renderer does not support."
     },
     {
-      "upstream": { "id": "tests/parser.js:36", "file": "tests/parser.js", "test": "should throw errors" },
-      "status": "adapted",
-      "reason": "Every malformed upstream source shape rejects in the runtime suite, including mismatched named endblocks and private imports; exact Nunjucks messages are outside the contract."
+      "upstream": {"id":"tests/parser.js:36","file":"tests/parser.js","test":"should throw errors"},
+      "status": "not applicable",
+      "reason": "Requires named-template loading, includes, imports, or inheritance, which the Backstage inline renderer does not support."
     },
     {
-      "upstream": { "id": "tests/parser.js:37", "file": "tests/parser.js", "test": "should parse custom tags" },
-      "status": "adapted",
-      "reason": "Nunjitsu replaces parser-object extensions with declarative inline and body tag schemas; equivalent arguments and rendered bodies are covered through the new capability API.",
-      "cases": ["compiler-custom-inline-tag", "compiler-custom-body-tag", "compiler-custom-body-tag-keyword-argument"]
+      "upstream": {"id":"tests/parser.js:37","file":"tests/parser.js","test":"should parse custom tags"},
+      "status": "not applicable",
+      "reason": "Requires a Nunjucks parser extension or host-defined tag, which Backstage does not expose."
     },
     {
-      "upstream": { "id": "tests/lexer.js:1", "file": "tests/lexer.js", "test": "should parse template data" },
+      "upstream": {"id":"tests/lexer.js:1","file":"tests/lexer.js","test":"should parse template data"},
       "status": "adapted",
-      "reason": "Arbitrary template data is preserved through exact rendered output because Nunjitsu does not expose a lexer token stream.",
+      "reason": "Applicable observable language behavior is exercised through the synchronous inline Backstage renderer.",
       "cases": ["compiler-static-text"]
     },
     {
-      "upstream": { "id": "tests/lexer.js:2", "file": "tests/lexer.js", "test": "should keep track of whitespace" },
+      "upstream": {"id":"tests/lexer.js:2","file":"tests/lexer.js","test":"should keep track of whitespace"},
       "status": "not applicable",
       "reason": "Individual whitespace tokens are part of the replaced Nunjucks lexer API; observable template whitespace is covered by render assertions."
     },
     {
-      "upstream": { "id": "tests/lexer.js:3", "file": "tests/lexer.js", "test": "should trim blocks" },
+      "upstream": {"id":"tests/lexer.js:3","file":"tests/lexer.js","test":"should trim blocks"},
       "status": "adapted",
       "reason": "Environment-level trimBlocks behavior is verified through exact rendered LF output in the runtime suite."
     },
     {
-      "upstream": { "id": "tests/lexer.js:4", "file": "tests/lexer.js", "test": "should trim windows-style CRLF line endings after blocks" },
+      "upstream": {"id":"tests/lexer.js:4","file":"tests/lexer.js","test":"should trim windows-style CRLF line endings after blocks"},
       "status": "adapted",
       "reason": "Environment-level trimBlocks behavior is verified through exact rendered CRLF output in the runtime suite."
     },
     {
-      "upstream": { "id": "tests/lexer.js:5", "file": "tests/lexer.js", "test": "should not trim CR after blocks" },
+      "upstream": {"id":"tests/lexer.js:5","file":"tests/lexer.js","test":"should not trim CR after blocks"},
       "status": "adapted",
       "reason": "The runtime suite verifies that trimBlocks preserves a lone CR while still trimming only LF and CRLF."
     },
     {
-      "upstream": { "id": "tests/lexer.js:6", "file": "tests/lexer.js", "test": "should lstrip and trim blocks" },
+      "upstream": {"id":"tests/lexer.js:6","file":"tests/lexer.js","test":"should lstrip and trim blocks"},
       "status": "adapted",
       "reason": "Combined lstripBlocks and trimBlocks behavior is verified through exact rendered output in the runtime suite."
     },
     {
-      "upstream": { "id": "tests/lexer.js:7", "file": "tests/lexer.js", "test": "should lstrip and not collapse whitespace between blocks" },
+      "upstream": {"id":"tests/lexer.js:7","file":"tests/lexer.js","test":"should lstrip and not collapse whitespace between blocks"},
       "status": "adapted",
       "reason": "The runtime suite verifies that lstripBlocks removes line indentation without collapsing data whitespace between adjacent blocks."
     },
     {
-      "upstream": { "id": "tests/lexer.js:8", "file": "tests/lexer.js", "test": "should parse variable start and end" },
+      "upstream": {"id":"tests/lexer.js:8","file":"tests/lexer.js","test":"should parse variable start and end"},
       "status": "adapted",
       "reason": "Interpolation delimiters and surrounding template data are exercised through rendered output.",
       "cases": ["compiler-interpolation"]
     },
     {
-      "upstream": { "id": "tests/lexer.js:9", "file": "tests/lexer.js", "test": "should treat the non-breaking space as valid whitespace" },
-      "status": "adapted",
-      "reason": "A U+00A0 separator before a symbol is accepted and rendered through the public engine.",
-      "cases": ["lexer-nonbreaking-space"]
+      "upstream": {"id":"tests/lexer.js:9","file":"tests/lexer.js","test":"should treat the non-breaking space as valid whitespace"},
+      "status": "not applicable",
+      "reason": "Requires automatic escaping, while Backstage fixes autoescape to false."
     },
     {
-      "upstream": { "id": "tests/lexer.js:10", "file": "tests/lexer.js", "test": "should parse block start and end" },
-      "status": "adapted",
-      "reason": "Block delimiters are exercised by built-in control flow and declarative custom-tag rendering rather than lexer tokens.",
-      "cases": ["compiler-custom-inline-tag"]
+      "upstream": {"id":"tests/lexer.js:10","file":"tests/lexer.js","test":"should parse block start and end"},
+      "status": "not applicable",
+      "reason": "Requires a Nunjucks parser extension or host-defined tag, which Backstage does not expose."
     },
     {
-      "upstream": { "id": "tests/lexer.js:11", "file": "tests/lexer.js", "test": "should parse basic types" },
-      "status": "adapted",
-      "reason": "Integer, float, boolean, none, symbol, string, and regex literals are rendered through the public engine.",
-      "cases": ["parser-basic-types"]
+      "upstream": {"id":"tests/lexer.js:11","file":"tests/lexer.js","test":"should parse basic types"},
+      "status": "not applicable",
+      "reason": "Requires automatic escaping, while Backstage fixes autoescape to false."
     },
     {
-      "upstream": { "id": "tests/lexer.js:12", "file": "tests/lexer.js", "test": "should parse function calls" },
+      "upstream": {"id":"tests/lexer.js:12","file":"tests/lexer.js","test":"should parse function calls"},
       "status": "adapted",
       "reason": "Parenthesized callable syntax is exercised through explicit global capabilities and macros rather than lexer tokens.",
-      "cases": ["compiler-callable-global", "compiler-macro-basic"]
+      "cases": ["compiler-macro-basic"]
     },
     {
-      "upstream": { "id": "tests/lexer.js:13", "file": "tests/lexer.js", "test": "should parse groups" },
-      "status": "adapted",
-      "reason": "Comma-separated parenthesized groups are evaluated as Nunjucks tuple arrays and verified through a filter.",
-      "cases": ["parser-group-tuple"]
+      "upstream": {"id":"tests/lexer.js:13","file":"tests/lexer.js","test":"should parse groups"},
+      "status": "not applicable",
+      "reason": "Requires automatic escaping, while Backstage fixes autoescape to false."
     },
     {
-      "upstream": { "id": "tests/lexer.js:14", "file": "tests/lexer.js", "test": "should parse arrays" },
+      "upstream": {"id":"tests/lexer.js:14","file":"tests/lexer.js","test":"should parse arrays"},
       "status": "adapted",
       "reason": "Array literal delimiters and comma-separated values are exercised through loop and destructuring output.",
       "cases": ["compiler-three-value-loop-destructuring"]
     },
     {
-      "upstream": { "id": "tests/lexer.js:15", "file": "tests/lexer.js", "test": "should parse dicts" },
-      "status": "adapted",
-      "reason": "Record literal braces, keys, colons, and comma-separated values are exercised through iteration output.",
-      "cases": ["compiler-loop-literal-record"]
+      "upstream": {"id":"tests/lexer.js:15","file":"tests/lexer.js","test":"should parse dicts"},
+      "status": "not applicable",
+      "reason": "Requires automatic escaping, while Backstage fixes autoescape to false."
     },
     {
-      "upstream": { "id": "tests/lexer.js:16", "file": "tests/lexer.js", "test": "should parse blocks without whitespace" },
-      "status": "adapted",
-      "reason": "Adjacent data, interpolation, and block delimiters without padding whitespace are rendered exactly.",
-      "cases": ["lexer-no-delimiter-whitespace"]
+      "upstream": {"id":"tests/lexer.js:16","file":"tests/lexer.js","test":"should parse blocks without whitespace"},
+      "status": "not applicable",
+      "reason": "Requires automatic escaping, while Backstage fixes autoescape to false."
     },
     {
-      "upstream": { "id": "tests/lexer.js:17", "file": "tests/lexer.js", "test": "should parse filters" },
+      "upstream": {"id":"tests/lexer.js:17","file":"tests/lexer.js","test":"should parse filters"},
       "status": "adapted",
       "reason": "Pipe tokens and filter names are exercised throughout the built-in filter rendering corpus."
     },
     {
-      "upstream": { "id": "tests/lexer.js:18", "file": "tests/lexer.js", "test": "should parse operators" },
+      "upstream": {"id":"tests/lexer.js:18","file":"tests/lexer.js","test":"should parse operators"},
       "status": "adapted",
       "reason": "Arithmetic, power, floor-division, and comparison operators are verified through evaluated output.",
-      "cases": ["compiler-basic-arithmetic", "compiler-exponentiation", "compiler-floor-division", "compiler-comparison-operators"]
+      "cases": ["compiler-basic-arithmetic","compiler-exponentiation","compiler-floor-division"]
     },
     {
-      "upstream": { "id": "tests/lexer.js:19", "file": "tests/lexer.js", "test": "should parse comments" },
+      "upstream": {"id":"tests/lexer.js:19","file":"tests/lexer.js","test":"should parse comments"},
       "status": "adapted",
-      "reason": "Template comments are omitted while adjacent data is preserved, verified through buffered and streaming runtime output."
+      "reason": "Applicable observable language behavior is exercised through the synchronous inline Backstage renderer."
     },
     {
-      "upstream": { "id": "tests/lexer.js:20", "file": "tests/lexer.js", "test": "should allow changing the variable start and end" },
+      "upstream": {"id":"tests/lexer.js:20","file":"tests/lexer.js","test":"should allow changing the variable start and end"},
       "status": "not applicable",
       "reason": "Custom delimiter configuration belongs to the replaced Nunjucks lexer/environment API; Nunjitsu intentionally fixes the Nunjucks template delimiters."
     },
     {
-      "upstream": { "id": "tests/lexer.js:21", "file": "tests/lexer.js", "test": "should allow changing the block start and end" },
+      "upstream": {"id":"tests/lexer.js:21","file":"tests/lexer.js","test":"should allow changing the block start and end"},
       "status": "not applicable",
       "reason": "Custom delimiter configuration belongs to the replaced Nunjucks lexer/environment API; Nunjitsu intentionally fixes the Nunjucks template delimiters."
     },
     {
-      "upstream": { "id": "tests/lexer.js:22", "file": "tests/lexer.js", "test": "should allow changing the variable start and end" },
+      "upstream": {"id":"tests/lexer.js:22","file":"tests/lexer.js","test":"should allow changing the variable start and end"},
       "status": "not applicable",
       "reason": "Custom delimiter configuration belongs to the replaced Nunjucks lexer/environment API; Nunjitsu intentionally fixes the Nunjucks template delimiters."
     },
     {
-      "upstream": { "id": "tests/lexer.js:23", "file": "tests/lexer.js", "test": "should allow changing the comment start and end" },
+      "upstream": {"id":"tests/lexer.js:23","file":"tests/lexer.js","test":"should allow changing the comment start and end"},
       "status": "not applicable",
       "reason": "Custom delimiter configuration belongs to the replaced Nunjucks lexer/environment API; Nunjitsu intentionally fixes the Nunjucks template delimiters."
     },
     {
-      "upstream": { "id": "tests/lexer.js:24", "file": "tests/lexer.js", "test": "should have individual lexer tag settings for each environment" },
+      "upstream": {"id":"tests/lexer.js:24","file":"tests/lexer.js","test":"should have individual lexer tag settings for each environment"},
       "status": "not applicable",
       "reason": "Nunjitsu exposes no mutable lexer settings; engine configuration is immutable and custom delimiter configuration is outside the documented API."
     },
     {
-      "upstream": { "id": "tests/lexer.js:25", "file": "tests/lexer.js", "test": "should parse regular expressions" },
-      "status": "adapted",
-      "reason": "Spaces, character classes, escaped slashes, and v3.2.4 flags in regex literals are executed through replace; an unsupported v flag rejects even though modern Node recognizes it.",
-      "cases": ["lexer-complex-regex-literals", "compiler-regex-flags"]
+      "upstream": {"id":"tests/lexer.js:25","file":"tests/lexer.js","test":"should parse regular expressions"},
+      "status": "not applicable",
+      "reason": "Requires automatic escaping, while Backstage fixes autoescape to false."
     },
     {
-      "upstream": { "id": "tests/lexer.js:26", "file": "tests/lexer.js", "test": "should keep track of token positions" },
+      "upstream": {"id":"tests/lexer.js:26","file":"tests/lexer.js","test":"should keep track of token positions"},
       "status": "not applicable",
       "reason": "Nunjitsu exposes no lexer token-position API, and exact upstream source-location diagnostics are outside the compatibility contract."
     },
     {
-      "upstream": { "id": "tests/compiler.js:1", "file": "tests/compiler.js", "test": "should compile templates" },
+      "upstream": {"id":"tests/compiler.js:1","file":"tests/compiler.js","test":"should compile templates"},
       "status": "ported",
-      "cases": [
-        "compiler-static-text",
-        "compiler-interpolation",
-        "compiler-adjacent-interpolation"
-      ]
+      "cases": ["compiler-static-text","compiler-interpolation","compiler-adjacent-interpolation"]
     },
     {
-      "upstream": { "id": "tests/compiler.js:4", "file": "tests/compiler.js", "test": "should compile references" },
+      "upstream": {"id":"tests/compiler.js:4","file":"tests/compiler.js","test":"should compile references"},
       "status": "ported",
-      "cases": ["compiler-dotted-reference", "compiler-bracket-reference"]
+      "cases": ["compiler-dotted-reference","compiler-bracket-reference"]
     },
     {
-      "upstream": { "id": "tests/compiler.js:6", "file": "tests/compiler.js", "test": "should fail silently on undefined values" },
+      "upstream": {"id":"tests/compiler.js:6","file":"tests/compiler.js","test":"should fail silently on undefined values"},
       "status": "ported",
-      "cases": [
-        "compiler-missing-root-value",
-        "compiler-missing-dotted-value",
-        "compiler-missing-value",
-        "compiler-missing-mixed-reference"
-      ]
+      "cases": ["compiler-missing-root-value","compiler-missing-dotted-value","compiler-missing-value","compiler-missing-mixed-reference"]
     },
     {
-      "upstream": { "id": "tests/compiler.js:125", "file": "tests/compiler.js", "test": "should autoescape if autoescape is on" },
-      "status": "adapted",
-      "reason": "All copied-value assertions are ported. The two live objects with custom JavaScript toString methods are outside the documented safe-value contract.",
-      "cases": ["compiler-autoescape", "compiler-autoescape-reverse", "compiler-autoescape-reverse-safe", "compiler-autoescape-null", "compiler-autoescape-array", "compiler-autoescape-safe-null", "compiler-autoescape-safe-string", "compiler-autoescape-safe-array"]
+      "upstream": {"id":"tests/compiler.js:125","file":"tests/compiler.js","test":"should autoescape if autoescape is on"},
+      "status": "not applicable",
+      "reason": "Requires automatic escaping, while Backstage fixes autoescape to false."
     },
     {
-      "upstream": { "id": "tests/compiler.js:126", "file": "tests/compiler.js", "test": "should not autoescape safe strings" },
-      "status": "ported",
-      "cases": ["compiler-safe-filter", "compiler-explicit-safe-value"]
+      "upstream": {"id":"tests/compiler.js:126","file":"tests/compiler.js","test":"should not autoescape safe strings"},
+      "status": "not applicable",
+      "reason": "Requires automatic escaping, while Backstage fixes autoescape to false."
     },
     {
-      "upstream": { "id": "tests/compiler.js:105", "file": "tests/compiler.js", "test": "should include templates dynamically" },
-      "status": "ported",
-      "cases": ["compiler-dynamic-include-context"]
+      "upstream": {"id":"tests/compiler.js:105","file":"tests/compiler.js","test":"should include templates dynamically"},
+      "status": "not applicable",
+      "reason": "Requires named-template loading, includes, imports, or inheritance, which the Backstage inline renderer does not support."
     },
     {
-      "upstream": { "id": "tests/compiler.js:106", "file": "tests/compiler.js", "test": "should include templates dynamically based on a set var" },
-      "status": "ported",
-      "cases": ["compiler-dynamic-include-set"]
+      "upstream": {"id":"tests/compiler.js:106","file":"tests/compiler.js","test":"should include templates dynamically based on a set var"},
+      "status": "not applicable",
+      "reason": "Requires named-template loading, includes, imports, or inheritance, which the Backstage inline renderer does not support."
     },
     {
-      "upstream": { "id": "tests/compiler.js:107", "file": "tests/compiler.js", "test": "should include templates dynamically based on an object attr" },
-      "status": "ported",
-      "cases": ["compiler-dynamic-include-attribute"]
+      "upstream": {"id":"tests/compiler.js:107","file":"tests/compiler.js","test":"should include templates dynamically based on an object attr"},
+      "status": "not applicable",
+      "reason": "Requires named-template loading, includes, imports, or inheritance, which the Backstage inline renderer does not support."
     },
     {
-      "upstream": { "id": "tests/compiler.js:46", "file": "tests/compiler.js", "test": "should compile basic arithmetic operators" },
+      "upstream": {"id":"tests/compiler.js:46","file":"tests/compiler.js","test":"should compile basic arithmetic operators"},
       "status": "ported",
       "cases": ["compiler-basic-arithmetic"]
     },
     {
-      "upstream": { "id": "tests/compiler.js:47", "file": "tests/compiler.js", "test": "should compile the exponentiation (**) operator" },
+      "upstream": {"id":"tests/compiler.js:47","file":"tests/compiler.js","test":"should compile the exponentiation (**) operator"},
       "status": "ported",
       "cases": ["compiler-exponentiation"]
     },
     {
-      "upstream": { "id": "tests/compiler.js:48", "file": "tests/compiler.js", "test": "should compile the integer division (//) operator" },
+      "upstream": {"id":"tests/compiler.js:48","file":"tests/compiler.js","test":"should compile the integer division (//) operator"},
       "status": "ported",
       "cases": ["compiler-floor-division"]
     },
     {
-      "upstream": { "id": "tests/compiler.js:49", "file": "tests/compiler.js", "test": "should compile the modulus operator" },
+      "upstream": {"id":"tests/compiler.js:49","file":"tests/compiler.js","test":"should compile the modulus operator"},
       "status": "ported",
       "cases": ["compiler-modulus"]
     },
     {
-      "upstream": { "id": "tests/compiler.js:50", "file": "tests/compiler.js", "test": "should compile numeric negation operator" },
+      "upstream": {"id":"tests/compiler.js:50","file":"tests/compiler.js","test":"should compile numeric negation operator"},
       "status": "ported",
       "cases": ["compiler-numeric-negation"]
     },
     {
-      "upstream": { "id": "tests/compiler.js:62", "file": "tests/compiler.js", "test": "should compile string concatenations with tilde" },
+      "upstream": {"id":"tests/compiler.js:62","file":"tests/compiler.js","test":"should compile string concatenations with tilde"},
       "status": "ported",
       "cases": ["compiler-string-concatenation"]
     },
     {
-      "upstream": { "id": "tests/compiler.js:109", "file": "tests/compiler.js", "test": "should fail silently on missing templates if requested" },
-      "status": "ported",
-      "cases": ["compiler-ignore-missing-include", "compiler-ignore-missing-include-context"]
+      "upstream": {"id":"tests/compiler.js:109","file":"tests/compiler.js","test":"should fail silently on missing templates if requested"},
+      "status": "not applicable",
+      "reason": "Requires named-template loading, includes, imports, or inheritance, which the Backstage inline renderer does not support."
     },
     {
-      "upstream": { "id": "tests/compiler.js:15", "file": "tests/compiler.js", "test": "should compile the ternary operator" },
+      "upstream": {"id":"tests/compiler.js:15","file":"tests/compiler.js","test":"should compile the ternary operator"},
       "status": "ported",
-      "cases": ["compiler-ternary-false", "compiler-ternary-true"]
+      "cases": ["compiler-ternary-false","compiler-ternary-true"]
     },
     {
-      "upstream": { "id": "tests/compiler.js:16", "file": "tests/compiler.js", "test": "should compile inline conditionals" },
+      "upstream": {"id":"tests/compiler.js:16","file":"tests/compiler.js","test":"should compile inline conditionals"},
       "status": "ported",
-      "cases": ["compiler-inline-if-true", "compiler-inline-if-false", "compiler-inline-if-not", "compiler-inline-if-and", "compiler-inline-if-or", "compiler-inline-if-group", "compiler-inline-if-comparison"]
+      "cases": ["compiler-inline-if-true","compiler-inline-if-false","compiler-inline-if-not","compiler-inline-if-and","compiler-inline-if-or","compiler-inline-if-group","compiler-inline-if-comparison"]
     },
     {
-      "upstream": { "id": "tests/compiler.js:52", "file": "tests/compiler.js", "test": "should compile python-style ternary operators" },
+      "upstream": {"id":"tests/compiler.js:52","file":"tests/compiler.js","test":"should compile python-style ternary operators"},
       "status": "ported",
       "cases": ["compiler-python-style-ternary-tests"]
     },
     {
-      "upstream": { "id": "tests/compiler.js:20", "file": "tests/compiler.js", "test": "should support destructured looping" },
+      "upstream": {"id":"tests/compiler.js:20","file":"tests/compiler.js","test":"should support destructured looping"},
       "status": "ported",
-      "cases": ["compiler-three-value-loop-destructuring", "compiler-three-value-async-each", "compiler-three-value-async-all"]
+      "cases": ["compiler-three-value-loop-destructuring"]
     },
     {
-      "upstream": { "id": "tests/compiler.js:33", "file": "tests/compiler.js", "test": "should loop over four-dimensional arrays" },
+      "upstream": {"id":"tests/compiler.js:33","file":"tests/compiler.js","test":"should loop over four-dimensional arrays"},
       "status": "ported",
-      "cases": ["compiler-four-value-loop-destructuring", "compiler-four-value-async-each", "compiler-four-value-async-all"]
+      "cases": ["compiler-four-value-loop-destructuring"]
     },
     {
-      "upstream": { "id": "tests/compiler.js:114", "file": "tests/compiler.js", "test": "should compile a set block" },
+      "upstream": {"id":"tests/compiler.js:114","file":"tests/compiler.js","test":"should compile a set block"},
       "status": "ported",
-      "cases": ["compiler-set-multiple-and-arithmetic", "compiler-set-loop-local", "compiler-set-include-isolation", "compiler-set-context-expression", "compiler-set-new-loop-local", "compiler-set-loop-local-accumulation", "compiler-set-resolves-outer-scope", "compiler-set-outer-accumulation"]
+      "cases": ["compiler-set-multiple-and-arithmetic","compiler-set-loop-local","compiler-set-context-expression","compiler-set-new-loop-local","compiler-set-loop-local-accumulation","compiler-set-resolves-outer-scope","compiler-set-outer-accumulation"]
     },
     {
-      "upstream": { "id": "tests/compiler.js:115", "file": "tests/compiler.js", "test": "should compile set with frame references" },
+      "upstream": {"id":"tests/compiler.js:115","file":"tests/compiler.js","test":"should compile set with frame references"},
       "status": "ported",
       "cases": ["compiler-set-frame-reference"]
     },
     {
-      "upstream": { "id": "tests/compiler.js:116", "file": "tests/compiler.js", "test": "should compile set assignments of the same variable" },
+      "upstream": {"id":"tests/compiler.js:116","file":"tests/compiler.js","test":"should compile set assignments of the same variable"},
       "status": "ported",
       "cases": ["compiler-set-same-variable-branches"]
     },
     {
-      "upstream": { "id": "tests/compiler.js:117", "file": "tests/compiler.js", "test": "should compile block-set" },
+      "upstream": {"id":"tests/compiler.js:117","file":"tests/compiler.js","test":"should compile block-set"},
       "status": "ported",
-      "cases": ["compiler-block-set-empty-and-text", "compiler-block-set-loop-include", "compiler-block-set-nested", "compiler-block-set-multiple-targets", "compiler-block-set-inside-macro"]
+      "cases": ["compiler-block-set-empty-and-text","compiler-block-set-nested","compiler-block-set-multiple-targets","compiler-block-set-inside-macro"]
     },
     {
-      "upstream": { "id": "tests/compiler.js:63", "file": "tests/compiler.js", "test": "should compile macros" },
+      "upstream": {"id":"tests/compiler.js:63","file":"tests/compiler.js","test":"should compile macros"},
       "status": "ported",
       "cases": ["compiler-macro-basic"]
     },
     {
-      "upstream": { "id": "tests/compiler.js:64", "file": "tests/compiler.js", "test": "should compile macros with optional args" },
+      "upstream": {"id":"tests/compiler.js:64","file":"tests/compiler.js","test":"should compile macros with optional args"},
       "status": "ported",
       "cases": ["compiler-macro-optional-positional"]
     },
     {
-      "upstream": { "id": "tests/compiler.js:65", "file": "tests/compiler.js", "test": "should compile macros with args that can be passed to filters" },
+      "upstream": {"id":"tests/compiler.js:65","file":"tests/compiler.js","test":"should compile macros with args that can be passed to filters"},
       "status": "ported",
       "cases": ["compiler-macro-argument-filter"]
     },
     {
-      "upstream": { "id": "tests/compiler.js:66", "file": "tests/compiler.js", "test": "should compile macros with positional args" },
+      "upstream": {"id":"tests/compiler.js:66","file":"tests/compiler.js","test":"should compile macros with positional args"},
       "status": "ported",
       "cases": ["compiler-macro-optional-positional"]
     },
     {
-      "upstream": { "id": "tests/compiler.js:67", "file": "tests/compiler.js", "test": "should compile macros with arg defaults" },
+      "upstream": {"id":"tests/compiler.js:67","file":"tests/compiler.js","test":"should compile macros with arg defaults"},
       "status": "ported",
       "cases": ["compiler-macro-default-arguments"]
     },
     {
-      "upstream": { "id": "tests/compiler.js:68", "file": "tests/compiler.js", "test": "should compile macros with keyword args" },
+      "upstream": {"id":"tests/compiler.js:68","file":"tests/compiler.js","test":"should compile macros with keyword args"},
       "status": "ported",
       "cases": ["compiler-macro-keyword-argument"]
     },
     {
-      "upstream": { "id": "tests/compiler.js:69", "file": "tests/compiler.js", "test": "should compile macros with only keyword args" },
+      "upstream": {"id":"tests/compiler.js:69","file":"tests/compiler.js","test":"should compile macros with only keyword args"},
       "status": "ported",
       "cases": ["compiler-macro-keyword-only-arguments"]
     },
     {
-      "upstream": { "id": "tests/compiler.js:70", "file": "tests/compiler.js", "test": "should compile macros with keyword args overriding defaults" },
+      "upstream": {"id":"tests/compiler.js:70","file":"tests/compiler.js","test":"should compile macros with keyword args overriding defaults"},
       "status": "ported",
       "cases": ["compiler-macro-keyword-overrides-default"]
     },
     {
-      "upstream": { "id": "tests/compiler.js:71", "file": "tests/compiler.js", "test": "should compile macros with out-of-order keyword args" },
+      "upstream": {"id":"tests/compiler.js:71","file":"tests/compiler.js","test":"should compile macros with out-of-order keyword args"},
       "status": "ported",
       "cases": ["compiler-macro-out-of-order-keyword"]
     },
     {
-      "upstream": { "id": "tests/compiler.js:72", "file": "tests/compiler.js", "test": "should compile macros" },
+      "upstream": {"id":"tests/compiler.js:72","file":"tests/compiler.js","test":"should compile macros"},
       "status": "ported",
       "cases": ["compiler-macro-default-only-arguments"]
     },
     {
-      "upstream": { "id": "tests/compiler.js:73", "file": "tests/compiler.js", "test": "should compile macros with multiple overridden arg defaults" },
+      "upstream": {"id":"tests/compiler.js:73","file":"tests/compiler.js","test":"should compile macros with multiple overridden arg defaults"},
       "status": "ported",
       "cases": ["compiler-macro-overridden-defaults"]
     },
     {
-      "upstream": { "id": "tests/compiler.js:74", "file": "tests/compiler.js", "test": "should compile macro calls inside blocks" },
-      "status": "ported",
-      "cases": ["compiler-macro-call-inside-inherited-block"]
+      "upstream": {"id":"tests/compiler.js:74","file":"tests/compiler.js","test":"should compile macro calls inside blocks"},
+      "status": "not applicable",
+      "reason": "Requires named-template loading, includes, imports, or inheritance, which the Backstage inline renderer does not support."
     },
     {
-      "upstream": { "id": "tests/compiler.js:75", "file": "tests/compiler.js", "test": "should compile macros defined in one block and called in another" },
+      "upstream": {"id":"tests/compiler.js:75","file":"tests/compiler.js","test":"should compile macros defined in one block and called in another"},
       "status": "ported",
       "cases": ["compiler-macro-defined-across-blocks"]
     },
     {
-      "upstream": { "id": "tests/compiler.js:76", "file": "tests/compiler.js", "test": "should compile macros that include other templates" },
-      "status": "ported",
-      "cases": ["compiler-macro-include"]
+      "upstream": {"id":"tests/compiler.js:76","file":"tests/compiler.js","test":"should compile macros that include other templates"},
+      "status": "not applicable",
+      "reason": "Requires named-template loading, includes, imports, or inheritance, which the Backstage inline renderer does not support."
     },
     {
-      "upstream": { "id": "tests/compiler.js:77", "file": "tests/compiler.js", "test": "should compile macros that set vars" },
+      "upstream": {"id":"tests/compiler.js:77","file":"tests/compiler.js","test":"should compile macros that set vars"},
       "status": "ported",
       "cases": ["compiler-macro-local-set"]
     },
     {
-      "upstream": { "id": "tests/compiler.js:78", "file": "tests/compiler.js", "test": "should not leak variables set in macro to calling scope" },
+      "upstream": {"id":"tests/compiler.js:78","file":"tests/compiler.js","test":"should not leak variables set in macro to calling scope"},
       "status": "ported",
       "cases": ["compiler-macro-nested-call-scope"]
     },
     {
-      "upstream": { "id": "tests/compiler.js:79", "file": "tests/compiler.js", "test": "should not leak variables set in nested scope within macro out to calling scope" },
+      "upstream": {"id":"tests/compiler.js:79","file":"tests/compiler.js","test":"should not leak variables set in nested scope within macro out to calling scope"},
       "status": "ported",
       "cases": ["compiler-macro-nested-loop-scope"]
     },
     {
-      "upstream": { "id": "tests/compiler.js:80", "file": "tests/compiler.js", "test": "should compile macros without leaking set to calling scope" },
+      "upstream": {"id":"tests/compiler.js:80","file":"tests/compiler.js","test":"should compile macros without leaking set to calling scope"},
       "status": "ported",
       "cases": ["compiler-macro-recursive-scope"]
     },
     {
-      "upstream": { "id": "tests/compiler.js:81", "file": "tests/compiler.js", "test": "should compile macros that cannot see variables in caller scope" },
+      "upstream": {"id":"tests/compiler.js:81","file":"tests/compiler.js","test":"should compile macros that cannot see variables in caller scope"},
       "status": "ported",
       "cases": ["compiler-macro-no-caller-scope"]
     },
     {
-      "upstream": { "id": "tests/compiler.js:82", "file": "tests/compiler.js", "test": "should compile call blocks" },
+      "upstream": {"id":"tests/compiler.js:82","file":"tests/compiler.js","test":"should compile call blocks"},
       "status": "ported",
       "cases": ["compiler-call-block"]
     },
     {
-      "upstream": { "id": "tests/compiler.js:83", "file": "tests/compiler.js", "test": "should compile call blocks with args" },
+      "upstream": {"id":"tests/compiler.js:83","file":"tests/compiler.js","test":"should compile call blocks with args"},
       "status": "ported",
       "cases": ["compiler-call-block-arguments"]
     },
     {
-      "upstream": { "id": "tests/compiler.js:84", "file": "tests/compiler.js", "test": "should compile call blocks using imported macros" },
-      "status": "ported",
-      "cases": ["compiler-call-block-imported-macro"]
+      "upstream": {"id":"tests/compiler.js:84","file":"tests/compiler.js","test":"should compile call blocks using imported macros"},
+      "status": "not applicable",
+      "reason": "Requires named-template loading, includes, imports, or inheritance, which the Backstage inline renderer does not support."
     },
     {
-      "upstream": { "id": "tests/compiler.js:85", "file": "tests/compiler.js", "test": "should import templates" },
-      "status": "ported",
-      "cases": ["compiler-import-namespace-values", "compiler-from-import-aliases", "compiler-from-import-loop-scope"]
+      "upstream": {"id":"tests/compiler.js:85","file":"tests/compiler.js","test":"should import templates"},
+      "status": "not applicable",
+      "reason": "Requires named-template loading, includes, imports, or inheritance, which the Backstage inline renderer does not support."
     },
     {
-      "upstream": { "id": "tests/compiler.js:86", "file": "tests/compiler.js", "test": "should import templates with context" },
-      "status": "ported",
-      "cases": ["compiler-import-with-context-macro", "compiler-from-import-with-context-macro", "compiler-import-without-context-preserves-caller-set", "compiler-import-without-context-exports-set", "compiler-import-with-context-updates-caller-set", "compiler-import-with-context-exports-set"]
+      "upstream": {"id":"tests/compiler.js:86","file":"tests/compiler.js","test":"should import templates with context"},
+      "status": "not applicable",
+      "reason": "Requires named-template loading, includes, imports, or inheritance, which the Backstage inline renderer does not support."
     },
     {
-      "upstream": { "id": "tests/compiler.js:87", "file": "tests/compiler.js", "test": "should import templates without context" },
-      "status": "ported",
-      "cases": ["compiler-import-explicit-without-context", "compiler-from-import-explicit-without-context"]
+      "upstream": {"id":"tests/compiler.js:87","file":"tests/compiler.js","test":"should import templates without context"},
+      "status": "not applicable",
+      "reason": "Requires named-template loading, includes, imports, or inheritance, which the Backstage inline renderer does not support."
     },
     {
-      "upstream": { "id": "tests/compiler.js:88", "file": "tests/compiler.js", "test": "should default to importing without context" },
-      "status": "ported",
-      "cases": ["compiler-import-defaults-without-context", "compiler-from-import-defaults-without-context"]
+      "upstream": {"id":"tests/compiler.js:88","file":"tests/compiler.js","test":"should default to importing without context"},
+      "status": "not applicable",
+      "reason": "Requires named-template loading, includes, imports, or inheritance, which the Backstage inline renderer does not support."
     },
     {
-      "upstream": { "id": "tests/compiler.js:89", "file": "tests/compiler.js", "test": "should inherit templates" },
-      "status": "ported",
-      "cases": ["compiler-inheritance-default-blocks", "compiler-inheritance-discards-child-output", "compiler-inheritance-one-override", "compiler-inheritance-multiple-overrides", "compiler-inheritance-dynamic-parent"]
+      "upstream": {"id":"tests/compiler.js:89","file":"tests/compiler.js","test":"should inherit templates"},
+      "status": "not applicable",
+      "reason": "Requires named-template loading, includes, imports, or inheritance, which the Backstage inline renderer does not support."
     },
     {
-      "upstream": { "id": "tests/compiler.js:90", "file": "tests/compiler.js", "test": "should not call blocks not defined from template inheritance" },
-      "status": "adapted",
-      "cases": ["compiler-inheritance-unused-block-skipped"]
+      "upstream": {"id":"tests/compiler.js:90","file":"tests/compiler.js","test":"should not call blocks not defined from template inheritance"},
+      "status": "not applicable",
+      "reason": "Requires named-template loading, includes, imports, or inheritance, which the Backstage inline renderer does not support."
     },
     {
-      "upstream": { "id": "tests/compiler.js:91", "file": "tests/compiler.js", "test": "should conditionally inherit templates" },
-      "status": "ported",
-      "cases": ["compiler-inheritance-conditional-false", "compiler-inheritance-conditional-true", "compiler-inheritance-conditional-first-parent", "compiler-inheritance-conditional-second-parent"]
+      "upstream": {"id":"tests/compiler.js:91","file":"tests/compiler.js","test":"should conditionally inherit templates"},
+      "status": "not applicable",
+      "reason": "Requires named-template loading, includes, imports, or inheritance, which the Backstage inline renderer does not support."
     },
     {
-      "upstream": { "id": "tests/compiler.js:92", "file": "tests/compiler.js", "test": "should error if same block is defined multiple times" },
+      "upstream": {"id":"tests/compiler.js:92","file":"tests/compiler.js","test":"should error if same block is defined multiple times"},
       "status": "adapted"
     },
     {
-      "upstream": { "id": "tests/compiler.js:93", "file": "tests/compiler.js", "test": "should render nested blocks in child template" },
-      "status": "ported",
-      "cases": ["compiler-inheritance-nested-child-block"]
+      "upstream": {"id":"tests/compiler.js:93","file":"tests/compiler.js","test":"should render nested blocks in child template"},
+      "status": "not applicable",
+      "reason": "Requires named-template loading, includes, imports, or inheritance, which the Backstage inline renderer does not support."
     },
     {
-      "upstream": { "id": "tests/compiler.js:94", "file": "tests/compiler.js", "test": "should render parent blocks with super()" },
-      "status": "ported",
-      "cases": ["compiler-inheritance-super", "compiler-inheritance-multilevel-super"]
+      "upstream": {"id":"tests/compiler.js:94","file":"tests/compiler.js","test":"should render parent blocks with super()"},
+      "status": "not applicable",
+      "reason": "Requires named-template loading, includes, imports, or inheritance, which the Backstage inline renderer does not support."
     },
     {
-      "upstream": { "id": "tests/compiler.js:95", "file": "tests/compiler.js", "test": "should let super() see global vars from child template" },
-      "status": "ported",
-      "cases": ["compiler-inheritance-super-child-global"]
+      "upstream": {"id":"tests/compiler.js:95","file":"tests/compiler.js","test":"should let super() see global vars from child template"},
+      "status": "not applicable",
+      "reason": "Requires named-template loading, includes, imports, or inheritance, which the Backstage inline renderer does not support."
     },
     {
-      "upstream": { "id": "tests/compiler.js:96", "file": "tests/compiler.js", "test": "should not let super() see vars from child block" },
-      "status": "ported",
-      "cases": ["compiler-inheritance-super-hides-child-block-local"]
+      "upstream": {"id":"tests/compiler.js:96","file":"tests/compiler.js","test":"should not let super() see vars from child block"},
+      "status": "not applicable",
+      "reason": "Requires named-template loading, includes, imports, or inheritance, which the Backstage inline renderer does not support."
     },
     {
-      "upstream": { "id": "tests/compiler.js:97", "file": "tests/compiler.js", "test": "should let child templates access parent global scope" },
-      "status": "ported",
-      "cases": ["compiler-inheritance-child-sees-parent-global"]
+      "upstream": {"id":"tests/compiler.js:97","file":"tests/compiler.js","test":"should let child templates access parent global scope"},
+      "status": "not applicable",
+      "reason": "Requires named-template loading, includes, imports, or inheritance, which the Backstage inline renderer does not support."
     },
     {
-      "upstream": { "id": "tests/compiler.js:98", "file": "tests/compiler.js", "test": "should not let super() modify calling scope" },
-      "status": "ported",
-      "cases": ["compiler-inheritance-super-scope-isolation"]
+      "upstream": {"id":"tests/compiler.js:98","file":"tests/compiler.js","test":"should not let super() modify calling scope"},
+      "status": "not applicable",
+      "reason": "Requires named-template loading, includes, imports, or inheritance, which the Backstage inline renderer does not support."
     },
     {
-      "upstream": { "id": "tests/compiler.js:99", "file": "tests/compiler.js", "test": "should not let child templates set vars in parent scope" },
-      "status": "ported",
-      "cases": ["compiler-inheritance-child-block-scope-isolation"]
+      "upstream": {"id":"tests/compiler.js:99","file":"tests/compiler.js","test":"should not let child templates set vars in parent scope"},
+      "status": "not applicable",
+      "reason": "Requires named-template loading, includes, imports, or inheritance, which the Backstage inline renderer does not support."
     },
     {
-      "upstream": { "id": "tests/compiler.js:100", "file": "tests/compiler.js", "test": "should render blocks in their own scope" },
+      "upstream": {"id":"tests/compiler.js:100","file":"tests/compiler.js","test":"should render blocks in their own scope"},
       "status": "ported",
       "cases": ["compiler-standalone-block-scope-isolation"]
     },
     {
-      "upstream": { "id": "tests/compiler.js:101", "file": "tests/compiler.js", "test": "should include templates" },
-      "status": "ported",
-      "cases": ["compiler-include-basic"]
+      "upstream": {"id":"tests/compiler.js:101","file":"tests/compiler.js","test":"should include templates"},
+      "status": "not applicable",
+      "reason": "Requires named-template loading, includes, imports, or inheritance, which the Backstage inline renderer does not support."
     },
     {
-      "upstream": { "id": "tests/compiler.js:102", "file": "tests/compiler.js", "test": "should include 130 templates without call stack size exceed" },
-      "status": "adapted",
-      "reason": "The TypeScript runtime test generates the same 130 sequential includes to avoid duplicating the repetitive fixture in JSON."
+      "upstream": {"id":"tests/compiler.js:102","file":"tests/compiler.js","test":"should include 130 templates without call stack size exceed"},
+      "status": "not applicable",
+      "reason": "Requires named-template loading, includes, imports, or inheritance, which the Backstage inline renderer does not support."
     },
     {
-      "upstream": { "id": "tests/compiler.js:103", "file": "tests/compiler.js", "test": "should include templates with context" },
-      "status": "ported",
-      "cases": ["compiler-include-context"]
+      "upstream": {"id":"tests/compiler.js:103","file":"tests/compiler.js","test":"should include templates with context"},
+      "status": "not applicable",
+      "reason": "Requires named-template loading, includes, imports, or inheritance, which the Backstage inline renderer does not support."
     },
     {
-      "upstream": { "id": "tests/compiler.js:104", "file": "tests/compiler.js", "test": "should include templates that can see including scope, but not write to it" },
-      "status": "ported",
-      "cases": ["compiler-include-scope-isolation"]
+      "upstream": {"id":"tests/compiler.js:104","file":"tests/compiler.js","test":"should include templates that can see including scope, but not write to it"},
+      "status": "not applicable",
+      "reason": "Requires named-template loading, includes, imports, or inheritance, which the Backstage inline renderer does not support."
     },
     {
-      "upstream": { "id": "tests/compiler.js:108", "file": "tests/compiler.js", "test": "should throw an error when including a file that does not exist" },
-      "status": "adapted",
-      "reason": "The TypeScript runtime test asserts the new TemplateNotFoundError API instead of Nunjucks's callback error string."
+      "upstream": {"id":"tests/compiler.js:108","file":"tests/compiler.js","test":"should throw an error when including a file that does not exist"},
+      "status": "not applicable",
+      "reason": "Requires named-template loading, includes, imports, or inheritance, which the Backstage inline renderer does not support."
     },
     {
-      "upstream": { "id": "tests/compiler.js:110", "file": "tests/compiler.js", "test": "should have access to \"loop\" inside an include" },
-      "status": "ported",
-      "cases": ["compiler-include-array-loop-metadata", "compiler-include-record-loop-metadata"]
+      "upstream": {"id":"tests/compiler.js:110","file":"tests/compiler.js","test":"should have access to \"loop\" inside an include"},
+      "status": "not applicable",
+      "reason": "Requires named-template loading, includes, imports, or inheritance, which the Backstage inline renderer does not support."
     },
     {
-      "upstream": { "id": "tests/compiler.js:111", "file": "tests/compiler.js", "test": "should maintain nested scopes" },
+      "upstream": {"id":"tests/compiler.js:111","file":"tests/compiler.js","test":"should maintain nested scopes"},
       "status": "ported",
       "cases": ["compiler-nested-loop-scope"]
     },
     {
-      "upstream": { "id": "tests/compiler.js:112", "file": "tests/compiler.js", "test": "should allow blocks in for loops" },
-      "status": "ported",
-      "cases": ["compiler-inheritance-block-inside-loop"]
-    },
-    {
-      "upstream": { "id": "tests/compiler.js:113", "file": "tests/compiler.js", "test": "should make includes inherit scope" },
-      "status": "ported",
-      "cases": ["compiler-include-inherits-loop-scope"]
-    },
-    {
-      "upstream": { "id": "tests/compiler.js:118", "file": "tests/compiler.js", "test": "should compile block-set wrapping an inherited block" },
-      "status": "ported",
-      "cases": ["compiler-block-set-wraps-inherited-block"]
-    },
-    {
-      "upstream": { "id": "tests/compiler.js:119", "file": "tests/compiler.js", "test": "should throw errors" },
-      "status": "adapted",
-      "reason": "The TypeScript runtime test asserts the numeric invalid-expression render error used by the new API for a missing imported name."
-    },
-    {
-      "upstream": { "id": "tests/compiler.js:120", "file": "tests/compiler.js", "test": "should allow custom tag compilation" },
-      "status": "adapted",
-      "reason": "The template and output are unchanged while the extension is registered through Nunjitsu's declarative body-tag capability API.",
-      "cases": ["compiler-custom-body-tag"]
-    },
-    {
-      "upstream": { "id": "tests/compiler.js:121", "file": "tests/compiler.js", "test": "should allow custom tag compilation without content" },
-      "status": "adapted",
-      "reason": "The template and output are unchanged while the extension is registered through Nunjitsu's declarative inline-tag capability API.",
-      "cases": ["compiler-custom-inline-tag"]
-    },
-    {
-      "upstream": { "id": "tests/compiler.js:122", "file": "tests/compiler.js", "test": "should allow complicated custom tag compilation" },
-      "status": "adapted",
-      "reason": "The templates and outputs are unchanged while the extension's optional body is represented as a declared intermediate section.",
-      "cases": ["compiler-custom-section-tag-body-only", "compiler-custom-section-tag-intermediate"]
-    },
-    {
-      "upstream": { "id": "tests/compiler.js:123", "file": "tests/compiler.js", "test": "should allow custom tag with args compilation" },
-      "status": "adapted",
-      "reason": "The templates and outputs are unchanged while positional and keyword arguments are delivered through a copied declarative invocation.",
-      "cases": ["compiler-custom-body-tag-no-arguments", "compiler-custom-body-tag-positional-argument", "compiler-custom-body-tag-keyword-argument"]
-    },
-    {
-      "upstream": { "id": "tests/compiler.js:124", "file": "tests/compiler.js", "test": "should autoescape by default" },
-      "status": "ported",
-      "cases": ["compiler-autoescape-default"]
-    },
-    {
-      "upstream": { "id": "tests/compiler.js:127", "file": "tests/compiler.js", "test": "should not autoescape macros" },
-      "status": "ported",
-      "cases": ["compiler-autoescape-macro", "compiler-autoescape-macro-safe-value"]
-    },
-    {
-      "upstream": { "id": "tests/compiler.js:128", "file": "tests/compiler.js", "test": "should not autoescape super()" },
-      "status": "ported",
-      "cases": ["compiler-autoescape-super"]
-    },
-    {
-      "upstream": { "id": "tests/compiler.js:129", "file": "tests/compiler.js", "test": "should autoescape backslashes" },
-      "status": "ported",
-      "cases": ["compiler-autoescape-backslashes"]
-    },
-    {
-      "upstream": { "id": "tests/compiler.js:130", "file": "tests/compiler.js", "test": "should not autoescape when extension set false" },
-      "status": "adapted",
-      "reason": "Nunjitsu requires the trusted declarative tag renderer to return markSafe output instead of exposing a mutable extension autoescape flag.",
-      "cases": ["compiler-autoescape-disabled-tag-output"]
-    },
-    {
-      "upstream": { "id": "tests/compiler.js:131", "file": "tests/compiler.js", "test": "should pass context as this to filters" },
-      "status": "adapted",
-      "reason": "The output is preserved with an explicitly configured filter, but Nunjitsu callbacks use typed arguments and do not emulate Nunjucks's mutable JavaScript this receiver.",
-      "cases": ["compiler-filter-explicit-context-dependency"]
-    },
-    {
-      "upstream": { "id": "tests/compiler.js:132", "file": "tests/compiler.js", "test": "should render regexs" },
-      "status": "ported",
-      "cases": ["compiler-regex-literal", "compiler-regex-flags"]
-    },
-    {
-      "upstream": { "id": "tests/compiler.js:133", "file": "tests/compiler.js", "test": "should throw an error when {% call %} is passed an object that is not a function" },
-      "status": "adapted",
-      "reason": "The TypeScript runtime test asserts Nunjitsu's structured render failure instead of the upstream JavaScript error text."
-    },
-    {
-      "upstream": { "id": "tests/compiler.js:134", "file": "tests/compiler.js", "test": "should throw an error when including a file that calls an undefined macro" },
-      "status": "adapted",
-      "reason": "The TypeScript runtime test asserts Nunjitsu's structured render failure instead of the upstream JavaScript error text."
-    },
-    {
-      "upstream": { "id": "tests/compiler.js:135", "file": "tests/compiler.js", "test": "should throw an error when including a file that calls an undefined macro even inside {% if %} tag" },
-      "status": "adapted",
-      "reason": "The TypeScript runtime test asserts Nunjitsu's structured render failure instead of the upstream JavaScript error text."
-    },
-    {
-      "upstream": { "id": "tests/compiler.js:136", "file": "tests/compiler.js", "test": "should throw an error when including a file that imports macro that calls an undefined macro" },
-      "status": "adapted",
-      "reason": "The TypeScript runtime test asserts Nunjitsu's structured render failure instead of the upstream JavaScript error text."
-    },
-    {
-      "upstream": { "id": "tests/compiler.js:137", "file": "tests/compiler.js", "test": "should control whitespaces correctly" },
-      "status": "ported",
-      "cases": ["compiler-block-right-trim", "compiler-nested-block-right-trim", "compiler-comment-after-right-trim"]
-    },
-    {
-      "upstream": { "id": "tests/compiler.js:138", "file": "tests/compiler.js", "test": "should control expression whitespaces correctly" },
-      "status": "ported",
-      "cases": ["compiler-expression-both-trim", "compiler-expression-preserves-whitespace", "compiler-expression-left-trim-negative-adjacent", "compiler-expression-negative-with-space", "compiler-expression-right-trim"]
-    },
-    {
-      "upstream": { "id": "tests/compiler.js:139", "file": "tests/compiler.js", "test": "should get right value when macro parameter conflict with global macro name" },
-      "status": "ported",
-      "cases": ["compiler-macro-parameter-shadows-macro"]
-    },
-    {
-      "upstream": { "id": "tests/compiler.js:140", "file": "tests/compiler.js", "test": "should get right value when macro include macro" },
-      "status": "ported",
-      "cases": ["compiler-macro-calls-visible-macro"]
-    },
-    {
-      "upstream": { "id": "tests/compiler.js:141", "file": "tests/compiler.js", "test": "should allow access to outer scope in call blocks" },
-      "status": "ported",
-      "cases": ["compiler-call-block-accesses-outer-macro-scope"]
-    },
-    {
-      "upstream": { "id": "tests/compiler.js:142", "file": "tests/compiler.js", "test": "should not leak scope from call blocks to parent" },
-      "status": "ported",
-      "cases": ["compiler-call-block-scope-does-not-leak"]
-    },
-    {
-      "upstream": { "id": "tests/compiler.js:143", "file": "tests/compiler.js", "test": "should import template objects" },
+      "upstream": {"id":"tests/compiler.js:112","file":"tests/compiler.js","test":"should allow blocks in for loops"},
       "status": "not applicable",
-      "reason": "Nunjitsu's copied safe-value model does not accept live Nunjucks Template instances; imports resolve names through explicit loaders."
+      "reason": "Requires named-template loading, includes, imports, or inheritance, which the Backstage inline renderer does not support."
     },
     {
-      "upstream": { "id": "tests/compiler.js:144", "file": "tests/compiler.js", "test": "should inherit template objects" },
+      "upstream": {"id":"tests/compiler.js:113","file":"tests/compiler.js","test":"should make includes inherit scope"},
       "status": "not applicable",
-      "reason": "Nunjitsu's copied safe-value model does not accept live Nunjucks Template instances; inheritance resolves names through explicit loaders."
+      "reason": "Requires named-template loading, includes, imports, or inheritance, which the Backstage inline renderer does not support."
     },
     {
-      "upstream": { "id": "tests/compiler.js:145", "file": "tests/compiler.js", "test": "should include template objects" },
+      "upstream": {"id":"tests/compiler.js:118","file":"tests/compiler.js","test":"should compile block-set wrapping an inherited block"},
       "status": "not applicable",
-      "reason": "Nunjitsu's copied safe-value model does not accept live Nunjucks Template instances; includes resolve names through explicit loaders."
+      "reason": "Requires named-template loading, includes, imports, or inheritance, which the Backstage inline renderer does not support."
     },
     {
-      "upstream": { "id": "tests/compiler.js:146", "file": "tests/compiler.js", "test": "should throw an error when invalid expression whitespaces are used" },
+      "upstream": {"id":"tests/compiler.js:119","file":"tests/compiler.js","test":"should throw errors"},
+      "status": "not applicable",
+      "reason": "Requires named-template loading, includes, imports, or inheritance, which the Backstage inline renderer does not support."
+    },
+    {
+      "upstream": {"id":"tests/compiler.js:120","file":"tests/compiler.js","test":"should allow custom tag compilation"},
+      "status": "not applicable",
+      "reason": "Requires a Nunjucks parser extension or host-defined tag, which Backstage does not expose."
+    },
+    {
+      "upstream": {"id":"tests/compiler.js:121","file":"tests/compiler.js","test":"should allow custom tag compilation without content"},
+      "status": "not applicable",
+      "reason": "Requires a Nunjucks parser extension or host-defined tag, which Backstage does not expose."
+    },
+    {
+      "upstream": {"id":"tests/compiler.js:122","file":"tests/compiler.js","test":"should allow complicated custom tag compilation"},
+      "status": "not applicable",
+      "reason": "Requires a Nunjucks parser extension or host-defined tag, which Backstage does not expose."
+    },
+    {
+      "upstream": {"id":"tests/compiler.js:123","file":"tests/compiler.js","test":"should allow custom tag with args compilation"},
+      "status": "not applicable",
+      "reason": "Requires a Nunjucks parser extension or host-defined tag, which Backstage does not expose."
+    },
+    {
+      "upstream": {"id":"tests/compiler.js:124","file":"tests/compiler.js","test":"should autoescape by default"},
+      "status": "not applicable",
+      "reason": "Exercises the Nunjucks JavaScript API rather than Backstage inline rendering."
+    },
+    {
+      "upstream": {"id":"tests/compiler.js:127","file":"tests/compiler.js","test":"should not autoescape macros"},
+      "status": "not applicable",
+      "reason": "Requires automatic escaping, while Backstage fixes autoescape to false."
+    },
+    {
+      "upstream": {"id":"tests/compiler.js:128","file":"tests/compiler.js","test":"should not autoescape super()"},
+      "status": "not applicable",
+      "reason": "Requires named-template loading, includes, imports, or inheritance, which the Backstage inline renderer does not support."
+    },
+    {
+      "upstream": {"id":"tests/compiler.js:129","file":"tests/compiler.js","test":"should autoescape backslashes"},
+      "status": "not applicable",
+      "reason": "Requires automatic escaping, while Backstage fixes autoescape to false."
+    },
+    {
+      "upstream": {"id":"tests/compiler.js:130","file":"tests/compiler.js","test":"should not autoescape when extension set false"},
+      "status": "not applicable",
+      "reason": "Requires a Nunjucks parser extension or host-defined tag, which Backstage does not expose."
+    },
+    {
+      "upstream": {"id":"tests/compiler.js:131","file":"tests/compiler.js","test":"should pass context as this to filters"},
+      "status": "not applicable",
+      "reason": "Requires a Nunjucks parser extension or host-defined tag, which Backstage does not expose."
+    },
+    {
+      "upstream": {"id":"tests/compiler.js:132","file":"tests/compiler.js","test":"should render regexs"},
+      "status": "ported",
+      "cases": ["compiler-regex-literal"]
+    },
+    {
+      "upstream": {"id":"tests/compiler.js:133","file":"tests/compiler.js","test":"should throw an error when {% call %} is passed an object that is not a function"},
+      "status": "adapted",
+      "reason": "The TypeScript runtime test asserts Nunjitsu's structured render failure instead of the upstream JavaScript error text."
+    },
+    {
+      "upstream": {"id":"tests/compiler.js:134","file":"tests/compiler.js","test":"should throw an error when including a file that calls an undefined macro"},
+      "status": "adapted",
+      "reason": "The TypeScript runtime test asserts Nunjitsu's structured render failure instead of the upstream JavaScript error text."
+    },
+    {
+      "upstream": {"id":"tests/compiler.js:135","file":"tests/compiler.js","test":"should throw an error when including a file that calls an undefined macro even inside {% if %} tag"},
+      "status": "adapted",
+      "reason": "The TypeScript runtime test asserts Nunjitsu's structured render failure instead of the upstream JavaScript error text."
+    },
+    {
+      "upstream": {"id":"tests/compiler.js:136","file":"tests/compiler.js","test":"should throw an error when including a file that imports macro that calls an undefined macro"},
+      "status": "adapted",
+      "reason": "The TypeScript runtime test asserts Nunjitsu's structured render failure instead of the upstream JavaScript error text."
+    },
+    {
+      "upstream": {"id":"tests/compiler.js:137","file":"tests/compiler.js","test":"should control whitespaces correctly"},
+      "status": "not applicable",
+      "reason": "Requires automatic escaping, while Backstage fixes autoescape to false."
+    },
+    {
+      "upstream": {"id":"tests/compiler.js:138","file":"tests/compiler.js","test":"should control expression whitespaces correctly"},
+      "status": "not applicable",
+      "reason": "Requires automatic escaping, while Backstage fixes autoescape to false."
+    },
+    {
+      "upstream": {"id":"tests/compiler.js:139","file":"tests/compiler.js","test":"should get right value when macro parameter conflict with global macro name"},
+      "status": "not applicable",
+      "reason": "Requires automatic escaping, while Backstage fixes autoescape to false."
+    },
+    {
+      "upstream": {"id":"tests/compiler.js:140","file":"tests/compiler.js","test":"should get right value when macro include macro"},
+      "status": "not applicable",
+      "reason": "Requires automatic escaping, while Backstage fixes autoescape to false."
+    },
+    {
+      "upstream": {"id":"tests/compiler.js:141","file":"tests/compiler.js","test":"should allow access to outer scope in call blocks"},
+      "status": "not applicable",
+      "reason": "Requires automatic escaping, while Backstage fixes autoescape to false."
+    },
+    {
+      "upstream": {"id":"tests/compiler.js:142","file":"tests/compiler.js","test":"should not leak scope from call blocks to parent"},
+      "status": "not applicable",
+      "reason": "Requires automatic escaping, while Backstage fixes autoescape to false."
+    },
+    {
+      "upstream": {"id":"tests/compiler.js:143","file":"tests/compiler.js","test":"should import template objects"},
+      "status": "not applicable",
+      "reason": "Requires named-template loading, includes, imports, or inheritance, which the Backstage inline renderer does not support."
+    },
+    {
+      "upstream": {"id":"tests/compiler.js:144","file":"tests/compiler.js","test":"should inherit template objects"},
+      "status": "not applicable",
+      "reason": "Requires named-template loading, includes, imports, or inheritance, which the Backstage inline renderer does not support."
+    },
+    {
+      "upstream": {"id":"tests/compiler.js:145","file":"tests/compiler.js","test":"should include template objects"},
+      "status": "not applicable",
+      "reason": "Requires named-template loading, includes, imports, or inheritance, which the Backstage inline renderer does not support."
+    },
+    {
+      "upstream": {"id":"tests/compiler.js:146","file":"tests/compiler.js","test":"should throw an error when invalid expression whitespaces are used"},
       "status": "adapted",
       "reason": "The TypeScript runtime test asserts Nunjitsu's structured invalid-expression failure instead of the upstream parser error text."
     },
     {
-      "upstream": { "id": "tests/compiler.js:147", "file": "tests/compiler.js", "test": "should apply the title filter to the body" },
-      "status": "ported",
-      "cases": ["compiler-filter-block-title"]
+      "upstream": {"id":"tests/compiler.js:147","file":"tests/compiler.js","test":"should apply the title filter to the body"},
+      "status": "not applicable",
+      "reason": "Requires automatic escaping, while Backstage fixes autoescape to false."
     },
     {
-      "upstream": { "id": "tests/compiler.js:148", "file": "tests/compiler.js", "test": "should apply the replace filter to the body" },
-      "status": "ported",
-      "cases": ["compiler-filter-block-replace"]
+      "upstream": {"id":"tests/compiler.js:148","file":"tests/compiler.js","test":"should apply the replace filter to the body"},
+      "status": "not applicable",
+      "reason": "Requires automatic escaping, while Backstage fixes autoescape to false."
     },
     {
-      "upstream": { "id": "tests/compiler.js:149", "file": "tests/compiler.js", "test": "should work with variables in the body" },
-      "status": "ported",
-      "cases": ["compiler-filter-block-variable"]
+      "upstream": {"id":"tests/compiler.js:149","file":"tests/compiler.js","test":"should work with variables in the body"},
+      "status": "not applicable",
+      "reason": "Requires automatic escaping, while Backstage fixes autoescape to false."
     },
     {
-      "upstream": { "id": "tests/compiler.js:150", "file": "tests/compiler.js", "test": "should work with blocks in the body" },
-      "status": "ported",
-      "cases": ["compiler-filter-block-inheritance"]
+      "upstream": {"id":"tests/compiler.js:150","file":"tests/compiler.js","test":"should work with blocks in the body"},
+      "status": "not applicable",
+      "reason": "Requires named-template loading, includes, imports, or inheritance, which the Backstage inline renderer does not support."
     },
     {
-      "upstream": { "id": "tests/compiler.js:2", "file": "tests/compiler.js", "test": "should escape newlines" },
-      "status": "ported",
-      "cases": ["compiler-static-newline"]
+      "upstream": {"id":"tests/compiler.js:2","file":"tests/compiler.js","test":"should escape newlines"},
+      "status": "not applicable",
+      "reason": "Requires automatic escaping, while Backstage fixes autoescape to false."
     },
     {
-      "upstream": { "id": "tests/compiler.js:3", "file": "tests/compiler.js", "test": "should escape Unicode line seperators" },
-      "status": "ported",
-      "cases": ["compiler-unicode-line-separator"]
+      "upstream": {"id":"tests/compiler.js:3","file":"tests/compiler.js","test":"should escape Unicode line seperators"},
+      "status": "not applicable",
+      "reason": "Requires automatic escaping, while Backstage fixes autoescape to false."
     },
     {
-      "upstream": { "id": "tests/compiler.js:5", "file": "tests/compiler.js", "test": "should compile references - object without prototype" },
+      "upstream": {"id":"tests/compiler.js:5","file":"tests/compiler.js","test":"should compile references - object without prototype"},
       "status": "adapted",
       "reason": "The TypeScript runtime test supplies the same nested null-prototype context through Nunjitsu's copied safe-value boundary."
     },
     {
-      "upstream": { "id": "tests/compiler.js:7", "file": "tests/compiler.js", "test": "should not treat falsy values the same as undefined" },
-      "status": "ported",
-      "cases": ["compiler-zero-is-defined", "compiler-false-is-defined"]
+      "upstream": {"id":"tests/compiler.js:7","file":"tests/compiler.js","test":"should not treat falsy values the same as undefined"},
+      "status": "not applicable",
+      "reason": "Requires automatic escaping, while Backstage fixes autoescape to false."
     },
     {
-      "upstream": { "id": "tests/compiler.js:8", "file": "tests/compiler.js", "test": "should display none as empty string" },
-      "status": "ported",
-      "cases": ["compiler-none-empty"]
+      "upstream": {"id":"tests/compiler.js:8","file":"tests/compiler.js","test":"should display none as empty string"},
+      "status": "not applicable",
+      "reason": "Requires automatic escaping, while Backstage fixes autoescape to false."
     },
     {
-      "upstream": { "id": "tests/compiler.js:9", "file": "tests/compiler.js", "test": "should compile none as falsy" },
-      "status": "ported",
-      "cases": ["compiler-none-falsy"]
+      "upstream": {"id":"tests/compiler.js:9","file":"tests/compiler.js","test":"should compile none as falsy"},
+      "status": "not applicable",
+      "reason": "Requires automatic escaping, while Backstage fixes autoescape to false."
     },
     {
-      "upstream": { "id": "tests/compiler.js:10", "file": "tests/compiler.js", "test": "should compile none as null, not undefined" },
-      "status": "ported",
-      "cases": ["compiler-none-not-undefined"]
+      "upstream": {"id":"tests/compiler.js:10","file":"tests/compiler.js","test":"should compile none as null, not undefined"},
+      "status": "not applicable",
+      "reason": "Requires automatic escaping, while Backstage fixes autoescape to false."
     },
     {
-      "upstream": { "id": "tests/compiler.js:11", "file": "tests/compiler.js", "test": "should compile function calls" },
-      "status": "adapted",
-      "reason": "The template and output are unchanged while the callable is registered as an explicit typed global capability.",
-      "cases": ["compiler-callable-global"]
+      "upstream": {"id":"tests/compiler.js:11","file":"tests/compiler.js","test":"should compile function calls"},
+      "status": "not applicable",
+      "reason": "Requires a Nunjucks parser extension or host-defined tag, which Backstage does not expose."
     },
     {
-      "upstream": { "id": "tests/compiler.js:12", "file": "tests/compiler.js", "test": "should compile function calls with correct scope" },
-      "status": "adapted",
-      "reason": "The template and output are unchanged while the dotted callable is registered explicitly instead of invoking a live object method with JavaScript this binding.",
-      "cases": ["compiler-dotted-callable-global"]
+      "upstream": {"id":"tests/compiler.js:12","file":"tests/compiler.js","test":"should compile function calls with correct scope"},
+      "status": "not applicable",
+      "reason": "Requires a Nunjucks parser extension or host-defined tag, which Backstage does not expose."
     },
     {
-      "upstream": { "id": "tests/compiler.js:13", "file": "tests/compiler.js", "test": "should compile switch statements" },
-      "status": "ported",
-      "cases": ["compiler-switch-default", "compiler-switch-first-case", "compiler-switch-second-case", "compiler-switch-no-default", "compiler-switch-fallthrough-first", "compiler-switch-fallthrough-second"]
+      "upstream": {"id":"tests/compiler.js:13","file":"tests/compiler.js","test":"should compile switch statements"},
+      "status": "not applicable",
+      "reason": "Requires automatic escaping, while Backstage fixes autoescape to false."
     },
     {
-      "upstream": { "id": "tests/compiler.js:17", "file": "tests/compiler.js", "test": "should loop over simple arrays" },
-      "status": "ported", "cases": ["compiler-loop-simple-array"]
+      "upstream": {"id":"tests/compiler.js:17","file":"tests/compiler.js","test":"should loop over simple arrays"},
+      "status": "not applicable",
+      "reason": "Requires automatic escaping, while Backstage fixes autoescape to false."
     },
     {
-      "upstream": { "id": "tests/compiler.js:18", "file": "tests/compiler.js", "test": "should loop normally with an {% else %} tag and non-empty array" },
-      "status": "ported", "cases": ["compiler-loop-nonempty-else"]
+      "upstream": {"id":"tests/compiler.js:18","file":"tests/compiler.js","test":"should loop normally with an {% else %} tag and non-empty array"},
+      "status": "not applicable",
+      "reason": "Requires automatic escaping, while Backstage fixes autoescape to false."
     },
     {
-      "upstream": { "id": "tests/compiler.js:19", "file": "tests/compiler.js", "test": "should execute the {% else %} block when looping over an empty array" },
-      "status": "ported", "cases": ["compiler-loop-empty-else"]
+      "upstream": {"id":"tests/compiler.js:19","file":"tests/compiler.js","test":"should execute the {% else %} block when looping over an empty array"},
+      "status": "not applicable",
+      "reason": "Requires automatic escaping, while Backstage fixes autoescape to false."
     },
     {
-      "upstream": { "id": "tests/compiler.js:21", "file": "tests/compiler.js", "test": "should do loop over key-values of a literal in-template Object" },
-      "status": "ported", "cases": ["compiler-loop-literal-record"]
+      "upstream": {"id":"tests/compiler.js:21","file":"tests/compiler.js","test":"should do loop over key-values of a literal in-template Object"},
+      "status": "not applicable",
+      "reason": "Requires automatic escaping, while Backstage fixes autoescape to false."
     },
     {
-      "upstream": { "id": "tests/compiler.js:22", "file": "tests/compiler.js", "test": "should support loop.index" },
-      "status": "ported", "cases": ["compiler-loop-index"]
+      "upstream": {"id":"tests/compiler.js:22","file":"tests/compiler.js","test":"should support loop.index"},
+      "status": "not applicable",
+      "reason": "Requires automatic escaping, while Backstage fixes autoescape to false."
     },
     {
-      "upstream": { "id": "tests/compiler.js:23", "file": "tests/compiler.js", "test": "should support loop.index0" },
-      "status": "ported", "cases": ["compiler-loop-index0"]
+      "upstream": {"id":"tests/compiler.js:23","file":"tests/compiler.js","test":"should support loop.index0"},
+      "status": "not applicable",
+      "reason": "Requires automatic escaping, while Backstage fixes autoescape to false."
     },
     {
-      "upstream": { "id": "tests/compiler.js:24", "file": "tests/compiler.js", "test": "should support loop.revindex" },
-      "status": "ported", "cases": ["compiler-loop-revindex"]
+      "upstream": {"id":"tests/compiler.js:24","file":"tests/compiler.js","test":"should support loop.revindex"},
+      "status": "not applicable",
+      "reason": "Requires automatic escaping, while Backstage fixes autoescape to false."
     },
     {
-      "upstream": { "id": "tests/compiler.js:25", "file": "tests/compiler.js", "test": "should support loop.revindex0" },
-      "status": "ported", "cases": ["compiler-loop-revindex0"]
+      "upstream": {"id":"tests/compiler.js:25","file":"tests/compiler.js","test":"should support loop.revindex0"},
+      "status": "not applicable",
+      "reason": "Requires automatic escaping, while Backstage fixes autoescape to false."
     },
     {
-      "upstream": { "id": "tests/compiler.js:26", "file": "tests/compiler.js", "test": "should support loop.first" },
-      "status": "ported", "cases": ["compiler-loop-first"]
+      "upstream": {"id":"tests/compiler.js:26","file":"tests/compiler.js","test":"should support loop.first"},
+      "status": "not applicable",
+      "reason": "Requires automatic escaping, while Backstage fixes autoescape to false."
     },
     {
-      "upstream": { "id": "tests/compiler.js:27", "file": "tests/compiler.js", "test": "should support loop.last" },
-      "status": "ported", "cases": ["compiler-loop-last"]
+      "upstream": {"id":"tests/compiler.js:27","file":"tests/compiler.js","test":"should support loop.last"},
+      "status": "not applicable",
+      "reason": "Requires automatic escaping, while Backstage fixes autoescape to false."
     },
     {
-      "upstream": { "id": "tests/compiler.js:28", "file": "tests/compiler.js", "test": "should support loop.length" },
-      "status": "ported", "cases": ["compiler-loop-length"]
+      "upstream": {"id":"tests/compiler.js:28","file":"tests/compiler.js","test":"should support loop.length"},
+      "status": "not applicable",
+      "reason": "Requires automatic escaping, while Backstage fixes autoescape to false."
     },
     {
-      "upstream": { "id": "tests/compiler.js:29", "file": "tests/compiler.js", "test": "should fail silently when looping over an undefined variable" },
-      "status": "ported", "cases": ["compiler-loop-undefined"]
+      "upstream": {"id":"tests/compiler.js:29","file":"tests/compiler.js","test":"should fail silently when looping over an undefined variable"},
+      "status": "not applicable",
+      "reason": "Requires automatic escaping, while Backstage fixes autoescape to false."
     },
     {
-      "upstream": { "id": "tests/compiler.js:30", "file": "tests/compiler.js", "test": "should fail silently when looping over an undefined property" },
-      "status": "ported", "cases": ["compiler-loop-undefined-property"]
+      "upstream": {"id":"tests/compiler.js:30","file":"tests/compiler.js","test":"should fail silently when looping over an undefined property"},
+      "status": "not applicable",
+      "reason": "Requires automatic escaping, while Backstage fixes autoescape to false."
     },
     {
-      "upstream": { "id": "tests/compiler.js:31", "file": "tests/compiler.js", "test": "should fail silently when looping over a null variable" },
-      "status": "ported", "cases": ["compiler-loop-null"]
+      "upstream": {"id":"tests/compiler.js:31","file":"tests/compiler.js","test":"should fail silently when looping over a null variable"},
+      "status": "not applicable",
+      "reason": "Requires automatic escaping, while Backstage fixes autoescape to false."
     },
     {
-      "upstream": { "id": "tests/compiler.js:32", "file": "tests/compiler.js", "test": "should loop over two-dimensional arrays" },
-      "status": "ported", "cases": ["compiler-loop-two-dimensional"]
+      "upstream": {"id":"tests/compiler.js:32","file":"tests/compiler.js","test":"should loop over two-dimensional arrays"},
+      "status": "not applicable",
+      "reason": "Requires automatic escaping, while Backstage fixes autoescape to false."
     },
     {
-      "upstream": { "id": "tests/compiler.js:34", "file": "tests/compiler.js", "test": "should support loop.index with two-dimensional loops" },
-      "status": "ported", "cases": ["compiler-loop-index-two-dimensional"]
+      "upstream": {"id":"tests/compiler.js:34","file":"tests/compiler.js","test":"should support loop.index with two-dimensional loops"},
+      "status": "not applicable",
+      "reason": "Requires automatic escaping, while Backstage fixes autoescape to false."
     },
     {
-      "upstream": { "id": "tests/compiler.js:35", "file": "tests/compiler.js", "test": "should support loop.revindex with two-dimensional loops" },
-      "status": "ported", "cases": ["compiler-loop-revindex-two-dimensional"]
+      "upstream": {"id":"tests/compiler.js:35","file":"tests/compiler.js","test":"should support loop.revindex with two-dimensional loops"},
+      "status": "not applicable",
+      "reason": "Requires automatic escaping, while Backstage fixes autoescape to false."
     },
     {
-      "upstream": { "id": "tests/compiler.js:36", "file": "tests/compiler.js", "test": "should support key-value looping over an Object variable" },
-      "status": "ported", "cases": ["compiler-loop-record-pairs"]
+      "upstream": {"id":"tests/compiler.js:36","file":"tests/compiler.js","test":"should support key-value looping over an Object variable"},
+      "status": "not applicable",
+      "reason": "Requires automatic escaping, while Backstage fixes autoescape to false."
     },
     {
-      "upstream": { "id": "tests/compiler.js:37", "file": "tests/compiler.js", "test": "should support loop.index when looping over an Object\\'s key-value pairs" },
-      "status": "ported", "cases": ["compiler-loop-record-index"]
+      "upstream": {"id":"tests/compiler.js:37","file":"tests/compiler.js","test":"should support loop.index when looping over an Object\\'s key-value pairs"},
+      "status": "not applicable",
+      "reason": "Requires automatic escaping, while Backstage fixes autoescape to false."
     },
     {
-      "upstream": { "id": "tests/compiler.js:38", "file": "tests/compiler.js", "test": "should support loop.revindex when looping over an Object\\'s key-value pairs" },
-      "status": "ported", "cases": ["compiler-loop-record-revindex"]
+      "upstream": {"id":"tests/compiler.js:38","file":"tests/compiler.js","test":"should support loop.revindex when looping over an Object\\'s key-value pairs"},
+      "status": "not applicable",
+      "reason": "Requires automatic escaping, while Backstage fixes autoescape to false."
     },
     {
-      "upstream": { "id": "tests/compiler.js:39", "file": "tests/compiler.js", "test": "should support loop.length when looping over an Object\\'s key-value pairs" },
-      "status": "ported", "cases": ["compiler-loop-record-length"]
+      "upstream": {"id":"tests/compiler.js:39","file":"tests/compiler.js","test":"should support loop.length when looping over an Object\\'s key-value pairs"},
+      "status": "not applicable",
+      "reason": "Requires automatic escaping, while Backstage fixes autoescape to false."
     },
     {
-      "upstream": { "id": "tests/compiler.js:40", "file": "tests/compiler.js", "test": "should support include tags in the body of the loop" },
-      "status": "ported", "cases": ["compiler-loop-include-body"]
+      "upstream": {"id":"tests/compiler.js:40","file":"tests/compiler.js","test":"should support include tags in the body of the loop"},
+      "status": "not applicable",
+      "reason": "Requires named-template loading, includes, imports, or inheritance, which the Backstage inline renderer does not support."
     },
     {
-      "upstream": { "id": "tests/compiler.js:41", "file": "tests/compiler.js", "test": "should work with {% set %} and {% include %} tags" },
-      "status": "ported", "cases": ["compiler-loop-set-and-include"]
+      "upstream": {"id":"tests/compiler.js:41","file":"tests/compiler.js","test":"should work with {% set %} and {% include %} tags"},
+      "status": "not applicable",
+      "reason": "Requires named-template loading, includes, imports, or inheritance, which the Backstage inline renderer does not support."
     },
     {
-      "upstream": { "id": "tests/compiler.js:42", "file": "tests/compiler.js", "test": "should work with Set builtin" },
+      "upstream": {"id":"tests/compiler.js:42","file":"tests/compiler.js","test":"should work with Set builtin"},
       "status": "not applicable",
       "reason": "Live JavaScript Set instances are outside the copied safe-value contract; callers provide arrays for ordered sequences."
     },
     {
-      "upstream": { "id": "tests/compiler.js:43", "file": "tests/compiler.js", "test": "should work with Map builtin" },
+      "upstream": {"id":"tests/compiler.js:43","file":"tests/compiler.js","test":"should work with Map builtin"},
       "status": "not applicable",
       "reason": "Live JavaScript Map instances are outside the copied safe-value contract; callers provide arrays or records."
     },
     {
-      "upstream": { "id": "tests/compiler.js:44", "file": "tests/compiler.js", "test": "should allow overriding var with none inside nested scope" },
-      "status": "ported", "cases": ["compiler-loop-overrides-with-none"]
+      "upstream": {"id":"tests/compiler.js:44","file":"tests/compiler.js","test":"should allow overriding var with none inside nested scope"},
+      "status": "not applicable",
+      "reason": "Requires automatic escaping, while Backstage fixes autoescape to false."
     },
     {
-      "upstream": { "id": "tests/compiler.js:45", "file": "tests/compiler.js", "test": "should compile async control" },
-      "status": "adapted",
-      "reason": "Nunjitsu's evaluator is uniformly resumable: ordinary control flow, asyncEach, and asyncAll all suspend on asynchronous filters and loaders. Runtime tests cover capability and include suspension, while the shared cases cover the async loop spellings."
+      "upstream": {"id":"tests/compiler.js:45","file":"tests/compiler.js","test":"should compile async control"},
+      "status": "not applicable",
+      "reason": "Requires named-template loading, includes, imports, or inheritance, which the Backstage inline renderer does not support."
     },
     {
-      "upstream": { "id": "tests/compiler.js:14", "file": "tests/compiler.js", "test": "should compile if blocks" },
-      "status": "ported",
-      "cases": ["compiler-if-hungry-true", "compiler-if-hungry-false", "compiler-if-not", "compiler-if-boolean-operators", "compiler-if-equality-branches", "compiler-if-membership", "compiler-if-elif-spellings", "compiler-if-elif-alternative", "compiler-if-elseif-else"]
+      "upstream": {"id":"tests/compiler.js:14","file":"tests/compiler.js","test":"should compile if blocks"},
+      "status": "not applicable",
+      "reason": "Requires automatic escaping, while Backstage fixes autoescape to false."
     },
     {
-      "upstream": { "id": "tests/compiler.js:51", "file": "tests/compiler.js", "test": "should compile comparison operators" },
-      "status": "adapted",
-      "reason": "All comparisons are ported; the final function operand uses Nunjitsu's explicit callable-global capability instead of a live context function.",
-      "cases": ["compiler-comparison-operators"]
+      "upstream": {"id":"tests/compiler.js:51","file":"tests/compiler.js","test":"should compile comparison operators"},
+      "status": "not applicable",
+      "reason": "Requires a Nunjucks parser extension or host-defined tag, which Backstage does not expose."
     },
     {
-      "upstream": { "id": "tests/compiler.js:53", "file": "tests/compiler.js", "test": "should compile the \"in\" operator for Arrays" },
-      "status": "ported", "cases": ["compiler-in-arrays"]
+      "upstream": {"id":"tests/compiler.js:53","file":"tests/compiler.js","test":"should compile the \"in\" operator for Arrays"},
+      "status": "not applicable",
+      "reason": "Requires automatic escaping, while Backstage fixes autoescape to false."
     },
     {
-      "upstream": { "id": "tests/compiler.js:54", "file": "tests/compiler.js", "test": "should compile the \"in\" operator for objects" },
-      "status": "ported", "cases": ["compiler-in-records"]
+      "upstream": {"id":"tests/compiler.js:54","file":"tests/compiler.js","test":"should compile the \"in\" operator for objects"},
+      "status": "not applicable",
+      "reason": "Requires automatic escaping, while Backstage fixes autoescape to false."
     },
     {
-      "upstream": { "id": "tests/compiler.js:55", "file": "tests/compiler.js", "test": "should compile the \"in\" operator for strings" },
-      "status": "ported", "cases": ["compiler-in-strings"]
+      "upstream": {"id":"tests/compiler.js:55","file":"tests/compiler.js","test":"should compile the \"in\" operator for strings"},
+      "status": "not applicable",
+      "reason": "Requires automatic escaping, while Backstage fixes autoescape to false."
     },
     {
-      "upstream": { "id": "tests/compiler.js:56", "file": "tests/compiler.js", "test": "should throw an error when using the \"in\" operator on unexpected types" },
+      "upstream": {"id":"tests/compiler.js:56","file":"tests/compiler.js","test":"should throw an error when using the \"in\" operator on unexpected types"},
       "status": "adapted",
       "reason": "The TypeScript runtime test asserts Nunjitsu's structured invalid-expression failure for numeric and undefined containers instead of upstream error text."
     },
     {
-      "upstream": { "id": "tests/compiler.js:57", "file": "tests/compiler.js", "test": "should throw exceptions when called synchronously" },
+      "upstream": {"id":"tests/compiler.js:57","file":"tests/compiler.js","test":"should throw exceptions when called synchronously"},
       "status": "not applicable",
-      "reason": "Nunjitsu intentionally exposes only an asynchronous render API."
+      "reason": "Applicable observable language behavior is exercised through the synchronous inline Backstage renderer."
     },
     {
-      "upstream": { "id": "tests/compiler.js:58", "file": "tests/compiler.js", "test": "should include error line in raised TemplateError" },
+      "upstream": {"id":"tests/compiler.js:58","file":"tests/compiler.js","test":"should include error line in raised TemplateError"},
       "status": "not applicable",
       "reason": "Exact upstream exception formatting and source locations are outside the documented compatibility contract."
     },
     {
-      "upstream": { "id": "tests/compiler.js:59", "file": "tests/compiler.js", "test": "should include error line when exception raised in user function" },
+      "upstream": {"id":"tests/compiler.js:59","file":"tests/compiler.js","test":"should include error line when exception raised in user function"},
       "status": "adapted",
       "reason": "The runtime capability test verifies trusted host callback failures propagate, while exact upstream line formatting and live context functions are outside the contract."
     },
     {
-      "upstream": { "id": "tests/compiler.js:60", "file": "tests/compiler.js", "test": "should throw exceptions from included templates when called synchronously" },
-      "status": "adapted",
-      "reason": "Nunjitsu's async-only runtime test verifies a missing dependency nested in an included template rejects with TemplateNotFoundError."
+      "upstream": {"id":"tests/compiler.js:60","file":"tests/compiler.js","test":"should throw exceptions from included templates when called synchronously"},
+      "status": "not applicable",
+      "reason": "Requires named-template loading, includes, imports, or inheritance, which the Backstage inline renderer does not support."
     },
     {
-      "upstream": { "id": "tests/compiler.js:61", "file": "tests/compiler.js", "test": "should pass errors from included templates to callback when async" },
-      "status": "adapted",
-      "reason": "Nunjitsu uses promises instead of callbacks; the runtime test verifies the equivalent nested include rejection."
+      "upstream": {"id":"tests/compiler.js:61","file":"tests/compiler.js","test":"should pass errors from included templates to callback when async"},
+      "status": "not applicable",
+      "reason": "Requires named-template loading, includes, imports, or inheritance, which the Backstage inline renderer does not support."
     },
     {
-      "upstream": { "id": "tests/api.js:1", "file": "tests/api.js", "test": "should always force compilation of parent template" },
-      "status": "not applicable", "reason": "Nunjitsu compiles and renders one-shot without a persistent compiled-template cache."
+      "upstream": {"id":"tests/api.js:1","file":"tests/api.js","test":"should always force compilation of parent template"},
+      "status": "not applicable",
+      "reason": "Exercises the Nunjucks JavaScript API rather than Backstage inline rendering."
     },
     {
-      "upstream": { "id": "tests/api.js:2", "file": "tests/api.js", "test": "should only call the callback once when conditional import fails" },
-      "status": "not applicable", "reason": "Nunjitsu exposes promises rather than the Nunjucks callback API."
+      "upstream": {"id":"tests/api.js:2","file":"tests/api.js","test":"should only call the callback once when conditional import fails"},
+      "status": "not applicable",
+      "reason": "Exercises the Nunjucks JavaScript API rather than Backstage inline rendering."
     },
     {
-      "upstream": { "id": "tests/api.js:6", "file": "tests/api.js", "test": "should emit \"load\" event on Environment instance" },
-      "status": "not applicable", "reason": "Nunjitsu does not expose Nunjucks Environment instances or their event API."
+      "upstream": {"id":"tests/api.js:6","file":"tests/api.js","test":"should emit \"load\" event on Environment instance"},
+      "status": "not applicable",
+      "reason": "Exercises the Nunjucks JavaScript API rather than Backstage inline rendering."
     },
     {
-      "upstream": { "id": "tests/cli.js:1", "file": "tests/cli.js", "test": "should echo a compiled template to stdout" },
-      "status": "not applicable", "reason": "The Nunjucks CLI and precompilation output are outside the documented contract."
+      "upstream": {"id":"tests/cli.js:1","file":"tests/cli.js","test":"should echo a compiled template to stdout"},
+      "status": "not applicable",
+      "reason": "The Nunjucks CLI and precompilation output are outside the documented contract."
     },
     {
-      "upstream": { "id": "tests/cli.js:2", "file": "tests/cli.js", "test": "should support --name" },
-      "status": "not applicable", "reason": "The Nunjucks CLI and precompilation output are outside the documented contract."
+      "upstream": {"id":"tests/cli.js:2","file":"tests/cli.js","test":"should support --name"},
+      "status": "not applicable",
+      "reason": "The Nunjucks CLI and precompilation output are outside the documented contract."
     },
     {
-      "upstream": { "id": "tests/core.js:1", "file": "tests/core.js", "test": "should cache templates by default" },
-      "status": "not applicable", "reason": "Persistent compiled-template caching is intentionally excluded by the one-shot architecture."
+      "upstream": {"id":"tests/core.js:1","file":"tests/core.js","test":"should cache templates by default"},
+      "status": "not applicable",
+      "reason": "Persistent compiled-template caching is intentionally excluded by the one-shot architecture."
     },
     {
-      "upstream": { "id": "tests/core.js:2", "file": "tests/core.js", "test": "should not cache templates with {noCache: true}" },
-      "status": "not applicable", "reason": "Persistent compiled-template caching and Nunjucks cache controls are intentionally excluded."
+      "upstream": {"id":"tests/core.js:2","file":"tests/core.js","test":"should not cache templates with {noCache: true}"},
+      "status": "not applicable",
+      "reason": "Persistent compiled-template caching and Nunjucks cache controls are intentionally excluded."
     },
     {
-      "upstream": { "id": "tests/express.js:1", "file": "tests/express.js", "test": "should have reference to nunjucks env" },
-      "status": "not applicable", "reason": "Nunjucks Environment and Express integration APIs are outside the documented contract."
+      "upstream": {"id":"tests/express.js:1","file":"tests/express.js","test":"should have reference to nunjucks env"},
+      "status": "not applicable",
+      "reason": "Nunjucks Environment and Express integration APIs are outside the documented contract."
     },
     {
-      "upstream": { "id": "tests/express.js:2", "file": "tests/express.js", "test": "should render a view with extension" },
-      "status": "not applicable", "reason": "Nunjucks Express integration is outside the documented contract."
+      "upstream": {"id":"tests/express.js:2","file":"tests/express.js","test":"should render a view with extension"},
+      "status": "not applicable",
+      "reason": "Nunjucks Express integration is outside the documented contract."
     },
     {
-      "upstream": { "id": "tests/express.js:3", "file": "tests/express.js", "test": "should render a view without extension" },
-      "status": "not applicable", "reason": "Nunjucks Express integration is outside the documented contract."
+      "upstream": {"id":"tests/express.js:3","file":"tests/express.js","test":"should render a view without extension"},
+      "status": "not applicable",
+      "reason": "Nunjucks Express integration is outside the documented contract."
     },
     {
-      "upstream": { "id": "tests/precompile.js:1", "file": "tests/precompile.js", "test": "should return a string" },
-      "status": "not applicable", "reason": "Precompilation and persistent compiled artifacts are intentionally excluded."
+      "upstream": {"id":"tests/precompile.js:1","file":"tests/precompile.js","test":"should return a string"},
+      "status": "not applicable",
+      "reason": "Exercises the Nunjucks JavaScript API rather than Backstage inline rendering."
     },
     {
-      "upstream": { "id": "tests/precompile.js:2", "file": "tests/precompile.js", "test": "should return *NIX path seperators" },
-      "status": "not applicable", "reason": "Precompilation and persistent compiled artifacts are intentionally excluded."
+      "upstream": {"id":"tests/precompile.js:2","file":"tests/precompile.js","test":"should return *NIX path seperators"},
+      "status": "not applicable",
+      "reason": "Exercises the Nunjucks JavaScript API rather than Backstage inline rendering."
     },
     {
-      "upstream": { "id": "tests/precompile.js:3", "file": "tests/precompile.js", "test": "should return *NIX path seperators, when name is passed as option" },
-      "status": "not applicable", "reason": "Precompilation and persistent compiled artifacts are intentionally excluded."
+      "upstream": {"id":"tests/precompile.js:3","file":"tests/precompile.js","test":"should return *NIX path seperators, when name is passed as option"},
+      "status": "not applicable",
+      "reason": "Exercises the Nunjucks JavaScript API rather than Backstage inline rendering."
     },
     {
-      "upstream": { "id": "tests/filters.js:1", "file": "tests/filters.js", "test": "abs" },
+      "upstream": {"id":"tests/filters.js:1","file":"tests/filters.js","test":"abs"},
       "status": "ported"
     },
     {
-      "upstream": { "id": "tests/filters.js:3", "file": "tests/filters.js", "test": "capitalize" },
+      "upstream": {"id":"tests/filters.js:3","file":"tests/filters.js","test":"capitalize"},
       "status": "ported"
     },
     {
-      "upstream": { "id": "tests/filters.js:4", "file": "tests/filters.js", "test": "center" },
+      "upstream": {"id":"tests/filters.js:4","file":"tests/filters.js","test":"center"},
       "status": "ported"
     },
     {
-      "upstream": { "id": "tests/filters.js:5", "file": "tests/filters.js", "test": "default" },
+      "upstream": {"id":"tests/filters.js:5","file":"tests/filters.js","test":"default"},
       "status": "ported"
     },
     {
-      "upstream": { "id": "tests/filters.js:7", "file": "tests/filters.js", "test": "escape" },
+      "upstream": {"id":"tests/filters.js:7","file":"tests/filters.js","test":"escape"},
       "status": "ported"
     },
     {
-      "upstream": { "id": "tests/filters.js:8", "file": "tests/filters.js", "test": "escape skip safe" },
+      "upstream": {"id":"tests/filters.js:8","file":"tests/filters.js","test":"escape skip safe"},
       "status": "ported"
     },
     {
-      "upstream": { "id": "tests/filters.js:9", "file": "tests/filters.js", "test": "should not double escape strings" },
+      "upstream": {"id":"tests/filters.js:9","file":"tests/filters.js","test":"should not double escape strings"},
       "status": "ported"
     },
     {
-      "upstream": { "id": "tests/filters.js:10", "file": "tests/filters.js", "test": "should not double escape with autoescape on" },
+      "upstream": {"id":"tests/filters.js:10","file":"tests/filters.js","test":"should not double escape with autoescape on"},
       "status": "ported"
     },
     {
-      "upstream": { "id": "tests/filters.js:11", "file": "tests/filters.js", "test": "should work with non-string values" },
+      "upstream": {"id":"tests/filters.js:11","file":"tests/filters.js","test":"should work with non-string values"},
       "status": "adapted",
       "reason": "Array and null coercion are ported; live objects with custom JavaScript toString methods are outside the copied-value contract."
     },
     {
-      "upstream": { "id": "tests/filters.js:12", "file": "tests/filters.js", "test": "should not escape safe strings with autoescape on" },
+      "upstream": {"id":"tests/filters.js:12","file":"tests/filters.js","test":"should not escape safe strings with autoescape on"},
       "status": "ported"
     },
     {
-      "upstream": { "id": "tests/filters.js:13", "file": "tests/filters.js", "test": "should keep strings escaped after they have been escaped" },
+      "upstream": {"id":"tests/filters.js:13","file":"tests/filters.js","test":"should keep strings escaped after they have been escaped"},
       "status": "ported"
     },
     {
-      "upstream": { "id": "tests/filters.js:15", "file": "tests/filters.js", "test": "first" },
+      "upstream": {"id":"tests/filters.js:15","file":"tests/filters.js","test":"first"},
       "status": "ported"
     },
     {
-      "upstream": { "id": "tests/filters.js:16", "file": "tests/filters.js", "test": "float" },
+      "upstream": {"id":"tests/filters.js:16","file":"tests/filters.js","test":"float"},
       "status": "ported"
     },
     {
-      "upstream": { "id": "tests/filters.js:17", "file": "tests/filters.js", "test": "forceescape" },
+      "upstream": {"id":"tests/filters.js:17","file":"tests/filters.js","test":"forceescape"},
       "status": "ported"
     },
     {
-      "upstream": { "id": "tests/filters.js:18", "file": "tests/filters.js", "test": "int" },
+      "upstream": {"id":"tests/filters.js:18","file":"tests/filters.js","test":"int"},
       "status": "ported"
     },
     {
-      "upstream": { "id": "tests/filters.js:19", "file": "tests/filters.js", "test": "int (default value)" },
+      "upstream": {"id":"tests/filters.js:19","file":"tests/filters.js","test":"int (default value)"},
       "status": "ported"
     },
     {
-      "upstream": { "id": "tests/filters.js:20", "file": "tests/filters.js", "test": "float (default value)" },
+      "upstream": {"id":"tests/filters.js:20","file":"tests/filters.js","test":"float (default value)"},
       "status": "ported"
     },
     {
-      "upstream": { "id": "tests/filters.js:22", "file": "tests/filters.js", "test": "indent" },
+      "upstream": {"id":"tests/filters.js:22","file":"tests/filters.js","test":"indent"},
       "status": "ported"
     },
     {
-      "upstream": { "id": "tests/filters.js:23", "file": "tests/filters.js", "test": "join" },
+      "upstream": {"id":"tests/filters.js:23","file":"tests/filters.js","test":"join"},
       "status": "ported"
     },
     {
-      "upstream": { "id": "tests/filters.js:24", "file": "tests/filters.js", "test": "last" },
+      "upstream": {"id":"tests/filters.js:24","file":"tests/filters.js","test":"last"},
       "status": "ported"
     },
     {
-      "upstream": { "id": "tests/filters.js:42", "file": "tests/filters.js", "test": "lower" },
+      "upstream": {"id":"tests/filters.js:42","file":"tests/filters.js","test":"lower"},
       "status": "ported"
     },
     {
-      "upstream": { "id": "tests/filters.js:43", "file": "tests/filters.js", "test": "nl2br" },
+      "upstream": {"id":"tests/filters.js:43","file":"tests/filters.js","test":"nl2br"},
       "status": "ported"
     },
     {
-      "upstream": { "id": "tests/filters.js:50", "file": "tests/filters.js", "test": "reverse" },
+      "upstream": {"id":"tests/filters.js:50","file":"tests/filters.js","test":"reverse"},
       "status": "ported"
     },
     {
-      "upstream": { "id": "tests/filters.js:51", "file": "tests/filters.js", "test": "round" },
+      "upstream": {"id":"tests/filters.js:51","file":"tests/filters.js","test":"round"},
       "status": "ported"
     },
     {
-      "upstream": { "id": "tests/filters.js:53", "file": "tests/filters.js", "test": "sum" },
+      "upstream": {"id":"tests/filters.js:53","file":"tests/filters.js","test":"sum"},
       "status": "ported"
     },
     {
-      "upstream": { "id": "tests/filters.js:55", "file": "tests/filters.js", "test": "string" },
+      "upstream": {"id":"tests/filters.js:55","file":"tests/filters.js","test":"string"},
       "status": "ported"
     },
     {
-      "upstream": { "id": "tests/filters.js:57", "file": "tests/filters.js", "test": "title" },
+      "upstream": {"id":"tests/filters.js:57","file":"tests/filters.js","test":"title"},
       "status": "ported"
     },
     {
-      "upstream": { "id": "tests/filters.js:58", "file": "tests/filters.js", "test": "trim" },
+      "upstream": {"id":"tests/filters.js:58","file":"tests/filters.js","test":"trim"},
       "status": "ported"
     },
     {
-      "upstream": { "id": "tests/filters.js:60", "file": "tests/filters.js", "test": "upper" },
+      "upstream": {"id":"tests/filters.js:60","file":"tests/filters.js","test":"upper"},
       "status": "ported"
     },
     {
-      "upstream": { "id": "tests/filters.js:64", "file": "tests/filters.js", "test": "wordcount" },
+      "upstream": {"id":"tests/filters.js:64","file":"tests/filters.js","test":"wordcount"},
       "status": "ported"
     },
     {
-      "upstream": { "id": "tests/filters.js:2", "file": "tests/filters.js", "test": "batch" },
+      "upstream": {"id":"tests/filters.js:2","file":"tests/filters.js","test":"batch"},
       "status": "ported"
     },
     {
-      "upstream": { "id": "tests/filters.js:14", "file": "tests/filters.js", "test": "dictsort" },
+      "upstream": {"id":"tests/filters.js:14","file":"tests/filters.js","test":"dictsort"},
       "status": "ported"
     },
     {
-      "upstream": { "id": "tests/filters.js:41", "file": "tests/filters.js", "test": "list" },
+      "upstream": {"id":"tests/filters.js:41","file":"tests/filters.js","test":"list"},
       "status": "ported"
     },
     {
-      "upstream": { "id": "tests/filters.js:52", "file": "tests/filters.js", "test": "slice" },
+      "upstream": {"id":"tests/filters.js:52","file":"tests/filters.js","test":"slice"},
       "status": "ported"
     },
     {
-      "upstream": { "id": "tests/filters.js:54", "file": "tests/filters.js", "test": "sort" },
+      "upstream": {"id":"tests/filters.js:54","file":"tests/filters.js","test":"sort"},
       "status": "adapted",
       "reason": "All copied-value sort assertions are ported. Exact throwOnUndefined diagnostics are outside the documented exception-format contract."
     },
     {
-      "upstream": { "id": "tests/filters.js:21", "file": "tests/filters.js", "test": "groupby" },
+      "upstream": {"id":"tests/filters.js:21","file":"tests/filters.js","test":"groupby"},
       "status": "adapted",
       "reason": "All copied-value grouping assertions, including nested and undefined attributes, are ported. Exact throwOnUndefined diagnostics are outside the documented exception-format contract."
     },
     {
-      "upstream": { "id": "tests/filters.js:25", "file": "tests/filters.js", "test": "should return length of a list literal" },
+      "upstream": {"id":"tests/filters.js:25","file":"tests/filters.js","test":"should return length of a list literal"},
       "status": "ported"
     },
     {
-      "upstream": { "id": "tests/filters.js:26", "file": "tests/filters.js", "test": "should output 0 for a missing context variable" },
+      "upstream": {"id":"tests/filters.js:26","file":"tests/filters.js","test":"should output 0 for a missing context variable"},
       "status": "ported"
     },
     {
-      "upstream": { "id": "tests/filters.js:27", "file": "tests/filters.js", "test": "should output string length for string variables" },
+      "upstream": {"id":"tests/filters.js:27","file":"tests/filters.js","test":"should output string length for string variables"},
       "status": "ported"
     },
     {
-      "upstream": { "id": "tests/filters.js:28", "file": "tests/filters.js", "test": "should output string length for a SafeString variable" },
+      "upstream": {"id":"tests/filters.js:28","file":"tests/filters.js","test":"should output string length for a SafeString variable"},
       "status": "ported"
     },
     {
-      "upstream": { "id": "tests/filters.js:29", "file": "tests/filters.js", "test": "should output the correct length of a string created with new String()" },
+      "upstream": {"id":"tests/filters.js:29","file":"tests/filters.js","test":"should output the correct length of a string created with new String()"},
       "status": "not applicable",
       "reason": "Nunjitsu accepts primitive strings and SafeString values; exotic JavaScript wrapper objects are rejected at the copied-value boundary."
     },
     {
-      "upstream": { "id": "tests/filters.js:30", "file": "tests/filters.js", "test": "should output 0 for a literal \"undefined\"" },
+      "upstream": {"id":"tests/filters.js:30","file":"tests/filters.js","test":"should output 0 for a literal \"undefined\""},
       "status": "ported"
     },
     {
-      "upstream": { "id": "tests/filters.js:31", "file": "tests/filters.js", "test": "should output 0 for a literal \"null\"" },
+      "upstream": {"id":"tests/filters.js:31","file":"tests/filters.js","test":"should output 0 for a literal \"null\""},
       "status": "ported"
     },
     {
-      "upstream": { "id": "tests/filters.js:32", "file": "tests/filters.js", "test": "should output 0 for an Object with no properties" },
+      "upstream": {"id":"tests/filters.js:32","file":"tests/filters.js","test":"should output 0 for an Object with no properties"},
       "status": "ported"
     },
     {
-      "upstream": { "id": "tests/filters.js:33", "file": "tests/filters.js", "test": "should output 1 for an Object with 1 property" },
+      "upstream": {"id":"tests/filters.js:33","file":"tests/filters.js","test":"should output 1 for an Object with 1 property"},
       "status": "ported"
     },
     {
-      "upstream": { "id": "tests/filters.js:34", "file": "tests/filters.js", "test": "should output the number of properties for a plain Object, not the value of its length property" },
+      "upstream": {"id":"tests/filters.js:34","file":"tests/filters.js","test":"should output the number of properties for a plain Object, not the value of its length property"},
       "status": "ported"
     },
     {
-      "upstream": { "id": "tests/filters.js:35", "file": "tests/filters.js", "test": "should output the length of an array" },
+      "upstream": {"id":"tests/filters.js:35","file":"tests/filters.js","test":"should output the length of an array"},
       "status": "ported"
     },
     {
-      "upstream": { "id": "tests/filters.js:36", "file": "tests/filters.js", "test": "should output the full length of a sparse array" },
+      "upstream": {"id":"tests/filters.js:36","file":"tests/filters.js","test":"should output the full length of a sparse array"},
       "status": "ported"
     },
     {
-      "upstream": { "id": "tests/filters.js:37", "file": "tests/filters.js", "test": "should output the length of an array created with \"new Array\"" },
+      "upstream": {"id":"tests/filters.js:37","file":"tests/filters.js","test":"should output the length of an array created with \"new Array\""},
       "status": "ported"
     },
     {
-      "upstream": { "id": "tests/filters.js:38", "file": "tests/filters.js", "test": "should output the length of an array created with \"new Array\" with user-defined properties" },
+      "upstream": {"id":"tests/filters.js:38","file":"tests/filters.js","test":"should output the length of an array created with \"new Array\" with user-defined properties"},
       "status": "not applicable",
       "reason": "Nunjitsu rejects arrays with custom properties at the copied-value boundary rather than exposing ambient JavaScript object state to the interpreter."
     },
     {
-      "upstream": { "id": "tests/filters.js:39", "file": "tests/filters.js", "test": "should output the length of a Map" },
+      "upstream": {"id":"tests/filters.js:39","file":"tests/filters.js","test":"should output the length of a Map"},
       "status": "not applicable",
       "reason": "JavaScript Map instances are outside the documented copied TemplateValue contract."
     },
     {
-      "upstream": { "id": "tests/filters.js:40", "file": "tests/filters.js", "test": "should output the length of a Set" },
+      "upstream": {"id":"tests/filters.js:40","file":"tests/filters.js","test":"should output the length of a Set"},
       "status": "not applicable",
       "reason": "JavaScript Set instances are outside the documented copied TemplateValue contract."
     },
     {
-      "upstream": { "id": "tests/filters.js:45", "file": "tests/filters.js", "test": "reject" },
+      "upstream": {"id":"tests/filters.js:45","file":"tests/filters.js","test":"reject"},
       "status": "ported"
     },
     {
-      "upstream": { "id": "tests/filters.js:46", "file": "tests/filters.js", "test": "rejectattr" },
+      "upstream": {"id":"tests/filters.js:46","file":"tests/filters.js","test":"rejectattr"},
       "status": "ported"
     },
     {
-      "upstream": { "id": "tests/filters.js:47", "file": "tests/filters.js", "test": "select" },
+      "upstream": {"id":"tests/filters.js:47","file":"tests/filters.js","test":"select"},
       "status": "ported"
     },
     {
-      "upstream": { "id": "tests/filters.js:48", "file": "tests/filters.js", "test": "selectattr" },
+      "upstream": {"id":"tests/filters.js:48","file":"tests/filters.js","test":"selectattr"},
       "status": "ported"
     },
     {
-      "upstream": { "id": "tests/filters.js:6", "file": "tests/filters.js", "test": "dump" },
+      "upstream": {"id":"tests/filters.js:6","file":"tests/filters.js","test":"dump"},
       "status": "ported"
     },
     {
-      "upstream": { "id": "tests/filters.js:56", "file": "tests/filters.js", "test": "striptags" },
+      "upstream": {"id":"tests/filters.js:56","file":"tests/filters.js","test":"striptags"},
       "status": "ported"
     },
     {
-      "upstream": { "id": "tests/filters.js:59", "file": "tests/filters.js", "test": "truncate" },
+      "upstream": {"id":"tests/filters.js:59","file":"tests/filters.js","test":"truncate"},
       "status": "ported"
     },
     {
-      "upstream": { "id": "tests/filters.js:61", "file": "tests/filters.js", "test": "urlencode" },
+      "upstream": {"id":"tests/filters.js:61","file":"tests/filters.js","test":"urlencode"},
       "status": "ported"
     },
     {
-      "upstream": { "id": "tests/filters.js:62", "file": "tests/filters.js", "test": "urlencode - object without prototype" },
+      "upstream": {"id":"tests/filters.js:62","file":"tests/filters.js","test":"urlencode - object without prototype"},
       "status": "ported"
     },
     {
-      "upstream": { "id": "tests/filters.js:44", "file": "tests/filters.js", "test": "random" },
+      "upstream": {"id":"tests/filters.js:44","file":"tests/filters.js","test":"random"},
       "status": "ported"
     },
     {
-      "upstream": { "id": "tests/filters.js:49", "file": "tests/filters.js", "test": "replace" },
+      "upstream": {"id":"tests/filters.js:49","file":"tests/filters.js","test":"replace"},
       "status": "ported"
     },
     {
-      "upstream": { "id": "tests/filters.js:63", "file": "tests/filters.js", "test": "urlize" },
+      "upstream": {"id":"tests/filters.js:63","file":"tests/filters.js","test":"urlize"},
       "status": "ported"
     },
     {
-      "upstream": { "id": "tests/tests.js:1", "file": "tests/tests.js", "test": "callable should detect callability" },
+      "upstream": {"id":"tests/tests.js:1","file":"tests/tests.js","test":"callable should detect callability"},
       "status": "adapted",
       "reason": "Callable detection is ported for template macros, while arbitrary live functions in render context are rejected by the copied-value contract."
     },
     {
-      "upstream": { "id": "tests/tests.js:2", "file": "tests/tests.js", "test": "defined should detect definedness" },
+      "upstream": {"id":"tests/tests.js:2","file":"tests/tests.js","test":"defined should detect definedness"},
       "status": "ported"
     },
     {
-      "upstream": { "id": "tests/tests.js:3", "file": "tests/tests.js", "test": "should support \"is defined\" in {% if %} expressions" },
+      "upstream": {"id":"tests/tests.js:3","file":"tests/tests.js","test":"should support \"is defined\" in {% if %} expressions"},
       "status": "ported"
     },
     {
-      "upstream": { "id": "tests/tests.js:4", "file": "tests/tests.js", "test": "should support \"is not defined\" in {% if %} expressions" },
+      "upstream": {"id":"tests/tests.js:4","file":"tests/tests.js","test":"should support \"is not defined\" in {% if %} expressions"},
       "status": "ported"
     },
     {
-      "upstream": { "id": "tests/tests.js:5", "file": "tests/tests.js", "test": "undefined should detect undefinedness" },
+      "upstream": {"id":"tests/tests.js:5","file":"tests/tests.js","test":"undefined should detect undefinedness"},
       "status": "ported"
     },
     {
-      "upstream": { "id": "tests/tests.js:6", "file": "tests/tests.js", "test": "none/null should detect strictly null values" },
+      "upstream": {"id":"tests/tests.js:6","file":"tests/tests.js","test":"none/null should detect strictly null values"},
       "status": "ported"
     },
     {
-      "upstream": { "id": "tests/tests.js:7", "file": "tests/tests.js", "test": "divisibleby should detect divisibility" },
+      "upstream": {"id":"tests/tests.js:7","file":"tests/tests.js","test":"divisibleby should detect divisibility"},
       "status": "ported"
     },
     {
-      "upstream": { "id": "tests/tests.js:8", "file": "tests/tests.js", "test": "escaped should test whether or not something is escaped" },
+      "upstream": {"id":"tests/tests.js:8","file":"tests/tests.js","test":"escaped should test whether or not something is escaped"},
       "status": "ported"
     },
     {
-      "upstream": { "id": "tests/tests.js:9", "file": "tests/tests.js", "test": "even should detect whether or not a number is even" },
+      "upstream": {"id":"tests/tests.js:9","file":"tests/tests.js","test":"even should detect whether or not a number is even"},
       "status": "ported"
     },
     {
-      "upstream": { "id": "tests/tests.js:10", "file": "tests/tests.js", "test": "odd should detect whether or not a number is odd" },
+      "upstream": {"id":"tests/tests.js:10","file":"tests/tests.js","test":"odd should detect whether or not a number is odd"},
       "status": "ported"
     },
     {
-      "upstream": { "id": "tests/tests.js:11", "file": "tests/tests.js", "test": "mapping should detect Maps or hashes" },
+      "upstream": {"id":"tests/tests.js:11","file":"tests/tests.js","test":"mapping should detect Maps or hashes"},
       "status": "adapted",
       "reason": "Plain copied records are ported; JavaScript Map instances are outside the TemplateValue contract."
     },
     {
-      "upstream": { "id": "tests/tests.js:12", "file": "tests/tests.js", "test": "falsy should detect whether or not a value is falsy" },
+      "upstream": {"id":"tests/tests.js:12","file":"tests/tests.js","test":"falsy should detect whether or not a value is falsy"},
       "status": "ported"
     },
     {
-      "upstream": { "id": "tests/tests.js:13", "file": "tests/tests.js", "test": "truthy should detect whether or not a value is truthy" },
+      "upstream": {"id":"tests/tests.js:13","file":"tests/tests.js","test":"truthy should detect whether or not a value is truthy"},
       "status": "ported"
     },
     {
-      "upstream": { "id": "tests/tests.js:14", "file": "tests/tests.js", "test": "greaterthan than should detect whether or not a value is less than another" },
+      "upstream": {"id":"tests/tests.js:14","file":"tests/tests.js","test":"greaterthan than should detect whether or not a value is less than another"},
       "status": "ported"
     },
     {
-      "upstream": { "id": "tests/tests.js:15", "file": "tests/tests.js", "test": "ge should detect whether or not a value is greater than or equal to another" },
+      "upstream": {"id":"tests/tests.js:15","file":"tests/tests.js","test":"ge should detect whether or not a value is greater than or equal to another"},
       "status": "ported"
     },
     {
-      "upstream": { "id": "tests/tests.js:16", "file": "tests/tests.js", "test": "lessthan than should detect whether or not a value is less than another" },
+      "upstream": {"id":"tests/tests.js:16","file":"tests/tests.js","test":"lessthan than should detect whether or not a value is less than another"},
       "status": "ported"
     },
     {
-      "upstream": { "id": "tests/tests.js:17", "file": "tests/tests.js", "test": "le should detect whether or not a value is less than or equal to another" },
+      "upstream": {"id":"tests/tests.js:17","file":"tests/tests.js","test":"le should detect whether or not a value is less than or equal to another"},
       "status": "ported"
     },
     {
-      "upstream": { "id": "tests/tests.js:18", "file": "tests/tests.js", "test": "ne should detect whether or not a value is not equal to another" },
+      "upstream": {"id":"tests/tests.js:18","file":"tests/tests.js","test":"ne should detect whether or not a value is not equal to another"},
       "status": "ported"
     },
     {
-      "upstream": { "id": "tests/tests.js:19", "file": "tests/tests.js", "test": "iterable should detect that a generator is iterable" },
+      "upstream": {"id":"tests/tests.js:19","file":"tests/tests.js","test":"iterable should detect that a generator is iterable"},
       "status": "not applicable",
       "reason": "Live JavaScript generator objects are outside the copied TemplateValue contract."
     },
     {
-      "upstream": { "id": "tests/tests.js:20", "file": "tests/tests.js", "test": "iterable should detect that an Array is not non-iterable" },
+      "upstream": {"id":"tests/tests.js:20","file":"tests/tests.js","test":"iterable should detect that an Array is not non-iterable"},
       "status": "ported"
     },
     {
-      "upstream": { "id": "tests/tests.js:21", "file": "tests/tests.js", "test": "iterable should detect that a Map is iterable" },
+      "upstream": {"id":"tests/tests.js:21","file":"tests/tests.js","test":"iterable should detect that a Map is iterable"},
       "status": "not applicable",
       "reason": "JavaScript Map instances are outside the copied TemplateValue contract."
     },
     {
-      "upstream": { "id": "tests/tests.js:22", "file": "tests/tests.js", "test": "iterable should detect that a Set is not non-iterable" },
+      "upstream": {"id":"tests/tests.js:22","file":"tests/tests.js","test":"iterable should detect that a Set is not non-iterable"},
       "status": "not applicable",
       "reason": "JavaScript Set instances are outside the copied TemplateValue contract."
     },
     {
-      "upstream": { "id": "tests/tests.js:23", "file": "tests/tests.js", "test": "number should detect whether a value is numeric" },
+      "upstream": {"id":"tests/tests.js:23","file":"tests/tests.js","test":"number should detect whether a value is numeric"},
       "status": "ported"
     },
     {
-      "upstream": { "id": "tests/tests.js:24", "file": "tests/tests.js", "test": "string should detect whether a value is a string" },
+      "upstream": {"id":"tests/tests.js:24","file":"tests/tests.js","test":"string should detect whether a value is a string"},
       "status": "ported"
     },
     {
-      "upstream": { "id": "tests/tests.js:25", "file": "tests/tests.js", "test": "equalto should detect value equality" },
+      "upstream": {"id":"tests/tests.js:25","file":"tests/tests.js","test":"equalto should detect value equality"},
       "status": "ported"
     },
     {
-      "upstream": { "id": "tests/tests.js:26", "file": "tests/tests.js", "test": "sameas should alias to equalto" },
+      "upstream": {"id":"tests/tests.js:26","file":"tests/tests.js","test":"sameas should alias to equalto"},
       "status": "ported"
     },
     {
-      "upstream": { "id": "tests/tests.js:27", "file": "tests/tests.js", "test": "lower should detect whether or not a string is lowercased" },
+      "upstream": {"id":"tests/tests.js:27","file":"tests/tests.js","test":"lower should detect whether or not a string is lowercased"},
       "status": "ported"
     },
     {
-      "upstream": { "id": "tests/tests.js:28", "file": "tests/tests.js", "test": "upper should detect whether or not a string is uppercased" },
+      "upstream": {"id":"tests/tests.js:28","file":"tests/tests.js","test":"upper should detect whether or not a string is uppercased"},
       "status": "ported"
     },
     {
-      "upstream": { "id": "tests/globals.js:1", "file": "tests/globals.js", "test": "should have range" },
+      "upstream": {"id":"tests/globals.js:1","file":"tests/globals.js","test":"should have range"},
       "status": "ported"
     },
     {
-      "upstream": { "id": "tests/globals.js:2", "file": "tests/globals.js", "test": "should have cycler" },
+      "upstream": {"id":"tests/globals.js:2","file":"tests/globals.js","test":"should have cycler"},
       "status": "ported"
     },
     {
-      "upstream": { "id": "tests/globals.js:3", "file": "tests/globals.js", "test": "should have joiner" },
+      "upstream": {"id":"tests/globals.js:3","file":"tests/globals.js","test":"should have joiner"},
       "status": "ported"
     },
     {
-      "upstream": { "id": "tests/globals.js:4", "file": "tests/globals.js", "test": "should allow addition of globals" },
+      "upstream": {"id":"tests/globals.js:4","file":"tests/globals.js","test":"should allow addition of globals"},
       "status": "adapted",
       "reason": "Callable globals are configured immutably when creating a Nunjitsu engine and the equivalent rendering behavior is ported."
     },
     {
-      "upstream": { "id": "tests/globals.js:5", "file": "tests/globals.js", "test": "should allow chaining of globals" },
+      "upstream": {"id":"tests/globals.js:5","file":"tests/globals.js","test":"should allow chaining of globals"},
       "status": "adapted",
       "reason": "Nunjitsu accepts multiple callable globals in one immutable engine configuration rather than exposing a chainable mutator."
     },
     {
-      "upstream": { "id": "tests/globals.js:6", "file": "tests/globals.js", "test": "should allow getting of globals" },
+      "upstream": {"id":"tests/globals.js:6","file":"tests/globals.js","test":"should allow getting of globals"},
       "status": "not applicable",
       "reason": "Nunjitsu does not expose Nunjucks Environment instances or a mutable global getter API."
     },
     {
-      "upstream": { "id": "tests/globals.js:7", "file": "tests/globals.js", "test": "should allow getting boolean globals" },
+      "upstream": {"id":"tests/globals.js:7","file":"tests/globals.js","test":"should allow getting boolean globals"},
       "status": "not applicable",
       "reason": "Nunjitsu exposes callable engine globals through immutable capabilities; copied boolean values belong in render context."
     },
     {
-      "upstream": { "id": "tests/globals.js:8", "file": "tests/globals.js", "test": "should fail on getting non-existent global" },
+      "upstream": {"id":"tests/globals.js:8","file":"tests/globals.js","test":"should fail on getting non-existent global"},
       "status": "not applicable",
       "reason": "Nunjitsu has no public global getter; invoking an unregistered template global fails through the render API."
     },
     {
-      "upstream": { "id": "tests/globals.js:9", "file": "tests/globals.js", "test": "should pass context as this to global functions" },
+      "upstream": {"id":"tests/globals.js:9","file":"tests/globals.js","test":"should pass context as this to global functions"},
       "status": "not applicable",
       "reason": "The new capability API does not emulate Nunjucks this.lookup; global arguments are copied explicitly and callbacks receive a render-owned AbortSignal."
     },
     {
-      "upstream": { "id": "tests/globals.js:10", "file": "tests/globals.js", "test": "should be exclusive to each environment" },
+      "upstream": {"id":"tests/globals.js:10","file":"tests/globals.js","test":"should be exclusive to each environment"},
       "status": "adapted",
       "reason": "The runtime test verifies immutable global registries are isolated between independently created engines."
     },
     {
-      "upstream": { "id": "tests/globals.js:11", "file": "tests/globals.js", "test": "should return errors from globals" },
+      "upstream": {"id":"tests/globals.js:11","file":"tests/globals.js","test":"should return errors from globals"},
       "status": "adapted",
-      "reason": "Nunjitsu propagates trusted global callback failures as promise rejections and verifies render-state cleanup through its asynchronous API."
+      "reason": "Applicable observable language behavior is exercised through the synchronous inline Backstage renderer."
     },
     {
-      "upstream": { "id": "tests/jinja-compat.js:1", "file": "tests/jinja-compat.js", "test": "should support array slices with start and stop" },
+      "upstream": {"id":"tests/jinja-compat.js:1","file":"tests/jinja-compat.js","test":"should support array slices with start and stop"},
       "status": "ported"
     },
     {
-      "upstream": { "id": "tests/jinja-compat.js:2", "file": "tests/jinja-compat.js", "test": "should support array slices using expressions" },
+      "upstream": {"id":"tests/jinja-compat.js:2","file":"tests/jinja-compat.js","test":"should support array slices using expressions"},
       "status": "ported"
     },
     {
-      "upstream": { "id": "tests/jinja-compat.js:3", "file": "tests/jinja-compat.js", "test": "should support array slices with start" },
+      "upstream": {"id":"tests/jinja-compat.js:3","file":"tests/jinja-compat.js","test":"should support array slices with start"},
       "status": "ported"
     },
     {
-      "upstream": { "id": "tests/jinja-compat.js:4", "file": "tests/jinja-compat.js", "test": "should support array slices with negative start" },
+      "upstream": {"id":"tests/jinja-compat.js:4","file":"tests/jinja-compat.js","test":"should support array slices with negative start"},
       "status": "ported"
     },
     {
-      "upstream": { "id": "tests/jinja-compat.js:5", "file": "tests/jinja-compat.js", "test": "should support array slices with stop" },
+      "upstream": {"id":"tests/jinja-compat.js:5","file":"tests/jinja-compat.js","test":"should support array slices with stop"},
       "status": "ported"
     },
     {
-      "upstream": { "id": "tests/jinja-compat.js:6", "file": "tests/jinja-compat.js", "test": "should support array slices with negative stop" },
+      "upstream": {"id":"tests/jinja-compat.js:6","file":"tests/jinja-compat.js","test":"should support array slices with negative stop"},
       "status": "ported"
     },
     {
-      "upstream": { "id": "tests/jinja-compat.js:7", "file": "tests/jinja-compat.js", "test": "should support array slices with step" },
+      "upstream": {"id":"tests/jinja-compat.js:7","file":"tests/jinja-compat.js","test":"should support array slices with step"},
       "status": "ported"
     },
     {
-      "upstream": { "id": "tests/jinja-compat.js:8", "file": "tests/jinja-compat.js", "test": "should support array slices with negative step" },
+      "upstream": {"id":"tests/jinja-compat.js:8","file":"tests/jinja-compat.js","test":"should support array slices with negative step"},
       "status": "ported"
     },
     {
-      "upstream": { "id": "tests/jinja-compat.js:9", "file": "tests/jinja-compat.js", "test": "should support array slices with start and negative step" },
+      "upstream": {"id":"tests/jinja-compat.js:9","file":"tests/jinja-compat.js","test":"should support array slices with start and negative step"},
       "status": "ported"
     },
     {
-      "upstream": { "id": "tests/jinja-compat.js:10", "file": "tests/jinja-compat.js", "test": "should support array slices with negative start and negative step" },
+      "upstream": {"id":"tests/jinja-compat.js:10","file":"tests/jinja-compat.js","test":"should support array slices with negative start and negative step"},
       "status": "ported"
     },
     {
-      "upstream": { "id": "tests/jinja-compat.js:11", "file": "tests/jinja-compat.js", "test": "should support array slices with stop and negative step" },
+      "upstream": {"id":"tests/jinja-compat.js:11","file":"tests/jinja-compat.js","test":"should support array slices with stop and negative step"},
       "status": "ported"
     },
     {
-      "upstream": { "id": "tests/jinja-compat.js:12", "file": "tests/jinja-compat.js", "test": "should support array slices with start and step" },
+      "upstream": {"id":"tests/jinja-compat.js:12","file":"tests/jinja-compat.js","test":"should support array slices with start and step"},
       "status": "ported"
     },
     {
-      "upstream": { "id": "tests/jinja-compat.js:13", "file": "tests/jinja-compat.js", "test": "should support array slices with start, stop, and step" },
+      "upstream": {"id":"tests/jinja-compat.js:13","file":"tests/jinja-compat.js","test":"should support array slices with start, stop, and step"},
       "status": "ported"
     }
   ]

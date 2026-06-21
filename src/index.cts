@@ -4,37 +4,17 @@ export {
   NunjitsuRenderError,
   type Engine,
   type EngineOptions,
-  type InlineTemplate,
-  type NamedTemplate,
   type RenderOptions,
-  type TemplateInput,
 } from './native-engine.ts';
 export type {
-  BodyTemplateTag,
-  BodyTemplateTagInvocation,
-  BodyTemplateTagRenderer,
-  CapabilityCallContext,
-  InlineTemplateTag,
   TemplateCapabilities,
   TemplateFilter,
   TemplateGlobal,
-  TemplateTest,
-  TemplateTagRenderer,
-  TemplateTag,
+  TemplateGlobalFunction,
 } from './capabilities.ts';
-export {
-  memoryLoader,
-  TemplateLoaderError,
-  TemplateNotFoundError,
-  type LoadedTemplate,
-  type TemplateLoader,
-} from './loaders.ts';
 export { NunjitsuLimitError, type RenderLimits } from './limits.ts';
 export {
-  markSafe,
-  SafeString,
   type TemplateContext,
-  type TemplatePrimitive,
   type TemplateValue,
 } from './values.ts';
 

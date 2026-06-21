@@ -3,7 +3,6 @@ import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
 import { createEngine } from '../../src/index.ts';
-import { markSafe } from '../../src/values.ts';
 import { RuntimeScope } from '../../src/runtime/scope.ts';
 import {
   copyPublicValue,
@@ -11,10 +10,9 @@ import {
   copyRuntimeValue,
   RuntimeArray,
   RuntimeRecord,
-  RuntimeSafeString,
 } from '../../src/runtime/value.ts';
 
-test('copies only closed values without invoking rejected accessors', () => {
+test('copies only plain data without invoking accessors or host behavior', () => {
   let getterCalls = 0;
   const withGetter = Object.defineProperty({}, 'secret', {
     enumerable: true,
@@ -23,21 +21,15 @@ test('copies only closed values without invoking rejected accessors', () => {
       return 'leaked';
     },
   });
-  assert.throws(
-    () => copyRuntimeValue(withGetter),
-    /cannot contain accessors/,
-  );
+  assert.throws(() => copyRuntimeValue(withGetter as never), /cannot contain accessors/);
   assert.equal(getterCalls, 0);
 
   class HostValue {
     value = 'host';
   }
+  assert.throws(() => copyRuntimeValue(new HostValue() as never), /Only plain records/);
   assert.throws(
-    () => copyRuntimeValue(new HostValue()),
-    /Only plain records/,
-  );
-  assert.throws(
-    () => copyRuntimeValue(Object.assign([1], { extra: 2 })),
+    () => copyRuntimeValue(Object.assign([1], { extra: 2 }) as never),
     /cannot have custom properties/,
   );
   assert.throws(
@@ -50,47 +42,35 @@ test('copies only closed values without invoking rejected accessors', () => {
   );
 });
 
-test('reserves prototype gadget names across values and scopes', () => {
+test('reserves prototype gadget names across values, syntax, and scopes', () => {
   for (const name of ['constructor', 'prototype', '__proto__']) {
     const context = Object.create(null) as Record<string, string>;
     context[name] = 'blocked';
-    assert.throws(
-      () => copyRuntimeContext(context),
-      new RegExp(`key ${name} is reserved`),
-    );
+    assert.throws(() => copyRuntimeContext(context), new RegExp(`key ${name} is reserved`));
 
     const scope = new RuntimeScope();
     assert.throws(() => scope.set(name, 'blocked'), /is reserved/);
     assert.equal(scope.get(name), undefined);
   }
 
-  const previous = Object.getOwnPropertyDescriptor(Object.prototype, 'polluted');
-  Object.defineProperty(Object.prototype, 'polluted', {
-    configurable: true,
-    value: 'host',
-  });
-  try {
-    const copied = copyRuntimeContext({ own: 'value' });
-    assert.equal(copied.get('own'), 'value');
-    assert.equal(copied.get('polluted'), undefined);
-  } finally {
-    if (previous) {
-      Object.defineProperty(Object.prototype, 'polluted', previous);
-    } else {
-      delete (Object.prototype as Record<string, unknown>).polluted;
-    }
+  const engine = createEngine();
+  for (const source of [
+    '${{ constructor }}',
+    '${{ value.constructor }}',
+    '${{ value["prototype"] }}',
+    '{% set __proto__ = 1 %}',
+    '${{ {"constructor": 1} }}',
+  ]) {
+    assert.throws(() => engine.render(source), /reserved/);
   }
 });
 
-test('owns aliases and exposes only frozen callback copies', () => {
-  const shared = { value: markSafe('<trusted>') };
+test('owns aliases and exposes only frozen null-prototype callback copies', () => {
+  const shared = { value: '<trusted>' };
   const copied = copyRuntimeValue([shared, shared]);
   assert.ok(copied instanceof RuntimeArray);
-  const first = copied.at(0);
-  const second = copied.at(1);
-  assert.equal(first, second);
-  assert.ok(first instanceof RuntimeRecord);
-  assert.ok(first.get('value') instanceof RuntimeSafeString);
+  assert.equal(copied.at(0), copied.at(1));
+  assert.ok(copied.at(0) instanceof RuntimeRecord);
 
   const publicValue = copyPublicValue(copied);
   assert.ok(Array.isArray(publicValue));
@@ -104,66 +84,71 @@ test('owns aliases and exposes only frozen callback copies', () => {
   assert.throws(() => copyRuntimeValue(cyclic as never), /Cyclic template values/);
 });
 
-test('scope lookup never falls through to host globals or prototypes', () => {
-  const root = new RuntimeScope();
-  root.set('value', 1);
-  const child = root.child();
-  child.set('local', 2);
+test('scope lookup never falls through to host globals or polluted prototypes', () => {
+  const previous = Object.getOwnPropertyDescriptor(Object.prototype, 'polluted');
+  Object.defineProperty(Object.prototype, 'polluted', {
+    configurable: true,
+    value: 'host',
+  });
+  try {
+    const copied = copyRuntimeContext({ own: 'value' });
+    assert.equal(copied.get('own'), 'value');
+    assert.equal(copied.get('polluted'), undefined);
 
-  assert.equal(child.get('value'), 1);
-  assert.equal(child.get('local'), 2);
-  assert.equal(child.get('process'), undefined);
-  assert.equal(child.get('globalThis'), undefined);
-  assert.equal(child.get('toString'), undefined);
-  assert.equal(child.get('constructor'), undefined);
+    const scope = new RuntimeScope();
+    scope.set('value', 1);
+    assert.equal(scope.get('process'), undefined);
+    assert.equal(scope.get('globalThis'), undefined);
+    assert.equal(scope.get('toString'), undefined);
+    assert.equal(scope.get('constructor'), undefined);
+  } finally {
+    if (previous) {
+      Object.defineProperty(Object.prototype, 'polluted', previous);
+    } else {
+      delete (Object.prototype as Record<string, unknown>).polluted;
+    }
+  }
 });
 
-test('templates cannot reach ambient authority or invoke looked-up values', async () => {
+test('templates cannot reach ambient authority or invoke looked-up values', () => {
   const engine = createEngine();
   for (const source of [
-    '{{ globalThis }}',
-    '{{ process }}',
-    '{{ require }}',
-    '{{ module }}',
-    '{{ value["con" + "structor"] }}',
-    '{{ value["proto" + "type"] }}',
-    '{{ value["__pro" + "to__"] }}',
+    '${{ globalThis }}',
+    '${{ process }}',
+    '${{ require }}',
+    '${{ module }}',
+    '${{ value["con" + "structor"] }}',
+    '${{ value["proto" + "type"] }}',
+    '${{ value["__pro" + "to__"] }}',
   ]) {
-    assert.equal(await engine.render({ source }, { value: { safe: 'data' } }), '', source);
+    assert.equal(engine.render(source, { value: { safe: 'data' } }), '', source);
   }
 
   for (const source of [
-    '{{ value.toString() }}',
-    '{{ value["to" + "String"]() }}',
-    '{{ process.mainModule.require("node:fs") }}',
-    '{{ value.constructor.constructor("return process")() }}',
+    '${{ value.toString() }}',
+    '${{ value["to" + "String"]() }}',
+    '${{ process.mainModule.require("node:fs") }}',
+    '${{ value.constructor.constructor("return process")() }}',
   ]) {
-    await assert.rejects(engine.render({ source }, { value: { toString: 'data' } }), source);
+    assert.throws(() => engine.render(source, { value: { toString: 'data' } }), source);
   }
-  await assert.rejects(
-    engine.render({ source: '{{ values | join(",", "constructor") }}' }, { values: [1] }),
-    /constructor is reserved/,
-  );
-  assert.equal(
-    await engine.render({ source: '{{ values | join(",", "toString") }}' }, { values: [1] }),
-    '',
-  );
+});
 
-  await assert.rejects(
-    engine.render({ source: '{{ expose() }}' }, {}, {
-      limits: { capabilityCalls: 1 },
-    }),
-  );
-  const guarded = createEngine({
+test('capability results cross the same closed value boundary', () => {
+  const engine = createEngine({
     globals: {
-      expose() {
+      exposeReserved() {
         const value = Object.create(null) as Record<string, string>;
         Object.defineProperty(value, 'constructor', { enumerable: true, value: 'blocked' });
         return value;
       },
+      exposeFunction() {
+        return { run: () => 'blocked' } as never;
+      },
     },
   });
-  await assert.rejects(guarded.render({ source: '{{ expose() }}' }), /constructor is reserved/);
+  assert.throws(() => engine.render('${{ exposeReserved() }}'), /constructor is reserved/);
+  assert.throws(() => engine.render('${{ exposeFunction() }}'), /Unsupported template value/);
 });
 
 test('parser and evaluator sources contain no dynamic execution primitive', async () => {

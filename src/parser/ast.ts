@@ -14,22 +14,14 @@ export type AstNodeType =
   | 'LookupVal'
   | 'Slice'
   | 'If'
-  | 'IfAsync'
   | 'InlineIf'
   | 'For'
-  | 'AsyncEach'
-  | 'AsyncAll'
   | 'Macro'
   | 'Caller'
-  | 'Import'
-  | 'FromImport'
   | 'FunCall'
   | 'Filter'
-  | 'FilterAsync'
   | 'Block'
   | 'Super'
-  | 'Extends'
-  | 'Include'
   | 'Set'
   | 'Switch'
   | 'Case'
@@ -50,9 +42,7 @@ export type AstNodeType =
   | 'Neg'
   | 'Pos'
   | 'Compare'
-  | 'CompareOperand'
-  | 'CallExtension'
-  | 'CallExtensionAsync';
+  | 'CompareOperand';
 
 /** Inert regular-expression data stored in literal AST nodes. */
 export interface AstRegexLiteral {

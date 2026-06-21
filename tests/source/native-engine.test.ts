@@ -1,58 +1,64 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { memoryLoader } from '../../src/loaders.ts';
 import { createNativeEngine } from '../../src/native-engine.ts';
-import { markSafe } from '../../src/values.ts';
 
-test('constructs synchronously and renders inline and loaded templates', async () => {
-  const engine = createNativeEngine({
-    loaders: [memoryLoader({
-      'entry.njk': 'loaded {% include "partial.njk" %}',
-      'partial.njk': '{{ value }}',
-    })],
-  });
+test('renders Backstage and Cookiecutter variable modes synchronously', () => {
+  const backstage = createNativeEngine();
+  assert.equal(
+    backstage.render('Hello ${{ values.name }}; {{ untouched }}', {
+      values: { name: 'Nunjitsu' },
+    }),
+    'Hello Nunjitsu; {{ untouched }}',
+  );
 
+  const cookiecutter = createNativeEngine({ cookiecutterCompat: true });
   assert.equal(
-    await engine.render({ source: 'inline {{ value }}' }, { value: '<x>' }),
-    'inline &lt;x&gt;',
-  );
-  assert.equal(
-    await engine.render({ name: 'entry.njk' }, { value: markSafe('<x>') }),
-    'loaded <x>',
-  );
-  assert.equal(
-    await engine.render(
-      { source: '{{ "v.0" }}|{% raw %}{{ values.0 }}{% endraw %}|{{ values.0 }}' },
-      { values: ['first'] },
-    ),
-    'v.0|{{ values.0 }}|first',
+    cookiecutter.render('{{ cookiecutter.name }}:{{ cookiecutter.items | jsonify }}', {
+      cookiecutter: { name: 'Nunjitsu', items: [1, 2] },
+    }),
+    'Nunjitsu:[1,2]',
   );
 });
 
-test('invokes only explicit copied capabilities', async () => {
+test('invokes synchronous filters and value or function globals through copied data', () => {
   const input = { nested: { value: 'safe' } };
   const engine = createNativeEngine({
     filters: {
-      async inspect(value, arguments_) {
+      inspect(value, suffix) {
         assert.equal(Object.getPrototypeOf(value), null);
         assert.ok(Object.isFrozen(value));
-        assert.deepEqual(arguments_, ['suffix']);
-        return `${(value as { nested: { value: string } }).nested.value}-suffix`;
+        return `${(value as { nested: { value: string } }).nested.value}-${suffix}`;
       },
     },
     globals: {
-      answer() {
-        return 42;
+      answer: 42,
+      greeting(name) {
+        return `hello ${name}`;
       },
     },
   });
 
   assert.equal(
-    await engine.render(
-      { source: '{{ input | inspect("suffix") }}={{ answer() }}' },
+    engine.render(
+      '${{ input | inspect("suffix") }}=${{ answer }}:${{ greeting("world") }}',
       { input },
     ),
-    'safe-suffix=42',
+    'safe-suffix=42:hello world',
   );
+});
+
+test('rejects template-loading and extension syntax', () => {
+  const engine = createNativeEngine();
+  for (const source of [
+    '{% include "partial.njk" %}',
+    '{% import "macros.njk" as macros %}',
+    '{% from "macros.njk" import value %}',
+    '{% extends "base.njk" %}',
+    '{% asyncEach value in values %}${{ value }}{% endeach %}',
+    '{% asyncAll value in values %}${{ value }}{% endall %}',
+    '{% unknown %}',
+  ]) {
+    assert.throws(() => engine.render(source));
+  }
 });

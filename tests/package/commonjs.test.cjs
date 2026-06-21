@@ -3,7 +3,7 @@ const test = require('node:test');
 
 const { createEngine } = require('../../dist/cjs/index.cjs');
 
-test('renders through the CommonJS package entry', async () => {
+test('renders synchronously through the CommonJS package entry', () => {
   const engine = createEngine({
     globals: {
       value() {
@@ -12,13 +12,11 @@ test('renders through the CommonJS package entry', async () => {
     },
   });
   assert.equal(
-    await engine.render({ source: 'CommonJS {{ value }}' }, { value: 'works' }),
+    engine.render('CommonJS ${{ value }}', { value: 'works' }),
     'CommonJS works',
   );
   assert.equal(
-    (await Array.fromAsync(
-      engine.renderStream({ source: 'stream {{ value() }}' }),
-    )).join(''),
-    'stream works',
+    engine.render('global ${{ value() }}'),
+    'global works',
   );
 });

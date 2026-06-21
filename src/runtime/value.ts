@@ -1,4 +1,4 @@
-import { SafeString, type TemplateValue } from '../values.ts';
+import type { TemplateValue } from '../values.ts';
 
 /** Names denied throughout the interpreter to eliminate prototype gadget paths. */
 export const reservedNames = Object.freeze(new Set([
@@ -19,7 +19,7 @@ export type RuntimeValue =
   | RuntimeRegex
   | RuntimeCallable;
 
-/** A trusted string whose output bypasses autoescaping. */
+/** An interpreter string carrying Nunjucks safe-filter semantics. */
 export class RuntimeSafeString {
   readonly kind = 'safe-string';
 
@@ -127,7 +127,7 @@ export function isReservedName(name: string): boolean {
 }
 
 /** Copies one public safe value graph into interpreter-owned values. */
-export function copyRuntimeValue(value: TemplateValue): RuntimeValue {
+export function copyRuntimeValue(value: TemplateValue | undefined): RuntimeValue {
   return copyValue(value, new Set(), new Map());
 }
 
@@ -143,7 +143,7 @@ export function copyRuntimeContext(
 }
 
 /** Copies an internal value for a trusted host callback without leaking internals. */
-export function copyPublicValue(value: RuntimeValue): TemplateValue {
+export function copyPublicValue(value: RuntimeValue): TemplateValue | undefined {
   return toPublicValue(value, new Map());
 }
 
@@ -203,7 +203,7 @@ export function runtimeTruthy(value: RuntimeValue): boolean {
 }
 
 function copyValue(
-  value: TemplateValue,
+  value: TemplateValue | undefined,
   ancestors: Set<object>,
   aliases: Map<object, RuntimeValue>,
 ): RuntimeValue {
@@ -215,12 +215,6 @@ function copyValue(
     typeof value === 'number'
   ) {
     return value;
-  }
-  if (value instanceof SafeString) {
-    if (Object.getPrototypeOf(value) !== SafeString.prototype) {
-      throw new TypeError('Safe strings cannot use a custom prototype');
-    }
-    return new RuntimeSafeString(value.value);
   }
   if (typeof value !== 'object') {
     throw new TypeError(`Unsupported template value of type ${typeof value}`);
@@ -312,7 +306,7 @@ function isArrayIndex(value: string, length: number): boolean {
 function toPublicValue(
   value: RuntimeValue,
   aliases: Map<object, TemplateValue>,
-): TemplateValue {
+): TemplateValue | undefined {
   if (
     value === undefined ||
     value === null ||
@@ -323,7 +317,7 @@ function toPublicValue(
     return value;
   }
   if (value instanceof RuntimeSafeString) {
-    return new SafeString(value.value);
+    return value.value;
   }
   const existing = aliases.get(value);
   if (existing !== undefined) {
@@ -333,7 +327,8 @@ function toPublicValue(
     const output: TemplateValue[] = [];
     aliases.set(value, output);
     for (const item of value.values()) {
-      output.push(toPublicValue(item, aliases));
+      const publicItem = toPublicValue(item, aliases);
+      output.push(publicItem === undefined ? null : publicItem);
     }
     return Object.freeze(output);
   }
@@ -341,7 +336,10 @@ function toPublicValue(
     const output = Object.create(null) as Record<string, TemplateValue>;
     aliases.set(value, output);
     for (const [key, item] of value.entries()) {
-      output[key] = toPublicValue(item, aliases);
+      const publicItem = toPublicValue(item, aliases);
+      if (publicItem !== undefined) {
+        output[key] = publicItem;
+      }
     }
     return Object.freeze(output);
   }

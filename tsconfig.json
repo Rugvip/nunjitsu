@@ -5,6 +5,6 @@
     "moduleResolution": "NodeNext",
     "noEmit": true
   },
-  "include": ["benchmarks/**/*.ts", "src/**/*.ts", "tests/source/**/*.ts"],
+  "include": ["src/**/*.ts", "tests/source/**/*.ts"],
   "exclude": ["src/**/*.cts"]
 }

@@ -9,16 +9,8 @@ export interface ParseOptions {
   trimBlocks: boolean;
   /** Removes indentation before block tags on otherwise blank lines. */
   lstripBlocks: boolean;
-  /** Trusted declarative custom-tag grammars accepted by this parse. */
-  tags?: readonly ParseTagDescriptor[];
-}
-
-/** Data-only grammar descriptor for one trusted custom tag. */
-export interface ParseTagDescriptor {
-  readonly name: string;
-  readonly type: 'inline' | 'body';
-  readonly endTag?: string;
-  readonly intermediateTags: readonly string[];
+  /** Uses Cookiecutter/Jinja variable syntax and compatibility behavior. */
+  cookiecutterCompat?: boolean;
 }
 
 /** Structured failure produced while parsing untrusted template syntax. */
@@ -42,31 +34,20 @@ interface ForeignNode {
 }
 
 interface ForeignParser {
-  parse(source: string, extensions: readonly unknown[], options: ParseOptions): unknown;
-}
-
-interface ForeignExtensionParser {
-  nextToken(): { readonly value: string; readonly lineno: number; readonly colno: number };
-  peekToken(): { readonly value: string; readonly type: string };
-  parseSignature(tolerant?: boolean, noParens?: boolean): unknown;
-  advanceAfterBlockEnd(name?: string): unknown;
-  parseUntilBlocks(...names: string[]): unknown;
-  skipSymbol(name: string): boolean;
-}
-
-interface ForeignNodes {
-  CallExtension: new (extension: unknown, prop: string, args: unknown, content: unknown[]) => unknown;
+  parse(source: string, extensions: readonly unknown[], options: {
+    trimBlocks: boolean;
+    lstripBlocks: boolean;
+    tags: { variableStart: string; variableEnd: string };
+  }): unknown;
 }
 
 interface NunjucksModule {
   readonly parser: ForeignParser;
-  readonly nodes: ForeignNodes;
   installJinjaCompat(): () => void;
 }
 
 const nativeNunjucks = (nunjucks as unknown as { default: NunjucksModule }).default;
 const parser = nativeNunjucks.parser;
-const foreignNodes = nativeNunjucks.nodes;
 
 const nodeFields = Object.freeze({
   Root: ['children'],
@@ -83,22 +64,14 @@ const nodeFields = Object.freeze({
   LookupVal: ['target', 'val'],
   Slice: ['start', 'stop', 'step'],
   If: ['cond', 'body', 'else_'],
-  IfAsync: ['cond', 'body', 'else_'],
   InlineIf: ['cond', 'body', 'else_'],
   For: ['arr', 'name', 'body', 'else_'],
-  AsyncEach: ['arr', 'name', 'body', 'else_'],
-  AsyncAll: ['arr', 'name', 'body', 'else_'],
   Macro: ['name', 'args', 'body'],
   Caller: ['name', 'args', 'body'],
-  Import: ['template', 'target', 'withContext'],
-  FromImport: ['template', 'names', 'withContext'],
   FunCall: ['name', 'args'],
   Filter: ['name', 'args'],
-  FilterAsync: ['name', 'args', 'symbol'],
   Block: ['name', 'body'],
   Super: ['blockName', 'symbol'],
-  Extends: ['template'],
-  Include: ['template', 'ignoreMissing'],
   Set: ['targets', 'value', 'body'],
   Switch: ['expr', 'cases', 'default'],
   Case: ['cond', 'body'],
@@ -120,23 +93,31 @@ const nodeFields = Object.freeze({
   Pos: ['target'],
   Compare: ['expr', 'ops'],
   CompareOperand: ['expr', 'type'],
-  CallExtension: ['extName', 'prop', 'args', 'contentArgs', 'autoescape'],
-  CallExtensionAsync: ['extName', 'prop', 'args', 'contentArgs', 'autoescape'],
-} as const satisfies Record<AstNodeType, readonly string[]>);
+} as const satisfies Partial<Record<AstNodeType, readonly string[]>>);
 
 /** Parses and fully validates one untrusted template into a data-only AST. */
 export function parseTemplate(
   source: string,
   options: ParseOptions = { trimBlocks: false, lstripBlocks: false },
 ): AstNode {
-  const normalizedSource = normalizeNumericLookups(normalizeRawWhitespace(source));
+  const variableStart = options.cookiecutterCompat ? '{{' : '${{';
+  const normalizedSource = normalizeNumericLookups(
+    normalizeRawWhitespace(source),
+    variableStart,
+  );
   validateRawBlocks(normalizedSource);
-  const uninstallCompat = nativeNunjucks.installJinjaCompat();
+  const uninstallCompat = options.cookiecutterCompat
+    ? nativeNunjucks.installJinjaCompat()
+    : () => {};
   try {
     return convertNode(parser.parse(
       normalizedSource,
-      createParserExtensions(options.tags ?? []),
-      options,
+      [],
+      {
+        trimBlocks: options.trimBlocks,
+        lstripBlocks: options.lstripBlocks,
+        tags: { variableStart, variableEnd: '}}' },
+      },
     ));
   } catch (error) {
     if (error instanceof NunjitsuParseError) {
@@ -154,17 +135,17 @@ export function parseTemplate(
   }
 }
 
-function normalizeNumericLookups(source: string): string {
+function normalizeNumericLookups(source: string, variableStart: string): string {
   let output = '';
   let cursor = 0;
   const opening = /{%-?\s*(raw|verbatim)\s*-?%}/g;
   for (;;) {
     const match = opening.exec(source);
     if (!match) {
-      output += normalizeNumericTags(source.slice(cursor));
+      output += normalizeNumericTags(source.slice(cursor), variableStart);
       return output;
     }
-    output += normalizeNumericTags(source.slice(cursor, match.index));
+    output += normalizeNumericTags(source.slice(cursor, match.index), variableStart);
     const name = match[1]!;
     const closing = new RegExp(`{%-?\\s*end${name}\\s*-?%}`, 'g');
     closing.lastIndex = opening.lastIndex;
@@ -178,8 +159,12 @@ function normalizeNumericLookups(source: string): string {
   }
 }
 
-function normalizeNumericTags(source: string): string {
-  return source.replace(/{{[\s\S]*?}}|{%[\s\S]*?%}/g, normalizeNumericTag);
+function normalizeNumericTags(source: string, variableStart: string): string {
+  const escapedStart = variableStart.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return source.replace(
+    new RegExp(`${escapedStart}[\\s\\S]*?}}|{%[\\s\\S]*?%}`, 'g'),
+    normalizeNumericTag,
+  );
 }
 
 function normalizeNumericTag(tag: string): string {
@@ -262,45 +247,6 @@ function validateRawBlocks(source: string): void {
   }
 }
 
-function createParserExtensions(tags: readonly ParseTagDescriptor[]): readonly unknown[] {
-  return tags.map(tag => {
-    const extension = {
-      __name: tag.name,
-      autoescape: true,
-      tags: [tag.name],
-      parse(parser_: ForeignExtensionParser) {
-        const token = parser_.nextToken();
-        const args = parser_.parseSignature(true) ?? parser_.parseSignature(false, true);
-        parser_.advanceAfterBlockEnd(token.value);
-        if (tag.type === 'inline') {
-          return new foreignNodes.CallExtension(extension, 'render', args, []);
-        }
-        const endTag = tag.endTag ?? `end${tag.name}`;
-        const breakTags = [...tag.intermediateTags, endTag];
-        const content: unknown[] = [parser_.parseUntilBlocks(...breakTags)];
-        const sections = new Map<string, unknown>();
-        while (parser_.peekToken().value !== endTag) {
-          const sectionName = parser_.peekToken().value;
-          if (!tag.intermediateTags.includes(sectionName) || !parser_.skipSymbol(sectionName)) {
-            throw new NunjitsuParseError(`Unexpected custom tag section ${sectionName}`);
-          }
-          parser_.advanceAfterBlockEnd(sectionName);
-          sections.set(sectionName, parser_.parseUntilBlocks(...breakTags));
-        }
-        if (!parser_.skipSymbol(endTag)) {
-          throw new NunjitsuParseError(`Expected custom tag end ${endTag}`);
-        }
-        parser_.advanceAfterBlockEnd(endTag);
-        for (const sectionName of tag.intermediateTags) {
-          content.push(sections.get(sectionName) ?? null);
-        }
-        return new foreignNodes.CallExtension(extension, 'render', args, content);
-      },
-    };
-    return extension;
-  });
-}
-
 function convertNode(value: unknown): AstNode {
   if (!isForeignNode(value)) {
     throw new NunjitsuParseError('Parser returned an invalid syntax node');
@@ -310,8 +256,12 @@ function convertNode(value: unknown): AstNode {
     throw new NunjitsuParseError(`Parser returned unsupported syntax node ${String(type)}`);
   }
   const nodeType = type as AstNodeType;
+  const nodeFieldNames = (nodeFields as Partial<Record<AstNodeType, readonly string[]>>)[nodeType];
+  if (!nodeFieldNames) {
+    throw new NunjitsuParseError(`Parser returned unsupported syntax node ${type}`);
+  }
   const fields = Object.create(null) as Record<string, AstData>;
-  for (const name of nodeFields[nodeType]) {
+  for (const name of nodeFieldNames) {
     fields[name] = convertData(value[name]);
   }
   if (nodeType === 'Symbol') {

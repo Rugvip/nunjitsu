@@ -6,15 +6,11 @@ export interface RenderLimits {
   astNodes: number;
   /** Maximum parser/evaluator work units. */
   workUnits: number;
-  /** Maximum active root/include frame depth. */
-  includeDepth: number;
   /** Maximum rendered UTF-8 output bytes. */
   outputBytes: number;
   /** Maximum temporary UTF-8 scratch bytes used during evaluation. */
   scratchBytes: number;
-  /** Maximum named-template loader requests, including the entry template. */
-  loaderCalls: number;
-  /** Maximum trusted host filter, test, and global invocations. */
+  /** Maximum trusted host filter and global-function invocations. */
   capabilityCalls: number;
 }
 
@@ -38,10 +34,8 @@ const defaultLimits: NormalizedRenderLimits = Object.freeze({
   sourceCodeUnits: 4 * 1024 * 1024,
   astNodes: 1_000_000,
   workUnits: 1_000_000,
-  includeDepth: 64,
   outputBytes: 16 * 1024 * 1024,
   scratchBytes: 64 * 1024 * 1024,
-  loaderCalls: 1024,
   capabilityCalls: 4096,
 });
 

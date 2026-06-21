@@ -1,13 +1,12 @@
 import type { AstData, AstNode, AstRegexLiteral } from '../parser/ast.ts';
 import { astField, astNode, astNodes, optionalAstNode } from '../parser/ast.ts';
-import { parseTemplate, type ParseTagDescriptor } from '../parser/index.ts';
+import { parseTemplate } from '../parser/index.ts';
 import type { NormalizedRenderLimits } from '../limits.ts';
 import { NunjitsuLimitError } from '../limits.ts';
 import type { TemplateContext } from '../values.ts';
 import {
   applyBuiltinFilter,
   applyBuiltinTest,
-  escapeHtml,
   hasBuiltinFilter,
   lookupRuntimeValue,
   runtimeNumber,
@@ -34,77 +33,43 @@ export interface RuntimeArguments {
 
 /** Trusted operations available to the closed interpreter by explicit name. */
 export interface RuntimeHost {
-  /** Declarative grammars exposed to the untrusted parser. */
-  readonly tags?: readonly ParseTagDescriptor[];
-  /** Returns whether one exact global name is registered. */
+  /** Returns whether one exact callable global name is registered. */
   hasGlobal?(name: string): boolean;
   /** Returns whether one exact filter name is registered. */
   hasFilter?(name: string): boolean;
-  /** Returns whether one exact test name is registered. */
-  hasTest?(name: string): boolean;
-  /** Returns whether one exact custom tag name is registered. */
-  hasTag?(name: string): boolean;
-  /** Resolves one named template through explicitly configured trusted loaders. */
-  load?(
-    name: string,
-    from: string | undefined,
-    ignoreMissing: boolean,
-    signal: AbortSignal,
-  ): Promise<{
-    readonly source: string;
-    readonly canonicalName: string;
-  } | undefined>;
+  /** Returns one configured non-callable global value. */
+  globalValue?(name: string): { readonly found: boolean; readonly value?: RuntimeValue };
   /** Invokes a configured filter, returning `undefined` when no filter exists. */
   filter?(
     name: string,
     input: RuntimeValue,
     arguments_: RuntimeArguments,
-    signal: AbortSignal,
-  ): Promise<{ readonly found: boolean; readonly value?: RuntimeValue }>;
-  /** Invokes a configured test, returning `undefined` when no test exists. */
-  test?(
-    name: string,
-    input: RuntimeValue,
-    arguments_: RuntimeArguments,
-    signal: AbortSignal,
-  ): Promise<boolean | undefined>;
+  ): { readonly found: boolean; readonly value?: RuntimeValue };
   /** Invokes a configured global, returning `undefined` when none exists. */
   global?(
     name: string,
     arguments_: RuntimeArguments,
-    signal: AbortSignal,
-  ): Promise<{ readonly found: boolean; readonly value?: RuntimeValue }>;
-  /** Invokes one configured custom tag. */
-  tag?(
-    name: string,
-    arguments_: RuntimeArguments,
-    content: readonly (string | undefined)[],
-    signal: AbortSignal,
-  ): Promise<{ readonly found: boolean; readonly value?: RuntimeValue }>;
+  ): { readonly found: boolean; readonly value?: RuntimeValue };
 }
 
 /** Options for one native template evaluation. */
 export interface EvaluateOptions {
-  readonly autoescape: boolean;
+  readonly cookiecutterCompat: boolean;
   readonly trimBlocks: boolean;
   readonly lstripBlocks: boolean;
   readonly limits: NormalizedRenderLimits;
-  readonly signal: AbortSignal;
   readonly host?: RuntimeHost;
-  readonly canonicalName?: string;
 }
 
-type OutputTarget = string[] | ((value: string) => Promise<void>);
+type OutputTarget = string[];
 
 interface MacroDefinition {
   readonly node: AstNode;
   readonly scope: RuntimeScope;
-  readonly canonicalName: string | undefined;
 }
 
 interface BlockDefinition {
   readonly node: AstNode;
-  readonly canonicalName: string | undefined;
 }
 
 interface BlockFrame {
@@ -131,46 +96,25 @@ type BuiltinCallableDefinition =
   };
 
 /** Parses and evaluates one inline source through the closed interpreter. */
-export async function evaluateTemplate(
+export function evaluateTemplate(
   source: string,
   context: TemplateContext,
   options: EvaluateOptions,
-): Promise<string> {
+): string {
   const evaluator = new Evaluator(options);
   const ast = evaluator.parse(source);
-  return await evaluator.render(ast, copyRuntimeContext(context), options.canonicalName);
-}
-
-/** Parses completely, then evaluates while awaiting each emitted output segment. */
-export async function evaluateTemplateStream(
-  source: string,
-  context: TemplateContext,
-  options: EvaluateOptions,
-  emit: (value: string) => Promise<void>,
-): Promise<void> {
-  const evaluator = new Evaluator(options);
-  const ast = evaluator.parse(source);
-  await evaluator.render(ast, copyRuntimeContext(context), options.canonicalName, emit);
+  return evaluator.render(ast, copyRuntimeContext(context));
 }
 
 class Evaluator {
   readonly #options: EvaluateOptions;
   readonly #macros = new Map<number, MacroDefinition>();
-  readonly #templates = new Map<string, AstNode>();
-  readonly #loadedTemplates = new Map<
-    string,
-    { readonly source: string; readonly canonicalName: string } | null
-  >();
-  readonly #activeTemplates: string[] = [];
   readonly #builtinCallables = new Map<number, BuiltinCallableDefinition>();
   #activeBlocks = new Map<string, readonly BlockDefinition[]>();
   readonly #blockStack: BlockFrame[] = [];
-  #probingExtends = false;
-  #pendingExtends: string | undefined;
   #nextCallableId = 1;
   #workUnits = 0;
   #outputBytes = 0;
-  #loaderCalls = 0;
   #capabilityCalls = 0;
   #sourceCodeUnits = 0;
   #astNodeCount = 0;
@@ -190,7 +134,7 @@ class Evaluator {
     const ast = parseTemplate(source, {
       trimBlocks: this.#options.trimBlocks,
       lstripBlocks: this.#options.lstripBlocks,
-      ...(this.#options.host?.tags ? { tags: this.#options.host.tags } : {}),
+      cookiecutterCompat: this.#options.cookiecutterCompat,
     });
     visitAst(ast, () => {
       this.#astNodeCount += 1;
@@ -204,151 +148,91 @@ class Evaluator {
     return ast;
   }
 
-  async render(
+  render(
     ast: AstNode,
     context: RuntimeRecord,
-    canonicalName?: string,
-    emit?: (value: string) => Promise<void>,
-  ): Promise<string> {
+  ): string {
     const contextScope = new RuntimeScope();
     for (const [name, value] of context.entries()) {
       contextScope.setReadonly(name, value);
     }
     const scope = contextScope.child(true);
-    const output: OutputTarget = emit ?? [];
-    await this.#renderTemplate(ast, scope, output, 0, canonicalName);
-    return Array.isArray(output) ? output.join('') : '';
+    const output: OutputTarget = [];
+    this.#renderTemplate(ast, scope, output, 0);
+    return output.join('');
   }
 
-  async #renderTemplate(
+  #renderTemplate(
     ast: AstNode,
     scope: RuntimeScope,
     output: OutputTarget,
     depth: number,
-    canonicalName: string | undefined,
     inheritedBlocks: ReadonlyMap<string, readonly BlockDefinition[]> = new Map(),
-  ): Promise<void> {
-    if (canonicalName !== undefined) {
-      if (this.#activeTemplates.includes(canonicalName)) {
-        throw new Error(`Template dependency cycle detected at ${canonicalName}`);
-      }
-      if (
-        this.#options.limits.includeDepth !== Number.POSITIVE_INFINITY &&
-        this.#activeTemplates.length >= this.#options.limits.includeDepth
-      ) {
-        throw new NunjitsuLimitError('includeDepth');
-      }
-      this.#activeTemplates.push(canonicalName);
-    }
+  ): void {
     const previousBlocks = this.#activeBlocks;
-    const activeBlocks = mergeBlocks(inheritedBlocks, collectBlocks(ast, canonicalName));
+    const activeBlocks = mergeBlocks(inheritedBlocks, collectBlocks(ast));
     this.#activeBlocks = activeBlocks;
     try {
-      if (containsNodeType(ast, 'Extends')) {
-        const previousProbing = this.#probingExtends;
-        const previousPending = this.#pendingExtends;
-        const probeScope = scope.child();
-        this.#probingExtends = true;
-        this.#pendingExtends = undefined;
-        await this.#evaluateNode(ast, probeScope, [], depth + 1, canonicalName);
-        const parentName = this.#pendingExtends;
-        this.#probingExtends = previousProbing;
-        this.#pendingExtends = previousPending;
-        if (parentName !== undefined) {
-          const loaded = await this.#load(parentName, canonicalName, false);
-          if (!loaded) {
-            throw new Error(`Template ${parentName} was not found`);
-          }
-          const parentAst = this.#parseLoaded(loaded);
-          await this.#renderTemplate(
-            parentAst,
-            probeScope,
-            output,
-            depth + 1,
-            loaded.canonicalName,
-            activeBlocks,
-          );
-          return;
-        }
-      }
-      await this.#evaluateNode(ast, scope, output, depth + 1, canonicalName);
+      this.#evaluateNode(ast, scope, output, depth + 1);
     } finally {
       this.#activeBlocks = previousBlocks;
-      if (canonicalName !== undefined) {
-        this.#activeTemplates.pop();
-      }
     }
   }
 
-  async #evaluateNode(
+  #evaluateNode(
     node: AstNode,
     scope: RuntimeScope,
     output: OutputTarget,
     depth: number,
-    canonicalName?: string,
-  ): Promise<void> {
+  ): void {
     this.#charge(depth);
     switch (node.type) {
       case 'Root':
       case 'NodeList':
-        await this.#evaluateSequence(astNodes(node, 'children'), scope, output, depth, canonicalName);
+        this.#evaluateSequence(astNodes(node, 'children'), scope, output, depth);
         return;
       case 'Output':
-        if (this.#probingExtends) {
-          return;
-        }
         for (const child of astNodes(node, 'children')) {
           if (child.type === 'TemplateData') {
-            await this.#append(output, literalString(child));
+            this.#append(output, literalString(child));
           } else {
-            const value = await this.#evaluateExpression(child, scope, depth + 1);
-            const rendered = renderRuntimeValue(value);
-            await this.#append(
-              output,
-              this.#options.autoescape && !(value instanceof RuntimeSafeString)
-                ? escapeHtml(rendered)
-                : rendered,
-            );
+            const value = this.#evaluateExpression(child, scope, depth + 1);
+            this.#append(output, renderRuntimeValue(value));
           }
         }
         return;
       case 'If':
-      case 'IfAsync': {
-        const condition = await this.#evaluateExpression(astNode(node, 'cond'), scope, depth + 1);
+      {
+        const condition = this.#evaluateExpression(astNode(node, 'cond'), scope, depth + 1);
         if (runtimeTruthy(condition)) {
-          await this.#evaluateNode(astNode(node, 'body'), scope, output, depth + 1, canonicalName);
+          this.#evaluateNode(astNode(node, 'body'), scope, output, depth + 1);
         } else {
           const otherwise = optionalAstNode(node, 'else_');
           if (otherwise) {
-            await this.#evaluateNode(otherwise, scope, output, depth + 1, canonicalName);
+            this.#evaluateNode(otherwise, scope, output, depth + 1);
           }
         }
         return;
       }
       case 'For':
-      case 'AsyncEach':
-      case 'AsyncAll':
-        await this.#evaluateFor(node, scope, output, depth + 1, canonicalName);
+        this.#evaluateFor(node, scope, output, depth + 1);
         return;
       case 'Set':
-        await this.#evaluateSet(node, scope, depth + 1);
+        this.#evaluateSet(node, scope, depth + 1);
         return;
       case 'Macro': {
         const name = symbolName(astNode(node, 'name'));
         const id = this.#nextCallableId++;
         const definitionScope = this.#blockStack.at(-1)?.scope ?? scope;
-        this.#macros.set(id, { node, scope: definitionScope, canonicalName });
+        this.#macros.set(id, { node, scope: definitionScope });
         definitionScope.set(name, new RuntimeCallable('macro', id));
         return;
       }
       case 'Block':
-        if (this.#probingExtends) {
-          return;
-        }
-        await this.#evaluateBlock(node, scope, output, depth + 1, canonicalName);
+        this.#evaluateBlock(node, scope, output, depth + 1);
         return;
       case 'Switch': {
-        const value = await this.#evaluateExpression(astNode(node, 'expr'), scope, depth + 1);
+        const value = this.#evaluateExpression(astNode(node, 'expr'), scope, depth + 1);
         const cases = astField(node, 'cases');
         if (!Array.isArray(cases)) {
           throw new Error('Invalid switch case list');
@@ -360,118 +244,92 @@ class Evaluator {
           }
           const condition = matched
             ? undefined
-            : await this.#evaluateExpression(astNode(candidate, 'cond'), scope, depth + 1);
+            : this.#evaluateExpression(astNode(candidate, 'cond'), scope, depth + 1);
           if (matched || runtimeEqual(value, condition, false)) {
             matched = true;
             if (astNodes(astNode(candidate, 'body'), 'children').length === 0) {
               continue;
             }
-            await this.#evaluateNode(
+            this.#evaluateNode(
               astNode(candidate, 'body'),
               scope,
               output,
               depth + 1,
-              canonicalName,
             );
             return;
           }
         }
         const fallback = optionalAstNode(node, 'default');
         if (fallback) {
-          await this.#evaluateNode(fallback, scope, output, depth + 1, canonicalName);
+          this.#evaluateNode(fallback, scope, output, depth + 1);
         }
         return;
       }
-      case 'Include':
-        if (this.#probingExtends) {
-          return;
-        }
-        await this.#evaluateInclude(node, scope, output, depth + 1, canonicalName);
-        return;
-      case 'Import':
-      case 'FromImport':
-        await this.#evaluateImport(node, scope, depth + 1, canonicalName);
-        return;
-      case 'Extends':
-        if (this.#probingExtends && this.#pendingExtends === undefined) {
-          this.#pendingExtends = renderRuntimeValue(
-            await this.#evaluateExpression(astNode(node, 'template'), scope, depth + 1),
-          );
-        }
-        return;
-      case 'CallExtension':
-      case 'CallExtensionAsync':
-        await this.#evaluateTag(node, scope, output, depth + 1, canonicalName);
-        return;
       default:
         throw new Error(`Unexpected statement node ${node.type}`);
     }
   }
 
-  async #evaluateBlock(
+  #evaluateBlock(
     node: AstNode,
     scope: RuntimeScope,
     output: OutputTarget,
     depth: number,
-    canonicalName: string | undefined,
-  ): Promise<void> {
+  ): void {
     const name = symbolName(astNode(node, 'name'));
     const chain: readonly BlockDefinition[] = this.#activeBlocks.get(name) ?? [
-      { node, canonicalName },
+      { node },
     ];
-    await this.#renderBlock(chain, 0, scope, output, depth + 1);
+    this.#renderBlock(chain, 0, scope, output, depth + 1);
   }
 
-  async #renderBlock(
+  #renderBlock(
     chain: readonly BlockDefinition[],
     index: number,
     scope: RuntimeScope,
     output: OutputTarget,
     depth: number,
-  ): Promise<void> {
+  ): void {
     const definition = chain[index];
     if (!definition) {
       return;
     }
     this.#blockStack.push({ chain, index, scope });
     try {
-      await this.#evaluateNode(
+      this.#evaluateNode(
         astNode(definition.node, 'body'),
         scope.child(true),
         output,
         depth + 1,
-        definition.canonicalName,
       );
     } finally {
       this.#blockStack.pop();
     }
   }
 
-  async #evaluateSequence(
+  #evaluateSequence(
     nodes: readonly AstNode[],
     scope: RuntimeScope,
     output: OutputTarget,
     depth: number,
-    canonicalName?: string,
-  ): Promise<void> {
+  ): void {
     for (const node of nodes) {
-      await this.#evaluateNode(node, scope, output, depth + 1, canonicalName);
+      this.#evaluateNode(node, scope, output, depth + 1);
     }
   }
 
-  async #evaluateFor(
+  #evaluateFor(
     node: AstNode,
     scope: RuntimeScope,
     output: OutputTarget,
     depth: number,
-    canonicalName?: string,
-  ): Promise<void> {
-    const value = await this.#evaluateExpression(astNode(node, 'arr'), scope, depth + 1);
+  ): void {
+    const value = this.#evaluateExpression(astNode(node, 'arr'), scope, depth + 1);
     const entries = iterableEntries(value);
     if (entries.length === 0) {
       const otherwise = optionalAstNode(node, 'else_');
       if (otherwise) {
-        await this.#evaluateNode(otherwise, scope.child(), output, depth + 1, canonicalName);
+        this.#evaluateNode(otherwise, scope.child(), output, depth + 1);
       }
       return;
     }
@@ -489,17 +347,16 @@ class Evaluator {
         ['last', index === entries.length - 1],
         ['length', entries.length],
       ]));
-      await this.#evaluateNode(
+      this.#evaluateNode(
         astNode(node, 'body'),
         iteration,
         output,
         depth + 1,
-        canonicalName,
       );
     }
   }
 
-  async #evaluateSet(node: AstNode, scope: RuntimeScope, depth: number): Promise<void> {
+  #evaluateSet(node: AstNode, scope: RuntimeScope, depth: number): void {
     const targets = astField(node, 'targets');
     if (!Array.isArray(targets) || !targets.every(isNode)) {
       throw new Error('Invalid assignment target list');
@@ -507,14 +364,14 @@ class Evaluator {
     const valueNode = optionalAstNode(node, 'value');
     let value: RuntimeValue;
     if (valueNode) {
-      value = await this.#evaluateExpression(valueNode, scope, depth + 1);
+      value = this.#evaluateExpression(valueNode, scope, depth + 1);
     } else {
       const body = optionalAstNode(node, 'body');
       if (!body) {
         throw new Error('Invalid block assignment');
       }
       const capturedBody = body.type === 'Capture' ? astNode(body, 'body') : body;
-      value = await this.#capture(capturedBody, scope, depth + 1, false);
+      value = this.#capture(capturedBody, scope, depth + 1, false);
     }
     if (targets.length === 1) {
       bindAssignment(targets[0]!, value, scope);
@@ -525,11 +382,11 @@ class Evaluator {
     }
   }
 
-  async #evaluateExpression(
+  #evaluateExpression(
     node: AstNode,
     scope: RuntimeScope,
     depth: number,
-  ): Promise<RuntimeValue> {
+  ): RuntimeValue {
     this.#charge(depth);
     switch (node.type) {
       case 'Literal': {
@@ -554,6 +411,21 @@ class Evaluator {
         if (value !== undefined || scope.has(name)) {
           return value;
         }
+        if (this.#options.cookiecutterCompat) {
+          if (name === 'True') {
+            return true;
+          }
+          if (name === 'False') {
+            return false;
+          }
+          if (name === 'None') {
+            return null;
+          }
+        }
+        const globalValue = this.#options.host?.globalValue?.(name);
+        if (globalValue?.found) {
+          return globalValue.value;
+        }
         if (this.#options.host?.hasGlobal?.(name)) {
           return new RuntimeCallable('capability', this.#registerGlobal(name));
         }
@@ -563,7 +435,7 @@ class Evaluator {
       case 'Group': {
         const values: RuntimeValue[] = [];
         for (const child of astNodes(node, 'children')) {
-          values.push(await this.#evaluateExpression(child, scope, depth + 1));
+          values.push(this.#evaluateExpression(child, scope, depth + 1));
         }
         return node.type === 'Group' && values.length === 1
           ? values[0]
@@ -576,63 +448,63 @@ class Evaluator {
           const keyNode = astNode(pair, 'key');
           const name = keyNode.type === 'Symbol'
             ? symbolName(keyNode)
-            : renderRuntimeValue(await this.#evaluateExpression(keyNode, scope, depth + 1));
+            : renderRuntimeValue(this.#evaluateExpression(keyNode, scope, depth + 1));
           if (isReservedName(name)) {
             throw new Error(`Template name ${name} is reserved`);
           }
           entries.push([
             name,
-            await this.#evaluateExpression(astNode(pair, 'value'), scope, depth + 1),
+            this.#evaluateExpression(astNode(pair, 'value'), scope, depth + 1),
           ]);
         }
         return new RuntimeRecord(entries);
       }
       case 'LookupVal': {
-        const target = await this.#evaluateExpression(astNode(node, 'target'), scope, depth + 1);
+        const target = this.#evaluateExpression(astNode(node, 'target'), scope, depth + 1);
         const valueNode = astNode(node, 'val');
         if (valueNode.type === 'Slice') {
-          return await this.#evaluateSlice(target, valueNode, scope, depth + 1);
+          return this.#evaluateSlice(target, valueNode, scope, depth + 1);
         }
         if (valueNode.type === 'Array') {
           const children = astNodes(valueNode, 'children');
           if (children.length === 1 && children[0]?.type === 'Slice') {
-            return await this.#evaluateSlice(target, children[0], scope, depth + 1);
+            return this.#evaluateSlice(target, children[0], scope, depth + 1);
           }
         }
-        const key = await this.#evaluateExpression(valueNode, scope, depth + 1);
+        const key = this.#evaluateExpression(valueNode, scope, depth + 1);
         if (target instanceof RuntimeCallable && target.callableKind === 'builtin') {
           return this.#lookupBuiltinCallable(target.id, renderRuntimeValue(key));
         }
         return lookupRuntimeValue(target, key);
       }
       case 'InlineIf': {
-        const condition = await this.#evaluateExpression(astNode(node, 'cond'), scope, depth + 1);
+        const condition = this.#evaluateExpression(astNode(node, 'cond'), scope, depth + 1);
         if (runtimeTruthy(condition)) {
-          return await this.#evaluateExpression(astNode(node, 'body'), scope, depth + 1);
+          return this.#evaluateExpression(astNode(node, 'body'), scope, depth + 1);
         }
         const otherwise = optionalAstNode(node, 'else_');
         return otherwise
-          ? await this.#evaluateExpression(otherwise, scope, depth + 1)
+          ? this.#evaluateExpression(otherwise, scope, depth + 1)
           : undefined;
       }
       case 'Or': {
-        const left = await this.#evaluateExpression(astNode(node, 'left'), scope, depth + 1);
+        const left = this.#evaluateExpression(astNode(node, 'left'), scope, depth + 1);
         return runtimeTruthy(left)
           ? left
-          : await this.#evaluateExpression(astNode(node, 'right'), scope, depth + 1);
+          : this.#evaluateExpression(astNode(node, 'right'), scope, depth + 1);
       }
       case 'And': {
-        const left = await this.#evaluateExpression(astNode(node, 'left'), scope, depth + 1);
+        const left = this.#evaluateExpression(astNode(node, 'left'), scope, depth + 1);
         return runtimeTruthy(left)
-          ? await this.#evaluateExpression(astNode(node, 'right'), scope, depth + 1)
+          ? this.#evaluateExpression(astNode(node, 'right'), scope, depth + 1)
           : left;
       }
       case 'Not':
-        return !runtimeTruthy(await this.#evaluateExpression(astNode(node, 'target'), scope, depth + 1));
+        return !runtimeTruthy(this.#evaluateExpression(astNode(node, 'target'), scope, depth + 1));
       case 'Neg':
-        return -runtimeNumber(await this.#evaluateExpression(astNode(node, 'target'), scope, depth + 1));
+        return -runtimeNumber(this.#evaluateExpression(astNode(node, 'target'), scope, depth + 1));
       case 'Pos':
-        return runtimeNumber(await this.#evaluateExpression(astNode(node, 'target'), scope, depth + 1));
+        return runtimeNumber(this.#evaluateExpression(astNode(node, 'target'), scope, depth + 1));
       case 'Add':
       case 'Concat':
       case 'Sub':
@@ -641,23 +513,22 @@ class Evaluator {
       case 'FloorDiv':
       case 'Mod':
       case 'Pow':
-        return await this.#evaluateBinary(node, scope, depth + 1);
+        return this.#evaluateBinary(node, scope, depth + 1);
       case 'Compare':
-        return await this.#evaluateComparison(node, scope, depth + 1);
+        return this.#evaluateComparison(node, scope, depth + 1);
       case 'In': {
-        const needle = await this.#evaluateExpression(astNode(node, 'left'), scope, depth + 1);
-        const container = await this.#evaluateExpression(astNode(node, 'right'), scope, depth + 1);
+        const needle = this.#evaluateExpression(astNode(node, 'left'), scope, depth + 1);
+        const container = this.#evaluateExpression(astNode(node, 'right'), scope, depth + 1);
         return runtimeContains(container, needle);
       }
       case 'Is':
-        return await this.#evaluateTest(node, scope, depth + 1);
+        return this.#evaluateTest(node, scope, depth + 1);
       case 'Filter':
-      case 'FilterAsync':
-        return await this.#evaluateFilter(node, scope, depth + 1);
+        return this.#evaluateFilter(node, scope, depth + 1);
       case 'FunCall':
-        return await this.#evaluateCall(node, scope, depth + 1);
+        return this.#evaluateCall(node, scope, depth + 1);
       case 'Capture':
-        return await this.#capture(astNode(node, 'body'), scope.child(), depth + 1, false);
+        return this.#capture(astNode(node, 'body'), scope.child(), depth + 1, false);
       case 'Caller':
         return this.#registerCaller(node, scope);
       default:
@@ -665,15 +536,15 @@ class Evaluator {
     }
   }
 
-  async #evaluateSlice(
+  #evaluateSlice(
     target: RuntimeValue,
     slice: AstNode,
     scope: RuntimeScope,
     depth: number,
-  ): Promise<RuntimeValue> {
-    const startValue = await this.#evaluateExpression(astNode(slice, 'start'), scope, depth + 1);
-    const stopValue = await this.#evaluateExpression(astNode(slice, 'stop'), scope, depth + 1);
-    const stepValue = await this.#evaluateExpression(astNode(slice, 'step'), scope, depth + 1);
+  ): RuntimeValue {
+    const startValue = this.#evaluateExpression(astNode(slice, 'start'), scope, depth + 1);
+    const stopValue = this.#evaluateExpression(astNode(slice, 'stop'), scope, depth + 1);
+    const stepValue = this.#evaluateExpression(astNode(slice, 'step'), scope, depth + 1);
     const values = target instanceof RuntimeArray
       ? [...target.values()]
       : typeof target === 'string' || target instanceof RuntimeSafeString
@@ -709,9 +580,9 @@ class Evaluator {
     return new RuntimeArray(output);
   }
 
-  async #evaluateBinary(node: AstNode, scope: RuntimeScope, depth: number): Promise<RuntimeValue> {
-    const left = await this.#evaluateExpression(astNode(node, 'left'), scope, depth + 1);
-    const right = await this.#evaluateExpression(astNode(node, 'right'), scope, depth + 1);
+  #evaluateBinary(node: AstNode, scope: RuntimeScope, depth: number): RuntimeValue {
+    const left = this.#evaluateExpression(astNode(node, 'left'), scope, depth + 1);
+    const right = this.#evaluateExpression(astNode(node, 'right'), scope, depth + 1);
     if (
       node.type === 'Concat' ||
       (node.type === 'Add' && (isStringValue(left) || isStringValue(right)))
@@ -732,14 +603,14 @@ class Evaluator {
     }
   }
 
-  async #evaluateComparison(
+  #evaluateComparison(
     node: AstNode,
     scope: RuntimeScope,
     depth: number,
-  ): Promise<boolean> {
-    let left = await this.#evaluateExpression(astNode(node, 'expr'), scope, depth + 1);
+  ): boolean {
+    let left = this.#evaluateExpression(astNode(node, 'expr'), scope, depth + 1);
     for (const operation of astNodes(node, 'ops')) {
-      const right = await this.#evaluateExpression(astNode(operation, 'expr'), scope, depth + 1);
+      const right = this.#evaluateExpression(astNode(operation, 'expr'), scope, depth + 1);
       const type = astField(operation, 'type');
       if (typeof type !== 'string' || !runtimeCompare(left, type, right)) {
         return false;
@@ -749,223 +620,46 @@ class Evaluator {
     return true;
   }
 
-  async #evaluateFilter(node: AstNode, scope: RuntimeScope, depth: number): Promise<RuntimeValue> {
+  #evaluateFilter(node: AstNode, scope: RuntimeScope, depth: number): RuntimeValue {
     const name = symbolName(astNode(node, 'name'));
-    const arguments_ = await this.#evaluateArguments(astNode(node, 'args'), scope, depth + 1);
+    const arguments_ = this.#evaluateArguments(astNode(node, 'args'), scope, depth + 1);
     const [input, ...positional] = arguments_.positional;
     this.#assertScratch([input, ...positional, ...arguments_.keyword.values()]);
     if (this.#options.host?.hasFilter?.(name)) {
       this.#chargeCapability();
-      const hostResult = await this.#options.host.filter?.(
+      const hostResult = this.#options.host.filter?.(
         name,
         input,
         Object.freeze({ positional: Object.freeze(positional), keyword: arguments_.keyword }),
-        this.#options.signal,
       );
       if (hostResult?.found) {
         return hostResult.value;
       }
     }
-    const builtin = applyBuiltinFilter(name, input, positional, arguments_.keyword);
-    if (builtin === undefined && !hasBuiltinFilter(name)) {
+    const builtinName = this.#options.cookiecutterCompat && name === 'jsonify' ? 'dump' : name;
+    const builtin = applyBuiltinFilter(builtinName, input, positional, arguments_.keyword);
+    if (builtin === undefined && !hasBuiltinFilter(builtinName)) {
       throw new Error(`Unknown template filter ${name}`);
     }
     return builtin;
   }
 
-  async #evaluateInclude(
-    node: AstNode,
-    scope: RuntimeScope,
-    output: OutputTarget,
-    depth: number,
-    canonicalName: string | undefined,
-  ): Promise<void> {
-    const name = renderRuntimeValue(
-      await this.#evaluateExpression(astNode(node, 'template'), scope, depth + 1),
-    );
-    const ignoreMissing = astField(node, 'ignoreMissing') === true;
-    const loaded = await this.#load(name, canonicalName, ignoreMissing);
-    if (!loaded) {
-      return;
-    }
-    await this.#renderTemplate(
-      this.#parseLoaded(loaded),
-      scope.child(true),
-      output,
-      depth + 1,
-      loaded.canonicalName,
-    );
-  }
-
-  async #evaluateImport(
-    node: AstNode,
-    scope: RuntimeScope,
-    depth: number,
-    canonicalName: string | undefined,
-  ): Promise<void> {
-    const name = renderRuntimeValue(
-      await this.#evaluateExpression(astNode(node, 'template'), scope, depth + 1),
-    );
-    const loaded = await this.#load(name, canonicalName, false);
-    if (!loaded) {
-      throw new Error(`Template ${name} was not found`);
-    }
-    const ast = this.#parseLoaded(loaded);
-    const withContext = astField(node, 'withContext') === true;
-    const moduleScope = withContext ? scope.child() : new RuntimeScope();
-    await this.#renderTemplate(ast, moduleScope, [], depth + 1, loaded.canonicalName);
-    const exports = new RuntimeRecord(
-      collectExports(ast).flatMap(exportName => {
-        const value = moduleScope.get(exportName);
-        return value === undefined && !moduleScope.has(exportName)
-          ? []
-          : [[exportName, value] as const];
-      }),
-    );
-    if (node.type === 'Import') {
-      scope.assign(symbolName(astNode(node, 'target')), exports);
-      return;
-    }
-    for (const imported of astNodes(astNode(node, 'names'), 'children')) {
-      const sourceName = imported.type === 'Pair'
-        ? symbolName(astNode(imported, 'key'))
-        : symbolName(imported);
-      const targetName = imported.type === 'Pair'
-        ? symbolName(astNode(imported, 'value'))
-        : sourceName;
-      if (!exports.has(sourceName)) {
-        throw new Error(`Template ${name} does not export ${sourceName}`);
-      }
-      scope.assign(targetName, exports.get(sourceName));
-    }
-  }
-
-  async #evaluateTag(
-    node: AstNode,
-    scope: RuntimeScope,
-    output: OutputTarget,
-    depth: number,
-    canonicalName: string | undefined,
-  ): Promise<void> {
-    const name = astField(node, 'extName');
-    if (typeof name !== 'string') {
-      throw new Error('Invalid custom tag name');
-    }
-    const arguments_ = await this.#evaluateArguments(astNode(node, 'args'), scope, depth + 1);
-    const rawContent = astField(node, 'contentArgs');
-    if (!Array.isArray(rawContent)) {
-      throw new Error(`Invalid custom tag content for ${name}`);
-    }
-    const content: Array<string | undefined> = [];
-    for (const body of rawContent) {
-      if (body === null || body === undefined) {
-        content.push(undefined);
-      } else if (isNode(body)) {
-        const captured = await this.#capture(
-          body,
-          scope.child(),
-          depth + 1,
-          false,
-          canonicalName,
-        );
-        content.push(renderRuntimeValue(captured));
-      } else {
-        throw new Error(`Invalid custom tag content for ${name}`);
-      }
-    }
-    if (!this.#options.host?.hasTag?.(name)) {
-      throw new Error(`Unknown custom tag ${name}`);
-    }
-    this.#chargeCapability();
-    const result = await this.#options.host.tag?.(
-      name,
-      arguments_,
-      Object.freeze(content),
-      this.#options.signal,
-    );
-    if (!result?.found) {
-      throw new Error(`Unknown custom tag ${name}`);
-    }
-    const value = result.value;
-    const rendered = renderRuntimeValue(value);
-    const autoescape = astField(node, 'autoescape') !== false;
-    await this.#append(
-      output,
-      autoescape && this.#options.autoescape && !(value instanceof RuntimeSafeString)
-        ? escapeHtml(rendered)
-        : rendered,
-    );
-  }
-
-  async #load(
-    name: string,
-    canonicalName: string | undefined,
-    ignoreMissing: boolean,
-  ): Promise<{ readonly source: string; readonly canonicalName: string } | undefined> {
-    const cacheKey = `${canonicalName ?? ''}\0${name}`;
-    if (this.#loadedTemplates.has(cacheKey)) {
-      return this.#loadedTemplates.get(cacheKey) ?? undefined;
-    }
-    if (!this.#options.host?.load) {
-      if (ignoreMissing) {
-        return undefined;
-      }
-      throw new Error(`No template loader is configured for ${name}`);
-    }
-    this.#loaderCalls += 1;
-    if (
-      this.#options.limits.loaderCalls !== Number.POSITIVE_INFINITY &&
-      this.#loaderCalls > this.#options.limits.loaderCalls
-    ) {
-      throw new NunjitsuLimitError('loaderCalls');
-    }
-    const loaded = await this.#options.host.load(
-      name,
-      canonicalName,
-      ignoreMissing,
-      this.#options.signal,
-    );
-    this.#loadedTemplates.set(cacheKey, loaded ?? null);
-    return loaded;
-  }
-
-  #parseLoaded(loaded: { readonly source: string; readonly canonicalName: string }): AstNode {
-    let ast = this.#templates.get(loaded.canonicalName);
-    if (!ast) {
-      ast = this.parse(loaded.source);
-      this.#templates.set(loaded.canonicalName, ast);
-    }
-    return ast;
-  }
-
-  async #evaluateTest(node: AstNode, scope: RuntimeScope, depth: number): Promise<boolean> {
-    const input = await this.#evaluateExpression(astNode(node, 'left'), scope, depth + 1);
+  #evaluateTest(node: AstNode, scope: RuntimeScope, depth: number): boolean {
+    const input = this.#evaluateExpression(astNode(node, 'left'), scope, depth + 1);
     const test = astNode(node, 'right');
     let name: string;
     let arguments_: RuntimeArguments;
     if (test.type === 'FunCall') {
       name = symbolName(astNode(test, 'name'));
-      arguments_ = await this.#evaluateArguments(astNode(test, 'args'), scope, depth + 1);
+      arguments_ = this.#evaluateArguments(astNode(test, 'args'), scope, depth + 1);
     } else if (test.type === 'Symbol') {
       name = symbolName(test);
       arguments_ = Object.freeze({ positional: Object.freeze([]), keyword: new Map() });
     } else if (test.type === 'Literal') {
-      const expected = await this.#evaluateExpression(test, scope, depth + 1);
+      const expected = this.#evaluateExpression(test, scope, depth + 1);
       return runtimeEqual(input, expected, true);
     } else {
       throw new Error(`Invalid template test ${test.type}`);
-    }
-    if (this.#options.host?.hasTest?.(name)) {
-      this.#chargeCapability();
-      const host = await this.#options.host.test?.(
-        name,
-        input,
-        arguments_,
-        this.#options.signal,
-      );
-      if (host !== undefined) {
-        return host;
-      }
     }
     const builtin = applyBuiltinTest(name, input, arguments_.positional);
     if (builtin === undefined) {
@@ -974,29 +668,29 @@ class Evaluator {
     return builtin;
   }
 
-  async #evaluateCall(node: AstNode, scope: RuntimeScope, depth: number): Promise<RuntimeValue> {
+  #evaluateCall(node: AstNode, scope: RuntimeScope, depth: number): RuntimeValue {
     const targetNode = astNode(node, 'name');
     const name = callablePath(targetNode);
     if (name === 'super' && this.#blockStack.length > 0) {
       const frame = this.#blockStack.at(-1)!;
       const chunks: string[] = [];
-      await this.#renderBlock(frame.chain, frame.index + 1, frame.scope, chunks, depth + 1);
+      this.#renderBlock(frame.chain, frame.index + 1, frame.scope, chunks, depth + 1);
       return new RuntimeSafeString(chunks.join(''));
     }
     const target = name && this.#options.host?.hasGlobal?.(name)
       ? new RuntimeCallable('capability', this.#registerGlobal(name))
-      : await this.#evaluateExpression(targetNode, scope, depth + 1);
-    const arguments_ = await this.#evaluateArguments(astNode(node, 'args'), scope, depth + 1);
+      : this.#evaluateExpression(targetNode, scope, depth + 1);
+    const arguments_ = this.#evaluateArguments(astNode(node, 'args'), scope, depth + 1);
     if (target instanceof RuntimeCallable) {
       if (target.callableKind === 'macro' || target.callableKind === 'caller') {
-        return await this.#invokeMacro(target.id, arguments_, depth + 1);
+        return this.#invokeMacro(target.id, arguments_, depth + 1);
       }
       if (target.callableKind === 'builtin') {
         return this.#invokeBuiltinCallable(target.id);
       }
       if (target.callableKind === 'capability' && name && this.#options.host?.global) {
         this.#chargeCapability();
-        const result = await this.#options.host.global(name, arguments_, this.#options.signal);
+        const result = this.#options.host.global(name, arguments_);
         if (result.found) {
           return result.value;
         }
@@ -1009,7 +703,7 @@ class Evaluator {
       }
       if (this.#options.host?.hasGlobal?.(name)) {
         this.#chargeCapability();
-        const result = await this.#options.host.global?.(name, arguments_, this.#options.signal);
+        const result = this.#options.host.global?.(name, arguments_);
         if (result?.found) {
           return result.value;
         }
@@ -1018,11 +712,11 @@ class Evaluator {
     throw new Error(`Unable to call template value${name ? ` ${name}` : ''}`);
   }
 
-  async #evaluateArguments(
+  #evaluateArguments(
     node: AstNode,
     scope: RuntimeScope,
     depth: number,
-  ): Promise<RuntimeArguments> {
+  ): RuntimeArguments {
     const positional: RuntimeValue[] = [];
     const keyword = new Map<string, RuntimeValue>();
     for (const child of astNodes(node, 'children')) {
@@ -1031,17 +725,17 @@ class Evaluator {
           const keyNode = astNode(pair, 'key');
           const name = keyNode.type === 'Symbol'
             ? symbolName(keyNode)
-            : renderRuntimeValue(await this.#evaluateExpression(keyNode, scope, depth + 1));
+            : renderRuntimeValue(this.#evaluateExpression(keyNode, scope, depth + 1));
           if (isReservedName(name)) {
             throw new Error(`Template name ${name} is reserved`);
           }
           keyword.set(
             name,
-            await this.#evaluateExpression(astNode(pair, 'value'), scope, depth + 1),
+            this.#evaluateExpression(astNode(pair, 'value'), scope, depth + 1),
           );
         }
       } else {
-        positional.push(await this.#evaluateExpression(child, scope, depth + 1));
+        positional.push(this.#evaluateExpression(child, scope, depth + 1));
       }
     }
     return Object.freeze({ positional: Object.freeze(positional), keyword });
@@ -1057,15 +751,15 @@ class Evaluator {
 
   #registerCaller(node: AstNode, scope: RuntimeScope): RuntimeCallable {
     const id = this.#nextCallableId++;
-    this.#macros.set(id, { node, scope, canonicalName: undefined });
+    this.#macros.set(id, { node, scope });
     return new RuntimeCallable('caller', id);
   }
 
-  async #invokeMacro(
+  #invokeMacro(
     id: number,
     arguments_: RuntimeArguments,
     depth: number,
-  ): Promise<RuntimeValue> {
+  ): RuntimeValue {
     const definition = this.#macros.get(id);
     if (!definition) {
       throw new Error('Unknown template macro');
@@ -1081,7 +775,7 @@ class Evaluator {
           local.set(
             name,
             supplied === undefined
-              ? await this.#evaluateExpression(astNode(pair, 'value'), local, depth + 1)
+              ? this.#evaluateExpression(astNode(pair, 'value'), local, depth + 1)
               : supplied,
           );
         }
@@ -1098,12 +792,11 @@ class Evaluator {
         local.set(name, value);
       }
     }
-    return await this.#capture(
+    return this.#capture(
       astNode(definition.node, 'body'),
       local,
       depth + 1,
       true,
-      definition.canonicalName,
     );
   }
 
@@ -1197,20 +890,19 @@ class Evaluator {
     throw new Error('Interpreter builtin object is not directly callable');
   }
 
-  async #capture(
+  #capture(
     node: AstNode,
     scope: RuntimeScope,
     depth: number,
     safe: boolean,
-    canonicalName?: string,
-  ): Promise<RuntimeValue> {
+  ): RuntimeValue {
     const chunks: string[] = [];
-    await this.#evaluateNode(node, scope, chunks, depth + 1, canonicalName);
+    this.#evaluateNode(node, scope, chunks, depth + 1);
     const value = chunks.join('');
     return safe ? new RuntimeSafeString(value) : value;
   }
 
-  async #append(output: OutputTarget, value: string): Promise<void> {
+  #append(output: OutputTarget, value: string): void {
     this.#outputBytes += Buffer.byteLength(value);
     if (
       this.#options.limits.outputBytes !== Number.POSITIVE_INFINITY &&
@@ -1218,19 +910,10 @@ class Evaluator {
     ) {
       throw new NunjitsuLimitError('outputBytes');
     }
-    if (Array.isArray(output)) {
-      output.push(value);
-    } else {
-      await output(value);
-    }
+    output.push(value);
   }
 
   #charge(depth: number): void {
-    if (this.#options.signal.aborted) {
-      throw this.#options.signal.reason instanceof Error
-        ? this.#options.signal.reason
-        : new DOMException('The operation was aborted', 'AbortError');
-    }
     this.#workUnits += 1;
     if (
       this.#options.limits.workUnits !== Number.POSITIVE_INFINITY &&
@@ -1423,10 +1106,7 @@ function runtimeValueBytes(value: RuntimeValue): number {
   return Buffer.byteLength(renderRuntimeValue(value));
 }
 
-function collectBlocks(
-  ast: AstNode,
-  canonicalName: string | undefined,
-): ReadonlyMap<string, readonly BlockDefinition[]> {
+function collectBlocks(ast: AstNode): ReadonlyMap<string, readonly BlockDefinition[]> {
   const blocks = new Map<string, readonly BlockDefinition[]>();
   visitAst(ast, node => {
     if (node.type === 'Block') {
@@ -1434,7 +1114,7 @@ function collectBlocks(
       if (blocks.has(name)) {
         throw new Error(`Template defines block ${name} more than once`);
       }
-      blocks.set(name, Object.freeze([{ node, canonicalName }]));
+      blocks.set(name, Object.freeze([{ node }]));
     }
   });
   return blocks;
@@ -1449,40 +1129,6 @@ function mergeBlocks(
     merged.set(name, Object.freeze([...(merged.get(name) ?? []), ...definitions]));
   }
   return merged;
-}
-
-function containsNodeType(ast: AstNode, type: AstNode['type']): boolean {
-  let found = false;
-  visitAst(ast, node => {
-    found ||= node.type === type;
-  });
-  return found;
-}
-
-function collectExports(ast: AstNode): readonly string[] {
-  const names = new Set<string>();
-  for (const node of astNodes(ast, 'children')) {
-    if (node.type === 'Macro') {
-      const name = symbolName(astNode(node, 'name'));
-      if (!name.startsWith('_')) {
-        names.add(name);
-      }
-    }
-    if (node.type === 'Set') {
-      const targets = astField(node, 'targets');
-      if (Array.isArray(targets)) {
-        for (const target of targets) {
-          if (isNode(target) && target.type === 'Symbol') {
-            const name = symbolName(target);
-            if (!name.startsWith('_')) {
-              names.add(name);
-            }
-          }
-        }
-      }
-    }
-  }
-  return Object.freeze([...names]);
 }
 
 function visitAst(node: AstNode, visitor: (node: AstNode) => void): void {

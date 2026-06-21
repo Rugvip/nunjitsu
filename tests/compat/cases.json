@@ -5,1957 +5,367 @@
       "id": "compiler-static-text",
       "template": "Hello world",
       "context": {},
-      "autoescape": false,
       "expected": "Hello world"
     },
     {
       "id": "compiler-interpolation",
       "template": "Hello world, {{ name }}",
-      "context": { "name": "James" },
-      "autoescape": false,
+      "context": {"name":"James"},
       "expected": "Hello world, James"
     },
     {
       "id": "compiler-adjacent-interpolation",
       "template": "Hello world, {{name}}{{suffix}}, how are you",
-      "context": { "name": "James", "suffix": " Long" },
-      "autoescape": false,
+      "context": {"name":"James","suffix":" Long"},
       "expected": "Hello world, James Long, how are you"
     },
     {
       "id": "compiler-dotted-reference",
       "template": "{{ foo.bar }}",
-      "context": { "foo": { "bar": "baz" } },
-      "autoescape": false,
+      "context": {"foo":{"bar":"baz"}},
       "expected": "baz"
     },
     {
       "id": "compiler-bracket-reference",
       "template": "{{ foo[\"bar\"] }}",
-      "context": { "foo": { "bar": "baz" } },
-      "autoescape": false,
+      "context": {"foo":{"bar":"baz"}},
       "expected": "baz"
     },
     {
       "id": "compiler-missing-root-value",
       "template": "{{ foo }}",
       "context": {},
-      "autoescape": false,
       "expected": ""
     },
     {
       "id": "compiler-missing-dotted-value",
       "template": "{{ foo.bar }}",
       "context": {},
-      "autoescape": false,
       "expected": ""
     },
     {
       "id": "compiler-missing-value",
       "template": "{{ foo.bar.baz }}",
       "context": {},
-      "autoescape": false,
       "expected": ""
     },
     {
       "id": "compiler-missing-mixed-reference",
       "template": "{{ foo.bar.baz[\"biz\"].mumble }}",
       "context": {},
-      "autoescape": false,
       "expected": ""
-    },
-    {
-      "id": "compiler-autoescape",
-      "template": "{{ foo }}",
-      "context": { "foo": "\"'<>&" },
-      "autoescape": true,
-      "expected": "&quot;&#39;&lt;&gt;&amp;"
-    },
-    {
-      "id": "compiler-explicit-safe-value",
-      "template": "{{ foo }}",
-      "context": {
-        "foo": { "$nunjitsu": "safe", "value": "\"'<>&" }
-      },
-      "autoescape": true,
-      "expected": "\"'<>&"
-    },
-    {
-      "id": "compiler-autoescape-default",
-      "template": "{{ foo }}",
-      "nativeRender": false,
-      "context": { "foo": "\"'<>&" },
-      "expected": "&quot;&#39;&lt;&gt;&amp;"
-    },
-    {
-      "id": "compiler-autoescape-reverse",
-      "template": "{{ foo|reverse }}",
-      "nativeRender": false,
-      "context": { "foo": "\"'<>&" },
-      "autoescape": true,
-      "expected": "&amp;&gt;&lt;&#39;&quot;"
-    },
-    {
-      "id": "compiler-autoescape-reverse-safe",
-      "template": "{{ foo|reverse|safe }}",
-      "nativeRender": false,
-      "context": { "foo": "\"'<>&" },
-      "autoescape": true,
-      "expected": "&><'\""
-    },
-    {
-      "id": "compiler-autoescape-null",
-      "template": "{{ foo }}",
-      "context": { "foo": null },
-      "autoescape": true,
-      "expected": ""
-    },
-    {
-      "id": "compiler-autoescape-array",
-      "template": "{{ foo }}",
-      "nativeRender": false,
-      "context": { "foo": ["<p>foo</p>"] },
-      "autoescape": true,
-      "expected": "&lt;p&gt;foo&lt;/p&gt;"
-    },
-    {
-      "id": "compiler-autoescape-safe-null",
-      "template": "{{ foo | safe }}",
-      "nativeRender": false,
-      "context": { "foo": null },
-      "autoescape": true,
-      "expected": ""
-    },
-    {
-      "id": "compiler-autoescape-safe-string",
-      "template": "{{ foo | safe }}",
-      "nativeRender": false,
-      "context": { "foo": "<p>foo</p>" },
-      "autoescape": true,
-      "expected": "<p>foo</p>"
-    },
-    {
-      "id": "compiler-autoescape-safe-array",
-      "template": "{{ foo | safe }}",
-      "nativeRender": false,
-      "context": { "foo": ["<p>foo</p>"] },
-      "autoescape": true,
-      "expected": "<p>foo</p>"
-    },
-    {
-      "id": "compiler-safe-filter",
-      "template": "{{ foo|safe }}",
-      "nativeRender": false,
-      "context": { "foo": "\"'<>&" },
-      "autoescape": true,
-      "expected": "\"'<>&"
-    },
-    {
-      "id": "compiler-autoescape-macro",
-      "template": "{% macro foo(x, y) %}{{ x }} and {{ y }}{% endmacro %}{{ foo(\"<>&\", \"<>\") }}",
-      "nativeRender": false,
-      "context": {},
-      "autoescape": true,
-      "expected": "&lt;&gt;&amp; and &lt;&gt;"
-    },
-    {
-      "id": "compiler-autoescape-macro-safe-value",
-      "template": "{% macro foo(x, y) %}{{ x|safe }} and {{ y }}{% endmacro %}{{ foo(\"<>&\", \"<>\") }}",
-      "nativeRender": false,
-      "context": {},
-      "autoescape": true,
-      "expected": "<>& and &lt;&gt;"
-    },
-    {
-      "id": "compiler-autoescape-super",
-      "template": "{% extends \"base3.njk\" %}{% block block1 %}{{ super() }}{% endblock %}",
-      "templates": { "base3.njk": "{% block block1 %}<b>Foo</b>{% endblock %}" },
-      "nativeRender": false,
-      "context": {},
-      "autoescape": true,
-      "expected": "<b>Foo</b>"
-    },
-    {
-      "id": "compiler-autoescape-backslashes",
-      "template": "{{ foo }}",
-      "context": { "foo": "foo \\' bar" },
-      "autoescape": true,
-      "expected": "foo &#92;&#39; bar"
-    },
-    {
-      "id": "compiler-autoescape-disabled-tag-output",
-      "template": "{% test \"123456\" %}",
-      "capabilityFixture": "compiler-safe-inline-tag",
-      "nativeRender": false,
-      "context": {},
-      "autoescape": true,
-      "expected": "<b>Foo</b>"
-    },
-    {
-      "id": "compiler-dynamic-include-context",
-      "template": "hello world {% include tmpl %}",
-      "templates": { "include.njk": "FooInclude {{ name }}" },
-      "nativeRender": false,
-      "context": { "name": "thedude", "tmpl": "include.njk" },
-      "autoescape": false,
-      "expected": "hello world FooInclude thedude"
-    },
-    {
-      "id": "compiler-dynamic-include-set",
-      "template": "hello world {% set tmpl = \"include.njk\" %}{% include tmpl %}",
-      "templates": { "include.njk": "FooInclude {{ name }}" },
-      "nativeRender": false,
-      "context": { "name": "thedude" },
-      "autoescape": false,
-      "expected": "hello world FooInclude thedude"
-    },
-    {
-      "id": "compiler-dynamic-include-attribute",
-      "template": "hello world {% include data.tmpl %}",
-      "templates": { "include.njk": "FooInclude {{ name }}" },
-      "nativeRender": false,
-      "context": { "name": "thedude", "data": { "tmpl": "include.njk" } },
-      "autoescape": false,
-      "expected": "hello world FooInclude thedude"
     },
     {
       "id": "compiler-basic-arithmetic",
       "template": "{{ 3 + 4 - 5 * 6 / 10 }}",
-      "nativeRender": false,
       "context": {},
-      "autoescape": false,
       "expected": "4"
     },
     {
       "id": "compiler-exponentiation",
       "template": "{{ 4**5 }}",
-      "nativeRender": false,
       "context": {},
-      "autoescape": false,
       "expected": "1024"
     },
     {
       "id": "compiler-floor-division",
       "template": "{{ 9//5 }}",
-      "nativeRender": false,
       "context": {},
-      "autoescape": false,
       "expected": "1"
     },
     {
       "id": "compiler-modulus",
       "template": "{{ 9%5 }}",
-      "nativeRender": false,
       "context": {},
-      "autoescape": false,
       "expected": "4"
     },
     {
       "id": "compiler-numeric-negation",
       "template": "{{ -5 }}",
-      "nativeRender": false,
       "context": {},
-      "autoescape": false,
       "expected": "-5"
     },
     {
       "id": "compiler-string-concatenation",
       "template": "{{ 4 ~ 'hello' }}|{{ 4 ~ 5 }}|{{ 'a' ~ 'b' ~ 5 }}",
-      "nativeRender": false,
       "context": {},
-      "autoescape": false,
       "expected": "4hello|45|ab5"
-    },
-    {
-      "id": "compiler-ignore-missing-include",
-      "template": "hello world {% include \"missing.njk\" ignore missing %}",
-      "templates": {},
-      "nativeRender": false,
-      "context": {},
-      "autoescape": false,
-      "expected": "hello world "
-    },
-    {
-      "id": "compiler-ignore-missing-include-context",
-      "template": "hello world {% include \"missing.njk\" ignore missing %}",
-      "templates": {},
-      "nativeRender": false,
-      "context": { "name": "thedude" },
-      "autoescape": false,
-      "expected": "hello world "
     },
     {
       "id": "compiler-ternary-false",
       "template": "{{ \"foo\" if bar else \"baz\" }}",
-      "nativeRender": false,
       "context": {},
-      "autoescape": false,
       "expected": "baz"
     },
     {
       "id": "compiler-ternary-true",
       "template": "{{ \"foo\" if bar else \"baz\" }}",
-      "nativeRender": false,
-      "context": { "bar": true },
-      "autoescape": false,
+      "context": {"bar":true},
       "expected": "foo"
     },
     {
       "id": "compiler-inline-if-true",
       "template": "Give me some {{ \"pizza\" if hungry else \"water\" }}",
-      "nativeRender": false,
-      "context": { "hungry": true },
-      "autoescape": false,
+      "context": {"hungry":true},
       "expected": "Give me some pizza"
     },
     {
       "id": "compiler-inline-if-false",
       "template": "Give me some {{ \"pizza\" if hungry else \"water\" }}",
-      "nativeRender": false,
-      "context": { "hungry": false },
-      "autoescape": false,
+      "context": {"hungry":false},
       "expected": "Give me some water"
     },
     {
       "id": "compiler-inline-if-not",
       "template": "{{ \"good\" if not hungry }}",
-      "nativeRender": false,
-      "context": { "hungry": false },
-      "autoescape": false,
+      "context": {"hungry":false},
       "expected": "good"
     },
     {
       "id": "compiler-inline-if-and",
       "template": "{{ \"good\" if hungry and like_pizza }}",
-      "nativeRender": false,
-      "context": { "hungry": true, "like_pizza": true },
-      "autoescape": false,
+      "context": {"hungry":true,"like_pizza":true},
       "expected": "good"
     },
     {
       "id": "compiler-inline-if-or",
       "template": "{{ \"good\" if hungry or like_pizza }}",
-      "nativeRender": false,
-      "context": { "hungry": false, "like_pizza": true },
-      "autoescape": false,
+      "context": {"hungry":false,"like_pizza":true},
       "expected": "good"
     },
     {
       "id": "compiler-inline-if-group",
       "template": "{{ \"good\" if (hungry or like_pizza) and anchovies }}",
-      "nativeRender": false,
-      "context": { "hungry": false, "like_pizza": true, "anchovies": true },
-      "autoescape": false,
+      "context": {"hungry":false,"like_pizza":true,"anchovies":true},
       "expected": "good"
     },
     {
       "id": "compiler-inline-if-comparison",
       "template": "{{ \"pizza\" if food == \"pizza\" }}{{ \"beer\" if food == \"beer\" }}",
-      "nativeRender": false,
-      "context": { "food": "beer" },
-      "autoescape": false,
+      "context": {"food":"beer"},
       "expected": "beer"
     },
     {
       "id": "compiler-python-style-ternary-tests",
       "template": "{{ \"yes\" if 1 is odd else \"no\" }}|{{ \"yes\" if 2 is even else \"no\" }}|{{ \"yes\" if 2 is odd else \"no\" }}|{{ \"yes\" if 1 is even else \"no\" }}",
-      "nativeRender": false,
       "context": {},
-      "autoescape": false,
       "expected": "yes|yes|no|no"
     },
     {
       "id": "compiler-three-value-loop-destructuring",
       "template": "{% for a, b, c in arr %}{{ a }},{{ b }},{{ c }}.{% endfor %}",
-      "nativeRender": false,
-      "context": { "arr": [["x", "y", "z"], ["1", "2", "3"]] },
-      "autoescape": false,
+      "context": {"arr":[["x","y","z"],["1","2","3"]]},
       "expected": "x,y,z.1,2,3."
     },
     {
       "id": "compiler-four-value-loop-destructuring",
       "template": "{% for a, b, c, d in arr %}[{{ a }},{{ b }},{{ c }},{{ d }}]{% endfor %}",
-      "nativeRender": false,
-      "context": { "arr": [[1, 2, 3, 4], [5, 6, 7, 8]] },
-      "autoescape": false,
+      "context": {"arr":[[1,2,3,4],[5,6,7,8]]},
       "expected": "[1,2,3,4][5,6,7,8]"
     },
     {
       "id": "compiler-set-multiple-and-arithmetic",
       "template": "{% set username = \"foo\" %}{{ username }}|{% set x, y = \"foo\" %}{{ x }}{{ y }}|{% set sum = 1 + 2 %}{{ sum }}",
-      "nativeRender": false,
-      "context": { "username": "james" },
-      "autoescape": false,
+      "context": {"username":"james"},
       "expected": "foo|foofoo|3"
     },
     {
       "id": "compiler-set-loop-local",
       "template": "{% for i in [1] %}{% set foo=1 %}{% endfor %}{{ foo }}",
-      "nativeRender": false,
-      "context": { "foo": 2 },
-      "autoescape": false,
+      "context": {"foo":2},
       "expected": "2"
-    },
-    {
-      "id": "compiler-set-include-isolation",
-      "template": "{% include \"set.njk\" %}{{ foo }}",
-      "templates": { "set.njk": "{% set foo = \"mumble\" %}" },
-      "nativeRender": false,
-      "context": { "foo": "bar" },
-      "autoescape": false,
-      "expected": "bar"
     },
     {
       "id": "compiler-set-context-expression",
       "template": "{% set username = username + \"pasta\" %}{{ username }}",
-      "nativeRender": false,
-      "context": { "username": "basta" },
-      "autoescape": false,
+      "context": {"username":"basta"},
       "expected": "bastapasta"
     },
     {
       "id": "compiler-set-new-loop-local",
       "template": "{% for i in [1] %}{% set val=5 %}{% endfor %}{{ val }}",
-      "nativeRender": false,
       "context": {},
-      "autoescape": false,
       "expected": ""
     },
     {
       "id": "compiler-set-loop-local-accumulation",
       "template": "{% for i in [1,2,3] %}{% if not val %}{% set val=5 %}{% endif %}{% set val=val+1 %}{{ val }}{% endfor %}afterwards: {{ val }}",
-      "nativeRender": false,
       "context": {},
-      "autoescape": false,
       "expected": "678afterwards: "
     },
     {
       "id": "compiler-set-resolves-outer-scope",
       "template": "{% set val=1 %}{% for i in [1] %}{% set val=5 %}{% endfor %}{{ val }}",
-      "nativeRender": false,
       "context": {},
-      "autoescape": false,
       "expected": "5"
     },
     {
       "id": "compiler-set-outer-accumulation",
       "template": "{% set val=5 %}{% for i in [1,2,3] %}{% set val=val+1 %}{{ val }}{% endfor %}afterwards: {{ val }}",
-      "nativeRender": false,
       "context": {},
-      "autoescape": false,
       "expected": "678afterwards: 8"
     },
     {
       "id": "compiler-set-frame-reference",
       "template": "{% set username = user.name %}{{ username }}",
-      "nativeRender": false,
-      "context": { "user": { "name": "james" } },
-      "autoescape": false,
+      "context": {"user":{"name":"james"}},
       "expected": "james"
     },
     {
       "id": "compiler-set-same-variable-branches",
       "template": "{% set x = \"hello\" %}{% if false %}{% set x = \"world\" %}{% endif %}{{ x }}|{% set x = \"blue\" %}{% if true %}{% set x = \"green\" %}{% endif %}{{ x }}",
-      "nativeRender": false,
       "context": {},
-      "autoescape": false,
       "expected": "hello|green"
     },
     {
       "id": "compiler-block-set-empty-and-text",
       "template": "{% set empty %}{% endset %}[{{ empty }}]|{% set content %}test string{% endset %}{{ content }}",
-      "nativeRender": false,
       "context": {},
-      "autoescape": false,
       "expected": "[]|test string"
-    },
-    {
-      "id": "compiler-block-set-loop-include",
-      "template": "{% set content %}{% for item in [1, 2, 3] %}{% include \"item.njk\" %} {% endfor %}{% endset %}{{ content }}",
-      "templates": { "item.njk": "showing {{ item }}" },
-      "nativeRender": false,
-      "context": {},
-      "autoescape": false,
-      "expected": "showing 1 showing 2 showing 3 "
     },
     {
       "id": "compiler-block-set-nested",
       "template": "{% set outer %}{% set inner %}{% for i in [1, 2, 3] %}item {{ i }} {% endfor %}{% endset %}{% for i in [1, 2, 3] %}inner {{i}}: \"{{ inner }}\" {% endfor %}{% endset %}{{ outer | safe }}",
-      "nativeRender": false,
       "context": {},
-      "autoescape": false,
       "expected": "inner 1: \"item 1 item 2 item 3 \" inner 2: \"item 1 item 2 item 3 \" inner 3: \"item 1 item 2 item 3 \" "
     },
     {
       "id": "compiler-block-set-multiple-targets",
       "template": "{% set x,y,z %}cool{% endset %}{{ x }} {{ y }} {{ z }}",
-      "nativeRender": false,
       "context": {},
-      "autoescape": false,
       "expected": "cool cool cool"
     },
     {
       "id": "compiler-macro-basic",
       "template": "{% macro foo() %}This is a macro{% endmacro %}{{ foo() }}",
-      "nativeRender": false,
       "context": {},
-      "autoescape": false,
       "expected": "This is a macro"
     },
     {
       "id": "compiler-macro-optional-positional",
       "template": "{% macro foo(x, y) %}{{ y }}{% endmacro %}[{{ foo(1) }}]|{{ foo(1, 2) }}",
-      "nativeRender": false,
       "context": {},
-      "autoescape": false,
       "expected": "[]|2"
     },
     {
       "id": "compiler-macro-default-arguments",
       "template": "{% macro foo(x, y, z=5) %}{{ y }}|{{ z }}{% endmacro %}{{ foo(1, 2) }}",
-      "nativeRender": false,
       "context": {},
-      "autoescape": false,
       "expected": "2|5"
     },
     {
       "id": "compiler-macro-keyword-argument",
       "template": "{% macro foo(x, y, z=5) %}{{ y }}{% endmacro %}{{ foo(1, y=2) }}",
-      "nativeRender": false,
       "context": {},
-      "autoescape": false,
       "expected": "2"
     },
     {
       "id": "compiler-macro-keyword-only-arguments",
       "template": "{% macro foo(x, y, z=5) %}{{ x }}{{ y }}{{ z }}{% endmacro %}{{ foo(x=1, y=2) }}",
-      "nativeRender": false,
       "context": {},
-      "autoescape": false,
       "expected": "125"
     },
     {
       "id": "compiler-macro-keyword-overrides-default",
       "template": "{% macro foo(x, y, z=5) %}{{ x }}{{ y }}{{ z }}{% endmacro %}{{ foo(x=1, y=2, z=3) }}",
-      "nativeRender": false,
       "context": {},
-      "autoescape": false,
       "expected": "123"
     },
     {
       "id": "compiler-macro-out-of-order-keyword",
       "template": "{% macro foo(x, y=2, z=5) %}{{ x }}{{ y }}{{ z }}{% endmacro %}{{ foo(1, z=3) }}",
-      "nativeRender": false,
       "context": {},
-      "autoescape": false,
       "expected": "123"
     },
     {
       "id": "compiler-macro-default-only-arguments",
       "template": "{% macro foo(x, y=2, z=5) %}{{ x }}{{ y }}{{ z }}{% endmacro %}{{ foo(1) }}",
-      "nativeRender": false,
       "context": {},
-      "autoescape": false,
       "expected": "125"
     },
     {
       "id": "compiler-macro-overridden-defaults",
       "template": "{% macro foo(x, y=2, z=5) %}{{ x }}{{ y }}{{ z }}{% endmacro %}{{ foo(1, 10, 20) }}",
-      "nativeRender": false,
       "context": {},
-      "autoescape": false,
       "expected": "11020"
-    },
-    {
-      "id": "compiler-macro-call-inside-inherited-block",
-      "template": "{% extends \"base.njk\" %}{% macro foo(x, y=2, z=5) %}{{ x }}{{ y }}{{ z }}{% endmacro %}{% block block1 %}{{ foo(1) }}{% endblock %}",
-      "templates": { "base.njk": "Foo{% block block1 %}Bar{% endblock %}{% block block2 %}Baz{% endblock %}Fizzle" },
-      "nativeRender": false,
-      "context": {},
-      "autoescape": false,
-      "expected": "Foo125BazFizzle"
     },
     {
       "id": "compiler-macro-defined-across-blocks",
       "template": "{% block bar %}{% macro foo(x, y=2, z=5) %}{{ x }}{{ y }}{{ z }}{% endmacro %}{% endblock %}{% block baz %}{{ foo(1) }}{% endblock %}",
-      "nativeRender": false,
       "context": {},
-      "autoescape": false,
       "expected": "125"
     },
     {
       "id": "compiler-macro-argument-filter",
       "template": "{% macro foo(x) %}{{ x|title }}{% endmacro %}{{ foo(\"foo\") }}",
-      "nativeRender": false,
       "context": {},
-      "autoescape": false,
       "expected": "Foo"
-    },
-    {
-      "id": "compiler-macro-include",
-      "template": "{% macro foo() %}{% include \"include.njk\" %}{% endmacro %}{{ foo() }}",
-      "templates": { "include.njk": "FooInclude {{ name }}" },
-      "nativeRender": false,
-      "context": { "name": "james" },
-      "autoescape": false,
-      "expected": "FooInclude james"
     },
     {
       "id": "compiler-macro-local-set",
       "template": "{% macro foo() %}{% set x = \"foo\"%}{{ x }}{% endmacro %}{% set x = \"bar\" %}{{ x }}{{ foo() }}{{ x }}",
-      "nativeRender": false,
       "context": {},
-      "autoescape": false,
       "expected": "barfoobar"
     },
     {
       "id": "compiler-macro-nested-call-scope",
       "template": "{% macro setFoo() %}{% set x = \"foo\" %}{{ x }}{% endmacro %}{% macro display() %}{% set x = \"bar\" %}{{ setFoo() }}{{ x }}{% endmacro %}{{ display() }}",
-      "nativeRender": false,
       "context": {},
-      "autoescape": false,
       "expected": "foobar"
     },
     {
       "id": "compiler-macro-nested-loop-scope",
       "template": "{% macro setFoo() %}{% for y in [1] %}{% set x = \"foo\" %}{{ x }}{% endfor %}{% endmacro %}{% macro display() %}{% set x = \"bar\" %}{{ setFoo() }}{{ x }}{% endmacro %}{{ display() }}",
-      "nativeRender": false,
       "context": {},
-      "autoescape": false,
       "expected": "foobar"
     },
     {
       "id": "compiler-macro-recursive-scope",
       "template": "{% macro foo(topLevel, prefix=\"\") %}{% if topLevel %}{% set x = \"\" %}{% for i in [1,2] %}{{ foo(false, x) }}{% endfor %}{% else %}{% set x = prefix + \"foo\" %}{{ x }}{% endif %}{% endmacro %}{{ foo(true) }}",
-      "nativeRender": false,
       "context": {},
-      "autoescape": false,
       "expected": "foofoo"
     },
     {
       "id": "compiler-macro-no-caller-scope",
       "template": "{% macro one(var) %}{{ two() }}{% endmacro %}{% macro two() %}{{ var }}{% endmacro %}{{ one(\"foo\") }}",
-      "nativeRender": false,
       "context": {},
-      "autoescape": false,
       "expected": ""
     },
     {
       "id": "compiler-call-block",
       "template": "{% macro wrap(el) %}<{{ el }}>{{ caller() }}</{{ el }}>{% endmacro %}{% call wrap(\"div\") %}Hello{% endcall %}",
-      "nativeRender": false,
       "context": {},
-      "autoescape": false,
       "expected": "<div>Hello</div>"
     },
     {
       "id": "compiler-call-block-arguments",
       "template": "{% macro list(items) %}<ul>{% for i in items %}<li>{{ caller(i) }}</li>{% endfor %}</ul>{% endmacro %}{% call(item) list([\"a\", \"b\"]) %}{{ item }}{% endcall %}",
-      "nativeRender": false,
       "context": {},
-      "autoescape": false,
       "expected": "<ul><li>a</li><li>b</li></ul>"
-    },
-    {
-      "id": "compiler-call-block-imported-macro",
-      "template": "{% import \"import.njk\" as imp %}{% call imp.wrap(\"span\") %}Hey{% endcall %}",
-      "templates": { "import.njk": "{% macro foo() %}Here's a macro{% endmacro %}\n\n{% set bar = 'baz' %}\n\n{% macro wrap(el) %}<{{ el }}>{{ caller() }}</{{ el }}>{% endmacro %}" },
-      "nativeRender": false,
-      "context": {},
-      "autoescape": false,
-      "expected": "<span>Hey</span>"
-    },
-    {
-      "id": "compiler-import-namespace-values",
-      "template": "{% import \"import.njk\" as imp %}{{ imp.foo() }} {{ imp.bar }}",
-      "templates": { "import.njk": "{% macro foo() %}Here's a macro{% endmacro %}\n{% set bar = 'baz' %}" },
-      "nativeRender": false,
-      "context": {},
-      "autoescape": false,
-      "expected": "Here's a macro baz"
-    },
-    {
-      "id": "compiler-from-import-aliases",
-      "template": "{% from \"import.njk\" import foo as baz, bar %}{{ bar }} {{ baz() }}",
-      "templates": { "import.njk": "{% macro foo() %}Here's a macro{% endmacro %}\n{% set bar = 'baz' %}" },
-      "nativeRender": false,
-      "context": {},
-      "autoescape": false,
-      "expected": "baz Here's a macro"
-    },
-    {
-      "id": "compiler-from-import-loop-scope",
-      "template": "{% for i in [1,2] %}start: {{ num }}{% from \"import.njk\" import bar as num %}end: {{ num }}{% endfor %}final: {{ num }}",
-      "templates": { "import.njk": "{% set bar = 'baz' %}" },
-      "nativeRender": false,
-      "context": {},
-      "autoescape": false,
-      "expected": "start: end: bazstart: bazend: bazfinal: "
-    },
-    {
-      "id": "compiler-import-with-context-macro",
-      "template": "{% set bar = \"BAR\" %}{% import \"import-context.njk\" as imp with context %}{{ imp.foo() }}",
-      "templates": { "import-context.njk": "{% macro foo() %}Here's {{ bar }}{% endmacro %}" },
-      "nativeRender": false,
-      "context": {},
-      "autoescape": false,
-      "expected": "Here's BAR"
-    },
-    {
-      "id": "compiler-from-import-with-context-macro",
-      "template": "{% set bar = \"BAR\" %}{% from \"import-context.njk\" import foo with context %}{{ foo() }}",
-      "templates": { "import-context.njk": "{% macro foo() %}Here's {{ bar }}{% endmacro %}" },
-      "nativeRender": false,
-      "context": {},
-      "autoescape": false,
-      "expected": "Here's BAR"
-    },
-    {
-      "id": "compiler-import-without-context-preserves-caller-set",
-      "template": "{% set bar = \"BAR\" %}{% import \"import-context-set.njk\" as imp %}{{ bar }}",
-      "templates": { "import-context-set.njk": "{% set bar = \"FOO\" %}{% for i in [1] %}{% set buzz = \"buzz\" %}{% endfor %}" },
-      "nativeRender": false,
-      "context": {},
-      "autoescape": false,
-      "expected": "BAR"
-    },
-    {
-      "id": "compiler-import-without-context-exports-set",
-      "template": "{% set bar = \"BAR\" %}{% import \"import-context-set.njk\" as imp %}{{ imp.bar }}",
-      "templates": { "import-context-set.njk": "{% set bar = \"FOO\" %}{% for i in [1] %}{% set buzz = \"buzz\" %}{% endfor %}" },
-      "nativeRender": false,
-      "context": {},
-      "autoescape": false,
-      "expected": "FOO"
-    },
-    {
-      "id": "compiler-import-with-context-updates-caller-set",
-      "template": "{% set bar = \"BAR\" %}{% import \"import-context-set.njk\" as imp with context %}{{ bar }}{{ buzz }}",
-      "templates": { "import-context-set.njk": "{% set bar = \"FOO\" %}{% for i in [1] %}{% set buzz = \"buzz\" %}{% endfor %}" },
-      "nativeRender": false,
-      "context": {},
-      "autoescape": false,
-      "expected": "FOO"
-    },
-    {
-      "id": "compiler-import-with-context-exports-set",
-      "template": "{% set bar = \"BAR\" %}{% import \"import-context-set.njk\" as imp with context %}{{ imp.bar }}{{ buzz }}",
-      "templates": { "import-context-set.njk": "{% set bar = \"FOO\" %}{% for i in [1] %}{% set buzz = \"buzz\" %}{% endfor %}" },
-      "nativeRender": false,
-      "context": {},
-      "autoescape": false,
-      "expected": "FOO"
-    },
-    {
-      "id": "compiler-import-explicit-without-context",
-      "template": "{% set bar = \"BAR\" %}{% import \"import-context.njk\" as imp without context %}{{ imp.foo() }}",
-      "templates": { "import-context.njk": "{% macro foo() %}Here's {{ bar }}{% endmacro %}" },
-      "nativeRender": false,
-      "context": {},
-      "autoescape": false,
-      "expected": "Here's "
-    },
-    {
-      "id": "compiler-from-import-explicit-without-context",
-      "template": "{% set bar = \"BAR\" %}{% from \"import-context.njk\" import foo without context %}{{ foo() }}",
-      "templates": { "import-context.njk": "{% macro foo() %}Here's {{ bar }}{% endmacro %}" },
-      "nativeRender": false,
-      "context": {},
-      "autoescape": false,
-      "expected": "Here's "
-    },
-    {
-      "id": "compiler-import-defaults-without-context",
-      "template": "{% set bar = \"BAR\" %}{% import \"import-context.njk\" as imp %}{{ imp.foo() }}",
-      "templates": { "import-context.njk": "{% macro foo() %}Here's {{ bar }}{% endmacro %}" },
-      "nativeRender": false,
-      "context": {},
-      "autoescape": false,
-      "expected": "Here's "
-    },
-    {
-      "id": "compiler-from-import-defaults-without-context",
-      "template": "{% set bar = \"BAR\" %}{% from \"import-context.njk\" import foo %}{{ foo() }}",
-      "templates": { "import-context.njk": "{% macro foo() %}Here's {{ bar }}{% endmacro %}" },
-      "nativeRender": false,
-      "context": {},
-      "autoescape": false,
-      "expected": "Here's "
-    },
-    {
-      "id": "compiler-inheritance-default-blocks",
-      "template": "{% extends \"base.njk\" %}",
-      "templates": { "base.njk": "Foo{% block block1 %}Bar{% endblock %}{% block block2 %}Baz{% endblock %}Fizzle" },
-      "nativeRender": false,
-      "context": {},
-      "autoescape": false,
-      "expected": "FooBarBazFizzle"
-    },
-    {
-      "id": "compiler-inheritance-discards-child-output",
-      "template": "hola {% extends \"base.njk\" %} hizzle mumble",
-      "templates": { "base.njk": "Foo{% block block1 %}Bar{% endblock %}{% block block2 %}Baz{% endblock %}Fizzle" },
-      "nativeRender": false,
-      "context": {},
-      "autoescape": false,
-      "expected": "FooBarBazFizzle"
-    },
-    {
-      "id": "compiler-inheritance-one-override",
-      "template": "{% extends \"base.njk\" %}{% block block1 %}BAR{% endblock %}",
-      "templates": { "base.njk": "Foo{% block block1 %}Bar{% endblock %}{% block block2 %}Baz{% endblock %}Fizzle" },
-      "nativeRender": false,
-      "context": {},
-      "autoescape": false,
-      "expected": "FooBARBazFizzle"
-    },
-    {
-      "id": "compiler-inheritance-multiple-overrides",
-      "template": "{% extends \"base.njk\" %}{% block block1 %}BAR{% endblock %}{% block block2 %}BAZ{% endblock %}",
-      "templates": { "base.njk": "Foo{% block block1 %}Bar{% endblock %}{% block block2 %}Baz{% endblock %}Fizzle" },
-      "nativeRender": false,
-      "context": {},
-      "autoescape": false,
-      "expected": "FooBARBAZFizzle"
-    },
-    {
-      "id": "compiler-inheritance-dynamic-parent",
-      "template": "hola {% extends tmpl %} hizzle mumble",
-      "templates": { "base.njk": "Foo{% block block1 %}Bar{% endblock %}{% block block2 %}Baz{% endblock %}Fizzle" },
-      "nativeRender": false,
-      "context": { "tmpl": "base.njk" },
-      "autoescape": false,
-      "expected": "FooBarBazFizzle"
-    },
-    {
-      "id": "compiler-inheritance-unused-block-skipped",
-      "template": "{% extends \"base.njk\" %}{% block notReal %}{{ missing() }}{% endblock %}",
-      "templates": { "base.njk": "Foo{% block block1 %}Bar{% endblock %}{% block block2 %}Baz{% endblock %}Fizzle" },
-      "nativeRender": false,
-      "context": {},
-      "autoescape": false,
-      "expected": "FooBarBazFizzle"
-    },
-    {
-      "id": "compiler-inheritance-conditional-false",
-      "template": "{% if false %}{% extends \"base.njk\" %}{% endif %}{% block block1 %}BAR{% endblock %}",
-      "templates": { "base.njk": "Foo{% block block1 %}Bar{% endblock %}{% block block2 %}Baz{% endblock %}Fizzle" },
-      "nativeRender": false,
-      "context": {},
-      "autoescape": false,
-      "expected": "BAR"
-    },
-    {
-      "id": "compiler-inheritance-conditional-true",
-      "template": "{% if true %}{% extends \"base.njk\" %}{% endif %}{% block block1 %}BAR{% endblock %}",
-      "templates": { "base.njk": "Foo{% block block1 %}Bar{% endblock %}{% block block2 %}Baz{% endblock %}Fizzle" },
-      "nativeRender": false,
-      "context": {},
-      "autoescape": false,
-      "expected": "FooBARBazFizzle"
-    },
-    {
-      "id": "compiler-inheritance-conditional-first-parent",
-      "template": "{% if true %}{% extends \"base.njk\" %}{% else %}{% extends \"base2.njk\" %}{% endif %}{% block block1 %}HELLO{% endblock %}",
-      "templates": { "base.njk": "Foo{% block block1 %}Bar{% endblock %}{% block block2 %}Baz{% endblock %}Fizzle", "base2.njk": "{% for item in [1,2] %}{% block item %}{{ item }}{% endblock %}{% endfor %}" },
-      "nativeRender": false,
-      "context": {},
-      "autoescape": false,
-      "expected": "FooHELLOBazFizzle"
-    },
-    {
-      "id": "compiler-inheritance-conditional-second-parent",
-      "template": "{% if false %}{% extends \"base.njk\" %}{% else %}{% extends \"base2.njk\" %}{% endif %}{% block item %}hello{{ item }}{% endblock %}",
-      "templates": { "base.njk": "Foo{% block block1 %}Bar{% endblock %}{% block block2 %}Baz{% endblock %}Fizzle", "base2.njk": "{% for item in [1,2] %}{% block item %}{{ item }}{% endblock %}{% endfor %}" },
-      "nativeRender": false,
-      "context": {},
-      "autoescape": false,
-      "expected": "hello1hello2"
-    },
-    {
-      "id": "compiler-inheritance-nested-child-block",
-      "template": "{% extends \"base.njk\" %}{% block block1 %}{% block nested %}BAR{% endblock %}{% endblock %}",
-      "templates": { "base.njk": "Foo{% block block1 %}Bar{% endblock %}{% block block2 %}Baz{% endblock %}Fizzle" },
-      "nativeRender": false,
-      "context": {},
-      "autoescape": false,
-      "expected": "FooBARBazFizzle"
-    },
-    {
-      "id": "compiler-inheritance-super",
-      "template": "{% extends \"base.njk\" %}{% block block1 %}{{ super() }}BAR{% endblock %}",
-      "templates": { "base.njk": "Foo{% block block1 %}Bar{% endblock %}{% block block2 %}Baz{% endblock %}Fizzle" },
-      "nativeRender": false,
-      "context": {},
-      "autoescape": false,
-      "expected": "FooBarBARBazFizzle"
-    },
-    {
-      "id": "compiler-inheritance-multilevel-super",
-      "template": "{% extends \"base-inherit.njk\" %}{% block block1 %}*{{ super() }}*{% endblock %}",
-      "templates": { "base.njk": "Foo{% block block1 %}Bar{% endblock %}{% block block2 %}Baz{% endblock %}Fizzle", "base-inherit.njk": "{% extends \"base.njk\" %}{% block block1 %}*{{ super() }}*{% endblock %}" },
-      "nativeRender": false,
-      "context": {},
-      "autoescape": false,
-      "expected": "Foo**Bar**BazFizzle"
-    },
-    {
-      "id": "compiler-inheritance-super-child-global",
-      "template": "{% extends \"base-show.njk\" %}{% set var = \"child\" %}{% block main %}{{ super() }}{% endblock %}",
-      "templates": { "base-show.njk": "{% block main %}{{ var }}{% endblock %}" },
-      "nativeRender": false,
-      "context": {},
-      "autoescape": false,
-      "expected": "child"
-    },
-    {
-      "id": "compiler-inheritance-super-hides-child-block-local",
-      "template": "{% extends \"base-show.njk\" %}{% block main %}{% set var = \"child\" %}{{ super() }}{% endblock %}",
-      "templates": { "base-show.njk": "{% block main %}{{ var }}{% endblock %}" },
-      "nativeRender": false,
-      "context": {},
-      "autoescape": false,
-      "expected": ""
-    },
-    {
-      "id": "compiler-inheritance-child-sees-parent-global",
-      "template": "{% extends \"base-set.njk\" %}{% block main %}{{ var }}{% endblock %}",
-      "templates": { "base-set.njk": "{% set var = 'parent' %}{% block main %}{% set var = 'inner' %}{% endblock %}" },
-      "nativeRender": false,
-      "context": {},
-      "autoescape": false,
-      "expected": "parent"
-    },
-    {
-      "id": "compiler-inheritance-super-scope-isolation",
-      "template": "{% extends \"base-set-inside-block.njk\" %}{% block main %}{{ super() }}{{ var }}{% endblock %}",
-      "templates": { "base-set-inside-block.njk": "{% block main %}{% set var = 'inner' %}{% endblock %}" },
-      "nativeRender": false,
-      "context": {},
-      "autoescape": false,
-      "expected": ""
-    },
-    {
-      "id": "compiler-inheritance-child-block-scope-isolation",
-      "template": "{% extends \"base-set-and-show.njk\" %}{% block main %}{% set var = \"child\" %}{% endblock %}",
-      "templates": { "base-set-and-show.njk": "{% set var = 'parent' %}{% block main %}{% set var = 'inner' %}{% endblock %}{{ var }}" },
-      "nativeRender": false,
-      "context": {},
-      "autoescape": false,
-      "expected": "parent"
     },
     {
       "id": "compiler-standalone-block-scope-isolation",
       "template": "{% set var = \"parent\" %}{% block main %}{% set var = \"inner\" %}{% endblock %}{{ var }}",
-      "nativeRender": false,
       "context": {},
-      "autoescape": false,
       "expected": "parent"
-    },
-    {
-      "id": "compiler-include-basic",
-      "template": "hello world {% include \"include.njk\" %}",
-      "templates": { "include.njk": "FooInclude {{ name }}" },
-      "nativeRender": false,
-      "context": {},
-      "autoescape": false,
-      "expected": "hello world FooInclude "
-    },
-    {
-      "id": "compiler-include-context",
-      "template": "hello world {% include \"include.njk\" %}",
-      "templates": { "include.njk": "FooInclude {{ name }}" },
-      "nativeRender": false,
-      "context": { "name": "james" },
-      "autoescape": false,
-      "expected": "hello world FooInclude james"
-    },
-    {
-      "id": "compiler-include-scope-isolation",
-      "template": "{% set var = 1 %}{% include \"include-set.njk\" %}{{ var }}",
-      "templates": { "include-set.njk": "{{ var }}{% set var = 2 %}{{ var }}\n" },
-      "nativeRender": false,
-      "context": {},
-      "autoescape": false,
-      "expected": "12\n1"
-    },
-    {
-      "id": "compiler-include-array-loop-metadata",
-      "template": "{% for item in [1,2,3] %}{% include \"include-in-loop.njk\" %}{% endfor %}",
-      "templates": { "include-in-loop.njk": "{{ loop.index }},{{ loop.index0 }},{{ loop.first }}\n" },
-      "nativeRender": false,
-      "context": {},
-      "autoescape": false,
-      "expected": "1,0,true\n2,1,false\n3,2,false\n"
-    },
-    {
-      "id": "compiler-include-record-loop-metadata",
-      "template": "{% for k,v in items %}{% include \"include-in-loop.njk\" %}{% endfor %}",
-      "templates": { "include-in-loop.njk": "{{ loop.index }},{{ loop.index0 }},{{ loop.first }}\n" },
-      "nativeRender": false,
-      "context": { "items": { "a": "A", "b": "B" } },
-      "autoescape": false,
-      "expected": "1,0,true\n2,1,false\n"
     },
     {
       "id": "compiler-nested-loop-scope",
       "template": "{% for i in [1,2] %}{% for i in [3,4] %}{{ i }}{% endfor %}{{ i }}{% endfor %}",
-      "nativeRender": false,
       "context": {},
-      "autoescape": false,
       "expected": "341342"
-    },
-    {
-      "id": "compiler-inheritance-block-inside-loop",
-      "template": "{% extends \"base2.njk\" %}{% block item %}hello{{ item }}{% endblock %}",
-      "templates": { "base2.njk": "{% for item in [1,2] %}{% block item %}{{ item }}{% endblock %}{% endfor %}" },
-      "nativeRender": false,
-      "context": {},
-      "autoescape": false,
-      "expected": "hello1hello2"
-    },
-    {
-      "id": "compiler-include-inherits-loop-scope",
-      "template": "{% for item in [1,2] %}{% include \"item.njk\" %}{% endfor %}",
-      "templates": { "item.njk": "showing {{ item }}" },
-      "nativeRender": false,
-      "context": {},
-      "autoescape": false,
-      "expected": "showing 1showing 2"
-    },
-    {
-      "id": "compiler-block-set-wraps-inherited-block",
-      "template": "{% extends \"base-set-wraps-block.njk\" %}{% block somevar %}foo{% endblock %}",
-      "templates": { "base-set-wraps-block.njk": "{% set somevar %}{% block somevar %}{% endblock %}{% endset %}{{ somevar }}\n" },
-      "nativeRender": false,
-      "context": {},
-      "autoescape": false,
-      "expected": "foo\n"
     },
     {
       "id": "compiler-block-set-inside-macro",
       "template": "{%- macro foo(bar) -%}{%- set test -%}foo{%- endset -%}{{ bar }}{{ test }}{%- endmacro -%}{{ foo(\"bar\") }}",
-      "nativeRender": false,
       "context": {},
-      "autoescape": false,
       "expected": "barfoo"
-    },
-    {
-      "id": "compiler-custom-body-tag",
-      "template": "{% test %}123456789{% endtest %}",
-      "capabilityFixture": "compiler-reverse-body-tag",
-      "nativeRender": false,
-      "context": {},
-      "autoescape": false,
-      "expected": "987654321"
-    },
-    {
-      "id": "compiler-custom-inline-tag",
-      "template": "{% test \"123456\" %}",
-      "capabilityFixture": "compiler-reverse-inline-tag",
-      "nativeRender": false,
-      "context": {},
-      "autoescape": false,
-      "expected": "654321"
-    },
-    {
-      "id": "compiler-custom-section-tag-body-only",
-      "template": "{% test %}abcdefg{% endtest %}",
-      "capabilityFixture": "compiler-section-body-tag",
-      "nativeRender": false,
-      "context": {},
-      "autoescape": false,
-      "expected": "a,b,c,d,e,f,g"
-    },
-    {
-      "id": "compiler-custom-section-tag-intermediate",
-      "template": "{% test %}abcdefg{% intermediate %}second half{% endtest %}",
-      "capabilityFixture": "compiler-section-body-tag",
-      "nativeRender": false,
-      "context": {},
-      "autoescape": false,
-      "expected": "a,b,c,d,e,f,gflah dnoces"
-    },
-    {
-      "id": "compiler-custom-body-tag-no-arguments",
-      "template": "{% test %}foobar{% endtest %}",
-      "capabilityFixture": "compiler-argument-body-tag",
-      "nativeRender": false,
-      "context": {},
-      "autoescape": false,
-      "expected": "raboof"
-    },
-    {
-      "id": "compiler-custom-body-tag-positional-argument",
-      "template": "{% test(\"biz\") %}foobar{% endtest %}",
-      "capabilityFixture": "compiler-argument-body-tag",
-      "nativeRender": false,
-      "context": {},
-      "autoescape": false,
-      "expected": "bizraboof"
-    },
-    {
-      "id": "compiler-custom-body-tag-keyword-argument",
-      "template": "{% test(\"biz\", cutoff=5) %}foobar{% endtest %}",
-      "capabilityFixture": "compiler-argument-body-tag",
-      "nativeRender": false,
-      "context": {},
-      "autoescape": false,
-      "expected": "bizra"
-    },
-    {
-      "id": "compiler-filter-explicit-context-dependency",
-      "template": "{{ foo | hallo }}",
-      "capabilityFixture": "compiler-context-filter",
-      "nativeRender": false,
-      "context": { "foo": 1, "bar": 2 },
-      "autoescape": true,
-      "expected": "3"
     },
     {
       "id": "compiler-regex-literal",
       "template": "{{ r/name [0-9] \\// }}",
-      "nativeRender": false,
       "context": {},
-      "autoescape": false,
       "expected": "/name [0-9] \\//"
-    },
-    {
-      "id": "compiler-regex-flags",
-      "template": "{{ r/x/gi }}",
-      "nativeRender": false,
-      "context": {},
-      "autoescape": true,
-      "expected": "/x/gi"
-    },
-    {
-      "id": "compiler-block-right-trim",
-      "template": "{% if true -%}{{\"hello\"}} {{\"world\"}}{% endif %}",
-      "nativeRender": false,
-      "context": {},
-      "autoescape": true,
-      "expected": "hello world"
-    },
-    {
-      "id": "compiler-nested-block-right-trim",
-      "template": "{% if true -%}{% if true %} {{\"hello\"}} {{\"world\"}}{% endif %}{% endif %}",
-      "nativeRender": false,
-      "context": {},
-      "autoescape": true,
-      "expected": " hello world"
-    },
-    {
-      "id": "compiler-comment-after-right-trim",
-      "template": "{% if true -%}{# comment #} {{\"hello\"}}{% endif %}",
-      "nativeRender": false,
-      "context": {},
-      "autoescape": true,
-      "expected": " hello"
-    },
-    {
-      "id": "compiler-expression-both-trim",
-      "template": "Well, {{- ' hello, ' -}} my friend",
-      "nativeRender": false,
-      "context": {},
-      "autoescape": true,
-      "expected": "Well, hello, my friend"
-    },
-    {
-      "id": "compiler-expression-preserves-whitespace",
-      "template": " {{ 2 + 2 }} ",
-      "nativeRender": false,
-      "context": {},
-      "autoescape": true,
-      "expected": " 4 "
-    },
-    {
-      "id": "compiler-expression-left-trim-negative-adjacent",
-      "template": " {{-2 + 2 }} ",
-      "nativeRender": false,
-      "context": {},
-      "autoescape": true,
-      "expected": "4 "
-    },
-    {
-      "id": "compiler-expression-negative-with-space",
-      "template": " {{ -2 + 2 }} ",
-      "nativeRender": false,
-      "context": {},
-      "autoescape": true,
-      "expected": " 0 "
-    },
-    {
-      "id": "compiler-expression-right-trim",
-      "template": " {{ 2 + 2 -}} ",
-      "nativeRender": false,
-      "context": {},
-      "autoescape": true,
-      "expected": " 4"
-    },
-    {
-      "id": "compiler-macro-parameter-shadows-macro",
-      "template": "{# macro1 and macro2 definition #}{% macro macro1() %}{% endmacro %}{% macro macro2(macro1=\"default\") %}{{macro1}}{% endmacro %}{{macro2(\"this should be outputted\") }}",
-      "nativeRender": false,
-      "context": {},
-      "autoescape": true,
-      "expected": "this should be outputted"
-    },
-    {
-      "id": "compiler-macro-calls-visible-macro",
-      "template": "{# macro1 and macro2 definition #}{% macro macro1() %} foo{% endmacro %}{% macro macro2(text=\"default\") %}{{macro1()}}{% endmacro %}{{macro2(\"this should not be outputted\") }}",
-      "nativeRender": false,
-      "context": {},
-      "autoescape": true,
-      "expected": " foo"
-    },
-    {
-      "id": "compiler-call-block-accesses-outer-macro-scope",
-      "template": "{% macro inside() %}{{ caller() }}{% endmacro %}{% macro outside(var) %}{{ var }}\n{% call inside() %}{{ var }}{% endcall %}{% endmacro %}{{ outside(\"foobar\") }}",
-      "nativeRender": false,
-      "context": {},
-      "autoescape": true,
-      "expected": "foobar\nfoobar"
-    },
-    {
-      "id": "compiler-call-block-scope-does-not-leak",
-      "template": "{% set var = \"expected\" %}{% macro inside() %}{% set var = \"incorrect-value\" %}{{ caller() }}{% endmacro %}{% macro outside() %}{% call inside() %}{% endcall %}{% endmacro %}{{ outside() }}{{ var }}",
-      "nativeRender": false,
-      "context": {},
-      "autoescape": true,
-      "expected": "expected"
-    },
-    {
-      "id": "compiler-filter-block-title",
-      "template": "{% filter title %}may the force be with you{% endfilter %}",
-      "nativeRender": false,
-      "context": {},
-      "autoescape": true,
-      "expected": "May The Force Be With You"
-    },
-    {
-      "id": "compiler-filter-block-replace",
-      "template": "{% filter replace(\"force\", \"forth\") %}may the force be with you{% endfilter %}",
-      "nativeRender": false,
-      "context": {},
-      "autoescape": true,
-      "expected": "may the forth be with you"
-    },
-    {
-      "id": "compiler-filter-block-variable",
-      "template": "{% set foo = \"force\" %}{% filter replace(\"force\", \"forth\") %}may the {{ foo }} be with you{% endfilter %}",
-      "nativeRender": false,
-      "context": {},
-      "autoescape": true,
-      "expected": "may the forth be with you"
-    },
-    {
-      "id": "compiler-filter-block-inheritance",
-      "template": "{% extends \"filter-block.html\" %}{% block block1 %}force{% endblock %}",
-      "templates": { "filter-block.html": "may the {% filter replace(\"force\", \"forth\") %}{% block block1 %}bar{% endblock %}{% endfilter %} be with you\n" },
-      "nativeRender": false,
-      "context": {},
-      "autoescape": true,
-      "expected": "may the forth be with you\n"
-    },
-    {
-      "id": "compiler-static-newline",
-      "template": "foo\nbar",
-      "context": {},
-      "autoescape": true,
-      "expected": "foo\nbar"
-    },
-    {
-      "id": "compiler-unicode-line-separator",
-      "template": " ",
-      "context": {},
-      "autoescape": true,
-      "expected": " "
-    },
-    {
-      "id": "compiler-zero-is-defined",
-      "template": "{{ foo }}",
-      "nativeRender": false,
-      "context": { "foo": 0 },
-      "autoescape": true,
-      "expected": "0"
-    },
-    {
-      "id": "compiler-false-is-defined",
-      "template": "{{ foo }}",
-      "nativeRender": false,
-      "context": { "foo": false },
-      "autoescape": true,
-      "expected": "false"
-    },
-    {
-      "id": "compiler-none-empty",
-      "template": "{{ none }}",
-      "nativeRender": false,
-      "context": {},
-      "autoescape": true,
-      "expected": ""
-    },
-    {
-      "id": "compiler-none-falsy",
-      "template": "{% if not none %}yes{% endif %}",
-      "nativeRender": false,
-      "context": {},
-      "autoescape": true,
-      "expected": "yes"
-    },
-    {
-      "id": "compiler-none-not-undefined",
-      "template": "{{ none|default(\"d\", false) }}",
-      "nativeRender": false,
-      "context": {},
-      "autoescape": true,
-      "expected": ""
-    },
-    {
-      "id": "compiler-callable-global",
-      "template": "{{ foo(\"msg\") }}",
-      "capabilityFixture": "compiler-function-globals",
-      "nativeRender": false,
-      "context": {},
-      "autoescape": true,
-      "expected": "msghi"
-    },
-    {
-      "id": "compiler-dotted-callable-global",
-      "template": "{{ foo.bar() }}",
-      "capabilityFixture": "compiler-function-globals",
-      "nativeRender": false,
-      "context": { "foo": { "baz": "hello" } },
-      "autoescape": true,
-      "expected": "hello"
-    },
-    {
-      "id": "compiler-switch-default",
-      "template": "{% switch foo %}{% case \"bar\" %}BAR{% case \"baz\" %}BAZ{% default %}NEITHER FOO NOR BAR{% endswitch %}",
-      "nativeRender": false,
-      "context": {},
-      "autoescape": true,
-      "expected": "NEITHER FOO NOR BAR"
-    },
-    {
-      "id": "compiler-switch-first-case",
-      "template": "{% switch foo %}{% case \"bar\" %}BAR{% case \"baz\" %}BAZ{% default %}NEITHER FOO NOR BAR{% endswitch %}",
-      "nativeRender": false,
-      "context": { "foo": "bar" },
-      "autoescape": true,
-      "expected": "BAR"
-    },
-    {
-      "id": "compiler-switch-second-case",
-      "template": "{% switch foo %}{% case \"bar\" %}BAR{% case \"baz\" %}BAZ{% default %}NEITHER FOO NOR BAR{% endswitch %}",
-      "nativeRender": false,
-      "context": { "foo": "baz" },
-      "autoescape": true,
-      "expected": "BAZ"
-    },
-    {
-      "id": "compiler-switch-no-default",
-      "template": "{% switch foo %}{% case \"bar\" %}BAR{% case \"baz\" %}BAZ{% endswitch %}",
-      "nativeRender": false,
-      "context": {},
-      "autoescape": true,
-      "expected": ""
-    },
-    {
-      "id": "compiler-switch-fallthrough-first",
-      "template": "{% switch foo %}{% case \"bar\" %}{% case \"baz\" %}BAR{% endswitch %}",
-      "nativeRender": false,
-      "context": { "foo": "bar" },
-      "autoescape": true,
-      "expected": "BAR"
-    },
-    {
-      "id": "compiler-switch-fallthrough-second",
-      "template": "{% switch foo %}{% case \"bar\" %}{% case \"baz\" %}BAR{% endswitch %}",
-      "nativeRender": false,
-      "context": { "foo": "baz" },
-      "autoescape": true,
-      "expected": "BAR"
-    },
-    {
-      "id": "compiler-loop-simple-array",
-      "template": "{% for i in arr %}{{ i }}{% endfor %}",
-      "nativeRender": false,
-      "context": { "arr": [1, 2, 3, 4, 5] },
-      "autoescape": true,
-      "expected": "12345"
-    },
-    {
-      "id": "compiler-loop-nonempty-else",
-      "template": "{% for i in arr %}{{ i }}{% else %}empty{% endfor %}",
-      "nativeRender": false,
-      "context": { "arr": [1, 2, 3, 4, 5] },
-      "autoescape": true,
-      "expected": "12345"
-    },
-    {
-      "id": "compiler-loop-empty-else",
-      "template": "{% for i in arr %}{{ i }}{% else %}empty{% endfor %}",
-      "nativeRender": false,
-      "context": { "arr": [] },
-      "autoescape": true,
-      "expected": "empty"
-    },
-    {
-      "id": "compiler-loop-literal-record",
-      "template": "{% for k, v in { one: 1, two: 2 } %}-{{ k }}:{{ v }}-{% endfor %}",
-      "nativeRender": false,
-      "context": {},
-      "autoescape": true,
-      "expected": "-one:1--two:2-"
-    },
-    {
-      "id": "compiler-loop-index",
-      "template": "{% for i in [7,3,6] %}{{ loop.index }}{% endfor %}",
-      "nativeRender": false,
-      "context": {},
-      "autoescape": true,
-      "expected": "123"
-    },
-    {
-      "id": "compiler-loop-index0",
-      "template": "{% for i in [7,3,6] %}{{ loop.index0 }}{% endfor %}",
-      "nativeRender": false,
-      "context": {},
-      "autoescape": true,
-      "expected": "012"
-    },
-    {
-      "id": "compiler-loop-revindex",
-      "template": "{% for i in [7,3,6] %}{{ loop.revindex }}{% endfor %}",
-      "nativeRender": false,
-      "context": {},
-      "autoescape": true,
-      "expected": "321"
-    },
-    {
-      "id": "compiler-loop-revindex0",
-      "template": "{% for i in [7,3,6] %}{{ loop.revindex0 }}{% endfor %}",
-      "nativeRender": false,
-      "context": {},
-      "autoescape": true,
-      "expected": "210"
-    },
-    {
-      "id": "compiler-loop-first",
-      "template": "{% for i in [7,3,6] %}{% if loop.first %}{{ i }}{% endif %}{% endfor %}",
-      "nativeRender": false,
-      "context": {},
-      "autoescape": true,
-      "expected": "7"
-    },
-    {
-      "id": "compiler-loop-last",
-      "template": "{% for i in [7,3,6] %}{% if loop.last %}{{ i }}{% endif %}{% endfor %}",
-      "nativeRender": false,
-      "context": {},
-      "autoescape": true,
-      "expected": "6"
-    },
-    {
-      "id": "compiler-loop-length",
-      "template": "{% for i in [7,3,6] %}{{ loop.length }}{% endfor %}",
-      "nativeRender": false,
-      "context": {},
-      "autoescape": true,
-      "expected": "333"
-    },
-    {
-      "id": "compiler-loop-undefined",
-      "template": "{% for i in foo %}{{ i }}{% endfor %}",
-      "nativeRender": false,
-      "context": {},
-      "autoescape": true,
-      "expected": ""
-    },
-    {
-      "id": "compiler-loop-undefined-property",
-      "template": "{% for i in foo.bar %}{{ i }}{% endfor %}",
-      "nativeRender": false,
-      "context": { "foo": {} },
-      "autoescape": true,
-      "expected": ""
-    },
-    {
-      "id": "compiler-loop-null",
-      "template": "{% for i in foo %}{{ i }}{% endfor %}",
-      "nativeRender": false,
-      "context": { "foo": null },
-      "autoescape": true,
-      "expected": ""
-    },
-    {
-      "id": "compiler-loop-two-dimensional",
-      "template": "{% for x, y in points %}[{{ x }},{{ y }}]{% endfor %}",
-      "nativeRender": false,
-      "context": { "points": [[1, 2], [3, 4], [5, 6]] },
-      "autoescape": true,
-      "expected": "[1,2][3,4][5,6]"
-    },
-    {
-      "id": "compiler-loop-index-two-dimensional",
-      "template": "{% for x, y in points %}{{ loop.index }}{% endfor %}",
-      "nativeRender": false,
-      "context": { "points": [[1, 2], [3, 4], [5, 6]] },
-      "autoescape": true,
-      "expected": "123"
-    },
-    {
-      "id": "compiler-loop-revindex-two-dimensional",
-      "template": "{% for x, y in points %}{{ loop.revindex }}{% endfor %}",
-      "nativeRender": false,
-      "context": { "points": [[1, 2], [3, 4], [5, 6]] },
-      "autoescape": true,
-      "expected": "321"
-    },
-    {
-      "id": "compiler-loop-record-pairs",
-      "template": "{% for k, v in items %}({{ k }},{{ v }}){% endfor %}",
-      "nativeRender": false,
-      "context": { "items": { "foo": 1, "bar": 2 } },
-      "autoescape": true,
-      "expected": "(foo,1)(bar,2)"
-    },
-    {
-      "id": "compiler-loop-record-index",
-      "template": "{% for k, v in items %}{{ loop.index }}{% endfor %}",
-      "nativeRender": false,
-      "context": { "items": { "foo": 1, "bar": 2 } },
-      "autoescape": true,
-      "expected": "12"
-    },
-    {
-      "id": "compiler-loop-record-revindex",
-      "template": "{% for k, v in items %}{{ loop.revindex }}{% endfor %}",
-      "nativeRender": false,
-      "context": { "items": { "foo": 1, "bar": 2 } },
-      "autoescape": true,
-      "expected": "21"
-    },
-    {
-      "id": "compiler-loop-record-length",
-      "template": "{% for k, v in items %}{{ loop.length }}{% endfor %}",
-      "nativeRender": false,
-      "context": { "items": { "foo": 1, "bar": 2 } },
-      "autoescape": true,
-      "expected": "22"
-    },
-    {
-      "id": "compiler-loop-include-body",
-      "template": "{% for item, v in items %}{% include \"item.njk\" %}{% endfor %}",
-      "templates": { "item.njk": "showing {{ item }}" },
-      "nativeRender": false,
-      "context": { "items": { "foo": 1, "bar": 2 } },
-      "autoescape": true,
-      "expected": "showing fooshowing bar"
-    },
-    {
-      "id": "compiler-loop-set-and-include",
-      "template": "{% set item = passed_var %}{% include \"item.njk\" %}\n{% for i in passed_iter %}{% set item = i %}{% include \"item.njk\" %}\n{% endfor %}",
-      "templates": { "item.njk": "showing {{ item }}" },
-      "nativeRender": false,
-      "context": { "passed_var": "test", "passed_iter": ["1", "2", "3"] },
-      "autoescape": true,
-      "expected": "showing test\nshowing 1\nshowing 2\nshowing 3\n"
-    },
-    {
-      "id": "compiler-loop-overrides-with-none",
-      "template": "{% set var = \"foo\" %}{% for i in [1] %}{% set var = none %}{{ var }}{% endfor %}",
-      "nativeRender": false,
-      "context": {},
-      "autoescape": true,
-      "expected": ""
-    },
-    {
-      "id": "compiler-three-value-async-each",
-      "template": "{% asyncEach a, b, c in arr %}{{ a }},{{ b }},{{ c }}.{% endeach %}",
-      "nativeRender": false,
-      "context": { "arr": [["x", "y", "z"], ["1", "2", "3"]] },
-      "autoescape": true,
-      "expected": "x,y,z.1,2,3."
-    },
-    {
-      "id": "compiler-three-value-async-all",
-      "template": "{% asyncAll a, b, c in arr %}{{ a }},{{ b }},{{ c }}.{% endall %}",
-      "nativeRender": false,
-      "context": { "arr": [["x", "y", "z"], ["1", "2", "3"]] },
-      "autoescape": true,
-      "expected": "x,y,z.1,2,3."
-    },
-    {
-      "id": "compiler-four-value-async-each",
-      "template": "{% asyncEach a, b, c, d in arr %}[{{ a }},{{ b }},{{ c }},{{ d }}]{% endeach %}",
-      "nativeRender": false,
-      "context": { "arr": [[1, 2, 3, 4], [5, 6, 7, 8]] },
-      "autoescape": true,
-      "expected": "[1,2,3,4][5,6,7,8]"
-    },
-    {
-      "id": "compiler-four-value-async-all",
-      "template": "{% asyncAll a, b, c, d in arr %}[{{ a }},{{ b }},{{ c }},{{ d }}]{% endall %}",
-      "nativeRender": false,
-      "context": { "arr": [[1, 2, 3, 4], [5, 6, 7, 8]] },
-      "autoescape": true,
-      "expected": "[1,2,3,4][5,6,7,8]"
-    },
-    {
-      "id": "compiler-if-hungry-true",
-      "template": "Give me some {% if hungry %}pizza{% else %}water{% endif %}",
-      "nativeRender": false,
-      "context": { "hungry": true },
-      "autoescape": true,
-      "expected": "Give me some pizza"
-    },
-    {
-      "id": "compiler-if-hungry-false",
-      "template": "Give me some {% if hungry %}pizza{% else %}water{% endif %}",
-      "nativeRender": false,
-      "context": { "hungry": false },
-      "autoescape": true,
-      "expected": "Give me some water"
-    },
-    {
-      "id": "compiler-if-not",
-      "template": "{% if not hungry %}good{% endif %}",
-      "nativeRender": false,
-      "context": { "hungry": false },
-      "autoescape": true,
-      "expected": "good"
-    },
-    {
-      "id": "compiler-if-boolean-operators",
-      "template": "{% if hungry and like_pizza %}A{% endif %}{% if hungry or anchovies %}B{% endif %}{% if (hungry or like_pizza) and anchovies %}C{% endif %}",
-      "nativeRender": false,
-      "context": { "hungry": true, "like_pizza": true, "anchovies": true },
-      "autoescape": true,
-      "expected": "ABC"
-    },
-    {
-      "id": "compiler-if-equality-branches",
-      "template": "{% if food == \"pizza\" %}pizza{% endif %}{% if food ==\"beer\" %}beer{% endif %}",
-      "nativeRender": false,
-      "context": { "food": "beer" },
-      "autoescape": true,
-      "expected": "beer"
-    },
-    {
-      "id": "compiler-if-membership",
-      "template": "{% if \"pizza\" in food %}yum{% endif %}",
-      "nativeRender": false,
-      "context": { "food": { "pizza": true } },
-      "autoescape": true,
-      "expected": "yum"
-    },
-    {
-      "id": "compiler-if-elif-spellings",
-      "template": "{% if pizza %}yum{% elif anchovies %}yuck{% endif %}|{% if pizza %}yum{% elseif anchovies %}yuck{% endif %}",
-      "nativeRender": false,
-      "context": { "pizza": true },
-      "autoescape": true,
-      "expected": "yum|yum"
-    },
-    {
-      "id": "compiler-if-elif-alternative",
-      "template": "{% if pizza %}yum{% elif anchovies %}yuck{% endif %}|{% if pizza %}yum{% elseif anchovies %}yuck{% endif %}",
-      "nativeRender": false,
-      "context": { "anchovies": true },
-      "autoescape": true,
-      "expected": "yuck|yuck"
-    },
-    {
-      "id": "compiler-if-elseif-else",
-      "template": "{% if topping == \"pepperoni\" %}yum{% elseif topping == \"anchovies\" %}yuck{% else %}hmmm{% endif %}",
-      "nativeRender": false,
-      "context": { "topping": "sausage" },
-      "autoescape": true,
-      "expected": "hmmm"
-    },
-    {
-      "id": "compiler-comparison-operators",
-      "template": "{% if 3 < 4 %}a{% endif %}{% if 3 > 4 %}x{% endif %}{% if 9 >= 10 %}x{% endif %}{% if 10 >= 10 %}b{% endif %}{% if 9 <= 10 %}c{% endif %}{% if 10 <= 10 %}d{% endif %}{% if 11 <= 10 %}x{% endif %}{% if 10 != 10 %}x{% endif %}{% if 10 == 10 %}e{% endif %}{% if \"0\" == 0 %}f{% endif %}{% if \"0\" === 0 %}x{% endif %}{% if \"0\" !== 0 %}g{% endif %}{% if 0 == false %}h{% endif %}{% if 0 === false %}x{% endif %}{% if foo(20) > bar %}i{% endif %}",
-      "capabilityFixture": "compiler-comparison-global",
-      "nativeRender": false,
-      "context": { "bar": 15 },
-      "autoescape": true,
-      "expected": "abcdefghi"
-    },
-    {
-      "id": "compiler-in-arrays",
-      "template": "{% if 1 in [1, 2] %}A{% endif %}{% if 1 in [2, 3] %}X{% endif %}{% if 1 not in [1, 2] %}X{% endif %}{% if 1 not in [2, 3] %}B{% endif %}{% if \"a\" in vals %}C{% endif %}",
-      "nativeRender": false,
-      "context": { "vals": ["a", "b"] },
-      "autoescape": true,
-      "expected": "ABC"
-    },
-    {
-      "id": "compiler-in-records",
-      "template": "{% if \"a\" in obj %}A{% endif %}|{% if \"a\" in other %}A{% endif %}",
-      "nativeRender": false,
-      "context": { "obj": { "a": true }, "other": { "b": true } },
-      "autoescape": true,
-      "expected": "A|"
-    },
-    {
-      "id": "compiler-in-strings",
-      "template": "{% if \"foo\" in \"foobar\" %}yes{% endif %}",
-      "nativeRender": false,
-      "context": {},
-      "autoescape": true,
-      "expected": "yes"
-    },
-    {
-      "id": "api-relative-first-child",
-      "template": "{% include \"relative/test1.njk\" %}",
-      "templates": {
-        "base.njk": "Foo{% block block1 %}Bar{% endblock %}{% block block2 %}Baz{% endblock %}Fizzle",
-        "relative/test1.njk": "{% extends \"../base.njk\" %}{% block block1 %}Test1{% endblock %}"
-      },
-      "nativeRender": false,
-      "context": {},
-      "autoescape": true,
-      "expected": "FooTest1BazFizzle"
-    },
-    {
-      "id": "api-relative-second-child",
-      "template": "{% include \"relative/test2.njk\" %}",
-      "templates": {
-        "base.njk": "Foo{% block block1 %}Bar{% endblock %}{% block block2 %}Baz{% endblock %}Fizzle",
-        "relative/test1.njk": "{% extends \"../base.njk\" %}{% block block1 %}Test1{% endblock %}",
-        "relative/test2.njk": "{% extends \"./test1.njk\" %}{% block block1 %}Test2{% endblock %}"
-      },
-      "nativeRender": false,
-      "context": {},
-      "autoescape": true,
-      "expected": "FooTest2BazFizzle"
-    },
-    {
-      "id": "api-relative-cache",
-      "template": "{% include \"relative/test-cache.njk\" %}",
-      "templates": {
-        "relative/test-cache.njk": "{% include \"./dir1/index.njk\" %}\n{% include \"./dir2/index.njk\" %}",
-        "relative/dir1/index.njk": "{% include \"./macros.njk\" %}",
-        "relative/dir1/macros.njk": "Test1",
-        "relative/dir2/index.njk": "{% include \"./macros.njk\" %}",
-        "relative/dir2/macros.njk": "Test2"
-      },
-      "nativeRender": false,
-      "context": {},
-      "autoescape": true,
-      "expected": "Test1\nTest2"
-    },
-    {
-      "id": "api-relative-inline-source",
-      "template": "{% extends \"./relative/test1.njk\" %}{% block block1 %}Test3{% endblock %}",
-      "canonicalName": "memory:string.njk",
-      "templates": {
-        "base.njk": "Foo{% block block1 %}Bar{% endblock %}{% block block2 %}Baz{% endblock %}Fizzle",
-        "relative/test1.njk": "{% extends \"../base.njk\" %}{% block block1 %}Test1{% endblock %}"
-      },
-      "nativeRender": false,
-      "context": {},
-      "autoescape": true,
-      "expected": "FooTest3BazFizzle"
-    },
-    {
-      "id": "runtime-undefined-trailing-macro-argument",
-      "template": "{% macro foo(bar, baz) %}{{ bar }} {{ baz }}{% endmacro %}{{ foo(\"hello\", nosuchvar) }}",
-      "nativeRender": false,
-      "context": {},
-      "autoescape": true,
-      "expected": "hello "
-    },
-    {
-      "id": "parser-group-tuple",
-      "template": "{{ (1, 2, 3) | join(\"-\") }}",
-      "nativeRender": false,
-      "context": {},
-      "autoescape": true,
-      "expected": "1-2-3"
-    },
-    {
-      "id": "parser-basic-types",
-      "template": "{{ 1 }}|{{ 4.567 }}|{{ \"foo\" }}|{{ 'foo' }}|{{ true }}|{{ false }}|{{ none }}|{{ foo }}|{{ \"23\" | replace(r/23/gi, \"ok\") }}",
-      "nativeRender": false,
-      "context": { "foo": "value" },
-      "autoescape": true,
-      "expected": "1|4.567|foo|foo|true|false||value|ok"
-    },
-    {
-      "id": "parser-filtered-include-path",
-      "template": "{% include \"partial.html\" | replace(\"html\", \"njk\") %}",
-      "templates": { "partial.njk": "included" },
-      "nativeRender": false,
-      "context": {},
-      "autoescape": true,
-      "expected": "included"
-    },
-    {
-      "id": "parser-filtered-import-paths",
-      "template": "{% import \"module.html\" | replace(\"html\", \"njk\") as imp %}{{ imp.foo() }}|{% from \"module.html\" | replace(\"html\", \"njk\") import foo as bar %}{{ bar() }}",
-      "templates": {
-        "module.njk": "{% macro foo() %}loaded{% endmacro %}"
-      },
-      "nativeRender": false,
-      "context": {},
-      "autoescape": true,
-      "expected": "loaded|loaded"
-    },
-    {
-      "id": "lexer-nonbreaking-space",
-      "template": "{{ foo }}",
-      "nativeRender": false,
-      "context": { "foo": "value" },
-      "autoescape": true,
-      "expected": "value"
-    },
-    {
-      "id": "lexer-no-delimiter-whitespace",
-      "template": "data{{hello}}{%if true%}data{%endif%}",
-      "nativeRender": false,
-      "context": { "hello": "value" },
-      "autoescape": true,
-      "expected": "datavaluedata"
-    },
-    {
-      "id": "lexer-complex-regex-literals",
-      "template": "{{ \"basic regex z\" | replace(r/basic regex [a-z]/, \"first\") }}|{{ \"{aaab} /regex! 7/\" | replace(r/{a*b} \\/regex! [0-9]\\//, \"second\") }}",
-      "nativeRender": false,
-      "context": {},
-      "autoescape": true,
-      "expected": "first|second"
-    },
-    {
-      "id": "parser-raw-delimiter-text",
-      "template": "{% raw %}hello {{ {% %} }}{% endraw %}",
-      "nativeRender": false,
-      "context": {},
-      "autoescape": true,
-      "expected": "hello {{ {% %} }}"
-    },
-    {
-      "id": "parser-raw-broken-variable",
-      "template": "{% raw %}{{ x }{% endraw %}",
-      "nativeRender": false,
-      "context": {},
-      "autoescape": true,
-      "expected": "{{ x }"
-    },
-    {
-      "id": "parser-raw-broken-block",
-      "template": "{% raw %}{% if i_am_stupid }Still do your job well{% endraw %}",
-      "nativeRender": false,
-      "context": {},
-      "autoescape": true,
-      "expected": "{% if i_am_stupid }Still do your job well"
-    },
-    {
-      "id": "parser-raw-pure-text",
-      "template": "{% raw %}abc{% endraw %}",
-      "nativeRender": false,
-      "context": {},
-      "autoescape": true,
-      "expected": "abc"
-    },
-    {
-      "id": "parser-raw-nested-block",
-      "template": "{% raw %}{% raw %}{{ x }{% endraw %}{% endraw %}",
-      "nativeRender": false,
-      "context": {},
-      "autoescape": true,
-      "expected": "{% raw %}{{ x }{% endraw %}"
-    },
-    {
-      "id": "parser-raw-comment-text",
-      "template": "{% raw %}{# test {% endraw %}",
-      "nativeRender": false,
-      "context": {},
-      "autoescape": true,
-      "expected": "{# test "
-    },
-    {
-      "id": "parser-raw-multiple",
-      "template": "{% raw %}{{ var }}{% endraw %}{{ var }}{% raw %}{{ var }}{% endraw %}",
-      "nativeRender": false,
-      "context": { "var": "resolved" },
-      "autoescape": true,
-      "expected": "{{ var }}resolved{{ var }}"
-    },
-    {
-      "id": "parser-raw-multiline-multiple",
-      "template": "\n{% raw %}{{ var }}{% endraw %}\n{{ var }}\n{% raw %}{{ var }}{% endraw %}\n",
-      "nativeRender": false,
-      "context": { "var": "resolved" },
-      "autoescape": true,
-      "expected": "\n{{ var }}\nresolved\n{{ var }}\n"
-    },
-    {
-      "id": "parser-verbatim-delimiter-text",
-      "template": "{% verbatim %}hello {{ {% %} }}{% endverbatim %}",
-      "nativeRender": false,
-      "context": {},
-      "autoescape": true,
-      "expected": "hello {{ {% %} }}"
-    },
-    {
-      "id": "parser-verbatim-broken-variable",
-      "template": "{% verbatim %}{{ x }{% endverbatim %}",
-      "nativeRender": false,
-      "context": {},
-      "autoescape": true,
-      "expected": "{{ x }"
-    },
-    {
-      "id": "parser-verbatim-broken-block",
-      "template": "{% verbatim %}{% if i_am_stupid }Still do your job well{% endverbatim %}",
-      "nativeRender": false,
-      "context": {},
-      "autoescape": true,
-      "expected": "{% if i_am_stupid }Still do your job well"
-    },
-    {
-      "id": "parser-verbatim-pure-text",
-      "template": "{% verbatim %}abc{% endverbatim %}",
-      "nativeRender": false,
-      "context": {},
-      "autoescape": true,
-      "expected": "abc"
-    },
-    {
-      "id": "parser-verbatim-nested-block",
-      "template": "{% verbatim %}{% verbatim %}{{ x }{% endverbatim %}{% endverbatim %}",
-      "nativeRender": false,
-      "context": {},
-      "autoescape": true,
-      "expected": "{% verbatim %}{{ x }{% endverbatim %}"
-    },
-    {
-      "id": "parser-verbatim-comment-text",
-      "template": "{% verbatim %}{# test {% endverbatim %}",
-      "nativeRender": false,
-      "context": {},
-      "autoescape": true,
-      "expected": "{# test "
-    },
-    {
-      "id": "parser-verbatim-multiple",
-      "template": "{% verbatim %}{{ var }}{% endverbatim %}{{ var }}{% verbatim %}{{ var }}{% endverbatim %}",
-      "nativeRender": false,
-      "context": { "var": "resolved" },
-      "autoescape": true,
-      "expected": "{{ var }}resolved{{ var }}"
-    },
-    {
-      "id": "parser-verbatim-multiline-multiple",
-      "template": "\n{% verbatim %}{{ var }}{% endverbatim %}\n{{ var }}\n{% verbatim %}{{ var }}{% endverbatim %}\n",
-      "nativeRender": false,
-      "context": { "var": "resolved" },
-      "autoescape": true,
-      "expected": "\n{{ var }}\nresolved\n{{ var }}\n"
     }
   ]
 }

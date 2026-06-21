@@ -1,14 +1,8 @@
 import type {
-  BodyTemplateTagRenderer,
-  CapabilityCallContext,
   TemplateCapabilities,
   TemplateFilter,
-  TemplateGlobal,
-  TemplateTag,
-  TemplateTagRenderer,
-  TemplateTest,
+  TemplateGlobalFunction,
 } from '../capabilities.ts';
-import type { ParseTagDescriptor } from '../parser/index.ts';
 import {
   copyPublicValue,
   copyRuntimeValue,
@@ -17,160 +11,48 @@ import {
 } from './value.ts';
 import type { RuntimeArguments, RuntimeHost } from './evaluator.ts';
 
-/** Creates an immutable trusted-host dispatcher for the native interpreter. */
+/** Creates an immutable synchronous host dispatcher for the interpreter. */
 export function createRuntimeHost(capabilities: TemplateCapabilities): RuntimeHost {
-  const filters = copyCallbacks(capabilities.filters, 'filter');
-  const tests = copyCallbacks(capabilities.tests, 'test');
-  const globals = copyCallbacks(capabilities.globals, 'global');
-  const tags = copyTags(capabilities.tags);
+  const filters = copyFunctions(capabilities.filters, 'filter');
+  const globalFunctions = new Map<string, TemplateGlobalFunction>();
+  const globalValues = new Map<string, RuntimeValue>();
+  copyGlobals(capabilities.globals, globalFunctions, globalValues);
 
   return Object.freeze({
-    tags: Object.freeze([...tags.values()].map(tag => tag.descriptor)),
     hasFilter(name) {
       return filters.has(name);
     },
-    hasTest(name) {
-      return tests.has(name);
-    },
     hasGlobal(name) {
-      return globals.has(name);
+      return globalFunctions.has(name);
     },
-    hasTag(name) {
-      return tags.has(name);
+    globalValue(name) {
+      return globalValues.has(name)
+        ? { found: true, value: globalValues.get(name) }
+        : { found: false };
     },
-    async filter(name, input, arguments_, signal) {
-      const callback = filters.get(name) as TemplateFilter | undefined;
+    filter(name, input, arguments_) {
+      const callback = filters.get(name);
       if (!callback) {
         return { found: false };
       }
-      throwIfAborted(signal);
-      const value = await callback(
+      const value = callback(
         copyPublicValue(input),
-        arguments_.positional.map(copyPublicValue),
-        capabilityContext(signal),
+        ...arguments_.positional.map(copyPublicValue),
       );
       return { found: true, value: copyRuntimeValue(value) };
     },
-    async test(name, input, arguments_, signal) {
-      const callback = tests.get(name) as TemplateTest | undefined;
-      if (!callback) {
-        return undefined;
-      }
-      throwIfAborted(signal);
-      const value = await callback(
-        copyPublicValue(input),
-        arguments_.positional.map(copyPublicValue),
-        capabilityContext(signal),
-      );
-      if (typeof value !== 'boolean') {
-        throw new TypeError(`Template test ${name} must return a boolean`);
-      }
-      return value;
-    },
-    async global(name, arguments_, signal) {
-      const callback = globals.get(name) as TemplateGlobal | undefined;
+    global(name, arguments_) {
+      const callback = globalFunctions.get(name);
       if (!callback) {
         return { found: false };
       }
-      throwIfAborted(signal);
-      const value = await callback(
-        arguments_.positional.map(copyPublicValue),
-        capabilityContext(signal),
-      );
-      return { found: true, value: copyRuntimeValue(value) };
-    },
-    async tag(name, arguments_, content, signal) {
-      const tag = tags.get(name);
-      if (!tag) {
-        return { found: false };
-      }
-      throwIfAborted(signal);
-      let value;
-      if (tag.descriptor.type === 'inline') {
-        value = await (tag.render as TemplateTagRenderer)(
-          Object.freeze(arguments_.positional.map(copyPublicValue)),
-          capabilityContext(signal),
-        );
-      } else {
-        const keywordArguments = Object.create(null) as Record<string, ReturnType<typeof copyPublicValue>>;
-        for (const [key, entry] of arguments_.keyword) {
-          keywordArguments[key] = copyPublicValue(entry);
-        }
-        const sections = Object.create(null) as Record<string, string>;
-        for (const [index, sectionName] of tag.descriptor.intermediateTags.entries()) {
-          const section = content[index + 1];
-          if (section !== undefined) {
-            sections[sectionName] = section;
-          }
-        }
-        value = await (tag.render as BodyTemplateTagRenderer)(Object.freeze({
-          arguments: Object.freeze(arguments_.positional.map(copyPublicValue)),
-          keywordArguments: Object.freeze(keywordArguments),
-          body: content[0] ?? '',
-          sections: Object.freeze(sections),
-        }), capabilityContext(signal));
-      }
+      const value = callback(...arguments_.positional.map(copyPublicValue));
       return { found: true, value: copyRuntimeValue(value) };
     },
   } satisfies RuntimeHost);
 }
 
-interface RegisteredTag {
-  readonly descriptor: ParseTagDescriptor;
-  readonly render: TemplateTagRenderer | BodyTemplateTagRenderer;
-}
-
-function copyTags(
-  values: Readonly<Record<string, TemplateTag>> | undefined,
-): ReadonlyMap<string, RegisteredTag> {
-  const copied = new Map<string, RegisteredTag>();
-  if (!values) {
-    return copied;
-  }
-  assertPlainRecord(values, 'tag registry');
-  for (const key of Reflect.ownKeys(values)) {
-    if (typeof key !== 'string') {
-      throw new TypeError('Template tag registry cannot contain symbol keys');
-    }
-    if (isReservedName(key) || !/^[A-Za-z_][A-Za-z0-9_]*$/.test(key)) {
-      throw new TypeError(`Template tag name ${key} is invalid or reserved`);
-    }
-    const property = Object.getOwnPropertyDescriptor(values, key);
-    if (!property?.enumerable) {
-      continue;
-    }
-    if (!('value' in property) || !property.value || typeof property.value !== 'object') {
-      throw new TypeError(`Template tag ${key} must be a data property`);
-    }
-    const schema = property.value as TemplateTag;
-    assertPlainRecord(schema, `tag ${key}`);
-    const type = dataProperty(schema, 'type');
-    const render = dataProperty(schema, 'render');
-    if ((type !== 'inline' && type !== 'body') || typeof render !== 'function') {
-      throw new TypeError(`Template tag ${key} must use a supported declarative schema`);
-    }
-    const intermediateTags = type === 'body'
-      ? copyTagNames(key, dataProperty(schema, 'intermediateTags'))
-      : [];
-    const endTagValue = type === 'body' ? dataProperty(schema, 'endTag') : undefined;
-    if (endTagValue !== undefined && !isTagName(endTagValue)) {
-      throw new TypeError(`Template tag ${key} has an invalid end tag`);
-    }
-    const descriptor = Object.freeze({
-      name: key,
-      type,
-      ...(endTagValue === undefined ? {} : { endTag: endTagValue }),
-      intermediateTags: Object.freeze(intermediateTags),
-    }) satisfies ParseTagDescriptor;
-    copied.set(key, Object.freeze({
-      descriptor,
-      render: render as TemplateTagRenderer | BodyTemplateTagRenderer,
-    }));
-  }
-  return copied;
-}
-
-function copyCallbacks<T extends TemplateFilter | TemplateTest | TemplateGlobal>(
+function copyFunctions<T extends TemplateFilter | TemplateGlobalFunction>(
   callbacks: Readonly<Record<string, T>> | undefined,
   kind: string,
 ): ReadonlyMap<string, T> {
@@ -198,52 +80,40 @@ function copyCallbacks<T extends TemplateFilter | TemplateTest | TemplateGlobal>
   return copied;
 }
 
-function copyTagNames(tagName: string, value: unknown): string[] {
-  if (value === undefined) {
-    return [];
+function copyGlobals(
+  globals: TemplateCapabilities['globals'],
+  functions: Map<string, TemplateGlobalFunction>,
+  values: Map<string, RuntimeValue>,
+): void {
+  if (!globals) {
+    return;
   }
-  if (!Array.isArray(value)) {
-    throw new TypeError(`Template tag ${tagName} intermediate tags must be an array`);
-  }
-  const names = value.map(entry => {
-    if (!isTagName(entry)) {
-      throw new TypeError(`Template tag ${tagName} has an invalid intermediate tag`);
+  assertPlainRecord(globals, 'global registry');
+  for (const key of Reflect.ownKeys(globals)) {
+    if (typeof key !== 'string') {
+      throw new TypeError('Template global registry cannot contain symbol keys');
     }
-    return entry;
-  });
-  if (new Set(names).size !== names.length) {
-    throw new TypeError(`Template tag ${tagName} has duplicate intermediate tags`);
+    if (isReservedName(key)) {
+      throw new TypeError(`Template global name ${key} is reserved`);
+    }
+    const descriptor = Object.getOwnPropertyDescriptor(globals, key);
+    if (!descriptor?.enumerable) {
+      continue;
+    }
+    if (!('value' in descriptor)) {
+      throw new TypeError(`Template global ${key} must be a data property`);
+    }
+    if (typeof descriptor.value === 'function') {
+      functions.set(key, descriptor.value as TemplateGlobalFunction);
+    } else {
+      values.set(key, copyRuntimeValue(descriptor.value));
+    }
   }
-  return names;
-}
-
-function isTagName(value: unknown): value is string {
-  return typeof value === 'string' && /^[A-Za-z_][A-Za-z0-9_]*$/.test(value) && !isReservedName(value);
 }
 
 function assertPlainRecord(value: object, description: string): void {
   const prototype = Object.getPrototypeOf(value);
   if (prototype !== Object.prototype && prototype !== null) {
     throw new TypeError(`Template ${description} must be a plain record`);
-  }
-}
-
-function dataProperty(value: object, name: string): unknown {
-  const descriptor = Object.getOwnPropertyDescriptor(value, name);
-  if (!descriptor || !('value' in descriptor)) {
-    return undefined;
-  }
-  return descriptor.value;
-}
-
-function capabilityContext(signal: AbortSignal): CapabilityCallContext {
-  return Object.freeze({ signal });
-}
-
-function throwIfAborted(signal: AbortSignal): void {
-  if (signal.aborted) {
-    throw signal.reason instanceof Error
-      ? signal.reason
-      : new DOMException('The operation was aborted', 'AbortError');
   }
 }

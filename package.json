@@ -1,7 +1,7 @@
 {
   "name": "nunjitsu",
   "version": "0.0.0",
-  "description": "A secure Nunjucks-compatible template engine written in TypeScript",
+  "description": "A secure Backstage scaffolder template engine written in TypeScript",
   "type": "module",
   "private": true,
   "engines": {
