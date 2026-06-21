@@ -1,5 +1,16 @@
-import type { AstData, AstNode, AstRegexLiteral } from '../parser/ast.ts';
-import { astField, astNode, astNodes, optionalAstNode } from '../parser/ast.ts';
+import type {
+  AstBinaryNode,
+  AstBlockNode,
+  AstCallNode,
+  AstCallableBodyNode,
+  AstCompareNode,
+  AstData,
+  AstForNode,
+  AstNode,
+  AstRegexLiteral,
+  AstSetNode,
+  AstSliceNode,
+} from '../parser/ast.ts';
 import { parseTemplate } from '../parser/index.ts';
 import type { NormalizedRenderLimits } from '../limits.ts';
 import { NunjitsuLimitError } from '../limits.ts';
@@ -65,12 +76,12 @@ export interface EvaluateOptions {
 type OutputTarget = string[];
 
 interface MacroDefinition {
-  readonly node: AstNode;
+  readonly node: AstCallableBodyNode;
   readonly scope: RuntimeScope;
 }
 
 interface BlockDefinition {
-  readonly node: AstNode;
+  readonly node: AstBlockNode;
 }
 
 interface BlockFrame {
@@ -133,7 +144,6 @@ class Evaluator {
   #outputCodeUnits = 0;
   #capabilityCalls = 0;
   #sourceCodeUnits = 0;
-  #astNodeCount = 0;
 
   constructor(options: EvaluateOptions) {
     this.#options = options;
@@ -151,15 +161,7 @@ class Evaluator {
       trimBlocks: this.#options.trimBlocks,
       lstripBlocks: this.#options.lstripBlocks,
       cookiecutterCompat: this.#options.cookiecutterCompat,
-    });
-    visitAst(ast, () => {
-      this.#astNodeCount += 1;
-      if (
-        this.#options.limits.astNodes !== Number.POSITIVE_INFINITY &&
-        this.#astNodeCount > this.#options.limits.astNodes
-      ) {
-        throw new NunjitsuLimitError('astNodes');
-      }
+      astNodes: this.#options.limits.astNodes,
     });
     return ast;
   }
@@ -205,10 +207,10 @@ class Evaluator {
     switch (node.type) {
       case 'Root':
       case 'NodeList':
-        this.#evaluateSequence(astNodes(node, 'children'), scope, output, depth);
+        this.#evaluateSequence(node.children, scope, output, depth);
         return;
       case 'Output':
-        for (const child of astNodes(node, 'children')) {
+        for (const child of node.children) {
           if (child.type === 'TemplateData') {
             this.#append(output, literalString(child));
           } else {
@@ -219,11 +221,11 @@ class Evaluator {
         return;
       case 'If':
       {
-        const condition = this.#evaluateExpression(astNode(node, 'cond'), scope, depth + 1);
+        const condition = this.#evaluateExpression(node.cond, scope, depth + 1);
         if (runtimeTruthy(condition)) {
-          this.#evaluateNode(astNode(node, 'body'), scope, output, depth + 1);
+          this.#evaluateNode(node.body, scope, output, depth + 1);
         } else {
-          const otherwise = optionalAstNode(node, 'else_');
+          const otherwise = node.else_;
           if (otherwise) {
             this.#evaluateNode(otherwise, scope, output, depth + 1);
           }
@@ -237,7 +239,7 @@ class Evaluator {
         this.#evaluateSet(node, scope, depth + 1);
         return;
       case 'Macro': {
-        const name = symbolName(astNode(node, 'name'));
+        const name = symbolName(node.name);
         const id = this.#nextCallableId++;
         const definitionScope = this.#blockStack.at(-1)?.scope ?? scope;
         this.#macros.set(id, { node, scope: definitionScope });
@@ -248,26 +250,20 @@ class Evaluator {
         this.#evaluateBlock(node, scope, output, depth + 1);
         return;
       case 'Switch': {
-        const value = this.#evaluateExpression(astNode(node, 'expr'), scope, depth + 1);
-        const cases = astField(node, 'cases');
-        if (!Array.isArray(cases)) {
-          throw new Error('Invalid switch case list');
-        }
+        const value = this.#evaluateExpression(node.expr, scope, depth + 1);
+        const cases = node.cases;
         let matched = false;
         for (const candidate of cases) {
-          if (!isNode(candidate) || candidate.type !== 'Case') {
-            throw new Error('Invalid switch case');
-          }
           const condition = matched
             ? undefined
-            : this.#evaluateExpression(astNode(candidate, 'cond'), scope, depth + 1);
+            : this.#evaluateExpression(candidate.cond, scope, depth + 1);
           if (matched || runtimeEqual(value, condition, false)) {
             matched = true;
-            if (astNodes(astNode(candidate, 'body'), 'children').length === 0) {
+            if (candidate.body.type === 'NodeList' && candidate.body.children.length === 0) {
               continue;
             }
             this.#evaluateNode(
-              astNode(candidate, 'body'),
+              candidate.body,
               scope,
               output,
               depth + 1,
@@ -275,7 +271,7 @@ class Evaluator {
             return;
           }
         }
-        const fallback = optionalAstNode(node, 'default');
+        const fallback = node.default;
         if (fallback) {
           this.#evaluateNode(fallback, scope, output, depth + 1);
         }
@@ -292,7 +288,10 @@ class Evaluator {
     output: OutputTarget,
     depth: number,
   ): void {
-    const name = symbolName(astNode(node, 'name'));
+    if (node.type !== 'Block') {
+      throw new Error('Invalid block node');
+    }
+    const name = symbolName(node.name);
     const chain: readonly BlockDefinition[] = this.#activeBlocks.get(name) ?? [
       { node },
     ];
@@ -313,7 +312,7 @@ class Evaluator {
     this.#blockStack.push({ chain, index, scope });
     try {
       this.#evaluateNode(
-        astNode(definition.node, 'body'),
+        definition.node.body,
         scope.child(true),
         output,
         depth + 1,
@@ -335,21 +334,21 @@ class Evaluator {
   }
 
   #evaluateFor(
-    node: AstNode,
+    node: AstForNode,
     scope: RuntimeScope,
     output: OutputTarget,
     depth: number,
   ): void {
-    const value = this.#evaluateExpression(astNode(node, 'arr'), scope, depth + 1);
+    const value = this.#evaluateExpression(node.arr, scope, depth + 1);
     const entries = iterableEntries(value);
     if (entries.length === 0) {
-      const otherwise = optionalAstNode(node, 'else_');
+      const otherwise = node.else_;
       if (otherwise) {
         this.#evaluateNode(otherwise, scope.child(), output, depth + 1);
       }
       return;
     }
-    const binding = astNode(node, 'name');
+    const binding = node.name;
     const loopScope = scope.child();
     let index = 0;
     for (const entry of entries.values) {
@@ -365,7 +364,7 @@ class Evaluator {
         ['length', entries.length],
       ]));
       this.#evaluateNode(
-        astNode(node, 'body'),
+        node.body,
         iteration,
         output,
         depth + 1,
@@ -374,21 +373,18 @@ class Evaluator {
     }
   }
 
-  #evaluateSet(node: AstNode, scope: RuntimeScope, depth: number): void {
-    const targets = astField(node, 'targets');
-    if (!Array.isArray(targets) || !targets.every(isNode)) {
-      throw new Error('Invalid assignment target list');
-    }
-    const valueNode = optionalAstNode(node, 'value');
+  #evaluateSet(node: AstSetNode, scope: RuntimeScope, depth: number): void {
+    const targets = node.targets;
+    const valueNode = node.value;
     let value: RuntimeValue;
     if (valueNode) {
       value = this.#evaluateExpression(valueNode, scope, depth + 1);
     } else {
-      const body = optionalAstNode(node, 'body');
+      const body = node.body;
       if (!body) {
         throw new Error('Invalid block assignment');
       }
-      const capturedBody = body.type === 'Capture' ? astNode(body, 'body') : body;
+      const capturedBody = body.type === 'Capture' ? body.body : body;
       value = this.#capture(capturedBody, scope, depth + 1, false);
     }
     if (targets.length === 1) {
@@ -408,7 +404,7 @@ class Evaluator {
     this.#charge(depth);
     switch (node.type) {
       case 'Literal': {
-        const value = astField(node, 'value');
+        const value = node.value;
         if (isRegexLiteral(value)) {
           return new RuntimeRegex(value.source, value.flags);
         }
@@ -452,7 +448,7 @@ class Evaluator {
       case 'Array':
       case 'Group': {
         const values: RuntimeValue[] = [];
-        for (const child of astNodes(node, 'children')) {
+        for (const child of node.children) {
           values.push(this.#evaluateExpression(child, scope, depth + 1));
         }
         return node.type === 'Group' && values.length === 1
@@ -462,8 +458,11 @@ class Evaluator {
       case 'Dict':
       case 'KeywordArgs': {
         const entries: Array<readonly [string, RuntimeValue]> = [];
-        for (const pair of astNodes(node, 'children')) {
-          const keyNode = astNode(pair, 'key');
+        for (const pair of node.children) {
+          if (pair.type !== 'Pair') {
+            throw new Error('Invalid entry node');
+          }
+          const keyNode = pair.key;
           const name = keyNode.type === 'Symbol'
             ? symbolName(keyNode)
             : renderRuntimeValue(this.#evaluateExpression(keyNode, scope, depth + 1));
@@ -472,19 +471,19 @@ class Evaluator {
           }
           entries.push([
             name,
-            this.#evaluateExpression(astNode(pair, 'value'), scope, depth + 1),
+            this.#evaluateExpression(pair.value, scope, depth + 1),
           ]);
         }
         return new RuntimeRecord(entries);
       }
       case 'LookupVal': {
-        const target = this.#evaluateExpression(astNode(node, 'target'), scope, depth + 1);
-        const valueNode = astNode(node, 'val');
+        const target = this.#evaluateExpression(node.target, scope, depth + 1);
+        const valueNode = node.val;
         if (valueNode.type === 'Slice') {
           return this.#evaluateSlice(target, valueNode, scope, depth + 1);
         }
         if (valueNode.type === 'Array') {
-          const children = astNodes(valueNode, 'children');
+          const children = valueNode.children;
           if (children.length === 1 && children[0]?.type === 'Slice') {
             return this.#evaluateSlice(target, children[0], scope, depth + 1);
           }
@@ -501,33 +500,33 @@ class Evaluator {
         return lookupRuntimeValue(target, key);
       }
       case 'InlineIf': {
-        const condition = this.#evaluateExpression(astNode(node, 'cond'), scope, depth + 1);
+        const condition = this.#evaluateExpression(node.cond, scope, depth + 1);
         if (runtimeTruthy(condition)) {
-          return this.#evaluateExpression(astNode(node, 'body'), scope, depth + 1);
+          return this.#evaluateExpression(node.body, scope, depth + 1);
         }
-        const otherwise = optionalAstNode(node, 'else_');
+        const otherwise = node.else_;
         return otherwise
           ? this.#evaluateExpression(otherwise, scope, depth + 1)
           : undefined;
       }
       case 'Or': {
-        const left = this.#evaluateExpression(astNode(node, 'left'), scope, depth + 1);
+        const left = this.#evaluateExpression(node.left, scope, depth + 1);
         return runtimeTruthy(left)
           ? left
-          : this.#evaluateExpression(astNode(node, 'right'), scope, depth + 1);
+          : this.#evaluateExpression(node.right, scope, depth + 1);
       }
       case 'And': {
-        const left = this.#evaluateExpression(astNode(node, 'left'), scope, depth + 1);
+        const left = this.#evaluateExpression(node.left, scope, depth + 1);
         return runtimeTruthy(left)
-          ? this.#evaluateExpression(astNode(node, 'right'), scope, depth + 1)
+          ? this.#evaluateExpression(node.right, scope, depth + 1)
           : left;
       }
       case 'Not':
-        return !runtimeTruthy(this.#evaluateExpression(astNode(node, 'target'), scope, depth + 1));
+        return !runtimeTruthy(this.#evaluateExpression(node.target, scope, depth + 1));
       case 'Neg':
-        return -runtimeNumber(this.#evaluateExpression(astNode(node, 'target'), scope, depth + 1));
+        return -runtimeNumber(this.#evaluateExpression(node.target, scope, depth + 1));
       case 'Pos':
-        return runtimeNumber(this.#evaluateExpression(astNode(node, 'target'), scope, depth + 1));
+        return runtimeNumber(this.#evaluateExpression(node.target, scope, depth + 1));
       case 'Add':
       case 'Concat':
       case 'Sub':
@@ -540,8 +539,8 @@ class Evaluator {
       case 'Compare':
         return this.#evaluateComparison(node, scope, depth + 1);
       case 'In': {
-        const needle = this.#evaluateExpression(astNode(node, 'left'), scope, depth + 1);
-        const container = this.#evaluateExpression(astNode(node, 'right'), scope, depth + 1);
+        const needle = this.#evaluateExpression(node.left, scope, depth + 1);
+        const container = this.#evaluateExpression(node.right, scope, depth + 1);
         return runtimeContains(container, needle);
       }
       case 'Is':
@@ -551,7 +550,7 @@ class Evaluator {
       case 'FunCall':
         return this.#evaluateCall(node, scope, depth + 1);
       case 'Capture':
-        return this.#capture(astNode(node, 'body'), scope.child(), depth + 1, false);
+        return this.#capture(node.body, scope.child(), depth + 1, false);
       case 'Caller':
         return this.#registerCaller(node, scope);
       default:
@@ -561,13 +560,13 @@ class Evaluator {
 
   #evaluateSlice(
     target: RuntimeValue,
-    slice: AstNode,
+    slice: AstSliceNode,
     scope: RuntimeScope,
     depth: number,
   ): RuntimeValue {
-    const startValue = this.#evaluateExpression(astNode(slice, 'start'), scope, depth + 1);
-    const stopValue = this.#evaluateExpression(astNode(slice, 'stop'), scope, depth + 1);
-    const stepValue = this.#evaluateExpression(astNode(slice, 'step'), scope, depth + 1);
+    const startValue = this.#evaluateExpression(slice.start, scope, depth + 1);
+    const stopValue = this.#evaluateExpression(slice.stop, scope, depth + 1);
+    const stepValue = this.#evaluateExpression(slice.step, scope, depth + 1);
     const values = target instanceof RuntimeArray
       ? [...target.values()]
       : typeof target === 'string' || target instanceof RuntimeSafeString
@@ -603,9 +602,9 @@ class Evaluator {
     return new RuntimeArray(output);
   }
 
-  #evaluateBinary(node: AstNode, scope: RuntimeScope, depth: number): RuntimeValue {
-    const left = this.#evaluateExpression(astNode(node, 'left'), scope, depth + 1);
-    const right = this.#evaluateExpression(astNode(node, 'right'), scope, depth + 1);
+  #evaluateBinary(node: AstBinaryNode, scope: RuntimeScope, depth: number): RuntimeValue {
+    const left = this.#evaluateExpression(node.left, scope, depth + 1);
+    const right = this.#evaluateExpression(node.right, scope, depth + 1);
     if (
       node.type === 'Concat' ||
       (node.type === 'Add' && (isStringValue(left) || isStringValue(right)))
@@ -627,15 +626,14 @@ class Evaluator {
   }
 
   #evaluateComparison(
-    node: AstNode,
+    node: AstCompareNode,
     scope: RuntimeScope,
     depth: number,
   ): boolean {
-    let left = this.#evaluateExpression(astNode(node, 'expr'), scope, depth + 1);
-    for (const operation of astNodes(node, 'ops')) {
-      const right = this.#evaluateExpression(astNode(operation, 'expr'), scope, depth + 1);
-      const type = astField(operation, 'type');
-      if (typeof type !== 'string' || !runtimeCompare(left, type, right)) {
+    let left = this.#evaluateExpression(node.expr, scope, depth + 1);
+    for (const operation of node.ops) {
+      const right = this.#evaluateExpression(operation.expr, scope, depth + 1);
+      if (!runtimeCompare(left, operation.operator, right)) {
         return false;
       }
       left = right;
@@ -643,9 +641,9 @@ class Evaluator {
     return true;
   }
 
-  #evaluateFilter(node: AstNode, scope: RuntimeScope, depth: number): RuntimeValue {
-    const name = symbolName(astNode(node, 'name'));
-    const arguments_ = this.#evaluateArguments(astNode(node, 'args'), scope, depth + 1);
+  #evaluateFilter(node: AstCallNode, scope: RuntimeScope, depth: number): RuntimeValue {
+    const name = symbolName(node.name);
+    const arguments_ = this.#evaluateArguments(node.args, scope, depth + 1);
     const [input, ...positional] = arguments_.positional;
     this.#assertScratch([input, ...positional, ...arguments_.keyword.values()]);
     if (this.#options.host?.hasFilter?.(name)) {
@@ -667,14 +665,14 @@ class Evaluator {
     return builtin;
   }
 
-  #evaluateTest(node: AstNode, scope: RuntimeScope, depth: number): boolean {
-    const input = this.#evaluateExpression(astNode(node, 'left'), scope, depth + 1);
-    const test = astNode(node, 'right');
+  #evaluateTest(node: AstBinaryNode, scope: RuntimeScope, depth: number): boolean {
+    const input = this.#evaluateExpression(node.left, scope, depth + 1);
+    const test = node.right;
     let name: string;
     let arguments_: RuntimeArguments;
     if (test.type === 'FunCall') {
-      name = symbolName(astNode(test, 'name'));
-      arguments_ = this.#evaluateArguments(astNode(test, 'args'), scope, depth + 1);
+      name = symbolName(test.name);
+      arguments_ = this.#evaluateArguments(test.args, scope, depth + 1);
     } else if (test.type === 'Symbol') {
       name = symbolName(test);
       arguments_ = Object.freeze({ positional: Object.freeze([]), keyword: new Map() });
@@ -691,8 +689,8 @@ class Evaluator {
     return builtin;
   }
 
-  #evaluateCall(node: AstNode, scope: RuntimeScope, depth: number): RuntimeValue {
-    const targetNode = astNode(node, 'name');
+  #evaluateCall(node: AstCallNode, scope: RuntimeScope, depth: number): RuntimeValue {
+    const targetNode = node.name;
     const name = callablePath(targetNode);
     if (name === 'super' && this.#blockStack.length > 0) {
       const frame = this.#blockStack.at(-1)!;
@@ -703,7 +701,7 @@ class Evaluator {
     const target = name && this.#options.host?.hasGlobal?.(name)
       ? new RuntimeCallable('capability', this.#registerGlobal(name))
       : this.#evaluateExpression(targetNode, scope, depth + 1);
-    const arguments_ = this.#evaluateArguments(astNode(node, 'args'), scope, depth + 1);
+    const arguments_ = this.#evaluateArguments(node.args, scope, depth + 1);
     if (target instanceof RuntimeCallable) {
       if (target.callableKind === 'macro' || target.callableKind === 'caller') {
         return this.#invokeMacro(target.id, arguments_, depth + 1);
@@ -742,10 +740,16 @@ class Evaluator {
   ): RuntimeArguments {
     const positional: RuntimeValue[] = [];
     const keyword = new Map<string, RuntimeValue>();
-    for (const child of astNodes(node, 'children')) {
+    if (node.type !== 'NodeList') {
+      throw new Error('Invalid argument list');
+    }
+    for (const child of node.children) {
       if (child.type === 'KeywordArgs') {
-        for (const pair of astNodes(child, 'children')) {
-          const keyNode = astNode(pair, 'key');
+        for (const pair of child.children) {
+          if (pair.type !== 'Pair') {
+            throw new Error('Invalid keyword argument');
+          }
+          const keyNode = pair.key;
           const name = keyNode.type === 'Symbol'
             ? symbolName(keyNode)
             : renderRuntimeValue(this.#evaluateExpression(keyNode, scope, depth + 1));
@@ -754,7 +758,7 @@ class Evaluator {
           }
           keyword.set(
             name,
-            this.#evaluateExpression(astNode(pair, 'value'), scope, depth + 1),
+            this.#evaluateExpression(pair.value, scope, depth + 1),
           );
         }
       } else {
@@ -772,7 +776,7 @@ class Evaluator {
     return hash || 1;
   }
 
-  #registerCaller(node: AstNode, scope: RuntimeScope): RuntimeCallable {
+  #registerCaller(node: AstCallableBodyNode, scope: RuntimeScope): RuntimeCallable {
     const id = this.#nextCallableId++;
     this.#macros.set(id, { node, scope });
     return new RuntimeCallable('caller', id);
@@ -788,17 +792,24 @@ class Evaluator {
       throw new Error('Unknown template macro');
     }
     const local = definition.scope.child(true);
-    const argumentNodes = astNodes(astNode(definition.node, 'args'), 'children');
+    const args = definition.node.args;
+    if (args.type !== 'NodeList') {
+      throw new Error('Invalid macro arguments');
+    }
+    const argumentNodes = args.children;
     let positionalIndex = 0;
     for (const argument of argumentNodes) {
       if (argument.type === 'KeywordArgs') {
-        for (const pair of astNodes(argument, 'children')) {
-          const name = symbolName(astNode(pair, 'key'));
+        for (const pair of argument.children) {
+          if (pair.type !== 'Pair') {
+            throw new Error('Invalid macro default');
+          }
+          const name = symbolName(pair.key);
           const supplied = arguments_.keyword.get(name) ?? arguments_.positional[positionalIndex++];
           local.set(
             name,
             supplied === undefined
-              ? this.#evaluateExpression(astNode(pair, 'value'), local, depth + 1)
+              ? this.#evaluateExpression(pair.value, local, depth + 1)
               : supplied,
           );
         }
@@ -816,7 +827,7 @@ class Evaluator {
       }
     }
     return this.#capture(
-      astNode(definition.node, 'body'),
+      definition.node.body,
       local,
       depth + 1,
       true,
@@ -980,7 +991,7 @@ function symbolName(node: AstNode): string {
   if (node.type !== 'Symbol') {
     throw new Error(`Expected symbol, received ${node.type}`);
   }
-  const name = astField(node, 'value');
+  const name = node.value;
   if (typeof name !== 'string' || isReservedName(name)) {
     throw new Error('Invalid or reserved template symbol');
   }
@@ -994,25 +1005,20 @@ function callablePath(node: AstNode): string | undefined {
   if (node.type !== 'LookupVal') {
     return undefined;
   }
-  const parent = callablePath(astNode(node, 'target'));
-  const key = astNode(node, 'val');
-  const value = astField(key, 'value');
-  if (!parent || (key.type !== 'Literal' && key.type !== 'Symbol') || typeof value !== 'string') {
+  const parent = callablePath(node.target);
+  const key = node.val;
+  const value = key.type === 'Literal' || key.type === 'Symbol' ? key.value : undefined;
+  if (!parent || typeof value !== 'string') {
     return undefined;
   }
   return `${parent}.${value}`;
 }
 
 function literalString(node: AstNode): string {
-  const value = astField(node, 'value');
-  if (typeof value !== 'string') {
+  if (node.type !== 'TemplateData') {
     throw new Error('Invalid template text node');
   }
-  return value;
-}
-
-function isNode(value: AstData): value is AstNode {
-  return Boolean(value && typeof value === 'object' && !Array.isArray(value) && 'fields' in value);
+  return node.value;
 }
 
 function isRegexLiteral(value: AstData): value is AstRegexLiteral {
@@ -1035,7 +1041,7 @@ function constantLookupKey(node: AstNode): (
   if (node.type !== 'Literal') {
     return { found: false };
   }
-  const value = astField(node, 'value');
+  const value = node.value;
   if (
     value === undefined ||
     value === null ||
@@ -1058,7 +1064,7 @@ function bindTarget(target: AstNode, value: RuntimeValue, scope: RuntimeScope): 
     return;
   }
   if (target.type === 'Array' || target.type === 'Group') {
-    for (const [index, child] of astNodes(target, 'children').entries()) {
+    for (const [index, child] of target.children.entries()) {
       bindTarget(child, value instanceof RuntimeArray ? value.at(index) : undefined, scope);
     }
     return;
@@ -1184,7 +1190,7 @@ function collectBlocks(ast: AstNode): ReadonlyMap<string, readonly BlockDefiniti
   const blocks = new Map<string, readonly BlockDefinition[]>();
   visitAst(ast, node => {
     if (node.type === 'Block') {
-      const name = symbolName(astNode(node, 'name'));
+      const name = symbolName(node.name);
       if (blocks.has(name)) {
         throw new Error(`Template defines block ${name} more than once`);
       }
@@ -1207,15 +1213,81 @@ function mergeBlocks(
 
 function visitAst(node: AstNode, visitor: (node: AstNode) => void): void {
   visitor(node);
-  for (const value of Object.values(node.fields)) {
-    if (isNode(value)) {
-      visitAst(value, visitor);
-    } else if (Array.isArray(value)) {
-      for (const child of value) {
-        if (isNode(child)) {
-          visitAst(child, visitor);
-        }
+  for (const child of astChildren(node)) {
+    visitAst(child, visitor);
+  }
+}
+
+function astChildren(node: AstNode): readonly AstNode[] {
+  switch (node.type) {
+    case 'Root':
+    case 'NodeList':
+    case 'Output':
+    case 'Group':
+    case 'Array':
+    case 'Dict':
+    case 'KeywordArgs':
+      return node.children;
+    case 'Pair':
+      return [node.key, node.value];
+    case 'LookupVal':
+      return [node.target, node.val];
+    case 'Slice':
+      return [node.start, node.stop, node.step];
+    case 'If':
+    case 'InlineIf':
+      return node.else_ ? [node.cond, node.body, node.else_] : [node.cond, node.body];
+    case 'For':
+      return node.else_ ? [node.arr, node.name, node.body, node.else_] : [node.arr, node.name, node.body];
+    case 'Macro':
+    case 'Caller':
+      return [node.name, node.args, node.body];
+    case 'FunCall':
+    case 'Filter':
+      return [node.name, node.args];
+    case 'Block':
+      return [node.name, node.body];
+    case 'Set': {
+      const children = [...node.targets];
+      if (node.value) {
+        children.push(node.value);
       }
+      if (node.body) {
+        children.push(node.body);
+      }
+      return children;
     }
+    case 'Switch':
+      return node.default ? [node.expr, ...node.cases, node.default] : [node.expr, ...node.cases];
+    case 'Case':
+      return [node.cond, node.body];
+    case 'Capture':
+      return [node.body];
+    case 'In':
+    case 'Is':
+    case 'Or':
+    case 'And':
+    case 'Add':
+    case 'Concat':
+    case 'Sub':
+    case 'Mul':
+    case 'Div':
+    case 'FloorDiv':
+    case 'Mod':
+    case 'Pow':
+      return [node.left, node.right];
+    case 'Not':
+    case 'Neg':
+    case 'Pos':
+      return [node.target];
+    case 'Compare':
+      return [node.expr, ...node.ops];
+    case 'CompareOperand':
+      return [node.expr];
+    case 'TemplateData':
+    case 'Literal':
+    case 'Symbol':
+    case 'Super':
+      return [];
   }
 }

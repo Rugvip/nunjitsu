@@ -12,7 +12,6 @@ test('parses complete templates into deeply immutable data-only nodes', () => {
 
   assert.equal(ast.type, 'Root');
   assert.ok(Object.isFrozen(ast));
-  assert.ok(Object.isFrozen(ast.fields));
   assertDataOnly(ast);
 });
 
@@ -73,7 +72,7 @@ test('rejects template loading syntax during complete parsing', () => {
     '{% from "x" import y %}',
     '{% extends "x" %}',
   ]) {
-    assert.throws(() => parseTemplate(source), /unsupported syntax node/);
+    assert.throws(() => parseTemplate(source), /Unsupported template-loading tag/);
   }
 });
 
@@ -95,15 +94,18 @@ function assertDataOnly(value: AstData): void {
   }
   if (isAstNode(value)) {
     assert.ok(Object.isFrozen(value));
-    assert.ok(Object.isFrozen(value.fields));
-    Object.values(value.fields).forEach(assertDataOnly);
+    for (const child of Object.values(value)) {
+      if (child !== value.type && typeof child !== 'number') {
+        assertDataOnly(child as AstData);
+      }
+    }
     return;
   }
   assert.deepEqual(Object.keys(value).sort(), ['flags', 'source', 'type']);
 }
 
 function findField(node: AstNode, predicate: (value: AstData) => boolean): AstData {
-  for (const value of Object.values(node.fields)) {
+  for (const value of Object.values(node) as AstData[]) {
     if (predicate(value)) {
       return value;
     }
