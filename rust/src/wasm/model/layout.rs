@@ -33,6 +33,7 @@ struct MemoryPrefix {
     active_render: u32,
     legacy_arena_cursor: u32,
     render_epoch: u32,
+    host_string_count: u32,
     layout_version: u32,
     legacy_arena_base: u32,
     reserved: u32,
@@ -57,6 +58,7 @@ impl MemoryPrefix {
         active_render: 0,
         legacy_arena_cursor: 0,
         render_epoch: 0,
+        host_string_count: 0,
         layout_version: 0,
         legacy_arena_base: 0,
         reserved: 0,
@@ -163,6 +165,7 @@ fn reset_memory_cursors() {
         (*prefix).active_render = 0;
         (*prefix).legacy_arena_cursor = (*prefix).legacy_arena_base;
         (*prefix).render_epoch = (*prefix).render_epoch.wrapping_add(1);
+        (*prefix).host_string_count = 0;
         (*prefix).slots.cursor = 1;
         (*prefix).sources.cursor = 0;
         (*prefix).values.cursor = 0;
@@ -190,7 +193,8 @@ fn configure_pool(cursor: &mut u32, capacity: u32, width: u32) -> Option<PoolSta
 
 fn slot_payload_length(tag: u32) -> Option<u32> {
     match tag {
-        TAG_SOURCE | TAG_EXPRESSION => Some(8),
+        TAG_SOURCE => Some(12),
+        TAG_EXPRESSION => Some(8),
         TAG_UNDEFINED | TAG_NULL => Some(0),
         TAG_BOOLEAN => Some(1),
         TAG_NUMBER => Some(8),
@@ -246,11 +250,15 @@ fn slot_category_mask(tag: u32) -> u32 {
 
 fn source_at(index: u32) -> Result<&'static [u16], u32> {
     let (tag, payload) = slot_record(index)?.ok_or(ERROR_INVALID_RECORD)?;
-    if tag != TAG_SOURCE || payload.len() != 8 {
+    if tag != TAG_SOURCE || payload.len() != 12 {
         return Err(ERROR_INVALID_RECORD);
     }
-    let start = read_u32(payload, 0)?;
-    let length = read_u32(payload, 4)?;
+    let handle = read_u32(payload, 0)?;
+    if handle == 0 || handle > unsafe { (*memory_prefix()).host_string_count } {
+        return Err(ERROR_INVALID_RECORD);
+    }
+    let start = read_u32(payload, 4)?;
+    let length = read_u32(payload, 8)?;
     let pool = unsafe { (*memory_prefix()).sources };
     let end = start.checked_add(length).ok_or(ERROR_INVALID_RECORD)?;
     if end > pool.cursor {
@@ -355,6 +363,10 @@ fn expression_at(index: u32) -> Result<&'static [u16], u32> {
 
 fn value_code_units(payload: &[u8]) -> Result<&'static [u16], u32> {
     if payload.len() != 12 {
+        return Err(ERROR_INVALID_RECORD);
+    }
+    let handle = read_u32(payload, 0)?;
+    if handle == 0 || handle > unsafe { (*memory_prefix()).host_string_count } {
         return Err(ERROR_INVALID_RECORD);
     }
     let start = read_u32(payload, 4)?;
@@ -585,11 +597,17 @@ pub extern "C" fn nunjitsu_pool_cursor(kind: u32) -> u32 {
 }
 
 #[unsafe(no_mangle)]
+pub extern "C" fn nunjitsu_host_string_count() -> u32 {
+    unsafe { (*memory_prefix()).host_string_count }
+}
+
+#[unsafe(no_mangle)]
 pub extern "C" fn nunjitsu_accept_host_cursors(
     slots: u32,
     sources: u32,
     values: u32,
     members: u32,
+    strings: u32,
 ) -> u32 {
     let prefix = memory_prefix();
     let current = unsafe {
@@ -600,6 +618,7 @@ pub extern "C" fn nunjitsu_accept_host_cursors(
             (*prefix).members,
         )
     };
+    let current_strings = unsafe { (*prefix).host_string_count };
     if slots < current.0.cursor
         || slots > current.0.capacity.saturating_add(1)
         || sources < current.1.cursor
@@ -608,6 +627,7 @@ pub extern "C" fn nunjitsu_accept_host_cursors(
         || values > current.2.capacity
         || members < current.3.cursor
         || members > current.3.capacity
+        || strings < current_strings
     {
         return 0;
     }
@@ -616,6 +636,7 @@ pub extern "C" fn nunjitsu_accept_host_cursors(
         (*prefix).sources.cursor = sources;
         (*prefix).values.cursor = values;
         (*prefix).members.cursor = members;
+        (*prefix).host_string_count = strings;
     }
     1
 }

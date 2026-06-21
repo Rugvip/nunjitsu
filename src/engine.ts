@@ -39,8 +39,8 @@ const memberBytes = 4;
 const stringOperationBytes = 32;
 const stringQueryBytes = 32;
 const outputRangeBytes = 16;
-const expectedAbiVersion = 29;
-const expectedMemoryLayoutVersion = 4;
+const expectedAbiVersion = 30;
+const expectedMemoryLayoutVersion = 5;
 
 /** Identifies the runtime assets used to start workers. */
 export interface RuntimeAssets {
@@ -211,6 +211,7 @@ interface PendingRenderBase {
   calling: boolean;
   loadedByName: Map<string | undefined, Map<string, CachedLoadedTemplate>>;
   loadedByCanonicalName: Map<string, CachedLoadedTemplate>;
+  hostStrings: string[];
 }
 
 /** Buffered render waiting for one terminal output value. */
@@ -767,11 +768,13 @@ class WorkerSlot {
       throw new Error('The Nunjitsu worker already has an active render');
     }
 
+    const hostStrings: string[] = [];
     const encoded = new ArenaWriter(
       this.memory,
       this.#arenaBase,
       this.#requireFixedLayout(),
       initialFixedCursors(),
+      hostStrings,
     ).encodeRender(
       template.source,
       context,
@@ -805,6 +808,7 @@ class WorkerSlot {
         calling: false,
         loadedByName: new Map(),
         loadedByCanonicalName: new Map(),
+        hostStrings,
       };
       if (signal) {
         const onAbort = () => {
@@ -851,11 +855,13 @@ class WorkerSlot {
       throw new Error('The Nunjitsu worker already has an active render');
     }
 
+    const hostStrings: string[] = [];
     const encoded = new ArenaWriter(
       this.memory,
       this.#arenaBase,
       this.#requireFixedLayout(),
       initialFixedCursors(),
+      hostStrings,
     ).encodeRender(
       template.source,
       context,
@@ -892,6 +898,7 @@ class WorkerSlot {
       calling: false,
       loadedByName: new Map(),
       loadedByCanonicalName: new Map(),
+      hostStrings,
       chunk: undefined,
       needsResume: false,
       done: false,
@@ -1088,6 +1095,7 @@ class WorkerSlot {
             message.cursor,
             this.#requireFixedLayout(),
             message.fixedCursors,
+            pending.hostStrings,
           ).encodeLoadedTemplate(loaded.source, loaded.canonicalName);
           cached = {
             sourceOffset: encoded.sourceOffset,
@@ -1153,6 +1161,7 @@ class WorkerSlot {
         message.cursor,
         this.#requireFixedLayout(),
         message.fixedCursors,
+        pending.hostStrings,
       ).encodeCapabilityResult(result);
       if (this.#pending !== pending || this.failed || this.#closed) {
         return;
@@ -1317,7 +1326,7 @@ function checkedCapacityBytes(capacity: number, width: number): number {
 }
 
 function initialFixedCursors(): FixedMemoryCursors {
-  return { slots: 1, sources: 0, values: 0, members: 0 };
+  return { slots: 1, sources: 0, values: 0, members: 0, strings: 0 };
 }
 
 function isFixedMemoryCursors(value: unknown): value is FixedMemoryCursors {
@@ -1329,7 +1338,8 @@ function isFixedMemoryCursors(value: unknown): value is FixedMemoryCursors {
     typeof cursors.slots === 'number' &&
     typeof cursors.sources === 'number' &&
     typeof cursors.values === 'number' &&
-    typeof cursors.members === 'number'
+    typeof cursors.members === 'number' &&
+    typeof cursors.strings === 'number'
   );
 }
 

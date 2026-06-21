@@ -101,7 +101,9 @@ interface NunjitsuExports {
     sources: number,
     values: number,
     members: number,
+    strings: number,
   ) => number;
+  hostStringCount: () => number;
   arenaBase: () => number;
   arenaCursor: () => number;
   arenaReset: () => void;
@@ -486,6 +488,7 @@ function readFixedMemoryCursors(exports: NunjitsuExports): FixedMemoryCursors {
     sources: exports.poolCursor(poolSources),
     values: exports.poolCursor(poolValues),
     members: exports.poolCursor(poolMembers),
+    strings: exports.hostStringCount(),
   });
 }
 
@@ -499,6 +502,7 @@ function acceptHostCursors(
       cursors.sources,
       cursors.values,
       cursors.members,
+      cursors.strings,
     ) !== 1
   ) {
     throw new Error('Nunjitsu worker rejected host-owned memory cursors');
@@ -514,7 +518,8 @@ function isFixedMemoryCursors(value: unknown): value is FixedMemoryCursors {
     Number.isSafeInteger(cursors.slots) &&
     Number.isSafeInteger(cursors.sources) &&
     Number.isSafeInteger(cursors.values) &&
-    Number.isSafeInteger(cursors.members)
+    Number.isSafeInteger(cursors.members) &&
+    Number.isSafeInteger(cursors.strings)
   );
 }
 
@@ -591,6 +596,7 @@ function parseExports(value: WebAssembly.Exports): NunjitsuExports {
     poolCapacity: exportedFunction(value, 'nunjitsu_pool_capacity'),
     poolCursor: exportedFunction(value, 'nunjitsu_pool_cursor'),
     acceptHostCursors: exportedFunction(value, 'nunjitsu_accept_host_cursors'),
+    hostStringCount: exportedFunction(value, 'nunjitsu_host_string_count'),
     arenaBase: exportedFunction(value, 'nunjitsu_arena_base'),
     arenaCursor: exportedFunction(value, 'nunjitsu_arena_cursor'),
     arenaReset: exportedFunction(value, 'nunjitsu_arena_reset'),

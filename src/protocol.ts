@@ -88,6 +88,7 @@ export interface FixedMemoryCursors {
   sources: number;
   values: number;
   members: number;
+  strings: number;
 }
 
 /** One validated host capability request decoded from shared memory. */
@@ -115,6 +116,7 @@ export class ArenaWriter {
   #cursor: number;
   readonly #layout: FixedMemoryLayout;
   readonly #fixedCursors: FixedMemoryCursors;
+  readonly #hostStrings: string[];
 
   /** Creates a writer beginning at an aligned free arena cursor. */
   constructor(
@@ -122,12 +124,14 @@ export class ArenaWriter {
     arenaBase: number,
     layout: FixedMemoryLayout,
     fixedCursors: FixedMemoryCursors,
+    hostStrings: string[] = [],
   ) {
     this.#memory = memory;
     this.#view = new DataView(memory.buffer);
     this.#cursor = align(arenaBase, recordAlignment);
     this.#layout = layout;
     this.#fixedCursors = { ...fixedCursors };
+    this.#hostStrings = hostStrings;
   }
 
   /** Encodes an inline template, safe context, and render flags into the arena. */
@@ -281,8 +285,9 @@ export class ArenaWriter {
     const slot = new Uint8Array(this.#memory.buffer, slotOffset, fixedSlotLength);
     slot.fill(0);
     this.#view.setUint32(slotOffset, recordTag.source | (16 << 8), true);
-    this.#view.setUint32(slotOffset + 4, start, true);
-    this.#view.setUint32(slotOffset + 8, value.length, true);
+    this.#view.setUint32(slotOffset + 4, this.#registerHostString(value), true);
+    this.#view.setUint32(slotOffset + 8, start, true);
+    this.#view.setUint32(slotOffset + 12, value.length, true);
     const codeUnitOffset = this.#layout.sourceOffset + start * 2;
     for (let cursor = 0; cursor < value.length; cursor += 1) {
       this.#view.setUint16(codeUnitOffset + cursor * 2, value.charCodeAt(cursor), true);
@@ -466,7 +471,7 @@ export class ArenaWriter {
     const slot = new Uint8Array(this.#memory.buffer, slotOffset, fixedSlotLength);
     slot.fill(0);
     this.#view.setUint32(slotOffset, tag | (1 << 8), true);
-    this.#view.setUint32(slotOffset + 4, 0, true);
+    this.#view.setUint32(slotOffset + 4, this.#registerHostString(value), true);
     this.#view.setUint32(slotOffset + 8, start, true);
     this.#view.setUint32(slotOffset + 12, value.length, true);
     const codeUnitOffset = this.#layout.valueOffset + start * 2;
@@ -514,6 +519,12 @@ export class ArenaWriter {
 
   #snapshotFixedCursors(): FixedMemoryCursors {
     return Object.freeze({ ...this.#fixedCursors });
+  }
+
+  #registerHostString(value: string): number {
+    this.#hostStrings.push(value);
+    this.#fixedCursors.strings = this.#hostStrings.length;
+    return this.#hostStrings.length;
   }
 
   #ensureCapacity(requiredLength: number): void {
