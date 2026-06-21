@@ -97,6 +97,11 @@ High finite defaults cover parsing, evaluator work, nesting, allocation,
 output, and capabilities. They reduce accidental and intentional
 denial of service but are cooperative checks rather than hard isolation.
 
+Interpreter nesting is checked at every statement and expression evaluation
+checkpoint. This bounds recursive evaluator frames; it does not replace source
+size and AST-node limits or claim control over the trusted Nunjucks parser's
+own native call stack.
+
 Regular-expression literals preserve JavaScript-compatible behavior. A hostile
 pattern can cause excessive backtracking between interpreter checkpoints;
 applications requiring strict availability isolation must execute rendering in

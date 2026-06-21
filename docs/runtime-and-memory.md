@@ -58,7 +58,8 @@ shell sanitizer.
 ## Cooperative limits
 
 High finite limits account for source characters, AST nodes, evaluator work,
-nesting, allocation, output, and capability calls. These are cooperative
-availability safeguards, not a process sandbox or exact CPU/RSS accounting.
-Trusted callbacks execute outside interpreter work accounting except for their
-invocation count and returned-value validation.
+interpreter nesting depth, allocation, output, and capability calls. Nesting
+depth is checked before evaluating each statement and expression node. These
+are cooperative availability safeguards, not a process sandbox or exact
+CPU/RSS accounting. Trusted callbacks execute outside interpreter work
+accounting except for their invocation count and returned-value validation.

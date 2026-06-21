@@ -923,6 +923,12 @@ class Evaluator {
   }
 
   #charge(depth: number): void {
+    if (
+      this.#options.limits.nestingDepth !== Number.POSITIVE_INFINITY &&
+      depth > this.#options.limits.nestingDepth
+    ) {
+      throw new NunjitsuLimitError('nestingDepth');
+    }
     this.#workUnits += 1;
     if (
       this.#options.limits.workUnits !== Number.POSITIVE_INFINITY &&

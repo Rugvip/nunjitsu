@@ -143,6 +143,11 @@ test('enforces finite resource limits and recovers after failures', () => {
     assert.throws(failure, error => error instanceof NunjitsuLimitError);
     assert.equal(engine.render('clean'), 'clean');
   }
+  assert.throws(
+    () => engine.render('${{ 1 + 2 }}', {}, { limits: { nestingDepth: 2 } }),
+    error => error instanceof NunjitsuLimitError && error.limit === 'nestingDepth',
+  );
+  assert.equal(engine.render('clean'), 'clean');
 });
 
 test('wraps parse and evaluation failures without retaining render state', () => {
