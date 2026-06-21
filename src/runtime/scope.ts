@@ -1,11 +1,16 @@
 import { isReservedName, type RuntimeValue } from './value.ts';
 
+/** One mutable binding stored entirely inside an interpreter scope. */
+interface ScopeEntry {
+  value: RuntimeValue;
+  writable: boolean;
+}
+
 /** One interpreter-owned lexical scope containing no host object prototype. */
 export class RuntimeScope {
   readonly #parent: RuntimeScope | undefined;
   readonly #isolateWrites: boolean;
-  readonly #values = new Map<string, RuntimeValue>();
-  readonly #writable = new Set<string>();
+  readonly #entries = new Map<string, ScopeEntry>();
 
   constructor(parent?: RuntimeScope, isolateWrites = false) {
     this.#parent = parent;
@@ -20,15 +25,13 @@ export class RuntimeScope {
   /** Defines or replaces one value in this exact scope. */
   set(name: string, value: RuntimeValue): void {
     assertAllowedName(name);
-    this.#values.set(name, value);
-    this.#writable.add(name);
+    this.#entries.set(name, { value, writable: true });
   }
 
   /** Defines one read-only context binding. */
   setReadonly(name: string, value: RuntimeValue): void {
     assertAllowedName(name);
-    this.#values.set(name, value);
-    this.#writable.delete(name);
+    this.#entries.set(name, { value, writable: false });
   }
 
   /** Resolves a value through explicit scope parents only. */
@@ -36,8 +39,9 @@ export class RuntimeScope {
     if (isReservedName(name)) {
       return undefined;
     }
-    if (this.#values.has(name)) {
-      return this.#values.get(name);
+    const entry = this.#entries.get(name);
+    if (entry) {
+      return entry.value;
     }
     return this.#parent?.get(name);
   }
@@ -46,20 +50,19 @@ export class RuntimeScope {
   assign(name: string, value: RuntimeValue): void {
     assertAllowedName(name);
     if (this.#isolateWrites) {
-      this.#values.set(name, value);
-      this.#writable.add(name);
+      this.#setLocal(name, value);
       return;
     }
-    if (this.#values.has(name) && this.#writable.has(name)) {
-      this.#values.set(name, value);
+    const entry = this.#entries.get(name);
+    if (entry?.writable) {
+      entry.value = value;
       return;
     }
     if (this.#parent?.canAssign(name)) {
       this.#parent.assign(name, value);
       return;
     }
-    this.#values.set(name, value);
-    this.#writable.add(name);
+    this.#setLocal(name, value);
   }
 
   /** Returns whether a binding exists through explicit parents. */
@@ -67,22 +70,35 @@ export class RuntimeScope {
     if (isReservedName(name)) {
       return false;
     }
-    return this.#values.has(name) || (this.#parent?.has(name) ?? false);
+    return this.#entries.has(name) || (this.#parent?.has(name) ?? false);
   }
 
   /** Returns bindings defined in this exact scope. */
-  ownEntries(): IterableIterator<readonly [string, RuntimeValue]> {
-    return this.#values.entries();
+  *ownEntries(): IterableIterator<readonly [string, RuntimeValue]> {
+    for (const [name, entry] of this.#entries) {
+      yield [name, entry.value];
+    }
   }
 
   private canAssign(name: string): boolean {
-    if (this.#values.has(name)) {
-      return this.#writable.has(name);
+    const entry = this.#entries.get(name);
+    if (entry) {
+      return entry.writable;
     }
     if (this.#isolateWrites) {
       return false;
     }
     return this.#parent?.canAssign(name) ?? false;
+  }
+
+  #setLocal(name: string, value: RuntimeValue): void {
+    const entry = this.#entries.get(name);
+    if (entry) {
+      entry.value = value;
+      entry.writable = true;
+    } else {
+      this.#entries.set(name, { value, writable: true });
+    }
   }
 }
 

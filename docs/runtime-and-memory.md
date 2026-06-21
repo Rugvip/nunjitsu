@@ -50,10 +50,11 @@ dispatch only over internal value kinds and reserve prototype gadget names.
 
 ## Scopes and calls
 
-Lexical scopes are engine-owned frames with private maps and explicit parent
-links. Calls dispatch only to inline macros, interpreter built-ins, or exact
-registered global-function identities. Context functions, methods,
-constructors, and looked-up values are never callable.
+Lexical scopes are engine-owned frames with one private map of value and
+writability entries plus explicit parent links. Calls dispatch only to inline
+macros, interpreter built-ins, or exact registered global-function identities.
+Context functions, methods, constructors, and looked-up values are never
+callable.
 
 ## Output
 
