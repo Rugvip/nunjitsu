@@ -252,7 +252,7 @@ fn publish_pending_output(state_offset: u32, maximum_bytes: u32) -> Result<u32, 
     Ok(published)
 }
 
-fn materialize_output_value(state_offset: u32, tag: u32) -> Result<u32, u32> {
+fn materialize_output_value(state_offset: u32, safe: bool) -> Result<u32, u32> {
     let mut code_unit_length = 0u32;
     let mut descriptor_count = 0u32;
     let mut descriptor_index = state_field(state_offset, STATE_FIRST_CHUNK)?;
@@ -266,10 +266,10 @@ fn materialize_output_value(state_offset: u32, tag: u32) -> Result<u32, u32> {
             .ok_or(ERROR_RESOURCE_LIMIT)?;
         descriptor_index = read_u32(descriptor, 0)?;
     }
-    let value_tag = match tag {
-        TAG_STRING => TAG_STRING_VALUE,
-        TAG_SAFE_STRING => TAG_SAFE_STRING_VALUE,
-        _ => return Err(ERROR_INVALID_RECORD),
+    let value_tag = if safe {
+        TAG_SAFE_STRING_VALUE
+    } else {
+        TAG_STRING_VALUE
     };
     let handle = allocate_concat_string_operation(
         state_field(state_offset, STATE_FIRST_CHUNK)?,

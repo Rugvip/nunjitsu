@@ -465,7 +465,7 @@ fn finish_macro_call(state_offset: u32) -> Result<Option<u32>, u32> {
     {
         return Err(ERROR_UNSUPPORTED_TAG);
     }
-    let result_offset = finish_output_capture(state_offset, TAG_SAFE_STRING)?;
+    let result_offset = finish_output_capture(state_offset, true)?;
     let macro_frame_record = record_at(macro_frame, TAG_FRAME)?;
     let caller_frame = read_u32(macro_frame_record, FRAME_PARENT)?;
 

@@ -144,11 +144,11 @@ fn finish_capture(state_offset: u32) -> Result<(), u32> {
     if bindings == 0 {
         return Err(ERROR_UNSUPPORTED_TAG);
     }
-    let value_offset = finish_output_capture(state_offset, TAG_STRING)?;
+    let value_offset = finish_output_capture(state_offset, false)?;
     assign_bindings(state_offset, bindings, value_offset)
 }
 
-fn finish_output_capture(state_offset: u32, tag: u32) -> Result<u32, u32> {
+fn finish_output_capture(state_offset: u32, safe: bool) -> Result<u32, u32> {
     let capture_offset = state_field(state_offset, STATE_CURRENT_CAPTURE)?;
     if capture_offset == 0 {
         return Err(ERROR_UNSUPPORTED_TAG);
@@ -159,7 +159,7 @@ fn finish_output_capture(state_offset: u32, tag: u32) -> Result<u32, u32> {
     {
         return Err(ERROR_UNSUPPORTED_TAG);
     }
-    let value_offset = materialize_output_value(state_offset, tag)?;
+    let value_offset = materialize_output_value(state_offset, safe)?;
     set_state_field(
         state_offset,
         STATE_FIRST_CHUNK,

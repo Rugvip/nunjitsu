@@ -25,7 +25,6 @@ const STREAM_CHUNK_BYTES: u32 = 64 * 1024;
 const SCRATCH_ALIGNMENT: u32 = 8;
 
 const TAG_SOURCE: u32 = 1;
-const TAG_STRING: u32 = 2;
 const TAG_REQUEST: u32 = 4;
 const TAG_UNDEFINED: u32 = 6;
 const TAG_NULL: u32 = 7;
@@ -33,7 +32,6 @@ const TAG_BOOLEAN: u32 = 8;
 const TAG_NUMBER: u32 = 9;
 const TAG_ARRAY: u32 = 10;
 const TAG_RECORD: u32 = 11;
-const TAG_SAFE_STRING: u32 = 12;
 const TAG_RENDER_STATE: u32 = 13;
 const TAG_FRAME: u32 = 14;
 const TAG_CAPABILITY_REGISTRY: u32 = 16;

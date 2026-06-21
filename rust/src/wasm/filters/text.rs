@@ -29,11 +29,6 @@ fn nl2br_value(value_offset: u32) -> Result<u32, u32> {
             )
         })
         .ok_or(ERROR_RESOURCE_LIMIT)?;
-    let tag = if rendered.safe {
-        TAG_SAFE_STRING
-    } else {
-        TAG_STRING
-    };
     let (_, output) = allocate_scratch(
         u32::try_from(length).map_err(|_| ERROR_RESOURCE_LIMIT)?,
     )?;
@@ -54,7 +49,7 @@ fn nl2br_value(value_offset: u32) -> Result<u32, u32> {
         output_cursor += 7;
         input_cursor += line_width;
     }
-    write_materialized_string_value(output, tag == TAG_SAFE_STRING)
+    write_materialized_string_value(output, rendered.safe)
 }
 
 fn sum_value(value_offset: u32, attribute_offset: Option<u32>, start: f64) -> Result<u32, u32> {
@@ -147,11 +142,6 @@ fn replace_value(
             .len()
             .checked_add(added)
             .ok_or(ERROR_RESOURCE_LIMIT)?;
-        let tag = if input.safe {
-            TAG_SAFE_STRING
-        } else {
-            TAG_STRING
-        };
         let (_, output) = allocate_scratch(
             u32::try_from(length).map_err(|_| ERROR_RESOURCE_LIMIT)?,
         )?;
@@ -166,7 +156,7 @@ fn replace_value(
                 output_cursor += 1;
             }
         }
-        return write_materialized_string_value(output, tag == TAG_SAFE_STRING);
+        return write_materialized_string_value(output, input.safe);
     }
     let mut count = 0usize;
     let mut cursor = 0usize;
@@ -191,11 +181,6 @@ fn replace_value(
         .checked_sub(removed)
         .and_then(|value| value.checked_add(added))
         .ok_or(ERROR_RESOURCE_LIMIT)?;
-    let tag = if input.safe {
-        TAG_SAFE_STRING
-    } else {
-        TAG_STRING
-    };
     let (_, output) = allocate_scratch(
         u32::try_from(length).map_err(|_| ERROR_RESOURCE_LIMIT)?,
     )?;
@@ -217,7 +202,7 @@ fn replace_value(
         replaced += 1;
     }
     output[output_cursor..].copy_from_slice(&input.bytes[input_cursor..]);
-    write_materialized_string_value(output, tag == TAG_SAFE_STRING)
+    write_materialized_string_value(output, input.safe)
 }
 
 fn random_value(value_offset: u32) -> Result<u32, u32> {
@@ -278,14 +263,10 @@ fn regex_replace_value(
     if matches!(output_length, 0xffff_ffff | 0xffff_fffe) {
         return Err(ERROR_INVALID_EXPRESSION);
     }
-    let tag = if matches!(Value::at(input_offset)?, Value::SafeString(_)) {
-        TAG_SAFE_STRING
-    } else {
-        TAG_STRING
-    };
+    let safe = matches!(Value::at(input_offset)?, Value::SafeString(_));
     let (output_offset, output) = allocate_scratch(output_length)?;
     if output_length == 0 {
-        return write_materialized_string_value(output, tag == TAG_SAFE_STRING);
+        return write_materialized_string_value(output, safe);
     }
     // The second call writes into the newly allocated payload and must reproduce the sized result.
     let written = unsafe {
@@ -303,5 +284,5 @@ fn regex_replace_value(
     if written != output_length {
         return Err(ERROR_INVALID_STATE);
     }
-    write_materialized_string_value(output, tag == TAG_SAFE_STRING)
+    write_materialized_string_value(output, safe)
 }

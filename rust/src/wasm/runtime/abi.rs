@@ -439,7 +439,7 @@ fn run_active_render() -> Result<u32, u32> {
                     && extends_capture == state_field(state_offset, STATE_CURRENT_CAPTURE)?
                     && capture_field(extends_capture, CAPTURE_FRAME)? == frame_offset
                 {
-                    let output = finish_output_capture(state_offset, TAG_SAFE_STRING)?;
+                    let output = finish_output_capture(state_offset, true)?;
                     set_state_field(state_offset, STATE_EXTENDS_CAPTURE, 0)?;
                     emit_value(state_offset, output)?;
                 }

@@ -304,7 +304,7 @@ fn finish_tag_segment(state_offset: u32) -> Result<Option<u32>, u32> {
         return Err(ERROR_INVALID_STATE);
     }
     let segment_index = tag_call_field(call_offset, TAG_CALL_SEGMENT_INDEX)? as usize;
-    let value_offset = finish_output_capture(state_offset, TAG_STRING)?;
+    let value_offset = finish_output_capture(state_offset, false)?;
     let results_offset = tag_call_field(call_offset, TAG_CALL_RESULTS)?;
     write_u32(
         mutable_record_at(results_offset, TAG_ARRAY)?,

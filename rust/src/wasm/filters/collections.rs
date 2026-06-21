@@ -2,11 +2,7 @@ fn reverse_value(value: Value) -> Result<u32, u32> {
     match value {
         Value::String(bytes) | Value::SafeString(bytes) => {
             let text = core::str::from_utf8(bytes).map_err(|_| ERROR_INVALID_RECORD)?;
-            let tag = if matches!(value, Value::SafeString(_)) {
-                TAG_SAFE_STRING
-            } else {
-                TAG_STRING
-            };
+            let safe = matches!(value, Value::SafeString(_));
             let (_, output) = allocate_scratch(bytes.len() as u32)?;
             let mut cursor = 0usize;
             for character in text.chars().rev() {
@@ -16,7 +12,7 @@ fn reverse_value(value: Value) -> Result<u32, u32> {
                 output[cursor..end].copy_from_slice(encoded);
                 cursor = end;
             }
-            write_materialized_string_value(output, tag == TAG_SAFE_STRING)
+            write_materialized_string_value(output, safe)
         }
         Value::Array(array) => {
             let payload_length = 4u32
@@ -44,11 +40,6 @@ fn reverse_value(value: Value) -> Result<u32, u32> {
 
 fn ascii_case_value(value_offset: u32, uppercase: bool, capitalize: bool) -> Result<u32, u32> {
     let rendered = rendered_value(value_offset)?;
-    let tag = if rendered.safe {
-        TAG_SAFE_STRING
-    } else {
-        TAG_STRING
-    };
     let (_, output) = allocate_scratch(rendered.bytes.len() as u32)?;
     for (index, byte) in rendered.bytes.iter().copied().enumerate() {
         output[index] = if uppercase || (capitalize && index == 0) {
@@ -57,16 +48,11 @@ fn ascii_case_value(value_offset: u32, uppercase: bool, capitalize: bool) -> Res
             byte.to_ascii_lowercase()
         };
     }
-    write_materialized_string_value(output, tag == TAG_SAFE_STRING)
+    write_materialized_string_value(output, rendered.safe)
 }
 
 fn title_value(value_offset: u32) -> Result<u32, u32> {
     let rendered = rendered_value(value_offset)?;
-    let tag = if rendered.safe {
-        TAG_SAFE_STRING
-    } else {
-        TAG_STRING
-    };
     let (_, output) = allocate_scratch(rendered.bytes.len() as u32)?;
     let mut word_start = true;
     for (index, byte) in rendered.bytes.iter().copied().enumerate() {
@@ -83,7 +69,7 @@ fn title_value(value_offset: u32) -> Result<u32, u32> {
             byte
         };
     }
-    write_materialized_string_value(output, tag == TAG_SAFE_STRING)
+    write_materialized_string_value(output, rendered.safe)
 }
 
 fn numeric_usize(value_offset: u32) -> Result<usize, u32> {
@@ -631,17 +617,12 @@ fn center_value(value_offset: u32, width: usize) -> Result<u32, u32> {
         .len()
         .checked_add(padding)
         .ok_or(ERROR_RESOURCE_LIMIT)?;
-    let tag = if rendered.safe {
-        TAG_SAFE_STRING
-    } else {
-        TAG_STRING
-    };
     let (_, output) = allocate_scratch(
         u32::try_from(length).map_err(|_| ERROR_RESOURCE_LIMIT)?,
     )?;
     output.fill(b' ');
     output[left..left + rendered.bytes.len()].copy_from_slice(rendered.bytes);
-    write_materialized_string_value(output, tag == TAG_SAFE_STRING)
+    write_materialized_string_value(output, rendered.safe)
 }
 
 fn parse_integer(value_offset: u32, base: usize) -> Result<Option<i64>, u32> {
@@ -706,11 +687,6 @@ fn indent_value(value_offset: u32, width: usize, first: bool) -> Result<u32, u32
                 .ok_or(ERROR_RESOURCE_LIMIT)?,
         )
         .ok_or(ERROR_RESOURCE_LIMIT)?;
-    let tag = if rendered.safe {
-        TAG_SAFE_STRING
-    } else {
-        TAG_STRING
-    };
     let (_, output) = allocate_scratch(
         u32::try_from(length).map_err(|_| ERROR_RESOURCE_LIMIT)?,
     )?;
@@ -732,7 +708,7 @@ fn indent_value(value_offset: u32, width: usize, first: bool) -> Result<u32, u32
         input_cursor = index + 1;
     }
     output[output_cursor..].copy_from_slice(&rendered.bytes[input_cursor..]);
-    write_materialized_string_value(output, tag == TAG_SAFE_STRING)
+    write_materialized_string_value(output, rendered.safe)
 }
 
 fn join_value(

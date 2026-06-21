@@ -11,24 +11,19 @@ import {
   type NormalizedRenderLimits,
 } from './limits.ts';
 
-const recordHeaderLength = 8;
 const scratchAlignment = 8;
 const fixedSlotLength = 72;
 const memberLength = 4;
 
 const recordTag = {
   source: 1,
-  string: 2,
-  context: 3,
   request: 4,
-  output: 5,
   undefined: 6,
   null: 7,
   boolean: 8,
   number: 9,
   array: 10,
   record: 11,
-  safeString: 12,
   capabilityRegistry: 16,
   capabilityRequest: 17,
   tagRegistry: 26,
@@ -159,7 +154,7 @@ export class FixedMemoryWriter {
     const contextOffset = this.#writeValue(context, new Set(), new Map());
 
     const canonicalOffset = options.canonicalName
-      ? this.#writeTextRecord(recordTag.string, options.canonicalName)
+      ? this.#writeTextRecord(recordTag.identifier, options.canonicalName)
       : 0;
     const filtersOffset = this.#writeCapabilityRegistry(options.capabilities.filters);
     const testsOffset = this.#writeCapabilityRegistry(options.capabilities.tests);
@@ -203,7 +198,7 @@ export class FixedMemoryWriter {
       throw new TypeError('Loaded templates require a canonical identity');
     }
     const sourceOffset = this.#writeTextRecord(recordTag.source, source);
-    const canonicalOffset = this.#writeTextRecord(recordTag.string, canonicalName);
+    const canonicalOffset = this.#writeTextRecord(recordTag.identifier, canonicalName);
     return {
       sourceOffset,
       canonicalOffset,
@@ -227,7 +222,7 @@ export class FixedMemoryWriter {
   ): number {
     const entries = descriptors.map(descriptor => ({
       id: descriptor.id,
-      nameOffset: this.#writeTextRecord(recordTag.string, descriptor.name),
+      nameOffset: this.#writeTextRecord(recordTag.identifier, descriptor.name),
     }));
     const payload = new ArrayBuffer(4 + entries.length * 8);
     const view = new DataView(payload);
@@ -242,11 +237,11 @@ export class FixedMemoryWriter {
   #writeTagRegistry(descriptors: readonly TagCapabilityDescriptor[]): number {
     const entries = descriptors.map(descriptor => ({
       id: descriptor.id,
-      nameOffset: this.#writeTextRecord(recordTag.string, descriptor.name),
+      nameOffset: this.#writeTextRecord(recordTag.identifier, descriptor.name),
       type: descriptor.type === 'inline' ? 0 : 1,
       endTagOffset: descriptor.endTag === undefined
         ? 0
-        : this.#writeTextRecord(recordTag.string, descriptor.endTag),
+        : this.#writeTextRecord(recordTag.identifier, descriptor.endTag),
       intermediateOffset: this.#writeStringArray(descriptor.intermediateTags),
     }));
     const payload = new ArrayBuffer(4 + entries.length * 20);
@@ -264,7 +259,7 @@ export class FixedMemoryWriter {
   }
 
   #writeStringArray(values: readonly string[]): number {
-    const offsets = values.map(value => this.#writeTextRecord(recordTag.string, value));
+    const offsets = values.map(value => this.#writeTextRecord(recordTag.identifier, value));
     const payload = new ArrayBuffer(4 + offsets.length * 4);
     const view = new DataView(payload);
     view.setUint32(0, offsets.length, true);
@@ -278,7 +273,7 @@ export class FixedMemoryWriter {
     if (tag === recordTag.source) {
       return this.#writeSourceSlot(value);
     }
-    if (tag === recordTag.string) {
+    if (tag === recordTag.identifier) {
       return this.#writeIdentifierSlot(value);
     }
     return this.#writeRecord(tag, new TextEncoder().encode(value));
@@ -437,7 +432,7 @@ export class FixedMemoryWriter {
         continue;
       }
       entries.push({
-        keyOffset: this.#writeTextRecord(recordTag.string, key),
+        keyOffset: this.#writeTextRecord(recordTag.identifier, key),
         valueOffset: this.#writeValue(descriptor.value as TemplateValue, ancestors, aliases),
       });
     }
@@ -471,7 +466,7 @@ export class FixedMemoryWriter {
     ) {
       return this.#writeMemberSlot(tag, payload);
     }
-    throw new Error(`Unsupported variable record tag ${tag}`);
+    throw new Error(`Unsupported fixed-memory record tag ${tag}`);
   }
 
   #writeFixedSlot(tag: number, payload: Uint8Array): number {
@@ -561,33 +556,6 @@ export class FixedMemoryWriter {
     return this.#hostStrings.length;
   }
 
-}
-
-/** Decodes and validates an output record produced by Wasm. */
-export function decodeOutput(memory: WebAssembly.Memory, offset: number, length: number): string {
-  const buffer = memory.buffer;
-  const recordEnd = offset + recordHeaderLength + length;
-  if (
-    !Number.isSafeInteger(offset) ||
-    !Number.isSafeInteger(length) ||
-    offset < 0 ||
-    length < 0 ||
-    recordEnd > buffer.byteLength
-  ) {
-    throw new Error('Wasm returned an out-of-bounds output record');
-  }
-
-  const view = new DataView(buffer);
-  if (view.getUint32(offset, true) !== recordTag.output) {
-    throw new Error('Wasm returned an unexpected output record type');
-  }
-  if (view.getUint32(offset + 4, true) !== length) {
-    throw new Error('Wasm returned an inconsistent output record length');
-  }
-
-  return new TextDecoder('utf-8', { fatal: true }).decode(
-    new Uint8Array(buffer, offset + recordHeaderLength, length),
-  );
 }
 
 /** Resolves validated output range descriptors through render-local host strings. */
@@ -710,19 +678,17 @@ export function decodeLoadRequest(
   memory: WebAssembly.Memory,
   offset: number,
   length: number,
-  layout?: FixedMemoryLayout,
-  fixedCursors?: FixedMemoryCursors,
+  layout: FixedMemoryLayout,
+  fixedCursors: FixedMemoryCursors,
 ): DecodedLoadRequest {
-  const payload = layout && fixedCursors
-    ? readFixedSlotPayload(
-      memory,
-      offset,
-      recordTag.loadRequest,
-      length,
-      layout,
-      fixedCursors,
-    )
-    : readRecord(memory, offset, recordTag.loadRequest, length);
+  const payload = readFixedSlotPayload(
+    memory,
+    offset,
+    recordTag.loadRequest,
+    length,
+    layout,
+    fixedCursors,
+  );
   if (payload.byteLength !== 8) {
     throw new Error('Wasm returned an invalid loader request');
   }
@@ -781,16 +747,14 @@ export function decodeCapabilityRequest(
   layout: FixedMemoryLayout,
   fixedCursors: FixedMemoryCursors,
 ): DecodedCapabilityRequest {
-  const payload = offset > 0 && offset < fixedCursors.slots
-    ? readFixedMemberSlotPayload(
-      memory,
-      offset,
-      recordTag.capabilityRequest,
-      length,
-      layout,
-      fixedCursors,
-    )
-    : readRecord(memory, offset, recordTag.capabilityRequest, length);
+  const payload = readFixedMemberSlotPayload(
+    memory,
+    offset,
+    recordTag.capabilityRequest,
+    length,
+    layout,
+    fixedCursors,
+  );
   if (payload.byteLength < 12 || (payload.byteLength - 12) % 4 !== 0) {
     throw new Error('Wasm returned an invalid capability request');
   }
@@ -928,10 +892,6 @@ function decodeValue(
     const value = new TextDecoder('utf-16le', { fatal: true }).decode(payload);
     return tag === recordTag.safeStringValue ? new SafeString(value) : value;
   }
-  if (tag === recordTag.string || tag === recordTag.safeString || tag === recordTag.regex) {
-    const value = new TextDecoder('utf-8', { fatal: true }).decode(payload);
-    return tag === recordTag.safeString ? new SafeString(value) : value;
-  }
   if (tag !== recordTag.array && tag !== recordTag.record) {
     throw new Error('Wasm returned an unsupported capability value');
   }
@@ -992,27 +952,24 @@ function decodeRecordKey(
   layout: FixedMemoryLayout,
   fixedCursors: FixedMemoryCursors,
 ): string {
-  if (offset > 0 && offset < fixedCursors.slots && offset <= layout.slotCapacity) {
-    const slotOffset = layout.slotOffset + offset * fixedSlotLength;
-    const view = new DataView(memory.buffer, slotOffset, fixedSlotLength);
-    if ((view.getUint32(0, true) & 0xff) === recordTag.identifier) {
-      const start = view.getUint32(4, true);
-      const length = view.getUint32(8, true);
-      if (start + length > fixedCursors.values || start + length > layout.valueCapacity) {
-        throw new Error('Wasm returned an out-of-bounds identifier range');
-      }
-      return new TextDecoder('utf-16le', { fatal: true }).decode(new Uint8Array(
-        memory.buffer,
-        layout.valueOffset + start * 2,
-        length * 2,
-      ));
-    }
+  if (offset <= 0 || offset >= fixedCursors.slots || offset > layout.slotCapacity) {
+    throw new Error('Wasm returned an out-of-bounds identifier slot');
   }
-  const keyRecord = readAnyRecord(memory, offset);
-  if (keyRecord.tag !== recordTag.string) {
-    throw new Error('Wasm returned a non-string capability record key');
+  const slotOffset = layout.slotOffset + offset * fixedSlotLength;
+  const view = new DataView(memory.buffer, slotOffset, fixedSlotLength);
+  if ((view.getUint32(0, true) & 0xff) !== recordTag.identifier) {
+    throw new Error('Wasm returned a non-identifier slot');
   }
-  return new TextDecoder('utf-8', { fatal: true }).decode(keyRecord.payload);
+  const start = view.getUint32(4, true);
+  const length = view.getUint32(8, true);
+  if (start + length > fixedCursors.values || start + length > layout.valueCapacity) {
+    throw new Error('Wasm returned an out-of-bounds identifier range');
+  }
+  return new TextDecoder('utf-16le', { fatal: true }).decode(new Uint8Array(
+    memory.buffer,
+    layout.valueOffset + start * 2,
+    length * 2,
+  ));
 }
 
 function readAnyValue(
@@ -1021,120 +978,87 @@ function readAnyValue(
   layout: FixedMemoryLayout,
   fixedCursors: FixedMemoryCursors,
 ): { tag: number; payload: Uint8Array } {
-  if (offset > 0 && offset < fixedCursors.slots) {
-    const slotOffset = layout.slotOffset + offset * fixedSlotLength;
-    if (offset > layout.slotCapacity || slotOffset + fixedSlotLength > memory.buffer.byteLength) {
-      throw new Error('Wasm returned an out-of-bounds value slot');
-    }
-    const view = new DataView(memory.buffer, slotOffset, fixedSlotLength);
-    const header = view.getUint32(0, true);
-    const tag = header & 0xff;
-    const masks = header >>> 8;
-    if ((masks & 1) === 0) {
-      throw new Error('Wasm returned a non-value slot as a capability argument');
-    }
-    if (tag === recordTag.undefined || tag === recordTag.null) {
-      return { tag, payload: new Uint8Array(memory.buffer, slotOffset + 4, 0) };
-    }
-    if (tag === recordTag.boolean) {
-      return { tag, payload: new Uint8Array(memory.buffer, slotOffset + 4, 1) };
-    }
-    if (tag === recordTag.number) {
-      return { tag, payload: new Uint8Array(memory.buffer, slotOffset + 4, 8) };
-    }
-    if (tag === recordTag.stringValue || tag === recordTag.safeStringValue) {
-      const valueStart = view.getUint32(8, true);
-      const codeUnitLength = view.getUint32(12, true);
-      if (
-        valueStart + codeUnitLength > fixedCursors.values ||
-        valueStart + codeUnitLength > layout.valueCapacity
-      ) {
-        throw new Error('Wasm returned an out-of-bounds value text range');
-      }
-      return {
-        tag,
-        payload: new Uint8Array(
-          memory.buffer,
-          layout.valueOffset + valueStart * 2,
-          codeUnitLength * 2,
-        ),
-      };
-    }
-    if (tag === recordTag.array || tag === recordTag.record) {
-      const memberStart = view.getUint32(4, true);
-      const byteLength = view.getUint32(8, true);
-      if (byteLength % memberLength !== 0) {
-        throw new Error('Wasm returned a misaligned member range');
-      }
-      const memberCount = byteLength / memberLength;
-      if (
-        memberStart + memberCount > fixedCursors.members ||
-        memberStart + memberCount > layout.memberCapacity
-      ) {
-        throw new Error('Wasm returned an out-of-bounds member range');
-      }
-      return {
-        tag,
-        payload: new Uint8Array(
-          memory.buffer,
-          layout.memberOffset + memberStart * memberLength,
-          byteLength,
-        ),
-      };
-    }
-    throw new Error('Wasm returned an unsupported value slot');
+  if (offset <= 0 || offset >= fixedCursors.slots || offset > layout.slotCapacity) {
+    throw new Error('Wasm returned an out-of-bounds value slot');
   }
-  return readAnyRecord(memory, offset);
-}
-
-function readRecord(
-  memory: WebAssembly.Memory,
-  offset: number,
-  expectedTag: number,
-  expectedLength: number,
-): Uint8Array {
-  const record = readAnyRecord(memory, offset);
-  if (record.tag !== expectedTag || record.payload.byteLength !== expectedLength) {
-    throw new Error('Wasm returned an inconsistent record envelope');
+  const slotOffset = layout.slotOffset + offset * fixedSlotLength;
+  if (slotOffset + fixedSlotLength > memory.buffer.byteLength) {
+    throw new Error('Wasm returned an out-of-bounds value slot');
   }
-  return record.payload;
-}
-
-function readAnyRecord(
-  memory: WebAssembly.Memory,
-  offset: number,
-): { tag: number; payload: Uint8Array } {
-  const buffer = memory.buffer;
-  if (!Number.isSafeInteger(offset) || offset < 0 || offset + recordHeaderLength > buffer.byteLength) {
-    throw new Error('Wasm returned an out-of-bounds record');
+  const view = new DataView(memory.buffer, slotOffset, fixedSlotLength);
+  const header = view.getUint32(0, true);
+  const tag = header & 0xff;
+  const masks = header >>> 8;
+  if ((masks & 1) === 0) {
+    throw new Error('Wasm returned a non-value slot as a capability argument');
   }
-  const view = new DataView(buffer);
-  const length = view.getUint32(offset + 4, true);
-  const end = offset + recordHeaderLength + length;
-  if (end > buffer.byteLength) {
-    throw new Error('Wasm returned an out-of-bounds record payload');
+  if (tag === recordTag.undefined || tag === recordTag.null) {
+    return { tag, payload: new Uint8Array(memory.buffer, slotOffset + 4, 0) };
   }
-  return {
-    tag: view.getUint32(offset, true),
-    payload: new Uint8Array(buffer, offset + recordHeaderLength, length),
-  };
+  if (tag === recordTag.boolean) {
+    return { tag, payload: new Uint8Array(memory.buffer, slotOffset + 4, 1) };
+  }
+  if (tag === recordTag.number) {
+    return { tag, payload: new Uint8Array(memory.buffer, slotOffset + 4, 8) };
+  }
+  if (tag === recordTag.stringValue || tag === recordTag.safeStringValue) {
+    const valueStart = view.getUint32(8, true);
+    const codeUnitLength = view.getUint32(12, true);
+    if (
+      valueStart + codeUnitLength > fixedCursors.values ||
+      valueStart + codeUnitLength > layout.valueCapacity
+    ) {
+      throw new Error('Wasm returned an out-of-bounds value text range');
+    }
+    return {
+      tag,
+      payload: new Uint8Array(
+        memory.buffer,
+        layout.valueOffset + valueStart * 2,
+        codeUnitLength * 2,
+      ),
+    };
+  }
+  if (tag === recordTag.array || tag === recordTag.record) {
+    const memberStart = view.getUint32(4, true);
+    const byteLength = view.getUint32(8, true);
+    if (byteLength % memberLength !== 0) {
+      throw new Error('Wasm returned a misaligned member range');
+    }
+    const memberCount = byteLength / memberLength;
+    if (
+      memberStart + memberCount > fixedCursors.members ||
+      memberStart + memberCount > layout.memberCapacity
+    ) {
+      throw new Error('Wasm returned an out-of-bounds member range');
+    }
+    return {
+      tag,
+      payload: new Uint8Array(
+        memory.buffer,
+        layout.memberOffset + memberStart * memberLength,
+        byteLength,
+      ),
+    };
+  }
+  throw new Error('Wasm returned an unsupported value slot');
 }
 
 function decodeNestedName(
   memory: WebAssembly.Memory,
   offset: number,
   label: string,
-  layout?: FixedMemoryLayout,
-  fixedCursors?: FixedMemoryCursors,
+  layout: FixedMemoryLayout,
+  fixedCursors: FixedMemoryCursors,
 ): string {
-  if (layout && fixedCursors) {
+  try {
     return decodeRecordKey(memory, offset, layout, fixedCursors);
+  } catch (error) {
+    if (error instanceof Error) {
+      throw new Error(`Wasm returned an invalid ${label}: ${error.message}`);
+    }
+    throw error;
   }
-  const record = readAnyRecord(memory, offset);
-  if (record.tag !== recordTag.string) {
-    throw new Error(`Wasm returned a non-string ${label}`);
-  }
-  return new TextDecoder('utf-8', { fatal: true }).decode(record.payload);
 }
 
 function align(value: number, alignment: number): number {

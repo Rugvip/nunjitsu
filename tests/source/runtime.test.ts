@@ -20,69 +20,77 @@ import {
 import { createEngineWithRuntime } from '../../src/engine.ts';
 import { decodeLoadRequest } from '../../src/protocol.ts';
 
-test('validates parent-aware loader request records at the Wasm boundary', () => {
+test('validates parent-aware fixed loader request slots at the Wasm boundary', () => {
   const memory = new WebAssembly.Memory({ initial: 1 });
   const view = new DataView(memory.buffer);
-  const bytes = new Uint8Array(memory.buffer);
-  const encoder = new TextEncoder();
-  const nameOffset = 64;
-  const fromOffset = 96;
-  const requestOffset = 160;
-  const writeString = (offset: number, value: string) => {
-    const encoded = encoder.encode(value);
-    view.setUint32(offset, 2, true);
-    view.setUint32(offset + 4, encoded.byteLength, true);
-    bytes.set(encoded, offset + 8);
-  };
-
-  writeString(nameOffset, './partial.njk');
-  writeString(fromOffset, 'memory:pages%2Fentry.njk');
-  view.setUint32(requestOffset, 34, true);
-  view.setUint32(requestOffset + 4, 8, true);
-  view.setUint32(requestOffset + 8, nameOffset, true);
-  view.setUint32(requestOffset + 12, fromOffset, true);
-
-  assert.deepEqual(decodeLoadRequest(memory, requestOffset, 8), {
-    name: './partial.njk',
-    from: 'memory:pages%2Fentry.njk',
-  });
-  view.setUint32(requestOffset + 12, 0, true);
-  assert.deepEqual(decodeLoadRequest(memory, requestOffset, 8), {
-    name: './partial.njk',
-  });
-
   const fixedLayout = {
     slotOffset: 512,
-    slotCapacity: 2,
+    slotCapacity: 3,
     sourceOffset: 1_024,
     sourceCapacity: 1,
     valueOffset: 1_088,
-    valueCapacity: 1,
-    memberOffset: 1_152,
+    valueCapacity: 128,
+    memberOffset: 1_600,
     memberCapacity: 1,
-    stringOperationOffset: 1_216,
+    stringOperationOffset: 1_664,
     stringOperationCapacity: 1,
-    outputRangeOffset: 1_280,
+    outputRangeOffset: 1_728,
     outputRangeCapacity: 1,
-    scratchOffset: 1_344,
+    scratchOffset: 1_792,
     scratchCapacity: 1,
   };
-  const fixedCursors = { slots: 2, sources: 0, values: 0, members: 0, strings: 0 };
-  const requestSlot = fixedLayout.slotOffset + 72;
+  let valueCursor = 0;
+  const writeIdentifier = (index: number, value: string) => {
+    const slot = fixedLayout.slotOffset + index * 72;
+    view.setUint32(slot, 38 | (16 << 8), true);
+    view.setUint32(slot + 4, valueCursor, true);
+    view.setUint32(slot + 8, value.length, true);
+    for (let cursor = 0; cursor < value.length; cursor += 1) {
+      view.setUint16(
+        fixedLayout.valueOffset + (valueCursor + cursor) * 2,
+        value.charCodeAt(cursor),
+        true,
+      );
+    }
+    valueCursor += value.length;
+  };
+  writeIdentifier(1, './partial.njk');
+  writeIdentifier(2, 'memory:pages%2Fentry.njk');
+  const fixedCursors = {
+    slots: 4,
+    sources: 0,
+    values: valueCursor,
+    members: 0,
+    strings: 0,
+  };
+  const requestSlot = fixedLayout.slotOffset + 3 * 72;
   view.setUint32(requestSlot, 34 | (8 << 8), true);
-  view.setUint32(requestSlot + 4, nameOffset, true);
-  view.setUint32(requestSlot + 8, fromOffset, true);
-  assert.deepEqual(decodeLoadRequest(memory, 1, 8, fixedLayout, fixedCursors), {
+  view.setUint32(requestSlot + 4, 1, true);
+  view.setUint32(requestSlot + 8, 2, true);
+  assert.deepEqual(decodeLoadRequest(memory, 3, 8, fixedLayout, fixedCursors), {
     name: './partial.njk',
     from: 'memory:pages%2Fentry.njk',
   });
+  view.setUint32(requestSlot + 8, 0, true);
+  assert.deepEqual(decodeLoadRequest(memory, 3, 8, fixedLayout, fixedCursors), {
+    name: './partial.njk',
+  });
 
-  assert.throws(() => decodeLoadRequest(memory, requestOffset, 4), /record envelope/);
-  view.setUint32(requestOffset, 2, true);
-  assert.throws(() => decodeLoadRequest(memory, requestOffset, 8), /record envelope/);
-  view.setUint32(requestOffset, 34, true);
-  view.setUint32(requestOffset + 12, memory.buffer.byteLength, true);
-  assert.throws(() => decodeLoadRequest(memory, requestOffset, 8), /out-of-bounds record/);
+  assert.throws(
+    () => decodeLoadRequest(memory, 3, 4, fixedLayout, fixedCursors),
+    /invalid loader request/,
+  );
+  view.setUint32(requestSlot, 2 | (8 << 8), true);
+  assert.throws(
+    () => decodeLoadRequest(memory, 3, 8, fixedLayout, fixedCursors),
+    /unexpected fixed slot type/,
+  );
+  view.setUint32(requestSlot, 34 | (8 << 8), true);
+  view.setUint32(requestSlot + 8, 4, true);
+  assert.throws(
+    () => decodeLoadRequest(memory, 3, 8, fixedLayout, fixedCursors),
+    /invalid loader parent identity/,
+  );
 });
 
 test('allocates immutable worker memory capacities without growing at render time', async () => {

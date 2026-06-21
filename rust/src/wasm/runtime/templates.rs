@@ -212,7 +212,7 @@ fn finish_filter_block(state_offset: u32) -> Result<Option<u32>, u32> {
     }
     let expression_offset = read_u32(block, FILTER_BLOCK_EXPRESSION)?;
     let parent = read_u32(block, FILTER_BLOCK_PARENT)?;
-    let value_offset = finish_output_capture(state_offset, TAG_SAFE_STRING)?;
+    let value_offset = finish_output_capture(state_offset, true)?;
     set_state_field(state_offset, STATE_CURRENT_FILTER_BLOCK, parent)?;
     set_state_field(state_offset, STATE_PENDING_EXPRESSION, expression_offset)?;
     set_state_field(state_offset, STATE_EXPRESSION_CURSOR, 0)?;

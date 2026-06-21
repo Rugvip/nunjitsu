@@ -22,11 +22,6 @@ fn striptags_value(value_offset: u32, preserve_linebreaks: bool) -> Result<u32, 
             .ok_or(ERROR_RESOURCE_LIMIT)?;
         Ok(())
     })?;
-    let tag = if rendered.safe {
-        TAG_SAFE_STRING
-    } else {
-        TAG_STRING
-    };
     let (_, output) = allocate_scratch(
         u32::try_from(length).map_err(|_| ERROR_RESOURCE_LIMIT)?,
     )?;
@@ -34,7 +29,7 @@ fn striptags_value(value_offset: u32, preserve_linebreaks: bool) -> Result<u32, 
     normalize_stripped_emit(stripped, preserve_linebreaks, &mut |segment| {
         write_coerced_bytes(output, &mut cursor, segment)
     })?;
-    write_materialized_string_value(output, tag == TAG_SAFE_STRING)
+    write_materialized_string_value(output, rendered.safe)
 }
 
 fn strip_tags_emit(
@@ -207,17 +202,12 @@ fn truncate_value(
         _ => b"...",
     };
     let length = end.checked_add(suffix.len()).ok_or(ERROR_RESOURCE_LIMIT)?;
-    let tag = if rendered.safe {
-        TAG_SAFE_STRING
-    } else {
-        TAG_STRING
-    };
     let (_, output) = allocate_scratch(
         u32::try_from(length).map_err(|_| ERROR_RESOURCE_LIMIT)?,
     )?;
     output[..end].copy_from_slice(&rendered.bytes[..end]);
     output[end..].copy_from_slice(suffix);
-    write_materialized_string_value(output, tag == TAG_SAFE_STRING)
+    write_materialized_string_value(output, rendered.safe)
 }
 
 fn utf8_prefix_length(text: &str, characters: usize) -> usize {

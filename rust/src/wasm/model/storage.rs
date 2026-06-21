@@ -177,43 +177,20 @@ fn regex_code_units(offset: u32) -> Result<&'static [u16], u32> {
 }
 
 fn validate_name(offset: u32) -> Result<(), u32> {
-    match raw_record_at(offset)?.0 {
-        TAG_STRING => {
-            record_at(offset, TAG_STRING)?;
-            Ok(())
-        }
-        TAG_IDENTIFIER => {
-            identifier_code_units(offset)?;
-            Ok(())
-        }
-        _ => Err(ERROR_INVALID_RECORD),
-    }
+    identifier_code_units(offset)?;
+    Ok(())
 }
 
 fn name_eq_bytes(offset: u32, bytes: &[u8]) -> Result<bool, u32> {
-    match raw_record_at(offset)?.0 {
-        TAG_STRING => Ok(record_at(offset, TAG_STRING)? == bytes),
-        TAG_IDENTIFIER => {
-            let value = core::str::from_utf8(bytes).map_err(|_| ERROR_INVALID_RECORD)?;
-            Ok(identifier_code_units(offset)?
-                .iter()
-                .copied()
-                .eq(value.encode_utf16()))
-        }
-        _ => Err(ERROR_INVALID_RECORD),
-    }
+    let value = core::str::from_utf8(bytes).map_err(|_| ERROR_INVALID_RECORD)?;
+    Ok(identifier_code_units(offset)?
+        .iter()
+        .copied()
+        .eq(value.encode_utf16()))
 }
 
 fn names_equal(left: u32, right: u32) -> Result<bool, u32> {
-    match (raw_record_at(left)?.0, raw_record_at(right)?.0) {
-        (TAG_STRING, TAG_STRING) => Ok(record_at(left, TAG_STRING)? == record_at(right, TAG_STRING)?),
-        (TAG_IDENTIFIER, TAG_IDENTIFIER) => {
-            Ok(identifier_code_units(left)? == identifier_code_units(right)?)
-        }
-        (TAG_IDENTIFIER, TAG_STRING) => name_eq_bytes(left, record_at(right, TAG_STRING)?),
-        (TAG_STRING, TAG_IDENTIFIER) => name_eq_bytes(right, record_at(left, TAG_STRING)?),
-        _ => Err(ERROR_INVALID_RECORD),
-    }
+    Ok(identifier_code_units(left)? == identifier_code_units(right)?)
 }
 
 fn utf8_as_code_units(bytes: &[u8]) -> Result<&'static [u16], u32> {

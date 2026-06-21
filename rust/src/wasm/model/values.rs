@@ -235,8 +235,6 @@ impl Value {
                     f64::from_le_bytes(payload[..8].try_into().map_err(|_| ERROR_INVALID_RECORD)?);
                 Ok(Self::Number { numeric })
             }
-            TAG_STRING => Ok(Self::String(payload)),
-            TAG_SAFE_STRING => Ok(Self::SafeString(payload)),
             TAG_STRING_VALUE => Ok(Self::String(code_units_as_utf8(value_code_units(payload)?)?)),
             TAG_SAFE_STRING_VALUE => {
                 Ok(Self::SafeString(code_units_as_utf8(value_code_units(payload)?)?))
