@@ -436,7 +436,12 @@ export class ArenaWriter {
     ) {
       return this.#writeFixedSlot(tag, payload);
     }
-    if (tag === recordTag.array || tag === recordTag.record) {
+    if (
+      tag === recordTag.array ||
+      tag === recordTag.record ||
+      tag === recordTag.capabilityRegistry ||
+      tag === recordTag.tagRegistry
+    ) {
       return this.#writeMemberSlot(tag, payload);
     }
     const offset = align(this.#cursor, recordAlignment);

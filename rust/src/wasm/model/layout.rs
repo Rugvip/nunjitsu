@@ -221,8 +221,10 @@ fn member_backed_tag(tag: u32) -> bool {
         tag,
         TAG_ARRAY
             | TAG_RECORD
+            | TAG_CAPABILITY_REGISTRY
             | TAG_BINDINGS
             | TAG_MACRO_ARGUMENTS
+            | TAG_TAG_REGISTRY
             | TAG_TAG_BOUNDARIES
             | TAG_CAPABILITY_REQUEST
             | TAG_CYCLER
@@ -249,6 +251,8 @@ fn slot_category_mask(tag: u32) -> u32 {
         | TAG_FILTER_BLOCK
         | TAG_LOAD_REQUEST
         | TAG_CAPABILITY_REQUEST
+        | TAG_CAPABILITY_REGISTRY
+        | TAG_TAG_REGISTRY
         | TAG_BINDINGS
         | TAG_MACRO_ARGUMENTS
         | TAG_TAG_BOUNDARIES => 8,
