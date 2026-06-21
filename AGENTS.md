@@ -79,6 +79,8 @@ The rationale and detailed contracts live in:
 - `src/`: TypeScript public API, parser, interpreter, filters, and globals.
 - `src/parser/`: tokenizer and closed template/expression parser.
 - `src/runtime/`: safe values, scopes, interpreter, output, and limits.
+- `benchmarks/`: synchronous inline parsing and expression comparisons with
+  the pinned Nunjucks baseline.
 - `tests/compat/`: shared Nunjucks v3.2.4 cases, provenance, manifest, and
   upstream license.
 - `docs/`: normative architecture documentation.
@@ -138,6 +140,9 @@ Do not create additional packages without a documented architectural reason.
 - Security-sensitive parsing, value copying, lookup, coercion, and call changes
   require malformed input tests, gadget regression tests, and fuzz coverage
   where appropriate.
+- Keep parser/template and expression benchmark workloads output-equivalent
+  across Nunjitsu and pinned Nunjucks. Do not add callback benchmarks or turn
+  noisy performance measurements into test thresholds.
 
 ## Documentation rules
 

@@ -26,10 +26,13 @@
     "nunjucks": "3.2.4"
   },
   "scripts": {
+    "benchmark": "node benchmarks/run.ts",
+    "benchmark:quick": "node benchmarks/run.ts --warmup=1 --iterations=3",
     "build": "npm run clean && npm run build:typescript && node scripts/finalize-build.mjs",
     "build:typescript": "tsgo -p tsconfig.esm.json && tsgo -p tsconfig.cjs.json && node scripts/build-cjs.mjs",
     "clean": "node scripts/clean.mjs",
-    "test": "npm run typecheck && npm run test:source && npm run test:package",
+    "test": "npm run typecheck && npm run test:source && npm run test:benchmark && npm run test:package",
+    "test:benchmark": "node benchmarks/run.ts --warmup=0 --iterations=1 --json",
     "test:package": "npm run build && node --test tests/package/esm.test.mjs tests/package/commonjs.test.cjs",
     "test:source": "node --test tests/source/*.test.ts",
     "typecheck": "tsgo -p tsconfig.json"

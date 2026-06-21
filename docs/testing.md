@@ -12,6 +12,8 @@
    ESM and CommonJS package entry points.
 5. Security tests exercise JavaScript escape gadgets, prototype pollution,
    accessors, exotic values, callback results, and parser fuzzing.
+6. Benchmarks compare synchronous inline parsing and expression evaluation with
+   pinned Nunjucks in isolated processes.
 
 ## Compatibility corpus
 
@@ -34,3 +36,12 @@ Tokenizer, parser, input copier, and evaluator are fuzz targets. Arbitrary
 source must either produce a bounded data-only AST or a structured error;
 parsing must never execute host behavior; evaluation must only access closed
 value kinds; and failures must leave the next render clean.
+
+## Benchmarks
+
+The comparison harness renders output-equivalent workloads in separate
+processes with fresh parsing on every operation. `template-files` models the
+scaffolder's independent rendering of many comment-heavy files, while
+`expressions` stresses computed runtime expressions. Callback benchmarks are
+intentionally excluded because the Backstage-compatible API is synchronous and
+callback overhead is not a separate target.
