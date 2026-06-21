@@ -74,18 +74,16 @@ fn write_computed_string_value(
     Ok(offset)
 }
 
-fn write_code_units_record(tag: u32, code_units: &[u16]) -> Result<u32, u32> {
+fn write_code_units_scratch(code_units: &[u16]) -> Result<&'static [u8], u32> {
     let length = core::char::decode_utf16(code_units.iter().copied()).try_fold(
         0usize,
         |length, character| {
             length.checked_add(character.unwrap_or(char::REPLACEMENT_CHARACTER).len_utf8())
         },
     ).ok_or(ERROR_RESOURCE_LIMIT)?;
-    let offset = allocate_record(
-        tag,
+    let (_, output) = allocate_scratch(
         u32::try_from(length).map_err(|_| ERROR_RESOURCE_LIMIT)?,
     )?;
-    let output = mutable_record_at(offset, tag)?;
     let mut cursor = 0usize;
     for character in core::char::decode_utf16(code_units.iter().copied()) {
         let character = character.unwrap_or(char::REPLACEMENT_CHARACTER);
@@ -95,12 +93,11 @@ fn write_code_units_record(tag: u32, code_units: &[u16]) -> Result<u32, u32> {
         character.encode_utf8(&mut output[cursor..end]);
         cursor = end;
     }
-    Ok(offset)
+    Ok(output)
 }
 
 fn code_units_as_utf8(code_units: &[u16]) -> Result<&'static [u8], u32> {
-    let offset = write_code_units_record(TAG_STRING, code_units)?;
-    record_at(offset, TAG_STRING)
+    write_code_units_scratch(code_units)
 }
 
 fn write_identifier(code_units: &[u16]) -> Result<u32, u32> {
@@ -454,6 +451,11 @@ fn arena_alloc(length: u32, alignment: u32) -> Result<u32, u32> {
     ensure_memory(aligned_end as usize)?;
     set_legacy_arena_cursor(aligned_end);
     Ok(start)
+}
+
+fn allocate_scratch(length: u32) -> Result<(u32, &'static mut [u8]), u32> {
+    let offset = arena_alloc(length, 1)?;
+    Ok((offset, mutable_memory(offset, length)?))
 }
 
 fn ensure_memory(required_length: usize) -> Result<(), u32> {
