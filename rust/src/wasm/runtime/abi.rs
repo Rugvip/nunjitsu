@@ -273,6 +273,7 @@ fn resume_output() -> Result<(), u32> {
     if !is_streaming(state_offset)? {
         return Err(ERROR_INVALID_ARENA);
     }
+    reset_output_ranges();
     let materialization_base = state_field(state_offset, STATE_MATERIALIZATION_BASE)?;
     if materialization_base < nunjitsu_arena_base()
         || materialization_base > legacy_arena_cursor()

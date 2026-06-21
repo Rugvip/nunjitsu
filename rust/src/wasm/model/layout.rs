@@ -576,9 +576,78 @@ fn selected_pool(kind: u32) -> Option<PoolState> {
             POOL_SOURCES => Some((*prefix).sources),
             POOL_VALUES => Some((*prefix).values),
             POOL_MEMBERS => Some((*prefix).members),
+            POOL_STRING_OPERATIONS => Some((*prefix).string_operations),
+            POOL_STRING_QUERIES => Some((*prefix).string_queries),
+            POOL_OUTPUT_RANGES => Some((*prefix).output_ranges),
             _ => None,
         }
     }
+}
+
+fn reset_output_ranges() {
+    unsafe {
+        (*memory_prefix()).output_ranges.cursor = 0;
+    }
+}
+
+fn publish_output_bytes(bytes: &[u8]) -> Result<(u32, u32), u32> {
+    let text = core::str::from_utf8(bytes).map_err(|_| ERROR_INVALID_RECORD)?;
+    let code_unit_length = text.encode_utf16().count();
+    let (value_start, code_units) = allocate_value_code_units(
+        u32::try_from(code_unit_length).map_err(|_| ERROR_RESOURCE_LIMIT)?,
+    )?;
+    for (destination, code_unit) in code_units.iter_mut().zip(text.encode_utf16()) {
+        *destination = code_unit;
+    }
+
+    let prefix = memory_prefix();
+    let operation_pool = unsafe { (*prefix).string_operations };
+    let operation_index = operation_pool.cursor;
+    if operation_index >= operation_pool.capacity || operation_index >= COMPUTED_STRING_HANDLE_MASK {
+        return Err(ERROR_RESOURCE_LIMIT);
+    }
+    let operation_offset = operation_pool
+        .offset
+        .checked_add(
+            operation_index
+                .checked_mul(STRING_OPERATION_LENGTH)
+                .ok_or(ERROR_RESOURCE_LIMIT)?,
+        )
+        .ok_or(ERROR_RESOURCE_LIMIT)?;
+    let operation = mutable_memory(operation_offset, STRING_OPERATION_LENGTH)?;
+    operation.fill(0);
+    write_u32(operation, 0, STRING_OPERATION_MATERIALIZED)?;
+    write_u32(operation, 4, value_start)?;
+    write_u32(
+        operation,
+        8,
+        u32::try_from(code_unit_length).map_err(|_| ERROR_RESOURCE_LIMIT)?,
+    )?;
+    unsafe {
+        (*prefix).string_operations.cursor = operation_index + 1;
+    }
+
+    let output_pool = unsafe { (*prefix).output_ranges };
+    if output_pool.cursor != 0 || output_pool.capacity == 0 {
+        return Err(ERROR_RESOURCE_LIMIT);
+    }
+    let descriptor = mutable_memory(output_pool.offset, OUTPUT_RANGE_LENGTH)?;
+    descriptor.fill(0);
+    write_u32(
+        descriptor,
+        0,
+        COMPUTED_STRING_HANDLE_MASK | (operation_index + 1),
+    )?;
+    write_u32(descriptor, 4, 0)?;
+    write_u32(
+        descriptor,
+        8,
+        u32::try_from(code_unit_length).map_err(|_| ERROR_RESOURCE_LIMIT)?,
+    )?;
+    unsafe {
+        (*prefix).output_ranges.cursor = 1;
+    }
+    Ok((output_pool.offset, 1))
 }
 
 #[unsafe(no_mangle)]

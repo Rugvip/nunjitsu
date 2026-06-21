@@ -24,7 +24,7 @@ import {
 import {
   ArenaWriter,
   decodeCapabilityRequest,
-  decodeOutput,
+  decodeOutputRanges,
   type FixedMemoryCursors,
   type FixedMemoryLayout,
 } from './protocol.ts';
@@ -39,8 +39,8 @@ const memberBytes = 4;
 const stringOperationBytes = 32;
 const stringQueryBytes = 32;
 const outputRangeBytes = 16;
-const expectedAbiVersion = 30;
-const expectedMemoryLayoutVersion = 5;
+const expectedAbiVersion = 31;
+const expectedMemoryLayoutVersion = 6;
 
 /** Identifies the runtime assets used to start workers. */
 export interface RuntimeAssets {
@@ -298,7 +298,8 @@ interface LoadMessage {
 interface ChunkMessage {
   type: 'chunk';
   id: number;
-  chunk: string;
+  outputOffset: number;
+  outputLength: number;
 }
 
 /** Trusted host capability request yielded by expression evaluation. */
@@ -1028,7 +1029,13 @@ class WorkerSlot {
         this.#fail(new Error('Nunjitsu worker yielded an unexpected output chunk'));
         return;
       }
-      pending.chunk = value.chunk;
+      pending.chunk = decodeOutputRanges(
+        this.memory,
+        value.outputOffset,
+        value.outputLength,
+        this.#requireFixedLayout(),
+        pending.hostStrings,
+      );
       pending.needsResume = true;
       this.#notifyStream(pending);
       return;
@@ -1053,7 +1060,13 @@ class WorkerSlot {
         this.#notifyStream(pending);
       } else {
         try {
-          pending.resolve(decodeOutput(this.memory, value.outputOffset, value.outputLength));
+          pending.resolve(decodeOutputRanges(
+            this.memory,
+            value.outputOffset,
+            value.outputLength,
+            this.#requireFixedLayout(),
+            pending.hostStrings,
+          ));
         } catch (error) {
           pending.reject(asError(error));
         }
@@ -1357,6 +1370,10 @@ function isFixedMemoryLayout(value: unknown): value is FixedMemoryLayout {
     'valueCapacity',
     'memberOffset',
     'memberCapacity',
+    'stringOperationOffset',
+    'stringOperationCapacity',
+    'outputRangeOffset',
+    'outputRangeCapacity',
   ].every(name => typeof layout[name] === 'number');
 }
 
@@ -1366,6 +1383,8 @@ function validFixedLayout(layout: FixedMemoryLayout, memory: WebAssembly.Memory)
     layout.sourceOffset + layout.sourceCapacity * 2,
     layout.valueOffset + layout.valueCapacity * 2,
     layout.memberOffset + layout.memberCapacity * memberBytes,
+    layout.stringOperationOffset + layout.stringOperationCapacity * stringOperationBytes,
+    layout.outputRangeOffset + layout.outputRangeCapacity * outputRangeBytes,
   );
   return (
     Object.values(layout).every(Number.isSafeInteger) &&
@@ -1404,7 +1423,11 @@ function isWorkerMessage(value: unknown): value is WorkerMessage {
     );
   }
   if (message.type === 'chunk') {
-    return typeof message.id === 'number' && typeof message.chunk === 'string';
+    return (
+      typeof message.id === 'number' &&
+      typeof message.outputOffset === 'number' &&
+      typeof message.outputLength === 'number'
+    );
   }
   if (message.type === 'capability') {
     return (

@@ -73,7 +73,7 @@ test('allocates immutable worker memory capacities without growing at render tim
     memory: {
       slots: 3,
       sourceCodeUnits: 64,
-      valueCodeUnits: 1,
+      valueCodeUnits: 64,
       members: 1,
       stringOperations: 1,
       stringQueries: 1,
@@ -99,7 +99,7 @@ test('allocates immutable worker memory capacities without growing at render tim
     memory: {
       slots: 64,
       sourceCodeUnits: 64,
-      valueCodeUnits: 1,
+      valueCodeUnits: 64,
       members: 1,
       stringOperations: 1,
       stringQueries: 1,

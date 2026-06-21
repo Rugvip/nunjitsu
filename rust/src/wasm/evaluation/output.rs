@@ -113,7 +113,12 @@ fn complete_render(state_offset: u32) -> Result<u32, u32> {
         return Ok(STATE_COMPLETE);
     }
     let (output_offset, output_length) = materialize_output(state_offset)?;
-    set_control(STATE_COMPLETE, output_offset, output_length, ERROR_NONE);
+    let output = record_at(output_offset, TAG_OUTPUT)?;
+    if output.len() != output_length as usize {
+        return Err(ERROR_INVALID_RECORD);
+    }
+    let (ranges_offset, range_count) = publish_output_bytes(output)?;
+    set_control(STATE_COMPLETE, ranges_offset, range_count, ERROR_NONE);
     Ok(STATE_COMPLETE)
 }
 
@@ -133,10 +138,15 @@ fn yield_output(state_offset: u32) -> Result<u32, u32> {
     if output_length == 0 {
         return Err(ERROR_INVALID_ARENA);
     }
+    let output = record_at(output_offset, TAG_OUTPUT)?;
+    if output.len() != output_length as usize {
+        return Err(ERROR_INVALID_RECORD);
+    }
+    let (ranges_offset, range_count) = publish_output_bytes(output)?;
     set_control(
         STATE_OUTPUT_AVAILABLE,
-        output_offset,
-        output_length,
+        ranges_offset,
+        range_count,
         ERROR_NONE,
     );
     Ok(STATE_OUTPUT_AVAILABLE)

@@ -2,7 +2,6 @@ import { parentPort, workerData, type MessagePort } from 'node:worker_threads';
 
 import {
   decodeLoadRequest,
-  decodeOutput,
   type FixedMemoryCursors,
   type FixedMemoryLayout,
 } from './protocol.ts';
@@ -11,6 +10,8 @@ const poolSlots = 1;
 const poolSources = 2;
 const poolValues = 3;
 const poolMembers = 4;
+const poolStringOperations = 5;
+const poolOutputRanges = 7;
 
 /** Data supplied by the engine when a worker starts. */
 interface NunjitsuWorkerData {
@@ -387,12 +388,11 @@ function reportState(
     return true;
   }
   if (state === 4) {
-    const outputOffset = control.getUint32(4, true);
-    const outputLength = control.getUint32(8, true);
     port.postMessage({
       type: 'chunk',
       id,
-      chunk: decodeOutput(memory, outputOffset, outputLength),
+      outputOffset: control.getUint32(4, true),
+      outputLength: control.getUint32(8, true),
     });
     return true;
   }
@@ -479,6 +479,10 @@ function readFixedMemoryLayout(exports: NunjitsuExports): FixedMemoryLayout {
     valueCapacity: exports.poolCapacity(poolValues),
     memberOffset: exports.poolOffset(poolMembers),
     memberCapacity: exports.poolCapacity(poolMembers),
+    stringOperationOffset: exports.poolOffset(poolStringOperations),
+    stringOperationCapacity: exports.poolCapacity(poolStringOperations),
+    outputRangeOffset: exports.poolOffset(poolOutputRanges),
+    outputRangeCapacity: exports.poolCapacity(poolOutputRanges),
   });
 }
 

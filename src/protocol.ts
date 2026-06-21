@@ -80,6 +80,10 @@ export interface FixedMemoryLayout {
   valueCapacity: number;
   memberOffset: number;
   memberCapacity: number;
+  stringOperationOffset: number;
+  stringOperationCapacity: number;
+  outputRangeOffset: number;
+  outputRangeCapacity: number;
 }
 
 /** Logical allocation cursors transferred between the host and Wasm owner. */
@@ -563,6 +567,63 @@ export function decodeOutput(memory: WebAssembly.Memory, offset: number, length:
   return new TextDecoder('utf-8', { fatal: true }).decode(
     new Uint8Array(buffer, offset + recordHeaderLength, length),
   );
+}
+
+/** Resolves validated output range descriptors through render-local host strings. */
+export function decodeOutputRanges(
+  memory: WebAssembly.Memory,
+  offset: number,
+  count: number,
+  layout: FixedMemoryLayout,
+  hostStrings: readonly string[],
+): string {
+  if (
+    offset !== layout.outputRangeOffset ||
+    !Number.isSafeInteger(count) ||
+    count < 0 ||
+    count > layout.outputRangeCapacity
+  ) {
+    throw new Error('Wasm returned an invalid output range');
+  }
+  const ranges: string[] = [];
+  const view = new DataView(memory.buffer);
+  for (let index = 0; index < count; index += 1) {
+    const descriptor = offset + index * 16;
+    const handle = view.getUint32(descriptor, true);
+    const start = view.getUint32(descriptor + 4, true);
+    const length = view.getUint32(descriptor + 8, true);
+    let value: string;
+    if ((handle & 0x8000_0000) === 0) {
+      if (handle === 0 || handle > hostStrings.length) {
+        throw new Error('Wasm returned an unknown host string handle');
+      }
+      value = hostStrings[handle - 1]!;
+    } else {
+      const operationIndex = (handle & 0x7fff_ffff) - 1;
+      if (operationIndex < 0 || operationIndex >= layout.stringOperationCapacity) {
+        throw new Error('Wasm returned an invalid string operation handle');
+      }
+      const operation = layout.stringOperationOffset + operationIndex * 32;
+      if (view.getUint32(operation, true) !== 1) {
+        throw new Error('Wasm returned an unknown string operation');
+      }
+      const valueStart = view.getUint32(operation + 4, true);
+      const valueLength = view.getUint32(operation + 8, true);
+      if (valueStart + valueLength > layout.valueCapacity) {
+        throw new Error('Wasm returned an out-of-bounds materialized string');
+      }
+      value = new TextDecoder('utf-16le', { fatal: true }).decode(new Uint8Array(
+        memory.buffer,
+        layout.valueOffset + valueStart * 2,
+        valueLength * 2,
+      ));
+    }
+    if (start + length > value.length) {
+      throw new Error('Wasm returned an out-of-bounds host string range');
+    }
+    ranges.push(value.slice(start, start + length));
+  }
+  return ranges.join('');
 }
 
 /** Decodes a dependency request and its optional canonical parent identity. */
