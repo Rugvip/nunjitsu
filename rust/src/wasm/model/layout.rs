@@ -14,6 +14,11 @@ struct PoolState {
     cursor: u32,
 }
 
+#[repr(C)]
+struct RenderState {
+    fields: [u32; RENDER_STATE_LENGTH as usize / size_of::<u32>()],
+}
+
 impl PoolState {
     const EMPTY: Self = Self {
         offset: 0,
@@ -31,6 +36,7 @@ struct MemoryPrefix {
     layout_version: u32,
     legacy_arena_base: u32,
     reserved: u32,
+    render_state: RenderState,
     slots: PoolState,
     sources: PoolState,
     values: PoolState,
@@ -54,6 +60,9 @@ impl MemoryPrefix {
         layout_version: 0,
         legacy_arena_base: 0,
         reserved: 0,
+        render_state: RenderState {
+            fields: [0; RENDER_STATE_LENGTH as usize / size_of::<u32>()],
+        },
         slots: PoolState::EMPTY,
         sources: PoolState::EMPTY,
         values: PoolState::EMPTY,
@@ -70,7 +79,7 @@ pub struct Slot {
     pub fields: [u32; 16],
 }
 
-const _: () = assert!(size_of::<MemoryPrefix>() <= 256);
+const _: () = assert!(size_of::<MemoryPrefix>() <= 512);
 const _: () = assert!(size_of::<Slot>() == SLOT_LENGTH as usize);
 
 static mut MEMORY_PREFIX: MemoryPrefix = MemoryPrefix::EMPTY;
@@ -121,6 +130,33 @@ fn set_legacy_arena_cursor(value: u32) {
     }
 }
 
+fn render_state_offset() -> u32 {
+    let prefix = memory_prefix();
+    unsafe { addr_of!((*prefix).render_state) as u32 }
+}
+
+fn render_state_bytes() -> &'static [u8] {
+    unsafe {
+        slice::from_raw_parts(
+            render_state_offset() as *const u8,
+            RENDER_STATE_LENGTH as usize,
+        )
+    }
+}
+
+fn mutable_render_state_bytes() -> &'static mut [u8] {
+    unsafe {
+        slice::from_raw_parts_mut(
+            render_state_offset() as *mut u8,
+            RENDER_STATE_LENGTH as usize,
+        )
+    }
+}
+
+fn clear_render_state() {
+    mutable_render_state_bytes().fill(0);
+}
+
 fn reset_memory_cursors() {
     let prefix = memory_prefix();
     unsafe {
@@ -135,6 +171,7 @@ fn reset_memory_cursors() {
         (*prefix).string_queries.cursor = 0;
         (*prefix).output_ranges.cursor = 0;
     }
+    clear_render_state();
 }
 
 fn configure_pool(cursor: &mut u32, capacity: u32, width: u32) -> Option<PoolState> {

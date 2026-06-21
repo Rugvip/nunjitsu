@@ -141,7 +141,8 @@ fn start_render(request_offset: u32) -> Result<(), u32> {
 
     let frame_offset = allocate_record(TAG_FRAME, FRAME_LENGTH)?;
     write_frame(frame_offset, 0, source_offset, 0, canonical_offset, 0, 0)?;
-    let state_offset = allocate_record(TAG_RENDER_STATE, RENDER_STATE_LENGTH)?;
+    clear_render_state();
+    let state_offset = render_state_offset();
     set_state_field(state_offset, STATE_CONTEXT, context_offset)?;
     set_state_field(state_offset, STATE_FLAGS, flags)?;
     set_state_field(state_offset, STATE_CURRENT_FRAME, frame_offset)?;

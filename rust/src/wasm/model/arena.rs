@@ -63,6 +63,12 @@ fn write_u32_number(value: u32) -> Result<u32, u32> {
 }
 
 fn record_at(offset: u32, expected_tag: u32) -> Result<&'static [u8], u32> {
+    if offset == render_state_offset() {
+        if expected_tag != TAG_RENDER_STATE {
+            return Err(ERROR_INVALID_RECORD);
+        }
+        return Ok(render_state_bytes());
+    }
     let (tag, payload) = raw_record_at(offset)?;
     if tag != expected_tag {
         return Err(ERROR_INVALID_RECORD);
@@ -71,6 +77,12 @@ fn record_at(offset: u32, expected_tag: u32) -> Result<&'static [u8], u32> {
 }
 
 fn mutable_record_at(offset: u32, expected_tag: u32) -> Result<&'static mut [u8], u32> {
+    if offset == render_state_offset() {
+        if expected_tag != TAG_RENDER_STATE {
+            return Err(ERROR_INVALID_RECORD);
+        }
+        return Ok(mutable_render_state_bytes());
+    }
     if let Some(payload) = mutable_slot_record(offset, expected_tag)? {
         return Ok(payload);
     }
@@ -87,6 +99,9 @@ fn mutable_record_at(offset: u32, expected_tag: u32) -> Result<&'static mut [u8]
 }
 
 fn raw_record_at(offset: u32) -> Result<(u32, &'static [u8]), u32> {
+    if offset == render_state_offset() {
+        return Ok((TAG_RENDER_STATE, render_state_bytes()));
+    }
     if let Some(record) = slot_record(offset)? {
         return Ok(record);
     }
