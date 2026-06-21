@@ -14,6 +14,7 @@ constraints, and cross-cutting decisions belong here.
 | Compatibility | [Nunjucks compatibility](compatibility.md) | v3.2.4 contract, intentional deviations, and attribution |
 | Host API | [TypeScript API](typescript-api.md) | Engine lifecycle, rendering, packaging, and source constraints |
 | Verification | [Testing](testing.md) | Shared upstream corpus, test layers, fuzzing, and release gates |
+| Release operations | [Releasing](releasing.md) | Package identity, trusted publishing, and release invariants |
 
 ## Reading order
 

@@ -1,0 +1,46 @@
+name: Publish
+
+on:
+  release:
+    types:
+      - published
+
+permissions:
+  contents: read
+
+concurrency:
+  group: npm-publish
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Stage npm release
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: npm
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org/
+          package-manager-cache: false
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Verify release version
+        run: pnpm release:check
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+      - name: Run test matrix
+        run: pnpm test
+      - name: Install trusted-publishing npm CLI
+        run: npm install --global npm@11.15.0
+      - name: Stage package on npm
+        run: npm stage publish

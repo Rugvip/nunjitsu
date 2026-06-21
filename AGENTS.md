@@ -72,6 +72,10 @@ implementation and documentation aligned with the architecture in
 - Maintain one attributed parity manifest and language-neutral compatibility
   corpus, with explicit supplemental coverage mappings for parser, interpreter,
   and public API behavior. Classify every upstream v3.2.4 test in the manifest.
+- Publish only through `.github/workflows/publish.yml` using npm trusted
+  publishing bound to the `npm` GitHub environment. Ongoing releases must be
+  staged from an exact stable-version GitHub Release tag, never published with
+  a repository npm token.
 
 The rationale and detailed contracts live in:
 
@@ -81,6 +85,7 @@ The rationale and detailed contracts live in:
 - [`docs/compatibility.md`](docs/compatibility.md)
 - [`docs/typescript-api.md`](docs/typescript-api.md)
 - [`docs/testing.md`](docs/testing.md)
+- [`docs/releasing.md`](docs/releasing.md)
 
 ## Repository structure
 
@@ -166,6 +171,18 @@ Do not create additional packages without a documented architectural reason.
 - Keep parser/template and expression benchmark workloads output-equivalent
   across Nunjitsu and pinned Nunjucks. Do not add callback benchmarks or turn
   noisy performance measurements into test thresholds.
+
+## Changesets
+
+- Add a `.changeset/*.md` entry for every change that affects the published
+  package. Infrastructure, documentation-only, test-only, and private tooling
+  changes do not require one.
+- Create and inspect changeset files through direct file operations rather than
+  invoking Changesets CLI commands. Each entry must name `nunjitsu`, select the
+  correct semantic bump, and describe the user-visible package change.
+- Run `pnpm version:packages` only when intentionally preparing a release. It
+  consumes pending entries, updates `package.json` and `CHANGELOG.md`, and the
+  resulting version change must be committed before creating its matching tag.
 
 ## Documentation rules
 

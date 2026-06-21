@@ -3,6 +3,10 @@
   "version": "0.1.0",
   "description": "A secure direct string template engine written in TypeScript",
   "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Rugvip/nunjitsu.git"
+  },
   "type": "module",
   "packageManager": "pnpm@11.3.0",
   "sideEffects": false,
@@ -32,6 +36,7 @@
   },
   "files": [
     "dist/",
+    "CHANGELOG.md",
     "LICENSE",
     "README.md"
   ],
@@ -39,15 +44,20 @@
     "benchmark": "node benchmarks/run.ts",
     "benchmark:quick": "node benchmarks/run.ts --warmup=1 --iterations=3 --loops=1",
     "build": "node scripts/build.mjs",
+    "changeset": "changeset",
     "clean": "node scripts/clean.mjs",
+    "prepack": "pnpm run build",
+    "release:check": "node scripts/verify-release-version.mjs",
     "test": "pnpm run typecheck && pnpm run test:source && pnpm run test:benchmark && pnpm run test:package",
     "test:benchmark": "node benchmarks/run.ts --warmup=0 --iterations=1 --loops=1 --silent",
     "test:package": "pnpm run build && pnpm run test:package:types && node --test tests/package/esm.test.mjs tests/package/commonjs.test.cjs",
     "test:package:types": "node scripts/test-package-types.mjs",
     "test:source": "node --test tests/source/*.test.ts",
-    "typecheck": "tsgo -p tsconfig.json"
+    "typecheck": "tsgo -p tsconfig.json",
+    "version:packages": "changeset version"
   },
   "devDependencies": {
+    "@changesets/cli": "^2.31.0",
     "@types/node": "^22.13.14",
     "@types/nunjucks": "3.2.6",
     "@typescript/native-preview": "7.0.0-dev.20260613.1",
