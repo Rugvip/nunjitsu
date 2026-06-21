@@ -2,6 +2,7 @@ import * as nunjucks from 'nunjucks';
 
 import {
   copyRuntimeValue,
+  isReservedName,
   renderRuntimeValue,
   runtimeTruthy,
   RuntimeArray,
@@ -54,6 +55,18 @@ export function applyBuiltinFilter(
   if (name === 'groupby') {
     return groupRuntimeValues(input, positional[0]);
   }
+  if (name === 'join') {
+    return joinRuntimeValues(input, positional);
+  }
+  if (name === 'sum') {
+    return sumRuntimeValues(input, positional);
+  }
+  if (name === 'sort') {
+    return sortRuntimeValues(input, positional, keyword);
+  }
+  if (name === 'selectattr' || name === 'rejectattr') {
+    return selectRuntimeAttributes(input, positional, name === 'selectattr');
+  }
   const filter = environment.getFilter(name);
   if (!filter) {
     return undefined;
@@ -73,13 +86,133 @@ export function applyBuiltinFilter(
   return fromBuiltinValue(result);
 }
 
+function joinRuntimeValues(
+  input: RuntimeValue,
+  positional: readonly RuntimeValue[],
+): RuntimeValue {
+  if (!(input instanceof RuntimeArray)) {
+    return '';
+  }
+  const separator = renderRuntimeValue(positional[0] ?? '');
+  const attribute = optionalAttributePath(positional[1]);
+  return [...input.values()]
+    .map(value => renderRuntimeValue(attribute ? lookupRuntimePath(value, attribute) : value))
+    .join(separator);
+}
+
+function sumRuntimeValues(
+  input: RuntimeValue,
+  positional: readonly RuntimeValue[],
+): RuntimeValue {
+  if (!(input instanceof RuntimeArray)) {
+    return runtimeNumber(positional[1] ?? 0);
+  }
+  const attribute = optionalAttributePath(positional[0]);
+  let total = runtimeNumber(positional[1] ?? 0);
+  for (const value of input.values()) {
+    total += runtimeNumber(attribute ? lookupRuntimePath(value, attribute) : value);
+  }
+  return total;
+}
+
+function sortRuntimeValues(
+  input: RuntimeValue,
+  positional: readonly RuntimeValue[],
+  keyword: ReadonlyMap<string, RuntimeValue>,
+): RuntimeValue {
+  if (!(input instanceof RuntimeArray)) {
+    return new RuntimeArray([]);
+  }
+  const reverse = runtimeTruthy(keyword.get('reverse') ?? positional[0]);
+  const caseSensitive = runtimeTruthy(keyword.get('case_sensitive') ?? positional[1]);
+  const attribute = optionalAttributePath(keyword.get('attribute') ?? positional[2]);
+  const values = [...input.values()];
+  values.sort((left, right) => {
+    const leftValue = attribute ? lookupRuntimePath(left, attribute) : left;
+    const rightValue = attribute ? lookupRuntimePath(right, attribute) : right;
+    const result = compareRuntimeFilterValues(leftValue, rightValue, caseSensitive);
+    return reverse ? -result : result;
+  });
+  return new RuntimeArray(values);
+}
+
+function selectRuntimeAttributes(
+  input: RuntimeValue,
+  positional: readonly RuntimeValue[],
+  select: boolean,
+): RuntimeValue {
+  if (!(input instanceof RuntimeArray)) {
+    return new RuntimeArray([]);
+  }
+  const attribute = optionalAttributePath(positional[0]);
+  if (!attribute) {
+    throw new TypeError('Attribute selection requires a string attribute path');
+  }
+  const testName = positional[1] === undefined ? 'truthy' : renderRuntimeValue(positional[1]);
+  const testArguments = positional.slice(2);
+  const values = [...input.values()].filter(value => {
+    const result = applyBuiltinTest(testName, lookupRuntimePath(value, attribute), testArguments);
+    if (result === undefined) {
+      throw new Error(`Unknown template test ${testName}`);
+    }
+    return result === select;
+  });
+  return new RuntimeArray(values);
+}
+
+function optionalAttributePath(value: RuntimeValue): readonly string[] | undefined {
+  if (value === undefined || value === null || value === false) {
+    return undefined;
+  }
+  if (typeof value !== 'string' && !(value instanceof RuntimeSafeString)) {
+    return undefined;
+  }
+  const path = renderRuntimeValue(value).split('.');
+  for (const segment of path) {
+    if (isReservedName(segment)) {
+      throw new TypeError(`Template attribute ${segment} is reserved`);
+    }
+  }
+  return path;
+}
+
+function lookupRuntimePath(value: RuntimeValue, path: readonly string[]): RuntimeValue {
+  let current = value;
+  for (const segment of path) {
+    current = current instanceof RuntimeRecord ? current.get(segment) : undefined;
+  }
+  return current;
+}
+
+function compareRuntimeFilterValues(
+  left: RuntimeValue,
+  right: RuntimeValue,
+  caseSensitive: boolean,
+): number {
+  if (
+    typeof left === 'number' &&
+    typeof right === 'number'
+  ) {
+    return left - right;
+  }
+  const leftText = renderRuntimeValue(left);
+  const rightText = renderRuntimeValue(right);
+  const normalizedLeft = caseSensitive ? leftText : leftText.toLowerCase();
+  const normalizedRight = caseSensitive ? rightText : rightText.toLowerCase();
+  if (normalizedLeft < normalizedRight) {
+    return -1;
+  }
+  if (normalizedLeft > normalizedRight) {
+    return 1;
+  }
+  return 0;
+}
+
 function groupRuntimeValues(input: RuntimeValue, attribute: RuntimeValue): RuntimeValue {
   if (!(input instanceof RuntimeArray)) {
     return new RuntimeRecord([]);
   }
-  const path = typeof attribute === 'string' || attribute instanceof RuntimeSafeString
-    ? renderRuntimeValue(attribute).split('.')
-    : [];
+  const path = optionalAttributePath(attribute) ?? [];
   const grouped = new Map<string, RuntimeValue[]>();
   for (const value of input.values()) {
     let key: RuntimeValue = value;

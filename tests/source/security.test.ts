@@ -140,6 +140,14 @@ test('templates cannot reach ambient authority or invoke looked-up values', asyn
   ]) {
     await assert.rejects(engine.render({ source }, { value: { toString: 'data' } }), source);
   }
+  await assert.rejects(
+    engine.render({ source: '{{ values | join(",", "constructor") }}' }, { values: [1] }),
+    /constructor is reserved/,
+  );
+  assert.equal(
+    await engine.render({ source: '{{ values | join(",", "toString") }}' }, { values: [1] }),
+    '',
+  );
 
   await assert.rejects(
     engine.render({ source: '{{ expose() }}' }, {}, {
@@ -171,6 +179,9 @@ test('parser and evaluator sources contain no dynamic execution primitive', asyn
     /\bnew\s+Function\b/,
     /node:vm/,
     /\bimport\s*\(/,
+    /\bReflect\./,
+    /Object\.getPrototypeOf/,
+    /Object\.getOwnPropertyDescriptor/,
   ];
   for (const file of files) {
     const source = await readFile(new URL(file, import.meta.url), 'utf8');
