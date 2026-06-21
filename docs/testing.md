@@ -17,6 +17,19 @@
 6. Benchmarks compare synchronous inline parsing and expression evaluation with
    pinned Nunjucks in isolated processes.
 
+## Continuous integration
+
+GitHub Actions runs the complete test matrix on Node.js 22.18 and the current
+Node.js 24 release for every pull request and every push to `main`. A separate
+job builds and tests only the published ESM, CommonJS, and declaration entry
+paths on Node.js 22.0, enforcing the package's declared minimum without trying
+to execute source TypeScript on a runtime predating default type stripping.
+
+All jobs install with the `packageManager`-pinned pnpm version and
+`pnpm install --frozen-lockfile`. CI has read-only repository permissions,
+cancels superseded runs for the same ref, and does not receive publishing
+permissions or credentials.
+
 ## Compatibility corpus
 
 `tests/compat/cases.json` contains data-only cases adapted from Nunjucks 3.2.4.
