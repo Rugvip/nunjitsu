@@ -33,6 +33,14 @@ fn write_string_value(bytes: &[u8]) -> Result<u32, u32> {
     write_materialized_string_value(bytes, false)
 }
 
+fn finish_string_record(offset: u32, tag: u32) -> Result<u32, u32> {
+    let safe = tag == TAG_SAFE_STRING;
+    if !safe && tag != TAG_STRING {
+        return Err(ERROR_INVALID_RECORD);
+    }
+    write_materialized_string_value(record_at(offset, tag)?, safe)
+}
+
 fn write_materialized_code_unit_value(
     value_start: u32,
     code_unit_length: u32,

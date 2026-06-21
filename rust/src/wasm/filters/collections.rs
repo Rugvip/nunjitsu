@@ -17,7 +17,7 @@ fn reverse_value(value: Value) -> Result<u32, u32> {
                 output[cursor..end].copy_from_slice(encoded);
                 cursor = end;
             }
-            Ok(offset)
+            finish_string_record(offset, tag)
         }
         Value::Array(array) => {
             let payload_length = 4u32
@@ -59,7 +59,7 @@ fn ascii_case_value(value_offset: u32, uppercase: bool, capitalize: bool) -> Res
             byte.to_ascii_lowercase()
         };
     }
-    Ok(offset)
+    finish_string_record(offset, tag)
 }
 
 fn title_value(value_offset: u32) -> Result<u32, u32> {
@@ -86,7 +86,7 @@ fn title_value(value_offset: u32) -> Result<u32, u32> {
             byte
         };
     }
-    Ok(offset)
+    finish_string_record(offset, tag)
 }
 
 fn numeric_usize(value_offset: u32) -> Result<usize, u32> {
@@ -646,7 +646,7 @@ fn center_value(value_offset: u32, width: usize) -> Result<u32, u32> {
     let output = mutable_record_at(offset, tag)?;
     output.fill(b' ');
     output[left..left + rendered.bytes.len()].copy_from_slice(rendered.bytes);
-    Ok(offset)
+    finish_string_record(offset, tag)
 }
 
 fn parse_integer(value_offset: u32, base: usize) -> Result<Option<i64>, u32> {
@@ -739,7 +739,7 @@ fn indent_value(value_offset: u32, width: usize, first: bool) -> Result<u32, u32
         input_cursor = index + 1;
     }
     output[output_cursor..].copy_from_slice(&rendered.bytes[input_cursor..]);
-    Ok(offset)
+    finish_string_record(offset, tag)
 }
 
 fn join_value(
@@ -800,7 +800,7 @@ fn join_value(
             write_coerced_value_into(selected, output, &mut cursor)?;
         }
     }
-    Ok(offset)
+    finish_string_record(offset, TAG_STRING)
 }
 
 fn lookup_value_path(mut value_offset: u32, path: &[u8]) -> Result<Option<u32>, u32> {
