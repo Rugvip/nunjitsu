@@ -66,8 +66,9 @@ callable.
 ## Output
 
 Evaluation appends string slices to a render-owned array and joins it once at
-the end. Automatic escaping is disabled to match Backstage. Native
-standard-library filters such as `escape` still provide their documented behavior. Rendered
+the end. Automatic escaping is disabled for the direct-string API. Native
+standard-library filters such as `escape` still provide their documented
+behavior. Rendered
 output remains attacker-controlled and is not a general HTML, SQL, or shell
 sanitizer.
 

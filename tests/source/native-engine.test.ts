@@ -3,10 +3,10 @@ import test from 'node:test';
 
 import { createNativeEngine } from '../../src/native-engine.ts';
 
-test('renders Backstage and Cookiecutter variable modes synchronously', () => {
-  const backstage = createNativeEngine();
+test('renders default and Cookiecutter variable modes synchronously', () => {
+  const engine = createNativeEngine();
   assert.equal(
-    backstage.render('Hello ${{ values.name }}; {{ untouched }}', {
+    engine.render('Hello ${{ values.name }}; {{ untouched }}', {
       values: { name: 'Nunjitsu' },
     }),
     'Hello Nunjitsu; {{ untouched }}',

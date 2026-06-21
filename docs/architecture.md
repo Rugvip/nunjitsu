@@ -2,15 +2,15 @@
 
 ## Purpose
 
-Nunjitsu is a native TypeScript renderer for the Nunjucks behavior exposed by
-Backstage's scaffolder backend. It replaces the generated-JavaScript Nunjucks
-runtime and `isolated-vm` boundary with a closed interpreter.
+Nunjitsu is a native TypeScript renderer for a simpler Nunjucks subset,
+optimized for secure direct string templating. It replaces generated-JavaScript
+template execution with a closed interpreter.
 
 The design prioritizes, in order:
 
 1. preventing untrusted template source from gaining JavaScript execution or
    ambient access to the Node.js process;
-2. compatibility with Backstage scaffolder templates and expressions;
+2. compatibility with direct string templates and expressions;
 3. a small, auditable synchronous API; and
 4. low retained memory for one-shot rendering.
 
@@ -21,7 +21,7 @@ conflict.
 
 ```mermaid
 flowchart LR
-    A["Backstage caller"] --> B["TypeScript engine"]
+    A["Application caller"] --> B["TypeScript engine"]
     B --> C["JSON value copier"]
     B --> D["Tokenizer and parser"]
     D --> E["Immutable data-only AST"]
@@ -40,10 +40,10 @@ engine-bound snapshot; immutable path updates derive new snapshots with
 structural sharing. Nunjitsu has no loaders, filesystem access, streams,
 workers, Wasm modules, or resource to dispose.
 
-Backstage discovers and reads files outside the renderer, applies workspace
-path policy there, and renders each text file independently. Keeping that model
-means path traversal, symbolic links, archive extraction, and filesystem races
-are not part of the template execution boundary.
+Applications supply strings directly and perform any file discovery, path
+policy, and reads before invoking the renderer. Path traversal, symbolic links,
+archive extraction, and filesystem races are therefore outside the template
+execution boundary.
 
 ### Parser
 
@@ -54,7 +54,7 @@ It constructs frozen discriminated-union object nodes with stable direct
 properties and child references. There is no generic foreign-node conversion
 boundary or packed numeric arena.
 
-Default variables use Backstage's `${{` and `}}` delimiters. Cookiecutter mode
+Default variables use `${{` and `}}` delimiters. Cookiecutter mode
 uses `{{` and `}}` with the supported Jinja compatibility behavior. Block and
 comment delimiters remain `{% ... %}` and `{# ... #}`.
 

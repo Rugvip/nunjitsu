@@ -1,12 +1,11 @@
-# Backstage scaffolder compatibility
+# Direct string templating compatibility
 
 ## Baseline
 
-The compatibility target is the behavior exposed by Backstage's
-`SecureTemplater`, which bundles
+The compatibility target is a simpler, secure direct-string subset of
 [`mozilla/nunjucks` v3.2.4](https://github.com/mozilla/nunjucks/tree/v3.2.4).
-The Backstage renderer processes inline strings rather than exposing the full
-Nunjucks environment API.
+The API processes complete inline strings rather than exposing the full
+Nunjucks environment or template-loading API.
 
 Nunjucks is retained only as a development dependency for output-equivalent
 benchmarks and compatibility verification. Production source does not import
@@ -19,7 +18,7 @@ Nunjitsu targets:
 - Cookiecutter `{{ ... }}` mode and its `jsonify` alias;
 - expressions, truthiness, scoping, loops, inline macros, call blocks, and
   rendering semantics used within one source;
-- built-in filters, tests, and globals used by scaffolder templates;
+- built-in filters, tests, and globals used by direct string templates;
 - synchronous application filters and JSON-valued or callable globals;
 - `trimBlocks` and `lstripBlocks`; and
 - fixed `autoescape: false` behavior.
@@ -45,7 +44,7 @@ contract, not hidden compatibility failures.
 
 The attributed Nunjucks v3.2.4 test inventory remains the source for applicable
 language behavior. The parity manifest classifies every upstream case against
-the narrower Backstage contract. Applicable behavior is adapted into data-only
+the narrower secure direct-string contract. Applicable behavior is adapted into data-only
 cases under `tests/compat/`; loader, browser, JavaScript API, extension, and
 other out-of-scope cases are marked not applicable with a reason.
 

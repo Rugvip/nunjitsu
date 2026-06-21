@@ -59,9 +59,9 @@ implementation and documentation aligned with the architecture in
   isolation or exact CPU/RSS accounting.
 - Accept inline template source only. Filesystem discovery and path policy
   belong to the application outside Nunjitsu. Reject include, import, from, and
-  extends because Backstage's renderer does not support template loading.
-- Target the Nunjucks v3.2.4 behavior used by Backstage's `SecureTemplater`, not
-  its complete JavaScript or template-loading API. Precompilation, browser
+  extends because the secure direct-string API does not support template loading.
+- Target the documented secure direct-string subset of Nunjucks v3.2.4, not its
+  complete JavaScript or template-loading API. Precompilation, browser
   execution, streaming, async callbacks, exact upstream error text, live-object
   semantics, custom tests, and parser extensions are outside the contract.
 - Use `${{` and `}}` as the default variable delimiters. Cookiecutter mode uses

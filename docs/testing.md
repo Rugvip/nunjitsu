@@ -2,12 +2,12 @@
 
 ## Test layers
 
-1. Parser tests cover the closed grammar, Backstage delimiters, malformed
+1. Parser tests cover the closed grammar, fixed delimiters, malformed
    input, complete validation, and immutable data-only ASTs.
 2. Interpreter tests cover copied values, scopes, lookup, coercion, operators,
    calls, limits, output, and cleanup.
 3. Compatibility tests execute applicable attributed Nunjucks v3.2.4 behavior
-   through the Backstage-focused API.
+   through the secure direct-string API.
 4. Public API tests cover filters, globals, rendering modes, errors, and both
    ESM and CommonJS package entry points.
 5. Security tests exercise JavaScript escape gadgets, prototype pollution,
@@ -19,8 +19,8 @@
 
 `tests/compat/cases.json` contains data-only cases adapted from Nunjucks 3.2.4.
 The manifest retains provenance for all upstream cases and marks behavior
-outside the Backstage contract as not applicable. Applicable cases must render
-through the same synchronous public API used by the scaffolder integration.
+outside the secure direct-string contract as not applicable. Applicable cases
+must render through the same synchronous public API used by applications.
 Every ported or adapted manifest entry must have executable coverage. Pure
 rendering belongs in the language-neutral case corpus; behavior requiring
 trusted capabilities, non-JSON fixtures, errors, or boundary assertions may
@@ -47,10 +47,10 @@ value kinds; and failures must leave the next render clean.
 ## Benchmarks
 
 The comparison harness renders output-equivalent workloads in separate
-processes with fresh parsing on every operation. `template-files` models the
-scaffolder's independent rendering of many comment-heavy files against one
-prepared context, while `expressions` stresses computed runtime expressions.
+processes with fresh parsing on every operation. `template-files` models
+independent rendering of many comment-heavy strings against one prepared
+context, while `expressions` stresses computed runtime expressions.
 Context preparation is reported as setup rather than repeated rendering work.
 Callback benchmarks are intentionally excluded because the
-Backstage-compatible API is synchronous and callback overhead is not a separate
+direct-string API is synchronous and callback overhead is not a separate
 target.

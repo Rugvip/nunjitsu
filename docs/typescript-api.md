@@ -42,15 +42,15 @@ The public contracts are:
   complete inline source using either a plain or prepared context;
 - filters and globals are synchronous and immutable for the engine lifetime;
 - render options carry cooperative resource limits; and
-- interpolation is never automatically escaped, matching Backstage.
+- interpolation is never automatically escaped.
 
 There are no loaders, streams, cancellation handles, worker pools, Wasm memory,
 or disposal methods.
 
 ## Template and context inputs
 
-The source is always an inline string. Backstage reads each scaffolder file and
-enforces workspace paths before calling the renderer, so Nunjitsu has no
+The source is always an inline string. Applications perform any file reads and
+enforce their own path policy before calling the renderer, so Nunjitsu has no
 filesystem or template-loading API.
 
 Context values are JSON-compatible primitives, arrays, and plain records.
@@ -79,7 +79,7 @@ snapshot is not a secret-erasure guarantee.
 `filters` and globals are the only host behavior templates can invoke. Filters
 receive their input followed by positional arguments. Globals may be JSON
 values or synchronous functions receiving positional arguments. `undefined`
-from a callback follows Backstage behavior and renders as an absent value.
+from a callback renders as an absent value.
 
 Callbacks receive copied values and their results cross the same value
 validator as context input. Context functions and object methods are

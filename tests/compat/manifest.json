@@ -10,72 +10,72 @@
     {
       "upstream": {"id":"tests/api.js:3","file":"tests/api.js","test":"should handle correctly relative paths"},
       "status": "not applicable",
-      "reason": "Requires named-template loading, includes, imports, or inheritance, which the Backstage inline renderer does not support."
+      "reason": "Requires named-template loading, includes, imports, or inheritance, which the secure direct-string API does not support."
     },
     {
       "upstream": {"id":"tests/api.js:4","file":"tests/api.js","test":"should handle correctly cache for relative paths"},
       "status": "not applicable",
-      "reason": "Requires named-template loading, includes, imports, or inheritance, which the Backstage inline renderer does not support."
+      "reason": "Requires named-template loading, includes, imports, or inheritance, which the secure direct-string API does not support."
     },
     {
       "upstream": {"id":"tests/api.js:5","file":"tests/api.js","test":"should handle correctly relative paths in renderString"},
       "status": "not applicable",
-      "reason": "Requires named-template loading, includes, imports, or inheritance, which the Backstage inline renderer does not support."
+      "reason": "Requires named-template loading, includes, imports, or inheritance, which the secure direct-string API does not support."
     },
     {
       "upstream": {"id":"tests/loader.js:1","file":"tests/loader.js","test":"should allow a simple loader to be created"},
       "status": "not applicable",
-      "reason": "Requires named-template loading, includes, imports, or inheritance, which the Backstage inline renderer does not support."
+      "reason": "Requires named-template loading, includes, imports, or inheritance, which the secure direct-string API does not support."
     },
     {
       "upstream": {"id":"tests/loader.js:2","file":"tests/loader.js","test":"should catch loader error"},
       "status": "not applicable",
-      "reason": "Requires named-template loading, includes, imports, or inheritance, which the Backstage inline renderer does not support."
+      "reason": "Requires named-template loading, includes, imports, or inheritance, which the secure direct-string API does not support."
     },
     {
       "upstream": {"id":"tests/loader.js:3","file":"tests/loader.js","test":"should have default opts for WebLoader"},
       "status": "not applicable",
-      "reason": "Requires named-template loading, includes, imports, or inheritance, which the Backstage inline renderer does not support."
+      "reason": "Requires named-template loading, includes, imports, or inheritance, which the secure direct-string API does not support."
     },
     {
       "upstream": {"id":"tests/loader.js:4","file":"tests/loader.js","test":"should emit a \"load\" event"},
       "status": "not applicable",
-      "reason": "Requires named-template loading, includes, imports, or inheritance, which the Backstage inline renderer does not support."
+      "reason": "Requires named-template loading, includes, imports, or inheritance, which the secure direct-string API does not support."
     },
     {
       "upstream": {"id":"tests/loader.js:5","file":"tests/loader.js","test":"should have default opts"},
       "status": "not applicable",
-      "reason": "Requires named-template loading, includes, imports, or inheritance, which the Backstage inline renderer does not support."
+      "reason": "Requires named-template loading, includes, imports, or inheritance, which the secure direct-string API does not support."
     },
     {
       "upstream": {"id":"tests/loader.js:6","file":"tests/loader.js","test":"should emit a \"load\" event"},
       "status": "not applicable",
-      "reason": "Requires named-template loading, includes, imports, or inheritance, which the Backstage inline renderer does not support."
+      "reason": "Requires named-template loading, includes, imports, or inheritance, which the secure direct-string API does not support."
     },
     {
       "upstream": {"id":"tests/loader.js:7","file":"tests/loader.js","test":"should have default opts"},
       "status": "not applicable",
-      "reason": "Requires named-template loading, includes, imports, or inheritance, which the Backstage inline renderer does not support."
+      "reason": "Requires named-template loading, includes, imports, or inheritance, which the secure direct-string API does not support."
     },
     {
       "upstream": {"id":"tests/loader.js:8","file":"tests/loader.js","test":"should emit a \"load\" event"},
       "status": "not applicable",
-      "reason": "Requires named-template loading, includes, imports, or inheritance, which the Backstage inline renderer does not support."
+      "reason": "Requires named-template loading, includes, imports, or inheritance, which the secure direct-string API does not support."
     },
     {
       "upstream": {"id":"tests/loader.js:9","file":"tests/loader.js","test":"should render templates"},
       "status": "not applicable",
-      "reason": "Requires named-template loading, includes, imports, or inheritance, which the Backstage inline renderer does not support."
+      "reason": "Requires named-template loading, includes, imports, or inheritance, which the secure direct-string API does not support."
     },
     {
       "upstream": {"id":"tests/loader.js:10","file":"tests/loader.js","test":"should not allow directory traversal"},
       "status": "not applicable",
-      "reason": "Requires named-template loading, includes, imports, or inheritance, which the Backstage inline renderer does not support."
+      "reason": "Requires named-template loading, includes, imports, or inheritance, which the secure direct-string API does not support."
     },
     {
       "upstream": {"id":"tests/loader.js:11","file":"tests/loader.js","test":"should return null if no match"},
       "status": "not applicable",
-      "reason": "Requires named-template loading, includes, imports, or inheritance, which the Backstage inline renderer does not support."
+      "reason": "Requires named-template loading, includes, imports, or inheritance, which the secure direct-string API does not support."
     },
     {
       "upstream": {"id":"tests/runtime.js:1","file":"tests/runtime.js","test":"should report the failed function calls to symbols"},
@@ -125,7 +125,7 @@
     {
       "upstream": {"id":"tests/parser.js:2","file":"tests/parser.js","test":"should parse aggregate types"},
       "status": "not applicable",
-      "reason": "Requires automatic escaping, while Backstage fixes autoescape to false."
+      "reason": "Requires automatic escaping, while the direct-string API fixes autoescape to false."
     },
     {
       "upstream": {"id":"tests/parser.js:3","file":"tests/parser.js","test":"should parse variables"},
@@ -136,7 +136,7 @@
     {
       "upstream": {"id":"tests/parser.js:4","file":"tests/parser.js","test":"should parse operators"},
       "status": "not applicable",
-      "reason": "Requires a Nunjucks parser extension or host-defined tag, which Backstage does not expose."
+      "reason": "Requires a Nunjucks parser extension or host-defined tag, which the direct-string API does not expose."
     },
     {
       "upstream": {"id":"tests/parser.js:5","file":"tests/parser.js","test":"should parse tilde"},
@@ -153,7 +153,7 @@
     {
       "upstream": {"id":"tests/parser.js:7","file":"tests/parser.js","test":"should parse blocks"},
       "status": "not applicable",
-      "reason": "Requires named-template loading, includes, imports, or inheritance, which the Backstage inline renderer does not support."
+      "reason": "Requires named-template loading, includes, imports, or inheritance, which the secure direct-string API does not support."
     },
     {
       "upstream": {"id":"tests/parser.js:8","file":"tests/parser.js","test":"should accept attributes and methods of static arrays, objects and primitives"},
@@ -163,17 +163,17 @@
     {
       "upstream": {"id":"tests/parser.js:9","file":"tests/parser.js","test":"should parse include tags"},
       "status": "not applicable",
-      "reason": "Requires named-template loading, includes, imports, or inheritance, which the Backstage inline renderer does not support."
+      "reason": "Requires named-template loading, includes, imports, or inheritance, which the secure direct-string API does not support."
     },
     {
       "upstream": {"id":"tests/parser.js:10","file":"tests/parser.js","test":"should parse for loops"},
       "status": "not applicable",
-      "reason": "Requires automatic escaping, while Backstage fixes autoescape to false."
+      "reason": "Requires automatic escaping, while the direct-string API fixes autoescape to false."
     },
     {
       "upstream": {"id":"tests/parser.js:11","file":"tests/parser.js","test":"should parse for loops with else"},
       "status": "not applicable",
-      "reason": "Requires automatic escaping, while Backstage fixes autoescape to false."
+      "reason": "Requires automatic escaping, while the direct-string API fixes autoescape to false."
     },
     {
       "upstream": {"id":"tests/parser.js:12","file":"tests/parser.js","test":"should parse filters"},
@@ -201,87 +201,87 @@
     {
       "upstream": {"id":"tests/parser.js:16","file":"tests/parser.js","test":"should parse raw"},
       "status": "not applicable",
-      "reason": "Requires automatic escaping, while Backstage fixes autoescape to false."
+      "reason": "Requires automatic escaping, while the direct-string API fixes autoescape to false."
     },
     {
       "upstream": {"id":"tests/parser.js:17","file":"tests/parser.js","test":"should parse raw with broken variables"},
       "status": "not applicable",
-      "reason": "Requires automatic escaping, while Backstage fixes autoescape to false."
+      "reason": "Requires automatic escaping, while the direct-string API fixes autoescape to false."
     },
     {
       "upstream": {"id":"tests/parser.js:18","file":"tests/parser.js","test":"should parse raw with broken blocks"},
       "status": "not applicable",
-      "reason": "Requires automatic escaping, while Backstage fixes autoescape to false."
+      "reason": "Requires automatic escaping, while the direct-string API fixes autoescape to false."
     },
     {
       "upstream": {"id":"tests/parser.js:19","file":"tests/parser.js","test":"should parse raw with pure text"},
       "status": "not applicable",
-      "reason": "Requires automatic escaping, while Backstage fixes autoescape to false."
+      "reason": "Requires automatic escaping, while the direct-string API fixes autoescape to false."
     },
     {
       "upstream": {"id":"tests/parser.js:20","file":"tests/parser.js","test":"should parse raw with raw blocks"},
       "status": "not applicable",
-      "reason": "Requires automatic escaping, while Backstage fixes autoescape to false."
+      "reason": "Requires automatic escaping, while the direct-string API fixes autoescape to false."
     },
     {
       "upstream": {"id":"tests/parser.js:21","file":"tests/parser.js","test":"should parse raw with comment blocks"},
       "status": "not applicable",
-      "reason": "Requires automatic escaping, while Backstage fixes autoescape to false."
+      "reason": "Requires automatic escaping, while the direct-string API fixes autoescape to false."
     },
     {
       "upstream": {"id":"tests/parser.js:22","file":"tests/parser.js","test":"should parse multiple raw blocks"},
       "status": "not applicable",
-      "reason": "Requires automatic escaping, while Backstage fixes autoescape to false."
+      "reason": "Requires automatic escaping, while the direct-string API fixes autoescape to false."
     },
     {
       "upstream": {"id":"tests/parser.js:23","file":"tests/parser.js","test":"should parse multiline multiple raw blocks"},
       "status": "not applicable",
-      "reason": "Requires automatic escaping, while Backstage fixes autoescape to false."
+      "reason": "Requires automatic escaping, while the direct-string API fixes autoescape to false."
     },
     {
       "upstream": {"id":"tests/parser.js:24","file":"tests/parser.js","test":"should parse verbatim"},
       "status": "not applicable",
-      "reason": "Requires automatic escaping, while Backstage fixes autoescape to false."
+      "reason": "Requires automatic escaping, while the direct-string API fixes autoescape to false."
     },
     {
       "upstream": {"id":"tests/parser.js:25","file":"tests/parser.js","test":"should parse verbatim with broken variables"},
       "status": "not applicable",
-      "reason": "Requires automatic escaping, while Backstage fixes autoescape to false."
+      "reason": "Requires automatic escaping, while the direct-string API fixes autoescape to false."
     },
     {
       "upstream": {"id":"tests/parser.js:26","file":"tests/parser.js","test":"should parse verbatim with broken blocks"},
       "status": "not applicable",
-      "reason": "Requires automatic escaping, while Backstage fixes autoescape to false."
+      "reason": "Requires automatic escaping, while the direct-string API fixes autoescape to false."
     },
     {
       "upstream": {"id":"tests/parser.js:27","file":"tests/parser.js","test":"should parse verbatim with pure text"},
       "status": "not applicable",
-      "reason": "Requires automatic escaping, while Backstage fixes autoescape to false."
+      "reason": "Requires automatic escaping, while the direct-string API fixes autoescape to false."
     },
     {
       "upstream": {"id":"tests/parser.js:28","file":"tests/parser.js","test":"should parse verbatim with verbatim blocks"},
       "status": "not applicable",
-      "reason": "Requires automatic escaping, while Backstage fixes autoescape to false."
+      "reason": "Requires automatic escaping, while the direct-string API fixes autoescape to false."
     },
     {
       "upstream": {"id":"tests/parser.js:29","file":"tests/parser.js","test":"should parse verbatim with comment blocks"},
       "status": "not applicable",
-      "reason": "Requires automatic escaping, while Backstage fixes autoescape to false."
+      "reason": "Requires automatic escaping, while the direct-string API fixes autoescape to false."
     },
     {
       "upstream": {"id":"tests/parser.js:30","file":"tests/parser.js","test":"should parse multiple verbatim blocks"},
       "status": "not applicable",
-      "reason": "Requires automatic escaping, while Backstage fixes autoescape to false."
+      "reason": "Requires automatic escaping, while the direct-string API fixes autoescape to false."
     },
     {
       "upstream": {"id":"tests/parser.js:31","file":"tests/parser.js","test":"should parse multiline multiple verbatim blocks"},
       "status": "not applicable",
-      "reason": "Requires automatic escaping, while Backstage fixes autoescape to false."
+      "reason": "Requires automatic escaping, while the direct-string API fixes autoescape to false."
     },
     {
       "upstream": {"id":"tests/parser.js:32","file":"tests/parser.js","test":"should parse switch statements"},
       "status": "not applicable",
-      "reason": "Requires automatic escaping, while Backstage fixes autoescape to false."
+      "reason": "Requires automatic escaping, while the direct-string API fixes autoescape to false."
     },
     {
       "upstream": {"id":"tests/parser.js:33","file":"tests/parser.js","test":"should parse keyword and non-keyword arguments"},
@@ -292,27 +292,27 @@
     {
       "upstream": {"id":"tests/parser.js:34","file":"tests/parser.js","test":"should parse imports"},
       "status": "not applicable",
-      "reason": "Requires named-template loading, includes, imports, or inheritance, which the Backstage inline renderer does not support."
+      "reason": "Requires named-template loading, includes, imports, or inheritance, which the secure direct-string API does not support."
     },
     {
       "upstream": {"id":"tests/parser.js:35","file":"tests/parser.js","test":"should parse whitespace control"},
       "status": "not applicable",
-      "reason": "Requires named-template loading, includes, imports, or inheritance, which the Backstage inline renderer does not support."
+      "reason": "Requires named-template loading, includes, imports, or inheritance, which the secure direct-string API does not support."
     },
     {
       "upstream": {"id":"tests/parser.js:36","file":"tests/parser.js","test":"should throw errors"},
       "status": "not applicable",
-      "reason": "Requires named-template loading, includes, imports, or inheritance, which the Backstage inline renderer does not support."
+      "reason": "Requires named-template loading, includes, imports, or inheritance, which the secure direct-string API does not support."
     },
     {
       "upstream": {"id":"tests/parser.js:37","file":"tests/parser.js","test":"should parse custom tags"},
       "status": "not applicable",
-      "reason": "Requires a Nunjucks parser extension or host-defined tag, which Backstage does not expose."
+      "reason": "Requires a Nunjucks parser extension or host-defined tag, which the direct-string API does not expose."
     },
     {
       "upstream": {"id":"tests/lexer.js:1","file":"tests/lexer.js","test":"should parse template data"},
       "status": "adapted",
-      "reason": "Applicable observable language behavior is exercised through the synchronous inline Backstage renderer.",
+      "reason": "Applicable observable language behavior is exercised through the synchronous direct-string API.",
       "cases": ["compiler-static-text"]
     },
     {
@@ -354,17 +354,17 @@
     {
       "upstream": {"id":"tests/lexer.js:9","file":"tests/lexer.js","test":"should treat the non-breaking space as valid whitespace"},
       "status": "not applicable",
-      "reason": "Requires automatic escaping, while Backstage fixes autoescape to false."
+      "reason": "Requires automatic escaping, while the direct-string API fixes autoescape to false."
     },
     {
       "upstream": {"id":"tests/lexer.js:10","file":"tests/lexer.js","test":"should parse block start and end"},
       "status": "not applicable",
-      "reason": "Requires a Nunjucks parser extension or host-defined tag, which Backstage does not expose."
+      "reason": "Requires a Nunjucks parser extension or host-defined tag, which the direct-string API does not expose."
     },
     {
       "upstream": {"id":"tests/lexer.js:11","file":"tests/lexer.js","test":"should parse basic types"},
       "status": "not applicable",
-      "reason": "Requires automatic escaping, while Backstage fixes autoescape to false."
+      "reason": "Requires automatic escaping, while the direct-string API fixes autoescape to false."
     },
     {
       "upstream": {"id":"tests/lexer.js:12","file":"tests/lexer.js","test":"should parse function calls"},
@@ -375,7 +375,7 @@
     {
       "upstream": {"id":"tests/lexer.js:13","file":"tests/lexer.js","test":"should parse groups"},
       "status": "not applicable",
-      "reason": "Requires automatic escaping, while Backstage fixes autoescape to false."
+      "reason": "Requires automatic escaping, while the direct-string API fixes autoescape to false."
     },
     {
       "upstream": {"id":"tests/lexer.js:14","file":"tests/lexer.js","test":"should parse arrays"},
@@ -386,12 +386,12 @@
     {
       "upstream": {"id":"tests/lexer.js:15","file":"tests/lexer.js","test":"should parse dicts"},
       "status": "not applicable",
-      "reason": "Requires automatic escaping, while Backstage fixes autoescape to false."
+      "reason": "Requires automatic escaping, while the direct-string API fixes autoescape to false."
     },
     {
       "upstream": {"id":"tests/lexer.js:16","file":"tests/lexer.js","test":"should parse blocks without whitespace"},
       "status": "not applicable",
-      "reason": "Requires automatic escaping, while Backstage fixes autoescape to false."
+      "reason": "Requires automatic escaping, while the direct-string API fixes autoescape to false."
     },
     {
       "upstream": {"id":"tests/lexer.js:17","file":"tests/lexer.js","test":"should parse filters"},
@@ -407,7 +407,7 @@
     {
       "upstream": {"id":"tests/lexer.js:19","file":"tests/lexer.js","test":"should parse comments"},
       "status": "adapted",
-      "reason": "Applicable observable language behavior is exercised through the synchronous inline Backstage renderer."
+      "reason": "Applicable observable language behavior is exercised through the synchronous direct-string API."
     },
     {
       "upstream": {"id":"tests/lexer.js:20","file":"tests/lexer.js","test":"should allow changing the variable start and end"},
@@ -437,7 +437,7 @@
     {
       "upstream": {"id":"tests/lexer.js:25","file":"tests/lexer.js","test":"should parse regular expressions"},
       "status": "not applicable",
-      "reason": "Requires automatic escaping, while Backstage fixes autoescape to false."
+      "reason": "Requires automatic escaping, while the direct-string API fixes autoescape to false."
     },
     {
       "upstream": {"id":"tests/lexer.js:26","file":"tests/lexer.js","test":"should keep track of token positions"},
@@ -462,27 +462,27 @@
     {
       "upstream": {"id":"tests/compiler.js:125","file":"tests/compiler.js","test":"should autoescape if autoescape is on"},
       "status": "not applicable",
-      "reason": "Requires automatic escaping, while Backstage fixes autoescape to false."
+      "reason": "Requires automatic escaping, while the direct-string API fixes autoescape to false."
     },
     {
       "upstream": {"id":"tests/compiler.js:126","file":"tests/compiler.js","test":"should not autoescape safe strings"},
       "status": "not applicable",
-      "reason": "Requires automatic escaping, while Backstage fixes autoescape to false."
+      "reason": "Requires automatic escaping, while the direct-string API fixes autoescape to false."
     },
     {
       "upstream": {"id":"tests/compiler.js:105","file":"tests/compiler.js","test":"should include templates dynamically"},
       "status": "not applicable",
-      "reason": "Requires named-template loading, includes, imports, or inheritance, which the Backstage inline renderer does not support."
+      "reason": "Requires named-template loading, includes, imports, or inheritance, which the secure direct-string API does not support."
     },
     {
       "upstream": {"id":"tests/compiler.js:106","file":"tests/compiler.js","test":"should include templates dynamically based on a set var"},
       "status": "not applicable",
-      "reason": "Requires named-template loading, includes, imports, or inheritance, which the Backstage inline renderer does not support."
+      "reason": "Requires named-template loading, includes, imports, or inheritance, which the secure direct-string API does not support."
     },
     {
       "upstream": {"id":"tests/compiler.js:107","file":"tests/compiler.js","test":"should include templates dynamically based on an object attr"},
       "status": "not applicable",
-      "reason": "Requires named-template loading, includes, imports, or inheritance, which the Backstage inline renderer does not support."
+      "reason": "Requires named-template loading, includes, imports, or inheritance, which the secure direct-string API does not support."
     },
     {
       "upstream": {"id":"tests/compiler.js:46","file":"tests/compiler.js","test":"should compile basic arithmetic operators"},
@@ -517,7 +517,7 @@
     {
       "upstream": {"id":"tests/compiler.js:109","file":"tests/compiler.js","test":"should fail silently on missing templates if requested"},
       "status": "not applicable",
-      "reason": "Requires named-template loading, includes, imports, or inheritance, which the Backstage inline renderer does not support."
+      "reason": "Requires named-template loading, includes, imports, or inheritance, which the secure direct-string API does not support."
     },
     {
       "upstream": {"id":"tests/compiler.js:15","file":"tests/compiler.js","test":"should compile the ternary operator"},
@@ -622,7 +622,7 @@
     {
       "upstream": {"id":"tests/compiler.js:74","file":"tests/compiler.js","test":"should compile macro calls inside blocks"},
       "status": "not applicable",
-      "reason": "Requires named-template loading, includes, imports, or inheritance, which the Backstage inline renderer does not support."
+      "reason": "Requires named-template loading, includes, imports, or inheritance, which the secure direct-string API does not support."
     },
     {
       "upstream": {"id":"tests/compiler.js:75","file":"tests/compiler.js","test":"should compile macros defined in one block and called in another"},
@@ -632,7 +632,7 @@
     {
       "upstream": {"id":"tests/compiler.js:76","file":"tests/compiler.js","test":"should compile macros that include other templates"},
       "status": "not applicable",
-      "reason": "Requires named-template loading, includes, imports, or inheritance, which the Backstage inline renderer does not support."
+      "reason": "Requires named-template loading, includes, imports, or inheritance, which the secure direct-string API does not support."
     },
     {
       "upstream": {"id":"tests/compiler.js:77","file":"tests/compiler.js","test":"should compile macros that set vars"},
@@ -672,42 +672,42 @@
     {
       "upstream": {"id":"tests/compiler.js:84","file":"tests/compiler.js","test":"should compile call blocks using imported macros"},
       "status": "not applicable",
-      "reason": "Requires named-template loading, includes, imports, or inheritance, which the Backstage inline renderer does not support."
+      "reason": "Requires named-template loading, includes, imports, or inheritance, which the secure direct-string API does not support."
     },
     {
       "upstream": {"id":"tests/compiler.js:85","file":"tests/compiler.js","test":"should import templates"},
       "status": "not applicable",
-      "reason": "Requires named-template loading, includes, imports, or inheritance, which the Backstage inline renderer does not support."
+      "reason": "Requires named-template loading, includes, imports, or inheritance, which the secure direct-string API does not support."
     },
     {
       "upstream": {"id":"tests/compiler.js:86","file":"tests/compiler.js","test":"should import templates with context"},
       "status": "not applicable",
-      "reason": "Requires named-template loading, includes, imports, or inheritance, which the Backstage inline renderer does not support."
+      "reason": "Requires named-template loading, includes, imports, or inheritance, which the secure direct-string API does not support."
     },
     {
       "upstream": {"id":"tests/compiler.js:87","file":"tests/compiler.js","test":"should import templates without context"},
       "status": "not applicable",
-      "reason": "Requires named-template loading, includes, imports, or inheritance, which the Backstage inline renderer does not support."
+      "reason": "Requires named-template loading, includes, imports, or inheritance, which the secure direct-string API does not support."
     },
     {
       "upstream": {"id":"tests/compiler.js:88","file":"tests/compiler.js","test":"should default to importing without context"},
       "status": "not applicable",
-      "reason": "Requires named-template loading, includes, imports, or inheritance, which the Backstage inline renderer does not support."
+      "reason": "Requires named-template loading, includes, imports, or inheritance, which the secure direct-string API does not support."
     },
     {
       "upstream": {"id":"tests/compiler.js:89","file":"tests/compiler.js","test":"should inherit templates"},
       "status": "not applicable",
-      "reason": "Requires named-template loading, includes, imports, or inheritance, which the Backstage inline renderer does not support."
+      "reason": "Requires named-template loading, includes, imports, or inheritance, which the secure direct-string API does not support."
     },
     {
       "upstream": {"id":"tests/compiler.js:90","file":"tests/compiler.js","test":"should not call blocks not defined from template inheritance"},
       "status": "not applicable",
-      "reason": "Requires named-template loading, includes, imports, or inheritance, which the Backstage inline renderer does not support."
+      "reason": "Requires named-template loading, includes, imports, or inheritance, which the secure direct-string API does not support."
     },
     {
       "upstream": {"id":"tests/compiler.js:91","file":"tests/compiler.js","test":"should conditionally inherit templates"},
       "status": "not applicable",
-      "reason": "Requires named-template loading, includes, imports, or inheritance, which the Backstage inline renderer does not support."
+      "reason": "Requires named-template loading, includes, imports, or inheritance, which the secure direct-string API does not support."
     },
     {
       "upstream": {"id":"tests/compiler.js:92","file":"tests/compiler.js","test":"should error if same block is defined multiple times"},
@@ -717,37 +717,37 @@
     {
       "upstream": {"id":"tests/compiler.js:93","file":"tests/compiler.js","test":"should render nested blocks in child template"},
       "status": "not applicable",
-      "reason": "Requires named-template loading, includes, imports, or inheritance, which the Backstage inline renderer does not support."
+      "reason": "Requires named-template loading, includes, imports, or inheritance, which the secure direct-string API does not support."
     },
     {
       "upstream": {"id":"tests/compiler.js:94","file":"tests/compiler.js","test":"should render parent blocks with super()"},
       "status": "not applicable",
-      "reason": "Requires named-template loading, includes, imports, or inheritance, which the Backstage inline renderer does not support."
+      "reason": "Requires named-template loading, includes, imports, or inheritance, which the secure direct-string API does not support."
     },
     {
       "upstream": {"id":"tests/compiler.js:95","file":"tests/compiler.js","test":"should let super() see global vars from child template"},
       "status": "not applicable",
-      "reason": "Requires named-template loading, includes, imports, or inheritance, which the Backstage inline renderer does not support."
+      "reason": "Requires named-template loading, includes, imports, or inheritance, which the secure direct-string API does not support."
     },
     {
       "upstream": {"id":"tests/compiler.js:96","file":"tests/compiler.js","test":"should not let super() see vars from child block"},
       "status": "not applicable",
-      "reason": "Requires named-template loading, includes, imports, or inheritance, which the Backstage inline renderer does not support."
+      "reason": "Requires named-template loading, includes, imports, or inheritance, which the secure direct-string API does not support."
     },
     {
       "upstream": {"id":"tests/compiler.js:97","file":"tests/compiler.js","test":"should let child templates access parent global scope"},
       "status": "not applicable",
-      "reason": "Requires named-template loading, includes, imports, or inheritance, which the Backstage inline renderer does not support."
+      "reason": "Requires named-template loading, includes, imports, or inheritance, which the secure direct-string API does not support."
     },
     {
       "upstream": {"id":"tests/compiler.js:98","file":"tests/compiler.js","test":"should not let super() modify calling scope"},
       "status": "not applicable",
-      "reason": "Requires named-template loading, includes, imports, or inheritance, which the Backstage inline renderer does not support."
+      "reason": "Requires named-template loading, includes, imports, or inheritance, which the secure direct-string API does not support."
     },
     {
       "upstream": {"id":"tests/compiler.js:99","file":"tests/compiler.js","test":"should not let child templates set vars in parent scope"},
       "status": "not applicable",
-      "reason": "Requires named-template loading, includes, imports, or inheritance, which the Backstage inline renderer does not support."
+      "reason": "Requires named-template loading, includes, imports, or inheritance, which the secure direct-string API does not support."
     },
     {
       "upstream": {"id":"tests/compiler.js:100","file":"tests/compiler.js","test":"should render blocks in their own scope"},
@@ -757,32 +757,32 @@
     {
       "upstream": {"id":"tests/compiler.js:101","file":"tests/compiler.js","test":"should include templates"},
       "status": "not applicable",
-      "reason": "Requires named-template loading, includes, imports, or inheritance, which the Backstage inline renderer does not support."
+      "reason": "Requires named-template loading, includes, imports, or inheritance, which the secure direct-string API does not support."
     },
     {
       "upstream": {"id":"tests/compiler.js:102","file":"tests/compiler.js","test":"should include 130 templates without call stack size exceed"},
       "status": "not applicable",
-      "reason": "Requires named-template loading, includes, imports, or inheritance, which the Backstage inline renderer does not support."
+      "reason": "Requires named-template loading, includes, imports, or inheritance, which the secure direct-string API does not support."
     },
     {
       "upstream": {"id":"tests/compiler.js:103","file":"tests/compiler.js","test":"should include templates with context"},
       "status": "not applicable",
-      "reason": "Requires named-template loading, includes, imports, or inheritance, which the Backstage inline renderer does not support."
+      "reason": "Requires named-template loading, includes, imports, or inheritance, which the secure direct-string API does not support."
     },
     {
       "upstream": {"id":"tests/compiler.js:104","file":"tests/compiler.js","test":"should include templates that can see including scope, but not write to it"},
       "status": "not applicable",
-      "reason": "Requires named-template loading, includes, imports, or inheritance, which the Backstage inline renderer does not support."
+      "reason": "Requires named-template loading, includes, imports, or inheritance, which the secure direct-string API does not support."
     },
     {
       "upstream": {"id":"tests/compiler.js:108","file":"tests/compiler.js","test":"should throw an error when including a file that does not exist"},
       "status": "not applicable",
-      "reason": "Requires named-template loading, includes, imports, or inheritance, which the Backstage inline renderer does not support."
+      "reason": "Requires named-template loading, includes, imports, or inheritance, which the secure direct-string API does not support."
     },
     {
       "upstream": {"id":"tests/compiler.js:110","file":"tests/compiler.js","test":"should have access to \"loop\" inside an include"},
       "status": "not applicable",
-      "reason": "Requires named-template loading, includes, imports, or inheritance, which the Backstage inline renderer does not support."
+      "reason": "Requires named-template loading, includes, imports, or inheritance, which the secure direct-string API does not support."
     },
     {
       "upstream": {"id":"tests/compiler.js:111","file":"tests/compiler.js","test":"should maintain nested scopes"},
@@ -792,72 +792,72 @@
     {
       "upstream": {"id":"tests/compiler.js:112","file":"tests/compiler.js","test":"should allow blocks in for loops"},
       "status": "not applicable",
-      "reason": "Requires named-template loading, includes, imports, or inheritance, which the Backstage inline renderer does not support."
+      "reason": "Requires named-template loading, includes, imports, or inheritance, which the secure direct-string API does not support."
     },
     {
       "upstream": {"id":"tests/compiler.js:113","file":"tests/compiler.js","test":"should make includes inherit scope"},
       "status": "not applicable",
-      "reason": "Requires named-template loading, includes, imports, or inheritance, which the Backstage inline renderer does not support."
+      "reason": "Requires named-template loading, includes, imports, or inheritance, which the secure direct-string API does not support."
     },
     {
       "upstream": {"id":"tests/compiler.js:118","file":"tests/compiler.js","test":"should compile block-set wrapping an inherited block"},
       "status": "not applicable",
-      "reason": "Requires named-template loading, includes, imports, or inheritance, which the Backstage inline renderer does not support."
+      "reason": "Requires named-template loading, includes, imports, or inheritance, which the secure direct-string API does not support."
     },
     {
       "upstream": {"id":"tests/compiler.js:119","file":"tests/compiler.js","test":"should throw errors"},
       "status": "not applicable",
-      "reason": "Requires named-template loading, includes, imports, or inheritance, which the Backstage inline renderer does not support."
+      "reason": "Requires named-template loading, includes, imports, or inheritance, which the secure direct-string API does not support."
     },
     {
       "upstream": {"id":"tests/compiler.js:120","file":"tests/compiler.js","test":"should allow custom tag compilation"},
       "status": "not applicable",
-      "reason": "Requires a Nunjucks parser extension or host-defined tag, which Backstage does not expose."
+      "reason": "Requires a Nunjucks parser extension or host-defined tag, which the direct-string API does not expose."
     },
     {
       "upstream": {"id":"tests/compiler.js:121","file":"tests/compiler.js","test":"should allow custom tag compilation without content"},
       "status": "not applicable",
-      "reason": "Requires a Nunjucks parser extension or host-defined tag, which Backstage does not expose."
+      "reason": "Requires a Nunjucks parser extension or host-defined tag, which the direct-string API does not expose."
     },
     {
       "upstream": {"id":"tests/compiler.js:122","file":"tests/compiler.js","test":"should allow complicated custom tag compilation"},
       "status": "not applicable",
-      "reason": "Requires a Nunjucks parser extension or host-defined tag, which Backstage does not expose."
+      "reason": "Requires a Nunjucks parser extension or host-defined tag, which the direct-string API does not expose."
     },
     {
       "upstream": {"id":"tests/compiler.js:123","file":"tests/compiler.js","test":"should allow custom tag with args compilation"},
       "status": "not applicable",
-      "reason": "Requires a Nunjucks parser extension or host-defined tag, which Backstage does not expose."
+      "reason": "Requires a Nunjucks parser extension or host-defined tag, which the direct-string API does not expose."
     },
     {
       "upstream": {"id":"tests/compiler.js:124","file":"tests/compiler.js","test":"should autoescape by default"},
       "status": "not applicable",
-      "reason": "Exercises the Nunjucks JavaScript API rather than Backstage inline rendering."
+      "reason": "Exercises the Nunjucks JavaScript API rather than secure direct-string rendering."
     },
     {
       "upstream": {"id":"tests/compiler.js:127","file":"tests/compiler.js","test":"should not autoescape macros"},
       "status": "not applicable",
-      "reason": "Requires automatic escaping, while Backstage fixes autoescape to false."
+      "reason": "Requires automatic escaping, while the direct-string API fixes autoescape to false."
     },
     {
       "upstream": {"id":"tests/compiler.js:128","file":"tests/compiler.js","test":"should not autoescape super()"},
       "status": "not applicable",
-      "reason": "Requires named-template loading, includes, imports, or inheritance, which the Backstage inline renderer does not support."
+      "reason": "Requires named-template loading, includes, imports, or inheritance, which the secure direct-string API does not support."
     },
     {
       "upstream": {"id":"tests/compiler.js:129","file":"tests/compiler.js","test":"should autoescape backslashes"},
       "status": "not applicable",
-      "reason": "Requires automatic escaping, while Backstage fixes autoescape to false."
+      "reason": "Requires automatic escaping, while the direct-string API fixes autoescape to false."
     },
     {
       "upstream": {"id":"tests/compiler.js:130","file":"tests/compiler.js","test":"should not autoescape when extension set false"},
       "status": "not applicable",
-      "reason": "Requires a Nunjucks parser extension or host-defined tag, which Backstage does not expose."
+      "reason": "Requires a Nunjucks parser extension or host-defined tag, which the direct-string API does not expose."
     },
     {
       "upstream": {"id":"tests/compiler.js:131","file":"tests/compiler.js","test":"should pass context as this to filters"},
       "status": "not applicable",
-      "reason": "Requires a Nunjucks parser extension or host-defined tag, which Backstage does not expose."
+      "reason": "Requires a Nunjucks parser extension or host-defined tag, which the direct-string API does not expose."
     },
     {
       "upstream": {"id":"tests/compiler.js:132","file":"tests/compiler.js","test":"should render regexs"},
@@ -872,62 +872,62 @@
     {
       "upstream": {"id":"tests/compiler.js:134","file":"tests/compiler.js","test":"should throw an error when including a file that calls an undefined macro"},
       "status": "not applicable",
-      "reason": "Requires named-template include loading, which the Backstage inline renderer does not support."
+      "reason": "Requires named-template include loading, which the secure direct-string API does not support."
     },
     {
       "upstream": {"id":"tests/compiler.js:135","file":"tests/compiler.js","test":"should throw an error when including a file that calls an undefined macro even inside {% if %} tag"},
       "status": "not applicable",
-      "reason": "Requires named-template include loading, which the Backstage inline renderer does not support."
+      "reason": "Requires named-template include loading, which the secure direct-string API does not support."
     },
     {
       "upstream": {"id":"tests/compiler.js:136","file":"tests/compiler.js","test":"should throw an error when including a file that imports macro that calls an undefined macro"},
       "status": "not applicable",
-      "reason": "Requires named-template include and import loading, which the Backstage inline renderer does not support."
+      "reason": "Requires named-template include and import loading, which the secure direct-string API does not support."
     },
     {
       "upstream": {"id":"tests/compiler.js:137","file":"tests/compiler.js","test":"should control whitespaces correctly"},
       "status": "not applicable",
-      "reason": "Requires automatic escaping, while Backstage fixes autoescape to false."
+      "reason": "Requires automatic escaping, while the direct-string API fixes autoescape to false."
     },
     {
       "upstream": {"id":"tests/compiler.js:138","file":"tests/compiler.js","test":"should control expression whitespaces correctly"},
       "status": "not applicable",
-      "reason": "Requires automatic escaping, while Backstage fixes autoescape to false."
+      "reason": "Requires automatic escaping, while the direct-string API fixes autoescape to false."
     },
     {
       "upstream": {"id":"tests/compiler.js:139","file":"tests/compiler.js","test":"should get right value when macro parameter conflict with global macro name"},
       "status": "not applicable",
-      "reason": "Requires automatic escaping, while Backstage fixes autoescape to false."
+      "reason": "Requires automatic escaping, while the direct-string API fixes autoescape to false."
     },
     {
       "upstream": {"id":"tests/compiler.js:140","file":"tests/compiler.js","test":"should get right value when macro include macro"},
       "status": "not applicable",
-      "reason": "Requires automatic escaping, while Backstage fixes autoescape to false."
+      "reason": "Requires automatic escaping, while the direct-string API fixes autoescape to false."
     },
     {
       "upstream": {"id":"tests/compiler.js:141","file":"tests/compiler.js","test":"should allow access to outer scope in call blocks"},
       "status": "not applicable",
-      "reason": "Requires automatic escaping, while Backstage fixes autoescape to false."
+      "reason": "Requires automatic escaping, while the direct-string API fixes autoescape to false."
     },
     {
       "upstream": {"id":"tests/compiler.js:142","file":"tests/compiler.js","test":"should not leak scope from call blocks to parent"},
       "status": "not applicable",
-      "reason": "Requires automatic escaping, while Backstage fixes autoescape to false."
+      "reason": "Requires automatic escaping, while the direct-string API fixes autoescape to false."
     },
     {
       "upstream": {"id":"tests/compiler.js:143","file":"tests/compiler.js","test":"should import template objects"},
       "status": "not applicable",
-      "reason": "Requires named-template loading, includes, imports, or inheritance, which the Backstage inline renderer does not support."
+      "reason": "Requires named-template loading, includes, imports, or inheritance, which the secure direct-string API does not support."
     },
     {
       "upstream": {"id":"tests/compiler.js:144","file":"tests/compiler.js","test":"should inherit template objects"},
       "status": "not applicable",
-      "reason": "Requires named-template loading, includes, imports, or inheritance, which the Backstage inline renderer does not support."
+      "reason": "Requires named-template loading, includes, imports, or inheritance, which the secure direct-string API does not support."
     },
     {
       "upstream": {"id":"tests/compiler.js:145","file":"tests/compiler.js","test":"should include template objects"},
       "status": "not applicable",
-      "reason": "Requires named-template loading, includes, imports, or inheritance, which the Backstage inline renderer does not support."
+      "reason": "Requires named-template loading, includes, imports, or inheritance, which the secure direct-string API does not support."
     },
     {
       "upstream": {"id":"tests/compiler.js:146","file":"tests/compiler.js","test":"should throw an error when invalid expression whitespaces are used"},
@@ -937,32 +937,32 @@
     {
       "upstream": {"id":"tests/compiler.js:147","file":"tests/compiler.js","test":"should apply the title filter to the body"},
       "status": "not applicable",
-      "reason": "Requires automatic escaping, while Backstage fixes autoescape to false."
+      "reason": "Requires automatic escaping, while the direct-string API fixes autoescape to false."
     },
     {
       "upstream": {"id":"tests/compiler.js:148","file":"tests/compiler.js","test":"should apply the replace filter to the body"},
       "status": "not applicable",
-      "reason": "Requires automatic escaping, while Backstage fixes autoescape to false."
+      "reason": "Requires automatic escaping, while the direct-string API fixes autoescape to false."
     },
     {
       "upstream": {"id":"tests/compiler.js:149","file":"tests/compiler.js","test":"should work with variables in the body"},
       "status": "not applicable",
-      "reason": "Requires automatic escaping, while Backstage fixes autoescape to false."
+      "reason": "Requires automatic escaping, while the direct-string API fixes autoescape to false."
     },
     {
       "upstream": {"id":"tests/compiler.js:150","file":"tests/compiler.js","test":"should work with blocks in the body"},
       "status": "not applicable",
-      "reason": "Requires named-template loading, includes, imports, or inheritance, which the Backstage inline renderer does not support."
+      "reason": "Requires named-template loading, includes, imports, or inheritance, which the secure direct-string API does not support."
     },
     {
       "upstream": {"id":"tests/compiler.js:2","file":"tests/compiler.js","test":"should escape newlines"},
       "status": "not applicable",
-      "reason": "Requires automatic escaping, while Backstage fixes autoescape to false."
+      "reason": "Requires automatic escaping, while the direct-string API fixes autoescape to false."
     },
     {
       "upstream": {"id":"tests/compiler.js:3","file":"tests/compiler.js","test":"should escape Unicode line seperators"},
       "status": "not applicable",
-      "reason": "Requires automatic escaping, while Backstage fixes autoescape to false."
+      "reason": "Requires automatic escaping, while the direct-string API fixes autoescape to false."
     },
     {
       "upstream": {"id":"tests/compiler.js:5","file":"tests/compiler.js","test":"should compile references - object without prototype"},
@@ -972,152 +972,152 @@
     {
       "upstream": {"id":"tests/compiler.js:7","file":"tests/compiler.js","test":"should not treat falsy values the same as undefined"},
       "status": "not applicable",
-      "reason": "Requires automatic escaping, while Backstage fixes autoescape to false."
+      "reason": "Requires automatic escaping, while the direct-string API fixes autoescape to false."
     },
     {
       "upstream": {"id":"tests/compiler.js:8","file":"tests/compiler.js","test":"should display none as empty string"},
       "status": "not applicable",
-      "reason": "Requires automatic escaping, while Backstage fixes autoescape to false."
+      "reason": "Requires automatic escaping, while the direct-string API fixes autoescape to false."
     },
     {
       "upstream": {"id":"tests/compiler.js:9","file":"tests/compiler.js","test":"should compile none as falsy"},
       "status": "not applicable",
-      "reason": "Requires automatic escaping, while Backstage fixes autoescape to false."
+      "reason": "Requires automatic escaping, while the direct-string API fixes autoescape to false."
     },
     {
       "upstream": {"id":"tests/compiler.js:10","file":"tests/compiler.js","test":"should compile none as null, not undefined"},
       "status": "not applicable",
-      "reason": "Requires automatic escaping, while Backstage fixes autoescape to false."
+      "reason": "Requires automatic escaping, while the direct-string API fixes autoescape to false."
     },
     {
       "upstream": {"id":"tests/compiler.js:11","file":"tests/compiler.js","test":"should compile function calls"},
       "status": "not applicable",
-      "reason": "Requires a Nunjucks parser extension or host-defined tag, which Backstage does not expose."
+      "reason": "Requires a Nunjucks parser extension or host-defined tag, which the direct-string API does not expose."
     },
     {
       "upstream": {"id":"tests/compiler.js:12","file":"tests/compiler.js","test":"should compile function calls with correct scope"},
       "status": "not applicable",
-      "reason": "Requires a Nunjucks parser extension or host-defined tag, which Backstage does not expose."
+      "reason": "Requires a Nunjucks parser extension or host-defined tag, which the direct-string API does not expose."
     },
     {
       "upstream": {"id":"tests/compiler.js:13","file":"tests/compiler.js","test":"should compile switch statements"},
       "status": "not applicable",
-      "reason": "Requires automatic escaping, while Backstage fixes autoescape to false."
+      "reason": "Requires automatic escaping, while the direct-string API fixes autoescape to false."
     },
     {
       "upstream": {"id":"tests/compiler.js:17","file":"tests/compiler.js","test":"should loop over simple arrays"},
       "status": "not applicable",
-      "reason": "Requires automatic escaping, while Backstage fixes autoescape to false."
+      "reason": "Requires automatic escaping, while the direct-string API fixes autoescape to false."
     },
     {
       "upstream": {"id":"tests/compiler.js:18","file":"tests/compiler.js","test":"should loop normally with an {% else %} tag and non-empty array"},
       "status": "not applicable",
-      "reason": "Requires automatic escaping, while Backstage fixes autoescape to false."
+      "reason": "Requires automatic escaping, while the direct-string API fixes autoescape to false."
     },
     {
       "upstream": {"id":"tests/compiler.js:19","file":"tests/compiler.js","test":"should execute the {% else %} block when looping over an empty array"},
       "status": "not applicable",
-      "reason": "Requires automatic escaping, while Backstage fixes autoescape to false."
+      "reason": "Requires automatic escaping, while the direct-string API fixes autoescape to false."
     },
     {
       "upstream": {"id":"tests/compiler.js:21","file":"tests/compiler.js","test":"should do loop over key-values of a literal in-template Object"},
       "status": "not applicable",
-      "reason": "Requires automatic escaping, while Backstage fixes autoescape to false."
+      "reason": "Requires automatic escaping, while the direct-string API fixes autoescape to false."
     },
     {
       "upstream": {"id":"tests/compiler.js:22","file":"tests/compiler.js","test":"should support loop.index"},
       "status": "not applicable",
-      "reason": "Requires automatic escaping, while Backstage fixes autoescape to false."
+      "reason": "Requires automatic escaping, while the direct-string API fixes autoescape to false."
     },
     {
       "upstream": {"id":"tests/compiler.js:23","file":"tests/compiler.js","test":"should support loop.index0"},
       "status": "not applicable",
-      "reason": "Requires automatic escaping, while Backstage fixes autoescape to false."
+      "reason": "Requires automatic escaping, while the direct-string API fixes autoescape to false."
     },
     {
       "upstream": {"id":"tests/compiler.js:24","file":"tests/compiler.js","test":"should support loop.revindex"},
       "status": "not applicable",
-      "reason": "Requires automatic escaping, while Backstage fixes autoescape to false."
+      "reason": "Requires automatic escaping, while the direct-string API fixes autoescape to false."
     },
     {
       "upstream": {"id":"tests/compiler.js:25","file":"tests/compiler.js","test":"should support loop.revindex0"},
       "status": "not applicable",
-      "reason": "Requires automatic escaping, while Backstage fixes autoescape to false."
+      "reason": "Requires automatic escaping, while the direct-string API fixes autoescape to false."
     },
     {
       "upstream": {"id":"tests/compiler.js:26","file":"tests/compiler.js","test":"should support loop.first"},
       "status": "not applicable",
-      "reason": "Requires automatic escaping, while Backstage fixes autoescape to false."
+      "reason": "Requires automatic escaping, while the direct-string API fixes autoescape to false."
     },
     {
       "upstream": {"id":"tests/compiler.js:27","file":"tests/compiler.js","test":"should support loop.last"},
       "status": "not applicable",
-      "reason": "Requires automatic escaping, while Backstage fixes autoescape to false."
+      "reason": "Requires automatic escaping, while the direct-string API fixes autoescape to false."
     },
     {
       "upstream": {"id":"tests/compiler.js:28","file":"tests/compiler.js","test":"should support loop.length"},
       "status": "not applicable",
-      "reason": "Requires automatic escaping, while Backstage fixes autoescape to false."
+      "reason": "Requires automatic escaping, while the direct-string API fixes autoescape to false."
     },
     {
       "upstream": {"id":"tests/compiler.js:29","file":"tests/compiler.js","test":"should fail silently when looping over an undefined variable"},
       "status": "not applicable",
-      "reason": "Requires automatic escaping, while Backstage fixes autoescape to false."
+      "reason": "Requires automatic escaping, while the direct-string API fixes autoescape to false."
     },
     {
       "upstream": {"id":"tests/compiler.js:30","file":"tests/compiler.js","test":"should fail silently when looping over an undefined property"},
       "status": "not applicable",
-      "reason": "Requires automatic escaping, while Backstage fixes autoescape to false."
+      "reason": "Requires automatic escaping, while the direct-string API fixes autoescape to false."
     },
     {
       "upstream": {"id":"tests/compiler.js:31","file":"tests/compiler.js","test":"should fail silently when looping over a null variable"},
       "status": "not applicable",
-      "reason": "Requires automatic escaping, while Backstage fixes autoescape to false."
+      "reason": "Requires automatic escaping, while the direct-string API fixes autoescape to false."
     },
     {
       "upstream": {"id":"tests/compiler.js:32","file":"tests/compiler.js","test":"should loop over two-dimensional arrays"},
       "status": "not applicable",
-      "reason": "Requires automatic escaping, while Backstage fixes autoescape to false."
+      "reason": "Requires automatic escaping, while the direct-string API fixes autoescape to false."
     },
     {
       "upstream": {"id":"tests/compiler.js:34","file":"tests/compiler.js","test":"should support loop.index with two-dimensional loops"},
       "status": "not applicable",
-      "reason": "Requires automatic escaping, while Backstage fixes autoescape to false."
+      "reason": "Requires automatic escaping, while the direct-string API fixes autoescape to false."
     },
     {
       "upstream": {"id":"tests/compiler.js:35","file":"tests/compiler.js","test":"should support loop.revindex with two-dimensional loops"},
       "status": "not applicable",
-      "reason": "Requires automatic escaping, while Backstage fixes autoescape to false."
+      "reason": "Requires automatic escaping, while the direct-string API fixes autoescape to false."
     },
     {
       "upstream": {"id":"tests/compiler.js:36","file":"tests/compiler.js","test":"should support key-value looping over an Object variable"},
       "status": "not applicable",
-      "reason": "Requires automatic escaping, while Backstage fixes autoescape to false."
+      "reason": "Requires automatic escaping, while the direct-string API fixes autoescape to false."
     },
     {
       "upstream": {"id":"tests/compiler.js:37","file":"tests/compiler.js","test":"should support loop.index when looping over an Object\\'s key-value pairs"},
       "status": "not applicable",
-      "reason": "Requires automatic escaping, while Backstage fixes autoescape to false."
+      "reason": "Requires automatic escaping, while the direct-string API fixes autoescape to false."
     },
     {
       "upstream": {"id":"tests/compiler.js:38","file":"tests/compiler.js","test":"should support loop.revindex when looping over an Object\\'s key-value pairs"},
       "status": "not applicable",
-      "reason": "Requires automatic escaping, while Backstage fixes autoescape to false."
+      "reason": "Requires automatic escaping, while the direct-string API fixes autoescape to false."
     },
     {
       "upstream": {"id":"tests/compiler.js:39","file":"tests/compiler.js","test":"should support loop.length when looping over an Object\\'s key-value pairs"},
       "status": "not applicable",
-      "reason": "Requires automatic escaping, while Backstage fixes autoescape to false."
+      "reason": "Requires automatic escaping, while the direct-string API fixes autoescape to false."
     },
     {
       "upstream": {"id":"tests/compiler.js:40","file":"tests/compiler.js","test":"should support include tags in the body of the loop"},
       "status": "not applicable",
-      "reason": "Requires named-template loading, includes, imports, or inheritance, which the Backstage inline renderer does not support."
+      "reason": "Requires named-template loading, includes, imports, or inheritance, which the secure direct-string API does not support."
     },
     {
       "upstream": {"id":"tests/compiler.js:41","file":"tests/compiler.js","test":"should work with {% set %} and {% include %} tags"},
       "status": "not applicable",
-      "reason": "Requires named-template loading, includes, imports, or inheritance, which the Backstage inline renderer does not support."
+      "reason": "Requires named-template loading, includes, imports, or inheritance, which the secure direct-string API does not support."
     },
     {
       "upstream": {"id":"tests/compiler.js:42","file":"tests/compiler.js","test":"should work with Set builtin"},
@@ -1132,37 +1132,37 @@
     {
       "upstream": {"id":"tests/compiler.js:44","file":"tests/compiler.js","test":"should allow overriding var with none inside nested scope"},
       "status": "not applicable",
-      "reason": "Requires automatic escaping, while Backstage fixes autoescape to false."
+      "reason": "Requires automatic escaping, while the direct-string API fixes autoescape to false."
     },
     {
       "upstream": {"id":"tests/compiler.js:45","file":"tests/compiler.js","test":"should compile async control"},
       "status": "not applicable",
-      "reason": "Requires named-template loading, includes, imports, or inheritance, which the Backstage inline renderer does not support."
+      "reason": "Requires named-template loading, includes, imports, or inheritance, which the secure direct-string API does not support."
     },
     {
       "upstream": {"id":"tests/compiler.js:14","file":"tests/compiler.js","test":"should compile if blocks"},
       "status": "not applicable",
-      "reason": "Requires automatic escaping, while Backstage fixes autoescape to false."
+      "reason": "Requires automatic escaping, while the direct-string API fixes autoescape to false."
     },
     {
       "upstream": {"id":"tests/compiler.js:51","file":"tests/compiler.js","test":"should compile comparison operators"},
       "status": "not applicable",
-      "reason": "Requires a Nunjucks parser extension or host-defined tag, which Backstage does not expose."
+      "reason": "Requires a Nunjucks parser extension or host-defined tag, which the direct-string API does not expose."
     },
     {
       "upstream": {"id":"tests/compiler.js:53","file":"tests/compiler.js","test":"should compile the \"in\" operator for Arrays"},
       "status": "not applicable",
-      "reason": "Requires automatic escaping, while Backstage fixes autoescape to false."
+      "reason": "Requires automatic escaping, while the direct-string API fixes autoescape to false."
     },
     {
       "upstream": {"id":"tests/compiler.js:54","file":"tests/compiler.js","test":"should compile the \"in\" operator for objects"},
       "status": "not applicable",
-      "reason": "Requires automatic escaping, while Backstage fixes autoescape to false."
+      "reason": "Requires automatic escaping, while the direct-string API fixes autoescape to false."
     },
     {
       "upstream": {"id":"tests/compiler.js:55","file":"tests/compiler.js","test":"should compile the \"in\" operator for strings"},
       "status": "not applicable",
-      "reason": "Requires automatic escaping, while Backstage fixes autoescape to false."
+      "reason": "Requires automatic escaping, while the direct-string API fixes autoescape to false."
     },
     {
       "upstream": {"id":"tests/compiler.js:56","file":"tests/compiler.js","test":"should throw an error when using the \"in\" operator on unexpected types"},
@@ -1172,7 +1172,7 @@
     {
       "upstream": {"id":"tests/compiler.js:57","file":"tests/compiler.js","test":"should throw exceptions when called synchronously"},
       "status": "not applicable",
-      "reason": "Applicable observable language behavior is exercised through the synchronous inline Backstage renderer."
+      "reason": "Applicable observable language behavior is exercised through the synchronous direct-string API."
     },
     {
       "upstream": {"id":"tests/compiler.js:58","file":"tests/compiler.js","test":"should include error line in raised TemplateError"},
@@ -1187,27 +1187,27 @@
     {
       "upstream": {"id":"tests/compiler.js:60","file":"tests/compiler.js","test":"should throw exceptions from included templates when called synchronously"},
       "status": "not applicable",
-      "reason": "Requires named-template loading, includes, imports, or inheritance, which the Backstage inline renderer does not support."
+      "reason": "Requires named-template loading, includes, imports, or inheritance, which the secure direct-string API does not support."
     },
     {
       "upstream": {"id":"tests/compiler.js:61","file":"tests/compiler.js","test":"should pass errors from included templates to callback when async"},
       "status": "not applicable",
-      "reason": "Requires named-template loading, includes, imports, or inheritance, which the Backstage inline renderer does not support."
+      "reason": "Requires named-template loading, includes, imports, or inheritance, which the secure direct-string API does not support."
     },
     {
       "upstream": {"id":"tests/api.js:1","file":"tests/api.js","test":"should always force compilation of parent template"},
       "status": "not applicable",
-      "reason": "Exercises the Nunjucks JavaScript API rather than Backstage inline rendering."
+      "reason": "Exercises the Nunjucks JavaScript API rather than secure direct-string rendering."
     },
     {
       "upstream": {"id":"tests/api.js:2","file":"tests/api.js","test":"should only call the callback once when conditional import fails"},
       "status": "not applicable",
-      "reason": "Exercises the Nunjucks JavaScript API rather than Backstage inline rendering."
+      "reason": "Exercises the Nunjucks JavaScript API rather than secure direct-string rendering."
     },
     {
       "upstream": {"id":"tests/api.js:6","file":"tests/api.js","test":"should emit \"load\" event on Environment instance"},
       "status": "not applicable",
-      "reason": "Exercises the Nunjucks JavaScript API rather than Backstage inline rendering."
+      "reason": "Exercises the Nunjucks JavaScript API rather than secure direct-string rendering."
     },
     {
       "upstream": {"id":"tests/cli.js:1","file":"tests/cli.js","test":"should echo a compiled template to stdout"},
@@ -1247,17 +1247,17 @@
     {
       "upstream": {"id":"tests/precompile.js:1","file":"tests/precompile.js","test":"should return a string"},
       "status": "not applicable",
-      "reason": "Exercises the Nunjucks JavaScript API rather than Backstage inline rendering."
+      "reason": "Exercises the Nunjucks JavaScript API rather than secure direct-string rendering."
     },
     {
       "upstream": {"id":"tests/precompile.js:2","file":"tests/precompile.js","test":"should return *NIX path seperators"},
       "status": "not applicable",
-      "reason": "Exercises the Nunjucks JavaScript API rather than Backstage inline rendering."
+      "reason": "Exercises the Nunjucks JavaScript API rather than secure direct-string rendering."
     },
     {
       "upstream": {"id":"tests/precompile.js:3","file":"tests/precompile.js","test":"should return *NIX path seperators, when name is passed as option"},
       "status": "not applicable",
-      "reason": "Exercises the Nunjucks JavaScript API rather than Backstage inline rendering."
+      "reason": "Exercises the Nunjucks JavaScript API rather than secure direct-string rendering."
     },
     {
       "upstream": {"id":"tests/filters.js:1","file":"tests/filters.js","test":"abs"},
@@ -1689,7 +1689,7 @@
     {
       "upstream": {"id":"tests/globals.js:11","file":"tests/globals.js","test":"should return errors from globals"},
       "status": "adapted",
-      "reason": "Applicable observable language behavior is exercised through the synchronous inline Backstage renderer."
+      "reason": "Applicable observable language behavior is exercised through the synchronous direct-string API."
     },
     {
       "upstream": {"id":"tests/jinja-compat.js:1","file":"tests/jinja-compat.js","test":"should support array slices with start and stop"},

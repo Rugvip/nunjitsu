@@ -1,13 +1,12 @@
 # Nunjitsu
 
-Nunjitsu is a secure native TypeScript implementation of the Nunjucks template
-behavior used by the Backstage scaffolder backend. It replaces Backstage's
-isolated Nunjucks renderer with a closed interpreter and a small synchronous
-API.
+Nunjitsu is a secure native TypeScript implementation of a simpler Nunjucks
+subset, optimized for secure direct string templating. It replaces generated
+JavaScript execution with a closed interpreter and a small synchronous API.
 
 The project prioritizes:
 
-- compatibility with Backstage scaffolder templates and workflow expressions;
+- compatibility with the Nunjucks syntax used by direct string templates;
 - secure, resource-bounded execution of untrusted templates;
 - low retained memory for templates rendered infrequently; and
 - a closed value model that gives templates no access to JavaScript objects or
@@ -20,9 +19,9 @@ runtime target is Node.js only.
 
 ## Status
 
-The compatibility baseline is the Nunjucks 3.2.4 behavior exposed by
-Backstage's `SecureTemplater`: inline string rendering, `${{ ... }}` variables,
-Cookiecutter compatibility, synchronous filters, and JSON-valued globals. The
+The compatibility baseline is a secure direct-string subset of Nunjucks 3.2.4:
+inline rendering, `${{ ... }}` variables, Cookiecutter compatibility,
+synchronous filters, and JSON-valued globals. The
 normative design and testing strategy are documented in [`docs/`](docs/index.md).
 Contributors should also read [`AGENTS.md`](AGENTS.md).
 

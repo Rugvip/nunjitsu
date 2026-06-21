@@ -11,8 +11,8 @@ making the upstream repository a network dependency. `manifest.json` maps
 classified upstream assertions to language-neutral cases in `cases.json`, and
 `coverage.json` links behavior that needs TypeScript fixtures or boundary
 assertions to exact source tests. Coverage is intentionally explicit: the
-checked-in manifest classifies every inventory entry against the Backstage
-scaffolder renderer contract as ported, adapted, or not applicable. Release
+checked-in manifest classifies every inventory entry against the secure
+direct-string contract as ported, adapted, or not applicable. Release
 validation rejects applicable entries without executable coverage.
 The language-neutral case suite also renders through the pinned Nunjucks
 development dependency and requires identical output.

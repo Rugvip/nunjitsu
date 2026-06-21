@@ -10,7 +10,7 @@ import {
 } from './runtime/value.ts';
 import type { TemplateContext, TemplateValue } from './values.ts';
 
-/** Configures an immutable Backstage-compatible Nunjitsu engine. */
+/** Configures an immutable secure direct-string Nunjitsu engine. */
 export interface EngineOptions extends TemplateCapabilities {
   /** Uses `{{ ... }}` variables and supported Jinja compatibility behavior. */
   cookiecutterCompat?: boolean;
