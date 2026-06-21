@@ -92,10 +92,18 @@ fn emit_value(state_offset: u32, value_offset: u32) -> Result<(), u32> {
     let value = rendered_value(value_offset)?;
     let autoescape = state_field(state_offset, STATE_FLAGS)? & 1 == 1;
     if autoescape && !value.safe {
-        emit_escaped(value.bytes, &mut |segment| {
-            append_output(state_offset, segment).map_err(|_| RenderError::OutputTooLarge)
-        })
-        .map_err(render_error_code)
+        let mut append_error = None;
+        let result = emit_escaped(value.bytes, &mut |segment| {
+            append_output(state_offset, segment).map_err(|error| {
+                append_error = Some(error);
+                RenderError::OutputTooLarge
+            })
+        });
+        if let Some(error) = append_error {
+            Err(error)
+        } else {
+            result.map_err(render_error_code)
+        }
     } else {
         append_output(state_offset, value.bytes)
     }
@@ -112,13 +120,16 @@ fn complete_render(state_offset: u32) -> Result<u32, u32> {
         set_control(STATE_COMPLETE, 0, 0, ERROR_NONE);
         return Ok(STATE_COMPLETE);
     }
-    let (output_offset, output_length) = materialize_output(state_offset)?;
-    let output = record_at(output_offset, TAG_OUTPUT)?;
-    if output.len() != output_length as usize {
-        return Err(ERROR_INVALID_RECORD);
+    let range_count = publish_pending_output(state_offset, u32::MAX)?;
+    if state_field(state_offset, STATE_OUTPUT_LENGTH)? != 0 {
+        return Err(ERROR_RESOURCE_LIMIT);
     }
-    let (ranges_offset, range_count) = publish_output_bytes(output)?;
-    set_control(STATE_COMPLETE, ranges_offset, range_count, ERROR_NONE);
+    set_control(
+        STATE_COMPLETE,
+        unsafe { (*memory_prefix()).output_ranges.offset },
+        range_count,
+        ERROR_NONE,
+    );
     Ok(STATE_COMPLETE)
 }
 
@@ -134,83 +145,135 @@ fn yield_output(state_offset: u32) -> Result<u32, u32> {
         STATE_MATERIALIZATION_BASE,
         legacy_arena_cursor(),
     )?;
-    let (output_offset, output_length) = materialize_stream_output(state_offset)?;
-    if output_length == 0 {
+    let range_count = publish_pending_output(state_offset, STREAM_CHUNK_BYTES)?;
+    if range_count == 0 {
         return Err(ERROR_INVALID_ARENA);
     }
-    let output = record_at(output_offset, TAG_OUTPUT)?;
-    if output.len() != output_length as usize {
-        return Err(ERROR_INVALID_RECORD);
-    }
-    let (ranges_offset, range_count) = publish_output_bytes(output)?;
     set_control(
         STATE_OUTPUT_AVAILABLE,
-        ranges_offset,
+        unsafe { (*memory_prefix()).output_ranges.offset },
         range_count,
         ERROR_NONE,
     );
     Ok(STATE_OUTPUT_AVAILABLE)
 }
 
-fn materialize_stream_output(state_offset: u32) -> Result<(u32, u32), u32> {
+fn publish_pending_output(state_offset: u32, maximum_bytes: u32) -> Result<u32, u32> {
     let pending_length = state_field(state_offset, STATE_OUTPUT_LENGTH)?;
-    let mut output_length = 0u32;
-    let mut chunk_offset = state_field(state_offset, STATE_FIRST_CHUNK)?;
-    let mut next_first = chunk_offset;
-    while chunk_offset != 0 {
-        let chunk = record_at(chunk_offset, TAG_OUTPUT_CHUNK)?;
-        if chunk.len() < 4 {
-            return Err(ERROR_INVALID_RECORD);
-        }
-        let data_length = (chunk.len() - 4) as u32;
-        if output_length != 0 && output_length.saturating_add(data_length) > STREAM_CHUNK_BYTES {
+    let mut published_bytes = 0u32;
+    let mut descriptor_index = state_field(state_offset, STATE_FIRST_CHUNK)?;
+    let mut published = 0u32;
+    while descriptor_index != 0 {
+        let output_pool = unsafe { (*memory_prefix()).output_ranges };
+        if output_pool.cursor >= output_pool.capacity {
             break;
         }
-        output_length = output_length
-            .checked_add(data_length)
+        let descriptor = members_at(descriptor_index, 5)?;
+        let byte_length = read_u32(descriptor, 16)?;
+        if published_bytes != 0 && published_bytes.saturating_add(byte_length) > maximum_bytes {
+            break;
+        }
+        publish_output_range(
+            read_u32(descriptor, 4)?,
+            read_u32(descriptor, 8)?,
+            read_u32(descriptor, 12)?,
+            byte_length,
+        )?;
+        published_bytes = published_bytes
+            .checked_add(byte_length)
             .ok_or(ERROR_OUTPUT_TOO_LARGE)?;
-        next_first = read_u32(chunk, 0)?;
-        chunk_offset = next_first;
+        published = published.checked_add(1).ok_or(ERROR_RESOURCE_LIMIT)?;
+        descriptor_index = read_u32(descriptor, 0)?;
     }
-    if output_length == 0 || output_length > pending_length {
+    if published_bytes > pending_length {
         return Err(ERROR_INVALID_RECORD);
     }
-
-    let output_offset = allocate_record(TAG_OUTPUT, output_length)?;
-    let output_payload_offset = output_offset
-        .checked_add(RECORD_HEADER_LENGTH as u32)
-        .ok_or(ERROR_OUTPUT_TOO_LARGE)?;
-    let output = mutable_memory(output_payload_offset, output_length)?;
-    let mut output_cursor = 0usize;
-    chunk_offset = state_field(state_offset, STATE_FIRST_CHUNK)?;
-    while chunk_offset != next_first {
-        let chunk = record_at(chunk_offset, TAG_OUTPUT_CHUNK)?;
-        let next = read_u32(chunk, 0)?;
-        let data = &chunk[4..];
-        let end = output_cursor
-            .checked_add(data.len())
-            .ok_or(ERROR_OUTPUT_TOO_LARGE)?;
-        output[output_cursor..end].copy_from_slice(data);
-        output_cursor = end;
-        chunk_offset = next;
-    }
-    if output_cursor != output.len() {
-        return Err(ERROR_INVALID_RECORD);
-    }
-    set_state_field(state_offset, STATE_FIRST_CHUNK, next_first)?;
-    if next_first == 0 {
+    set_state_field(state_offset, STATE_FIRST_CHUNK, descriptor_index)?;
+    if descriptor_index == 0 {
         set_state_field(state_offset, STATE_LAST_CHUNK, 0)?;
     }
     set_state_field(
         state_offset,
         STATE_OUTPUT_LENGTH,
-        pending_length - output_length,
+        pending_length - published_bytes,
     )?;
-    Ok((output_offset, output_length))
+    Ok(published)
 }
 
-fn materialize_output(state_offset: u32) -> Result<(u32, u32), u32> {
-    materialize_output_as(state_offset, TAG_OUTPUT)
+fn write_materialized_range_bytes(
+    handle: u32,
+    start: u32,
+    length: u32,
+    output: &mut [u8],
+    cursor: &mut usize,
+) -> Result<(), u32> {
+    if handle & COMPUTED_STRING_HANDLE_MASK == 0 {
+        return Err(ERROR_INVALID_RECORD);
+    }
+    let operation_index = (handle & !COMPUTED_STRING_HANDLE_MASK)
+        .checked_sub(1)
+        .ok_or(ERROR_INVALID_RECORD)?;
+    let pool = unsafe { (*memory_prefix()).string_operations };
+    if operation_index >= pool.cursor {
+        return Err(ERROR_INVALID_RECORD);
+    }
+    let operation_offset = pool
+        .offset
+        .checked_add(
+            operation_index
+                .checked_mul(STRING_OPERATION_LENGTH)
+                .ok_or(ERROR_INVALID_RECORD)?,
+        )
+        .ok_or(ERROR_INVALID_RECORD)?;
+    let operation = memory(operation_offset, STRING_OPERATION_LENGTH)?;
+    if read_u32(operation, 0)? != STRING_OPERATION_MATERIALIZED {
+        return Err(ERROR_INVALID_RECORD);
+    }
+    let value_start = read_u32(operation, 4)?;
+    let value_length = read_u32(operation, 8)?;
+    let range_end = start.checked_add(length).ok_or(ERROR_INVALID_RECORD)?;
+    if range_end > value_length {
+        return Err(ERROR_INVALID_RECORD);
+    }
+    let value_pool = unsafe { (*memory_prefix()).values };
+    let absolute_start = value_start
+        .checked_add(start)
+        .ok_or(ERROR_INVALID_RECORD)?;
+    let absolute_end = absolute_start
+        .checked_add(length)
+        .ok_or(ERROR_INVALID_RECORD)?;
+    if absolute_end > value_pool.cursor {
+        return Err(ERROR_INVALID_RECORD);
+    }
+    let byte_offset = value_pool
+        .offset
+        .checked_add(
+            absolute_start
+                .checked_mul(VALUE_CODE_UNIT_LENGTH)
+                .ok_or(ERROR_INVALID_RECORD)?,
+        )
+        .ok_or(ERROR_INVALID_RECORD)?;
+    let bytes = memory(
+        byte_offset,
+        length
+            .checked_mul(VALUE_CODE_UNIT_LENGTH)
+            .ok_or(ERROR_INVALID_RECORD)?,
+    )?;
+    let code_units = unsafe {
+        slice::from_raw_parts(bytes.as_ptr().cast::<u16>(), length as usize)
+    };
+    for character in core::char::decode_utf16(code_units.iter().copied()) {
+        let character = character.unwrap_or(char::REPLACEMENT_CHARACTER);
+        let end = cursor
+            .checked_add(character.len_utf8())
+            .ok_or(ERROR_OUTPUT_TOO_LARGE)?;
+        let destination = output
+            .get_mut(*cursor..end)
+            .ok_or(ERROR_INVALID_RECORD)?;
+        character.encode_utf8(destination);
+        *cursor = end;
+    }
+    Ok(())
 }
 
 fn materialize_output_as(state_offset: u32, tag: u32) -> Result<(u32, u32), u32> {
@@ -221,23 +284,17 @@ fn materialize_output_as(state_offset: u32, tag: u32) -> Result<(u32, u32), u32>
         .ok_or(ERROR_OUTPUT_TOO_LARGE)?;
     let output = mutable_memory(output_payload_offset, output_length)?;
     let mut output_cursor = 0usize;
-    let mut chunk_offset = state_field(state_offset, STATE_FIRST_CHUNK)?;
-    while chunk_offset != 0 {
-        let chunk = record_at(chunk_offset, TAG_OUTPUT_CHUNK)?;
-        if chunk.len() < 4 {
-            return Err(ERROR_INVALID_RECORD);
-        }
-        let next = read_u32(chunk, 0)?;
-        let data = &chunk[4..];
-        let end = output_cursor
-            .checked_add(data.len())
-            .ok_or(ERROR_OUTPUT_TOO_LARGE)?;
-        if end > output.len() {
-            return Err(ERROR_INVALID_RECORD);
-        }
-        output[output_cursor..end].copy_from_slice(data);
-        output_cursor = end;
-        chunk_offset = next;
+    let mut descriptor_index = state_field(state_offset, STATE_FIRST_CHUNK)?;
+    while descriptor_index != 0 {
+        let descriptor = members_at(descriptor_index, 5)?;
+        write_materialized_range_bytes(
+            read_u32(descriptor, 4)?,
+            read_u32(descriptor, 8)?,
+            read_u32(descriptor, 12)?,
+            output,
+            &mut output_cursor,
+        )?;
+        descriptor_index = read_u32(descriptor, 0)?;
     }
     if output_cursor != output.len() {
         return Err(ERROR_INVALID_RECORD);
@@ -272,23 +329,26 @@ fn append_output(state_offset: u32, bytes: &[u8]) -> Result<(), u32> {
 }
 
 fn append_output_chunk(state_offset: u32, bytes: &[u8]) -> Result<(), u32> {
-    let chunk_offset = allocate_record(
-        TAG_OUTPUT_CHUNK,
-        4u32.checked_add(bytes.len() as u32)
-            .ok_or(ERROR_OUTPUT_TOO_LARGE)?,
+    let (handle, length) = materialized_string_handle(bytes)?;
+    let (descriptor_index, descriptor) = allocate_members(5)?;
+    write_u32(descriptor, 0, 0)?;
+    write_u32(descriptor, 4, handle)?;
+    write_u32(descriptor, 8, 0)?;
+    write_u32(descriptor, 12, length)?;
+    write_u32(
+        descriptor,
+        16,
+        u32::try_from(bytes.len()).map_err(|_| ERROR_OUTPUT_TOO_LARGE)?,
     )?;
-    let chunk = mutable_record_at(chunk_offset, TAG_OUTPUT_CHUNK)?;
-    write_u32(chunk, 0, 0)?;
-    chunk[4..].copy_from_slice(bytes);
 
     let last_chunk = state_field(state_offset, STATE_LAST_CHUNK)?;
     if last_chunk == 0 {
-        set_state_field(state_offset, STATE_FIRST_CHUNK, chunk_offset)?;
+        set_state_field(state_offset, STATE_FIRST_CHUNK, descriptor_index)?;
     } else {
-        let previous = mutable_record_at(last_chunk, TAG_OUTPUT_CHUNK)?;
-        write_u32(previous, 0, chunk_offset)?;
+        let previous = mutable_members_at(last_chunk, 5)?;
+        write_u32(previous, 0, descriptor_index)?;
     }
-    set_state_field(state_offset, STATE_LAST_CHUNK, chunk_offset)
+    set_state_field(state_offset, STATE_LAST_CHUNK, descriptor_index)
 }
 
 fn utf8_chunk_end(bytes: &[u8], start: usize) -> usize {

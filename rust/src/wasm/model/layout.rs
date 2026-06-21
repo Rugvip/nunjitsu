@@ -471,6 +471,77 @@ fn allocate_member_record(tag: u32, payload_length: u32) -> Result<u32, u32> {
     Ok(slot_index)
 }
 
+fn allocate_members(count: u32) -> Result<(u32, &'static mut [u8]), u32> {
+    let prefix = memory_prefix();
+    let pool = unsafe { (*prefix).members };
+    let start = pool.cursor;
+    let end = start.checked_add(count).ok_or(ERROR_RESOURCE_LIMIT)?;
+    if end > pool.capacity {
+        return Err(ERROR_RESOURCE_LIMIT);
+    }
+    let offset = pool
+        .offset
+        .checked_add(
+            start
+                .checked_mul(MEMBER_LENGTH)
+                .ok_or(ERROR_RESOURCE_LIMIT)?,
+        )
+        .ok_or(ERROR_RESOURCE_LIMIT)?;
+    let length = count
+        .checked_mul(MEMBER_LENGTH)
+        .ok_or(ERROR_RESOURCE_LIMIT)?;
+    let bytes = mutable_memory(offset, length)?;
+    bytes.fill(0);
+    unsafe {
+        (*prefix).members.cursor = end;
+    }
+    Ok((start, bytes))
+}
+
+fn members_at(start: u32, count: u32) -> Result<&'static [u8], u32> {
+    let pool = unsafe { (*memory_prefix()).members };
+    let end = start.checked_add(count).ok_or(ERROR_INVALID_RECORD)?;
+    if end > pool.cursor {
+        return Err(ERROR_INVALID_RECORD);
+    }
+    let offset = pool
+        .offset
+        .checked_add(
+            start
+                .checked_mul(MEMBER_LENGTH)
+                .ok_or(ERROR_INVALID_RECORD)?,
+        )
+        .ok_or(ERROR_INVALID_RECORD)?;
+    memory(
+        offset,
+        count
+            .checked_mul(MEMBER_LENGTH)
+            .ok_or(ERROR_INVALID_RECORD)?,
+    )
+}
+
+fn mutable_members_at(start: u32, count: u32) -> Result<&'static mut [u8], u32> {
+    let pool = unsafe { (*memory_prefix()).members };
+    let end = start.checked_add(count).ok_or(ERROR_INVALID_RECORD)?;
+    if end > pool.cursor {
+        return Err(ERROR_INVALID_RECORD);
+    }
+    let offset = pool
+        .offset
+        .checked_add(
+            start
+                .checked_mul(MEMBER_LENGTH)
+                .ok_or(ERROR_INVALID_RECORD)?,
+        )
+        .ok_or(ERROR_INVALID_RECORD)?;
+    mutable_memory(
+        offset,
+        count
+            .checked_mul(MEMBER_LENGTH)
+            .ok_or(ERROR_INVALID_RECORD)?,
+    )
+}
+
 fn member_record(bytes: &[u8]) -> Result<&'static [u8], u32> {
     let prefix = memory_prefix();
     let pool = unsafe { (*prefix).members };
@@ -590,7 +661,7 @@ fn reset_output_ranges() {
     }
 }
 
-fn publish_output_bytes(bytes: &[u8]) -> Result<(u32, u32), u32> {
+fn materialized_string_handle(bytes: &[u8]) -> Result<(u32, u32), u32> {
     let text = core::str::from_utf8(bytes).map_err(|_| ERROR_INVALID_RECORD)?;
     let code_unit_length = text.encode_utf16().count();
     let (value_start, code_units) = allocate_value_code_units(
@@ -627,27 +698,41 @@ fn publish_output_bytes(bytes: &[u8]) -> Result<(u32, u32), u32> {
         (*prefix).string_operations.cursor = operation_index + 1;
     }
 
+    Ok((
+        COMPUTED_STRING_HANDLE_MASK | (operation_index + 1),
+        u32::try_from(code_unit_length).map_err(|_| ERROR_RESOURCE_LIMIT)?,
+    ))
+}
+
+fn publish_output_range(handle: u32, start: u32, length: u32, byte_length: u32) -> Result<(), u32> {
+    let prefix = memory_prefix();
     let output_pool = unsafe { (*prefix).output_ranges };
-    if output_pool.cursor != 0 || output_pool.capacity == 0 {
+    if output_pool.cursor >= output_pool.capacity {
         return Err(ERROR_RESOURCE_LIMIT);
     }
-    let descriptor = mutable_memory(output_pool.offset, OUTPUT_RANGE_LENGTH)?;
+    let descriptor_offset = output_pool
+        .offset
+        .checked_add(
+            output_pool
+                .cursor
+                .checked_mul(OUTPUT_RANGE_LENGTH)
+                .ok_or(ERROR_RESOURCE_LIMIT)?,
+        )
+        .ok_or(ERROR_RESOURCE_LIMIT)?;
+    let descriptor = mutable_memory(descriptor_offset, OUTPUT_RANGE_LENGTH)?;
     descriptor.fill(0);
     write_u32(
         descriptor,
         0,
-        COMPUTED_STRING_HANDLE_MASK | (operation_index + 1),
+        handle,
     )?;
-    write_u32(descriptor, 4, 0)?;
-    write_u32(
-        descriptor,
-        8,
-        u32::try_from(code_unit_length).map_err(|_| ERROR_RESOURCE_LIMIT)?,
-    )?;
+    write_u32(descriptor, 4, start)?;
+    write_u32(descriptor, 8, length)?;
+    write_u32(descriptor, 12, byte_length)?;
     unsafe {
-        (*prefix).output_ranges.cursor = 1;
+        (*prefix).output_ranges.cursor = output_pool.cursor + 1;
     }
-    Ok((output_pool.offset, 1))
+    Ok(())
 }
 
 #[unsafe(no_mangle)]
