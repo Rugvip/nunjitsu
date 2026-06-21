@@ -64,6 +64,8 @@ test('validates parent-aware loader request records at the Wasm boundary', () =>
     stringOperationCapacity: 1,
     outputRangeOffset: 1_280,
     outputRangeCapacity: 1,
+    scratchOffset: 1_344,
+    scratchCapacity: 1,
   };
   const fixedCursors = { slots: 2, sources: 0, values: 0, members: 0, strings: 0 };
   const requestSlot = fixedLayout.slotOffset + 72;

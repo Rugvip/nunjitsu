@@ -397,6 +397,10 @@ fn arena_alloc(length: u32, alignment: u32) -> Result<u32, u32> {
     let start = align_up(cursor, alignment).ok_or(ERROR_INVALID_ARENA)?;
     let end = start.checked_add(length).ok_or(ERROR_OUTPUT_TOO_LARGE)?;
     let aligned_end = align_up(end, SCRATCH_ALIGNMENT).ok_or(ERROR_OUTPUT_TOO_LARGE)?;
+    let scratch = unsafe { (*memory_prefix()).scratch };
+    if aligned_end.saturating_sub(scratch.offset) > scratch.capacity {
+        return Err(ERROR_RESOURCE_LIMIT);
+    }
     if let Ok(limit) = active_limit(STATE_LIMIT_ARENA_BYTES) {
         let used = aligned_end
             .checked_sub(nunjitsu_arena_base())

@@ -12,6 +12,7 @@ const poolValues = 3;
 const poolMembers = 4;
 const poolStringOperations = 5;
 const poolOutputRanges = 7;
+const poolScratch = 8;
 
 /** Data supplied by the engine when a worker starts. */
 interface NunjitsuWorkerData {
@@ -29,6 +30,7 @@ interface NunjitsuWorkerMemoryLayout {
   stringOperations: number;
   stringQueries: number;
   outputRanges: number;
+  scratchBytes: number;
 }
 
 /** Initial render command accepted by an idle worker. */
@@ -93,6 +95,7 @@ interface NunjitsuExports {
     stringOperations: number,
     stringQueries: number,
     outputRanges: number,
+    scratchBytes: number,
   ) => number;
   poolOffset: (kind: number) => number;
   poolCapacity: (kind: number) => number;
@@ -166,6 +169,7 @@ async function start(port: MessagePort): Promise<void> {
       layout.stringOperations,
       layout.stringQueries,
       layout.outputRanges,
+      layout.scratchBytes,
     ) !== 1
   ) {
     throw new Error('Nunjitsu worker memory capacities do not fit the Wasm memory');
@@ -468,6 +472,7 @@ function parseMemoryLayout(value: unknown): NunjitsuWorkerMemoryLayout {
     'stringOperations',
     'stringQueries',
     'outputRanges',
+    'scratchBytes',
   ] as const;
   for (const name of names) {
     const capacity = candidate[name];
@@ -492,6 +497,8 @@ function readFixedMemoryLayout(exports: NunjitsuExports): FixedMemoryLayout {
     stringOperationCapacity: exports.poolCapacity(poolStringOperations),
     outputRangeOffset: exports.poolOffset(poolOutputRanges),
     outputRangeCapacity: exports.poolCapacity(poolOutputRanges),
+    scratchOffset: exports.poolOffset(poolScratch),
+    scratchCapacity: exports.poolCapacity(poolScratch),
   });
 }
 

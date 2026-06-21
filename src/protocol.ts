@@ -85,6 +85,8 @@ export interface FixedMemoryLayout {
   stringOperationCapacity: number;
   outputRangeOffset: number;
   outputRangeCapacity: number;
+  scratchOffset: number;
+  scratchCapacity: number;
 }
 
 /** Logical allocation cursors transferred between the host and Wasm owner. */

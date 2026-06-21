@@ -34,13 +34,12 @@ const wasmPageBytes = 65_536;
 const minimumMemoryPages = 32;
 const maximumMemoryPages = 4096;
 const repeatedSlotBytes = 72;
-const temporaryLegacyRecordBytes = 16 * 1024 * 1024;
 const memberBytes = 4;
 const stringOperationBytes = 32;
 const stringQueryBytes = 32;
 const outputRangeBytes = 16;
-const expectedAbiVersion = 36;
-const expectedMemoryLayoutVersion = 6;
+const expectedAbiVersion = 37;
+const expectedMemoryLayoutVersion = 7;
 
 /** Identifies the runtime assets used to start workers. */
 export interface RuntimeAssets {
@@ -74,6 +73,8 @@ export interface WorkerMemoryOptions {
   stringQueries?: number;
   /** Capacity of the circular output range descriptor array. Defaults to 65,536. */
   outputRanges?: number;
+  /** Maximum temporary UTF-8 scratch bytes. Defaults to 16,777,216. */
+  scratchBytes?: number;
 }
 
 /** Configures an immutable Nunjitsu engine. */
@@ -730,6 +731,7 @@ class WorkerSlot {
           stringOperations: memory.stringOperations,
           stringQueries: memory.stringQueries,
           outputRanges: memory.outputRanges,
+          scratchBytes: memory.scratchBytes,
         },
       },
     });
@@ -1297,6 +1299,11 @@ function normalizeMemoryOptions(
       65_536,
       'memory.outputRanges',
     ),
+    scratchBytes: memoryCapacity(
+      options?.scratchBytes,
+      16 * 1024 * 1024,
+      'memory.scratchBytes',
+    ),
   };
   const requiredBytes = [
     minimumMemoryPages * wasmPageBytes + 8 * 64,
@@ -1307,7 +1314,7 @@ function normalizeMemoryOptions(
     checkedCapacityBytes(normalized.stringOperations, stringOperationBytes),
     checkedCapacityBytes(normalized.stringQueries, stringQueryBytes),
     checkedCapacityBytes(normalized.outputRanges, outputRangeBytes),
-    temporaryLegacyRecordBytes,
+    checkedCapacityBytes(normalized.scratchBytes, 1),
   ].reduce((total, bytes) => {
     const next = total + bytes;
     if (!Number.isSafeInteger(next)) {

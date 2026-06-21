@@ -31,12 +31,9 @@ impl PoolState {
 struct MemoryPrefix {
     control: Control,
     active_render: u32,
-    legacy_arena_cursor: u32,
     render_epoch: u32,
     host_string_count: u32,
     layout_version: u32,
-    legacy_arena_base: u32,
-    reserved: u32,
     render_state: RenderState,
     slots: PoolState,
     sources: PoolState,
@@ -45,6 +42,7 @@ struct MemoryPrefix {
     string_operations: PoolState,
     string_queries: PoolState,
     output_ranges: PoolState,
+    scratch: PoolState,
 }
 
 impl MemoryPrefix {
@@ -56,12 +54,9 @@ impl MemoryPrefix {
             error_code: ERROR_NONE,
         },
         active_render: 0,
-        legacy_arena_cursor: 0,
         render_epoch: 0,
         host_string_count: 0,
         layout_version: 0,
-        legacy_arena_base: 0,
-        reserved: 0,
         render_state: RenderState {
             fields: [0; RENDER_STATE_LENGTH as usize / size_of::<u32>()],
         },
@@ -72,6 +67,7 @@ impl MemoryPrefix {
         string_operations: PoolState::EMPTY,
         string_queries: PoolState::EMPTY,
         output_ranges: PoolState::EMPTY,
+        scratch: PoolState::EMPTY,
     };
 }
 
@@ -119,16 +115,21 @@ fn set_active_render(value: u32) {
 }
 
 fn legacy_arena_cursor() -> u32 {
-    unsafe { (*memory_prefix()).legacy_arena_cursor }
+    let pool = unsafe { (*memory_prefix()).scratch };
+    pool.offset.saturating_add(pool.cursor)
 }
 
 fn legacy_arena_base() -> u32 {
-    unsafe { (*memory_prefix()).legacy_arena_base }
+    unsafe { (*memory_prefix()).scratch.offset }
 }
 
 fn set_legacy_arena_cursor(value: u32) {
-    unsafe {
-        (*memory_prefix()).legacy_arena_cursor = value;
+    let prefix = memory_prefix();
+    let pool = unsafe { (*prefix).scratch };
+    if let Some(cursor) = value.checked_sub(pool.offset) {
+        unsafe {
+            (*prefix).scratch.cursor = cursor;
+        }
     }
 }
 
@@ -163,7 +164,7 @@ fn reset_memory_cursors() {
     let prefix = memory_prefix();
     unsafe {
         (*prefix).active_render = 0;
-        (*prefix).legacy_arena_cursor = (*prefix).legacy_arena_base;
+        (*prefix).scratch.cursor = 0;
         (*prefix).render_epoch = (*prefix).render_epoch.wrapping_add(1);
         (*prefix).host_string_count = 0;
         (*prefix).slots.cursor = 1;
@@ -668,6 +669,7 @@ fn selected_pool(kind: u32) -> Option<PoolState> {
             POOL_STRING_OPERATIONS => Some((*prefix).string_operations),
             POOL_STRING_QUERIES => Some((*prefix).string_queries),
             POOL_OUTPUT_RANGES => Some((*prefix).output_ranges),
+            POOL_SCRATCH => Some((*prefix).scratch),
             _ => None,
         }
     }
@@ -1015,6 +1017,7 @@ pub extern "C" fn nunjitsu_configure_layout(
     string_operations: u32,
     string_queries: u32,
     output_ranges: u32,
+    scratch_bytes: u32,
 ) -> u32 {
     let Some(slot_count) = slots.checked_add(1) else {
         return 0;
@@ -1060,17 +1063,16 @@ pub extern "C" fn nunjitsu_configure_layout(
     let Some(output_pool) = configure_pool(&mut cursor, output_ranges, OUTPUT_RANGE_LENGTH) else {
         return 0;
     };
+    let Some(scratch_pool) = configure_pool(&mut cursor, scratch_bytes, 1) else {
+        return 0;
+    };
     if cursor as usize > linear_memory_length() {
         return 0;
     }
-    let Some(legacy_arena_base) = align_up(cursor, SCRATCH_ALIGNMENT) else {
-        return 0;
-    };
 
     let prefix = memory_prefix();
     unsafe {
         (*prefix).layout_version = MEMORY_LAYOUT_VERSION;
-        (*prefix).legacy_arena_base = legacy_arena_base;
         (*prefix).slots = slot_pool;
         (*prefix).slots.capacity = slots;
         (*prefix).sources = source_pool;
@@ -1079,6 +1081,7 @@ pub extern "C" fn nunjitsu_configure_layout(
         (*prefix).string_operations = operation_pool;
         (*prefix).string_queries = query_pool;
         (*prefix).output_ranges = output_pool;
+        (*prefix).scratch = scratch_pool;
     }
     reset_memory_cursors();
     1
