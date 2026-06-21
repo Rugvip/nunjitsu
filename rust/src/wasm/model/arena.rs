@@ -1,4 +1,7 @@
 fn allocate_record(tag: u32, payload_length: u32) -> Result<u32, u32> {
+    if slot_payload_length(tag).is_some() {
+        return allocate_slot(tag, payload_length);
+    }
     let total_length = (RECORD_HEADER_LENGTH as u32)
         .checked_add(payload_length)
         .ok_or(ERROR_OUTPUT_TOO_LARGE)?;
@@ -68,6 +71,9 @@ fn record_at(offset: u32, expected_tag: u32) -> Result<&'static [u8], u32> {
 }
 
 fn mutable_record_at(offset: u32, expected_tag: u32) -> Result<&'static mut [u8], u32> {
+    if let Some(payload) = mutable_slot_record(offset, expected_tag)? {
+        return Ok(payload);
+    }
     let header = memory(offset, RECORD_HEADER_LENGTH as u32)?;
     let tag = read_u32(header, 0)?;
     let payload_length = read_u32(header, 4)?;
@@ -81,6 +87,9 @@ fn mutable_record_at(offset: u32, expected_tag: u32) -> Result<&'static mut [u8]
 }
 
 fn raw_record_at(offset: u32) -> Result<(u32, &'static [u8]), u32> {
+    if let Some(record) = slot_record(offset)? {
+        return Ok(record);
+    }
     let header = memory(offset, RECORD_HEADER_LENGTH as u32)?;
     let tag = read_u32(header, 0)?;
     let payload_length = read_u32(header, 4)?;

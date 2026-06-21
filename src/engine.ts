@@ -27,7 +27,8 @@ import type { TemplateContext, TemplateValue } from './values.ts';
 const wasmPageBytes = 65_536;
 const minimumMemoryPages = 32;
 const maximumMemoryPages = 4096;
-const repeatedSlotBytes = 64;
+const repeatedSlotBytes = 72;
+const temporaryLegacyRecordBytes = 16 * 1024 * 1024;
 const memberBytes = 4;
 const stringOperationBytes = 32;
 const stringQueryBytes = 32;
@@ -1240,6 +1241,7 @@ function normalizeMemoryOptions(
     checkedCapacityBytes(normalized.stringOperations, stringOperationBytes),
     checkedCapacityBytes(normalized.stringQueries, stringQueryBytes),
     checkedCapacityBytes(normalized.outputRanges, outputRangeBytes),
+    temporaryLegacyRecordBytes,
   ].reduce((total, bytes) => {
     const next = total + bytes;
     if (!Number.isSafeInteger(next)) {

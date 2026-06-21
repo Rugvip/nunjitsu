@@ -10,7 +10,7 @@ pub extern "C" fn nunjitsu_control_offset() -> u32 {
 
 #[unsafe(no_mangle)]
 pub extern "C" fn nunjitsu_arena_base() -> u32 {
-    align_up(addr_of!(__heap_base) as u32, RECORD_ALIGNMENT).unwrap_or(0)
+    legacy_arena_base()
 }
 
 #[unsafe(no_mangle)]

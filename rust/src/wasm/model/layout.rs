@@ -29,6 +29,8 @@ struct MemoryPrefix {
     legacy_arena_cursor: u32,
     render_epoch: u32,
     layout_version: u32,
+    legacy_arena_base: u32,
+    reserved: u32,
     slots: PoolState,
     sources: PoolState,
     values: PoolState,
@@ -50,6 +52,8 @@ impl MemoryPrefix {
         legacy_arena_cursor: 0,
         render_epoch: 0,
         layout_version: 0,
+        legacy_arena_base: 0,
+        reserved: 0,
         slots: PoolState::EMPTY,
         sources: PoolState::EMPTY,
         values: PoolState::EMPTY,
@@ -63,7 +67,7 @@ impl MemoryPrefix {
 #[repr(C, align(8))]
 pub struct Slot {
     pub header: u32,
-    pub fields: [u32; 15],
+    pub fields: [u32; 16],
 }
 
 const _: () = assert!(size_of::<MemoryPrefix>() <= 256);
@@ -107,6 +111,10 @@ fn legacy_arena_cursor() -> u32 {
     unsafe { (*memory_prefix()).legacy_arena_cursor }
 }
 
+fn legacy_arena_base() -> u32 {
+    unsafe { (*memory_prefix()).legacy_arena_base }
+}
+
 fn set_legacy_arena_cursor(value: u32) {
     unsafe {
         (*memory_prefix()).legacy_arena_cursor = value;
@@ -117,7 +125,7 @@ fn reset_memory_cursors() {
     let prefix = memory_prefix();
     unsafe {
         (*prefix).active_render = 0;
-        (*prefix).legacy_arena_cursor = nunjitsu_arena_base();
+        (*prefix).legacy_arena_cursor = (*prefix).legacy_arena_base;
         (*prefix).render_epoch = (*prefix).render_epoch.wrapping_add(1);
         (*prefix).slots.cursor = 1;
         (*prefix).sources.cursor = 0;
@@ -141,6 +149,93 @@ fn configure_pool(cursor: &mut u32, capacity: u32, width: u32) -> Option<PoolSta
         capacity,
         cursor: 0,
     })
+}
+
+fn slot_payload_length(tag: u32) -> Option<u32> {
+    match tag {
+        TAG_FRAME => Some(FRAME_LENGTH),
+        TAG_LOOP_STATE => Some(LOOP_STATE_LENGTH),
+        TAG_SCOPE => Some(SCOPE_LENGTH),
+        TAG_CAPTURE => Some(CAPTURE_LENGTH),
+        TAG_MACRO_DEFINITION => Some(MACRO_DEFINITION_LENGTH),
+        TAG_MACRO_CALL => Some(MACRO_CALL_LENGTH),
+        TAG_BLOCK_DEFINITION => Some(BLOCK_DEFINITION_LENGTH),
+        TAG_TAG_CALL => Some(TAG_CALL_LENGTH),
+        TAG_TAG_ARGUMENTS => Some(TAG_ARGUMENTS_LENGTH),
+        TAG_FILTER_BLOCK => Some(FILTER_BLOCK_LENGTH),
+        TAG_JOINER => Some(JOINER_LENGTH),
+        _ => None,
+    }
+}
+
+fn slot_category_mask(tag: u32) -> u32 {
+    match tag {
+        TAG_JOINER => 1,
+        TAG_FRAME | TAG_LOOP_STATE | TAG_CAPTURE | TAG_MACRO_CALL | TAG_TAG_CALL => 2,
+        TAG_SCOPE | TAG_MACRO_DEFINITION | TAG_BLOCK_DEFINITION => 4,
+        TAG_TAG_ARGUMENTS | TAG_FILTER_BLOCK => 8,
+        _ => 0,
+    }
+}
+
+fn allocate_slot(tag: u32, payload_length: u32) -> Result<u32, u32> {
+    let expected_length = slot_payload_length(tag).ok_or(ERROR_INVALID_RECORD)?;
+    if payload_length != expected_length || tag > u8::MAX as u32 {
+        return Err(ERROR_INVALID_RECORD);
+    }
+    let prefix = memory_prefix();
+    let (pool, index) = unsafe { ((*prefix).slots, (*prefix).slots.cursor) };
+    if index == 0 || index > pool.capacity {
+        return Err(ERROR_RESOURCE_LIMIT);
+    }
+    let offset = pool
+        .offset
+        .checked_add(index.checked_mul(SLOT_LENGTH).ok_or(ERROR_RESOURCE_LIMIT)?)
+        .ok_or(ERROR_RESOURCE_LIMIT)?;
+    let bytes = mutable_memory(offset, SLOT_LENGTH)?;
+    bytes.fill(0);
+    let header = tag | (slot_category_mask(tag) << 8);
+    write_u32(bytes, 0, header)?;
+    unsafe {
+        (*prefix).slots.cursor = index.checked_add(1).ok_or(ERROR_RESOURCE_LIMIT)?;
+    }
+    Ok(index)
+}
+
+fn slot_record(index: u32) -> Result<Option<(u32, &'static [u8])>, u32> {
+    let prefix = memory_prefix();
+    let pool = unsafe { (*prefix).slots };
+    if index == 0 || index >= pool.cursor {
+        return Ok(None);
+    }
+    let offset = pool
+        .offset
+        .checked_add(index.checked_mul(SLOT_LENGTH).ok_or(ERROR_INVALID_RECORD)?)
+        .ok_or(ERROR_INVALID_RECORD)?;
+    let bytes = memory(offset, SLOT_LENGTH)?;
+    let header = read_u32(bytes, 0)?;
+    let tag = header & 0xff;
+    let length = slot_payload_length(tag).ok_or(ERROR_INVALID_RECORD)? as usize;
+    Ok(Some((tag, &bytes[4..4 + length])))
+}
+
+fn mutable_slot_record(index: u32, expected_tag: u32) -> Result<Option<&'static mut [u8]>, u32> {
+    let prefix = memory_prefix();
+    let pool = unsafe { (*prefix).slots };
+    if index == 0 || index >= pool.cursor {
+        return Ok(None);
+    }
+    let offset = pool
+        .offset
+        .checked_add(index.checked_mul(SLOT_LENGTH).ok_or(ERROR_INVALID_RECORD)?)
+        .ok_or(ERROR_INVALID_RECORD)?;
+    let bytes = mutable_memory(offset, SLOT_LENGTH)?;
+    let tag = read_u32(bytes, 0)? & 0xff;
+    if tag != expected_tag {
+        return Err(ERROR_INVALID_RECORD);
+    }
+    let length = slot_payload_length(tag).ok_or(ERROR_INVALID_RECORD)? as usize;
+    Ok(Some(&mut bytes[4..4 + length]))
 }
 
 #[unsafe(no_mangle)]
@@ -215,10 +310,14 @@ pub extern "C" fn nunjitsu_configure_layout(
     if cursor as usize > linear_memory_length() {
         return 0;
     }
+    let Some(legacy_arena_base) = align_up(cursor, RECORD_ALIGNMENT) else {
+        return 0;
+    };
 
     let prefix = memory_prefix();
     unsafe {
         (*prefix).layout_version = MEMORY_LAYOUT_VERSION;
+        (*prefix).legacy_arena_base = legacy_arena_base;
         (*prefix).slots = slot_pool;
         (*prefix).slots.capacity = slots;
         (*prefix).sources = source_pool;

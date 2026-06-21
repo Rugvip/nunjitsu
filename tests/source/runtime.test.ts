@@ -82,10 +82,15 @@ test('allocates immutable worker memory capacities without growing at render tim
   });
   try {
     await assert.rejects(
-      engine.render({ source: 'x'.repeat(2_100_000) }),
+      engine.render({ source: 'x'.repeat(20_000_000) }),
       error => error instanceof NunjitsuLimitError,
     );
     assert.equal(await engine.render({ source: 'clean' }), 'clean');
+    await assert.rejects(
+      engine.render({ source: '{% for value in [1] %}{{ value }}{% endfor %}' }),
+      error => error instanceof NunjitsuLimitError,
+    );
+    assert.equal(await engine.render({ source: 'reset' }), 'reset');
   } finally {
     await engine.dispose();
   }
