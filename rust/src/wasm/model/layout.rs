@@ -194,6 +194,7 @@ fn slot_payload_length(tag: u32) -> Option<u32> {
         TAG_UNDEFINED | TAG_NULL => Some(0),
         TAG_BOOLEAN => Some(1),
         TAG_NUMBER => Some(8),
+        TAG_STRING_VALUE | TAG_SAFE_STRING_VALUE => Some(12),
         TAG_FRAME => Some(FRAME_LENGTH),
         TAG_LOOP_STATE => Some(LOOP_STATE_LENGTH),
         TAG_SCOPE => Some(SCOPE_LENGTH),
@@ -227,6 +228,8 @@ fn slot_category_mask(tag: u32) -> u32 {
         | TAG_NULL
         | TAG_BOOLEAN
         | TAG_NUMBER
+        | TAG_STRING_VALUE
+        | TAG_SAFE_STRING_VALUE
         | TAG_ARRAY
         | TAG_RECORD
         | TAG_JOINER => 1,
@@ -328,6 +331,34 @@ fn expression_at(index: u32) -> Result<&'static [u16], u32> {
     }
     let start = read_u32(payload, 0)?;
     let length = read_u32(payload, 4)?;
+    let pool = unsafe { (*memory_prefix()).values };
+    let end = start.checked_add(length).ok_or(ERROR_INVALID_RECORD)?;
+    if end > pool.cursor {
+        return Err(ERROR_INVALID_RECORD);
+    }
+    let offset = pool
+        .offset
+        .checked_add(
+            start
+                .checked_mul(VALUE_CODE_UNIT_LENGTH)
+                .ok_or(ERROR_INVALID_RECORD)?,
+        )
+        .ok_or(ERROR_INVALID_RECORD)?;
+    let bytes = memory(
+        offset,
+        length
+            .checked_mul(VALUE_CODE_UNIT_LENGTH)
+            .ok_or(ERROR_INVALID_RECORD)?,
+    )?;
+    Ok(unsafe { slice::from_raw_parts(bytes.as_ptr().cast::<u16>(), length as usize) })
+}
+
+fn value_code_units(payload: &[u8]) -> Result<&'static [u16], u32> {
+    if payload.len() != 12 {
+        return Err(ERROR_INVALID_RECORD);
+    }
+    let start = read_u32(payload, 4)?;
+    let length = read_u32(payload, 8)?;
     let pool = unsafe { (*memory_prefix()).values };
     let end = start.checked_add(length).ok_or(ERROR_INVALID_RECORD)?;
     if end > pool.cursor {

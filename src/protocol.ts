@@ -34,6 +34,8 @@ const recordTag = {
   tagRegistry: 26,
   regex: 31,
   loadRequest: 34,
+  stringValue: 36,
+  safeStringValue: 37,
 } as const;
 
 /** The offsets and cursor for one encoded render request. */
@@ -301,7 +303,7 @@ export class ArenaWriter {
       return this.#writeRecord(recordTag.null, new Uint8Array());
     }
     if (typeof value === 'string') {
-      return this.#writeTextRecord(recordTag.string, value);
+      return this.#writeValueTextSlot(recordTag.stringValue, value);
     }
     if (typeof value === 'boolean') {
       return this.#writeRecord(recordTag.boolean, Uint8Array.of(value ? 1 : 0));
@@ -312,7 +314,7 @@ export class ArenaWriter {
       return this.#writeRecord(recordTag.number, payload);
     }
     if (value instanceof SafeString) {
-      return this.#writeTextRecord(recordTag.safeString, value.value);
+      return this.#writeValueTextSlot(recordTag.safeStringValue, value.value);
     }
     if (typeof value !== 'object') {
       throw new TypeError(`Unsupported template value of type ${typeof value}`);
@@ -450,6 +452,28 @@ export class ArenaWriter {
     bytes.fill(0);
     this.#view.setUint32(offset, tag | (1 << 8), true);
     bytes.set(payload, 4);
+    return index;
+  }
+
+  #writeValueTextSlot(tag: number, value: string): number {
+    const start = this.#fixedCursors.values;
+    const end = start + value.length;
+    if (end > this.#layout.valueCapacity) {
+      throw new NunjitsuLimitError('arenaBytes');
+    }
+    const index = this.#reserveSlot();
+    const slotOffset = this.#layout.slotOffset + index * fixedSlotLength;
+    const slot = new Uint8Array(this.#memory.buffer, slotOffset, fixedSlotLength);
+    slot.fill(0);
+    this.#view.setUint32(slotOffset, tag | (1 << 8), true);
+    this.#view.setUint32(slotOffset + 4, 0, true);
+    this.#view.setUint32(slotOffset + 8, start, true);
+    this.#view.setUint32(slotOffset + 12, value.length, true);
+    const codeUnitOffset = this.#layout.valueOffset + start * 2;
+    for (let cursor = 0; cursor < value.length; cursor += 1) {
+      this.#view.setUint16(codeUnitOffset + cursor * 2, value.charCodeAt(cursor), true);
+    }
+    this.#fixedCursors.values = end;
     return index;
   }
 
@@ -620,6 +644,10 @@ function decodeValue(
   if (tag === recordTag.number && payload.byteLength >= 8) {
     return new DataView(payload.buffer, payload.byteOffset, payload.byteLength).getFloat64(0, true);
   }
+  if (tag === recordTag.stringValue || tag === recordTag.safeStringValue) {
+    const value = new TextDecoder('utf-16le', { fatal: true }).decode(payload);
+    return tag === recordTag.safeStringValue ? new SafeString(value) : value;
+  }
   if (tag === recordTag.string || tag === recordTag.safeString || tag === recordTag.regex) {
     const value = new TextDecoder('utf-8', { fatal: true }).decode(payload);
     return tag === recordTag.safeString ? new SafeString(value) : value;
@@ -701,6 +729,24 @@ function readAnyValue(
     }
     if (tag === recordTag.number) {
       return { tag, payload: new Uint8Array(memory.buffer, slotOffset + 4, 8) };
+    }
+    if (tag === recordTag.stringValue || tag === recordTag.safeStringValue) {
+      const valueStart = view.getUint32(8, true);
+      const codeUnitLength = view.getUint32(12, true);
+      if (
+        valueStart + codeUnitLength > fixedCursors.values ||
+        valueStart + codeUnitLength > layout.valueCapacity
+      ) {
+        throw new Error('Wasm returned an out-of-bounds value text range');
+      }
+      return {
+        tag,
+        payload: new Uint8Array(
+          memory.buffer,
+          layout.valueOffset + valueStart * 2,
+          codeUnitLength * 2,
+        ),
+      };
     }
     if (tag === recordTag.array || tag === recordTag.record) {
       const memberStart = view.getUint32(4, true);

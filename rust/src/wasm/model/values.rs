@@ -238,6 +238,10 @@ impl Value {
             }
             TAG_STRING => Ok(Self::String(payload)),
             TAG_SAFE_STRING => Ok(Self::SafeString(payload)),
+            TAG_STRING_VALUE => Ok(Self::String(code_units_as_utf8(value_code_units(payload)?)?)),
+            TAG_SAFE_STRING_VALUE => {
+                Ok(Self::SafeString(code_units_as_utf8(value_code_units(payload)?)?))
+            }
             TAG_REGEX => Ok(Self::Regex(payload)),
             TAG_ARRAY => Ok(Self::Array(Array::new(payload)?)),
             TAG_RECORD => Ok(Self::Record(Record::new(payload)?)),
