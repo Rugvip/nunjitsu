@@ -567,25 +567,46 @@ fn call_positional_argument(
 }
 
 fn write_escaped_string(value: &[u8]) -> Result<u32, u32> {
-    let mut length = 0usize;
+    let mut byte_length = 0usize;
+    let mut code_unit_length = 0usize;
     emit_escaped(value, &mut |segment| {
-        length = length
+        byte_length = byte_length
             .checked_add(segment.len())
+            .ok_or(RenderError::OutputTooLarge)?;
+        code_unit_length = code_unit_length
+            .checked_add(
+                core::str::from_utf8(segment)
+                    .map_err(|_| RenderError::OutputTooLarge)?
+                    .encode_utf16()
+                    .count(),
+            )
             .ok_or(RenderError::OutputTooLarge)?;
         Ok(())
     })
     .map_err(render_error_code)?;
-    let offset = allocate_record(TAG_SAFE_STRING, length as u32)?;
-    let output = mutable_record_at(offset, TAG_SAFE_STRING)?;
+    let code_unit_length = u32::try_from(code_unit_length).map_err(|_| ERROR_RESOURCE_LIMIT)?;
+    let (value_start, output) = allocate_value_code_units(code_unit_length)?;
     let mut cursor = 0usize;
     emit_escaped(value, &mut |segment| {
+        let segment = core::str::from_utf8(segment).map_err(|_| RenderError::OutputTooLarge)?;
+        let segment_length = segment.encode_utf16().count();
         let end = cursor
-            .checked_add(segment.len())
+            .checked_add(segment_length)
             .ok_or(RenderError::OutputTooLarge)?;
-        output[cursor..end].copy_from_slice(segment);
+        for (destination, code_unit) in output[cursor..end]
+            .iter_mut()
+            .zip(segment.encode_utf16())
+        {
+            *destination = code_unit;
+        }
         cursor = end;
         Ok(())
     })
     .map_err(render_error_code)?;
-    Ok(offset)
+    write_materialized_code_unit_value(
+        value_start,
+        code_unit_length,
+        u32::try_from(byte_length).map_err(|_| ERROR_RESOURCE_LIMIT)?,
+        true,
+    )
 }

@@ -16,8 +16,49 @@ fn allocate_record(tag: u32, payload_length: u32) -> Result<u32, u32> {
 }
 
 fn write_bytes_record(tag: u32, bytes: &[u8]) -> Result<u32, u32> {
+    if tag == TAG_SAFE_STRING {
+        return write_materialized_string_value(bytes, true);
+    }
     let offset = allocate_record(tag, bytes.len() as u32)?;
     mutable_record_at(offset, tag)?.copy_from_slice(bytes);
+    Ok(offset)
+}
+
+fn write_materialized_string_value(bytes: &[u8], safe: bool) -> Result<u32, u32> {
+    let (handle, length) = materialized_string_handle(bytes)?;
+    write_computed_string_value(handle, 0, length, safe)
+}
+
+fn write_materialized_code_unit_value(
+    value_start: u32,
+    code_unit_length: u32,
+    byte_length: u32,
+    safe: bool,
+) -> Result<u32, u32> {
+    let handle = allocate_materialized_string_operation(
+        value_start,
+        code_unit_length,
+        byte_length,
+    )?;
+    write_computed_string_value(handle, 0, code_unit_length, safe)
+}
+
+fn write_computed_string_value(
+    handle: u32,
+    start: u32,
+    length: u32,
+    safe: bool,
+) -> Result<u32, u32> {
+    let tag = if safe {
+        TAG_SAFE_STRING_VALUE
+    } else {
+        TAG_STRING_VALUE
+    };
+    let offset = allocate_slot(tag, 12)?;
+    let payload = mutable_slot_record(offset, tag)?.ok_or(ERROR_INVALID_RECORD)?;
+    write_u32(payload, 0, handle)?;
+    write_u32(payload, 4, start)?;
+    write_u32(payload, 8, length)?;
     Ok(offset)
 }
 
