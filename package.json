@@ -22,6 +22,9 @@
     "LICENSE",
     "README.md"
   ],
+  "dependencies": {
+    "nunjucks": "3.2.4"
+  },
   "scripts": {
     "benchmark": "npm run build:wasm && node benchmarks/run.ts",
     "benchmark:quick": "npm run build:wasm && node benchmarks/run.ts --warmup=1 --iterations=3",
@@ -40,7 +43,6 @@
     "@types/node": "^24.0.0",
     "@types/nunjucks": "3.2.6",
     "@typescript/native-preview": "7.0.0-dev.20260613.1",
-    "esbuild": "^0.25.0",
-    "nunjucks": "3.2.4"
+    "esbuild": "^0.25.0"
   }
 }
