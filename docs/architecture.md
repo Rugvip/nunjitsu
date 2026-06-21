@@ -2,142 +2,114 @@
 
 ## Purpose
 
-Nunjitsu is a Node.js template engine implemented in Rust, compiled to WebAssembly,
-and executed in Node worker threads. It targets the observable template and
-runtime behavior of Nunjucks 3.2.4 while replacing Nunjucks's JavaScript API
-with an asynchronous, typed API.
+Nunjitsu is a native TypeScript template engine for Node.js. It targets the
+observable template and runtime behavior of Nunjucks 3.2.4 while replacing the
+Nunjucks JavaScript API with an asynchronous, typed API.
 
-The design prioritizes:
+The design prioritizes, in order:
 
-- safe execution of untrusted templates;
-- low retained memory for templates rendered infrequently;
-- compact, data-driven execution in shared Wasm memory;
-- one-shot compilation and rendering rather than precompilation or persistent
-  compiled-template caches; and
-- an attributed, auditable compatibility suite derived from upstream tests.
+1. preventing untrusted template source from gaining JavaScript execution or
+   ambient access to the Node.js process;
+2. compatibility with existing Nunjucks templates inside that security model;
+3. clear, auditable implementation boundaries; and
+4. acceptable one-shot rendering performance without precompilation or a
+   persistent compiled-template cache.
 
-Throughput for repeatedly rendered templates is secondary to predictable
-resource use and low retention.
+Security takes precedence over compatibility and performance when those goals
+conflict.
 
 ## System boundaries
 
 ```mermaid
 flowchart LR
     A["Node.js caller"] --> B["TypeScript Engine"]
-    B --> C["Lazy worker pool"]
-    C --> D1["Worker thread 1"]
-    C --> D2["Worker thread N"]
-    D1 <--> M1["Worker-owned shared Wasm memory"]
-    D2 <--> M2["Worker-owned shared Wasm memory"]
-    D1 --> W1["Rust/Wasm engine"]
-    D2 --> W2["Rust/Wasm engine"]
-    B <--> E["Trusted loaders and capabilities"]
-    D1 -. "yield/resume" .-> E
-    D2 -. "yield/resume" .-> E
+    B --> C["Safe value copier"]
+    B --> D["Tokenizer and parser"]
+    D --> E["Immutable data-only AST"]
+    C --> F["Closed async interpreter"]
+    E --> F
+    F <--> G["Trusted loaders and capabilities"]
+    F --> H["Buffered or streaming output sink"]
 ```
 
-### TypeScript engine
+### Engine
 
-The engine is the public lifetime boundary. It owns:
+`createEngine` synchronously constructs an immutable registry of loaders,
+filters, tests, globals, and declarative custom tags. Rendering is asynchronous
+because loaders and capabilities may be asynchronous. A direct interpreter has
+no mandatory worker, Wasm module, or process resource to dispose.
 
-- an immutable registry of loaders, filters, tests, globals, and declarative
-  extension schemas;
-- the compiled Wasm module and a lazy, bounded worker pool;
-- queueing, cancellation, capability dispatch, output collection, and explicit
-  disposal; and
-- encoding safe input values into worker memory and decoding results.
+### Parser
 
-Node-specific APIs may be used throughout this layer. Browser support is not a
-current goal and must not constrain the Node implementation.
+The parser is a closed grammar implementation. It tokenizes template and
+expression syntax without invoking a JavaScript parser, generating JavaScript,
+or evaluating source. Parsing produces a complete immutable AST composed only
+of discriminated data nodes, primitive fields, child arrays, and source spans.
+AST nodes never contain functions, host objects, property descriptors, or
+executable closures.
 
-### Worker
+Every loaded template is fully parsed and validated before it executes. The AST
+is owned by one render and discarded when that render ends. Nunjitsu does not
+precompile templates or retain parsed templates across renders by default.
 
-Each worker owns one shared `WebAssembly.Memory` and one Wasm instance. The
-memory is shared between the Node main thread and that worker, but is not shared
-with other workers. A worker executes exactly one render at a time and remains
-reserved while that render is suspended on a trusted host capability.
+### Interpreter
 
-### Rust/Wasm engine
+The interpreter evaluates the closed AST directly in the caller process. It
+operates only on engine-owned values and scopes. Identifiers, attributes,
+indices, operators, coercions, comparisons, and calls are implemented as
+explicit operations over that model; they never delegate to JavaScript
+property lookup or implicit object coercion.
 
-One Rust crate under `rust/` contains the parser, evaluator, fixed memory model,
-resource accounting, and raw Wasm ABI. Logical modules must keep domain logic
-separate from ABI handling even though they live in one crate. The same crate
-must remain testable natively where behavior does not depend on Wasm.
-
-The Rust source is organized by responsibility within those logical modules:
-
-- `expression/` owns expression syntax, arguments, atoms, and directive calls;
-- `template/` owns template boundaries, syntax scanning, and rendering helpers;
-- `wasm/runtime/` owns the ABI and suspended render control flow;
-- `wasm/evaluation/` owns continuations, expression evaluation, and output;
-- `wasm/filters/` groups built-in filters by behavior; and
-- `wasm/model/` owns registries, values, slots, and typed storage arrays.
-
-The three `mod.rs` files are assembly points. Their included source files share
-the parent module's privacy boundary, which keeps tightly coupled storage and
-evaluator internals private without concentrating unrelated responsibilities in
-single large files.
+The only callable values are sealed interpreter variants for macros, built-in
+callables, and registered capability identities. A template value can never
+contain a JavaScript function or constructor.
 
 ## Render lifecycle
 
-A render is an isolated unit of ownership:
-
-1. The TypeScript engine assigns an idle worker and creates a render-local
-   capability namespace.
-2. The host encodes context slots and UTF-16 entry-template code units directly
-   into reserved ranges of that worker's fixed shared memory. Rust validates
-   and freezes the submitted cursors. Named templates are obtained only through
-   explicitly configured loaders and follow the same ownership transfer.
-3. Rust parses and evaluates ordinary nodes as a stream. It retains compact AST
-   slots only for bodies that must execute later or repeatedly, such as
-   macros, blocks, loops, and inheritance overrides.
-4. A loader, host capability, or string query yields an explicit evaluator
-   continuation. Loader requests carry the current source's canonical identity
-   so relative dependencies resolve correctly through deferred frames. The
-   worker remains reserved, and the main thread resumes it after encoding the
-   response.
-5. Wasm emits fixed-size descriptors containing a host string handle and UTF-16
-   range through a circular output array. Buffered rendering joins the drained
-   ranges; streaming rendering exposes them with backpressure.
-6. Completion, failure, or cancellation invalidates every render-local slot,
-   range, continuation, and host string handle, then resets all logical cursors
-   wholesale. Template sources, AST slots, context values, evaluation frames,
-   and output descriptors are never cached across renders.
-
-The worker, Wasm instance, and configured fixed capacity may be retained. Its
-memory is allocated once when the worker is created and does not grow in
-response to a render.
+1. The engine resolves the entry source through an explicit loader or accepts
+   inline source.
+2. Context input is copied and validated into the closed value graph.
+3. The complete source is parsed into a data-only AST.
+4. The async interpreter evaluates the AST using map-backed scopes and explicit
+   operations. Includes, imports, and inheritance load and parse dependencies
+   on demand within the same render.
+5. Trusted capability calls receive copied public values. Their results cross
+   the same value validator before evaluation resumes.
+6. Output is written to a render-owned buffered or streaming sink.
+7. The AST, scopes, values, loader cache, and capability state become
+   unreachable when the render completes, fails, or is cancelled.
 
 ## Repository boundary
 
-The TypeScript/npm package lives at the repository root. The single Rust crate
-lives under `rust/`. The attributed, language-neutral compatibility corpus
-lives under `tests/compat/` and is consumed by both implementation layers.
-
-Planned ownership is:
+The authored package lives at the repository root:
 
 ```text
 .
-├── src/                 TypeScript public API, engine, and worker host
-├── rust/                Single Rust engine and Wasm ABI crate
+├── src/
+│   ├── parser/           Tokenizer and closed template/expression parser
+│   ├── runtime/          Values, scopes, interpreter, output, and limits
+│   └── ...               Public API, loaders, and capabilities
 ├── tests/
-│   └── compat/          Shared Nunjucks v3.2.4 corpus and parity manifest
-├── docs/                Normative architecture documentation
-├── AGENTS.md            Project-wide contribution constraints
-└── README.md            Introduction and minimal setup
+│   └── compat/           Shared Nunjucks v3.2.4 corpus and parity manifest
+├── docs/                 Normative architecture documentation
+├── AGENTS.md             Project-wide contribution constraints
+└── README.md             Introduction and minimal setup
 ```
 
-Build artifacts, generated declarations, and copied upstream materials must be
-clearly separated from authored source.
+The runtime contains no Rust, WebAssembly, shared-memory ABI, worker protocol,
+or generated JavaScript evaluator.
 
 ## Architectural non-goals
 
 - A Nunjucks-compatible JavaScript API.
 - Browser support.
+- A JavaScript or `vm`-based template sandbox.
+- Live proxying of arbitrary JavaScript object graphs into templates.
+- Calling context functions or object methods.
 - A precompiler or persistent compiled-template cache.
 - Implicit filesystem access relative to the process working directory.
-- Live proxying of arbitrary JavaScript object graphs into templates.
 - Arbitrary JavaScript parser extensions for custom tags.
 - Custom lexer delimiters or public lexer-token and parser-AST APIs.
+- Sanitizing template-authored output for a particular downstream sink.
 
 See the area documents for the rationale and exact boundaries.

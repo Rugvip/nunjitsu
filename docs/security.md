@@ -2,130 +2,104 @@
 
 ## Security objective
 
-Nunjitsu must be able to execute fully untrusted template source without giving
-that template ambient access to the Node.js process. Worker isolation alone is
-not the security model. The model combines a constrained value boundary,
-explicit capabilities, rooted loading, and deterministic resource accounting.
+Fully untrusted template source must have no template-language path to execute
+JavaScript, access ambient Node.js authority, inspect live host objects, or
+invoke behavior that was not explicitly registered for templates.
 
-The following host code remains trusted and is outside the sandbox guarantee:
+This is a property of the closed parser, value model, and interpreter. It is
+not a claim that Nunjitsu, Node.js, or V8 can contain their own implementation
+or memory-safety vulnerabilities.
 
+Trusted code outside the guarantee includes:
+
+- application code constructing context containers;
+- engine configuration;
 - loaders;
-- custom filters, tests, globals, and extension renderers;
-- application code that creates engines or render-local capabilities; and
-- the Nunjitsu TypeScript and Rust implementation itself.
+- custom filters, tests, globals, and tag renderers; and
+- Nunjitsu and its production dependencies.
 
-A trusted callback can perform unsafe actions or return sensitive data.
-Nunjitsu cannot make an arbitrary callback safe.
+Strings, numbers, booleans, nulls, arrays, and record data supplied through
+trusted application code may contain hostile data. Hostile JavaScript proxies
+are outside the boundary because JavaScript provides no trap-free way to
+inspect them.
+
+## Prohibited execution paths
+
+Interpreter and parser modules must not use:
+
+- `eval`, `Function`, async/generator constructors, or indirect equivalents;
+- `node:vm` or generated JavaScript;
+- dynamic import or module resolution from template-controlled data;
+- reflective property or prototype traversal on host values;
+- implicit object coercion, iteration protocols, getters, or methods; or
+- JavaScript functions stored in template-visible values.
+
+Template identifiers resolve only through engine-owned map-backed scopes.
+Attribute access dispatches only over closed internal value kinds. Calls
+dispatch only over sealed interpreter callable variants.
 
 ## Safe value boundary
 
-Template context is validated and encoded into reserved slots and typed ranges
-in the worker's fixed shared memory. Templates never receive a live JavaScript
-object proxy.
+Context and capability results are recursively copied into immutable
+engine-owned values before evaluation. The public input model accepts:
 
-Repeated references to the same non-cyclic array or record are encoded once per
-render and retain alias identity through slot indices. This supports strict
-`sameas` behavior without retaining or exposing the original host object.
+- `undefined`, `null`, booleans, finite or JavaScript-compatible numbers, and
+  strings;
+- explicitly marked safe strings;
+- arrays containing accepted values; and
+- plain records whose enumerable own properties are data descriptors containing
+  accepted values.
 
-The portable value model consists of:
+Functions, accessors, symbols, class instances, typed arrays, dates, maps,
+sets, weak collections, promises, errors, and other exotic objects are
+rejected. Cycles and excessive depth are rejected. Repeated non-cyclic aliases
+may retain identity through internal graph references.
 
-- `undefined` and `null`;
-- booleans and JavaScript-number-compatible numeric values;
-- render-local host string handles with validated UTF-16 ranges, including
-  explicitly marked safe strings;
-- arrays;
-- plain own-key records; and
-- explicit opaque capability handles.
-
-Getters, prototype chains, methods, arbitrary functions, exotic host objects,
-and cyclic graphs are rejected unless behavior is deliberately represented by
-a registered capability. Property access operates only on the copied safe
-representation. Security takes precedence where this differs from Nunjucks
-behavior on arbitrary live JavaScript objects.
-
-Encoders must bound nesting, slot and member counts, key sizes, UTF-16 code
-units, host string operations, and submitted ranges while encoding input. Rust
-must validate and freeze the host-written cursors before using them. A rejected
-input must not leave a partially usable render in the worker.
+The names `constructor`, `prototype`, and `__proto__` are rejected at every
+ingress and syntax location and always fail closed during lookup. Prototype
+pollution of `Object.prototype` cannot affect interpreter lookup because host
+objects are never used as scopes or template records.
 
 ## Capabilities
 
-Capabilities are the only way a template can request host behavior. Engine-level
-loaders, filters, tests, globals, and extension schemas receive numeric IDs when
-the engine is created. That registry is immutable for the engine lifetime.
+Capabilities are the only route to trusted application behavior. Engine-level
+loaders, filters, tests, globals, and declarative tags receive immutable
+identities during synchronous engine creation.
 
-Render-local capability handles may be allocated in a separate render-local
-namespace, but they must not mutate the engine registry or survive cleanup.
-Every request identifies the capability, operation, arguments, render, and
-continuation. Responses are accepted only for the matching pending request.
+The interpreter stores capability identities, never callback functions. A call
+copies internal arguments to a null-prototype public value graph, invokes the
+exact registered callback through the host dispatcher, and copies its result
+back through the safe value validator. Capability results are not implicitly
+safe.
 
-Custom tags use declarative grammar schemas parsed by Rust. Schemas may describe
-arguments and template bodies but cannot execute arbitrary parser code or
-manipulate internal syntax records. Rendering a custom tag may yield to its
-trusted host capability.
+A capability is authority. Applications must expose narrow behavior and assume
+an untrusted template can invoke every registered capability with arbitrary
+valid arguments up to configured limits.
 
 ## Loaders
 
-There is no default current-working-directory loader. Callers must provide
-inline source or explicitly configure a loader. The package may provide:
+There is no default current-working-directory loader. Built-in filesystem
+loading is constrained to explicit canonical roots and rejects traversal,
+symlink escape, and invalid names. A template can request names but cannot use
+Node filesystem APIs directly.
 
-- an in-memory loader; and
-- a filesystem loader constrained to explicit roots.
-
-Loaders return a canonical identity with the source. The engine uses that
-identity for per-render deduplication, include stacks, and cycle detection. A
-filesystem loader must normalize and validate paths, reject traversal and root
-escape, and treat symlink behavior explicitly. Merely checking a string prefix
-is insufficient.
-
-Relative names beginning with `./` or `../` are resolved from the requesting
-frame's canonical identity. Canonical identity must follow the source through
-deferred blocks and macros. Request caches must include both parent identity and
-requested name; keying only by the relative spelling can substitute a template
-from another directory. The final resolved filesystem path must remain within
-an explicitly configured canonical root even when the parent path or target
-contains symlinks.
-
-Loaders are trusted authority. A template can request names but cannot bypass
-the loader or access Node filesystem APIs directly.
+Loaders are trusted. Their returned source is untrusted template text and is
+fully parsed before execution.
 
 ## Resource limits
 
-Limits are configured per render. There is no immutable engine-wide ceiling,
-and callers may explicitly loosen a limit or choose an effectively unlimited
-value. Omitting limits uses a finite safe default profile.
+High finite defaults cover parsing, evaluator work, nesting, allocation,
+output, loaders, and capabilities. They reduce accidental and intentional
+denial of service but are cooperative checks rather than hard isolation.
 
-The profile must account for at least:
+Regular-expression literals preserve JavaScript-compatible behavior. A hostile
+pattern can cause excessive backtracking between interpreter checkpoints;
+applications requiring strict availability isolation must execute rendering in
+their own worker, process, or container and impose external deadlines.
 
-- evaluator work units;
-- parser, expression, call, include, and inheritance nesting;
-- fixed-pool slots, UTF-16 code units, members, operations, queries, and
-  collection sizes;
-- output bytes;
-- loader and capability calls; and
-- outstanding asynchronous work.
+## Output boundary
 
-An `AbortSignal` or deadline complements deterministic accounting but does not
-replace it. Exceeding a limit, cancellation, a callback failure, or a malformed
-ABI response must all terminate the render and run full cleanup.
-
-Nunjucks-compatible regular-expression replacement is a trusted lazy string
-operation in the isolated render worker's host graph. This preserves JavaScript
-`RegExp` flags, captures, and replacement syntax without granting templates a
-user-defined capability. Because backtracking cost is not predictable from
-input size, callers accepting untrusted regex literals must provide an
-`AbortSignal` with an application deadline; cancellation terminates and
-recreates the affected worker.
-
-Choosing unlimited limits is an explicit opt-out from denial-of-service
-protection. The API documentation must state that clearly.
-
-## Output and escaping
-
-Nunjucks-compatible autoescaping and safe-string semantics are correctness and
-security requirements. Capability results are not implicitly safe. Marking a
-value safe must require an explicit typed operation.
-
-Streaming output is not atomic. Consumers must assume that a stream can expose
-partial escaped output before a later error and decide whether their destination
-can tolerate partial writes.
+Autoescaping and safe-string semantics are compatibility features, not a
+general output sanitizer. An untrusted template can author literal markup and
+may use Nunjucks-compatible raw/safe operations. Callers must treat rendered
+content as attacker-controlled and apply the policy required by its destination.

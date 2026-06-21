@@ -16,43 +16,42 @@ implementation and documentation aligned with the architecture in
 ## Project-wide architectural constraints
 
 - Target Node.js 24.12 or newer. Browser support is out of scope, and Node APIs
-  may be used throughout the host/worker boundary.
-- Implement the engine in the single Rust crate under `rust/`, compile it to
-  Wasm, and execute it only inside Node worker threads.
+  may be used throughout the package outside the closed interpreter boundary.
 - Keep the TypeScript/npm package at the repository root. Author one erasable
   `.ts` source tree and compile it into tested ESM and CommonJS builds with
   generated declarations using the lockfile-pinned TypeScript 7.0 RC.
-- Use an asynchronous engine API with explicit disposal. Engine-level loaders
-  and capabilities are immutable after creation.
-- Use a lazy, bounded worker pool. Each worker owns a separate shared Wasm
-  memory, runs exactly one render at a time, and remains reserved across async
-  capability yields.
-- Cross the TypeScript/Rust boundary through the versioned raw Wasm ABI. Pass
-  primitive numbers, validated slot indices, and validated typed ranges, not
-  JavaScript object bindings.
-- Allocate each worker's shared Wasm memory once from immutable configured
-  capacities. Do not call `memory.grow` during a render or retain a growable
-  fallback allocator.
-- Put singleton control and render state in a fixed prefix. Store repeated
-  entities in one append-only fixed-width slot array, use slot index zero as
-  null, and reset its cursor only when the render ends.
-- Use a 32-bit slot header with an 8-bit type ID and 24 category/state mask
-  bits. Slots contain indices, ranges, numeric values, types, and flags only;
-  never inline text or variable-length payloads.
-- Store UTF-16 input in fixed shared arrays and variable-size relationships in
-  fixed member/index arrays. Represent strings as deterministic render-local
-  host handles plus UTF-16 ranges.
-- Parse and evaluate ordinary nodes as a stream. Retain compact AST slots
-  only for bodies whose semantics require deferred or repeated evaluation.
-- Never retain template sources, dependency graphs, AST, values, host string
-  handles, or output descriptors between renders. Reset all logical cursors
-  and invalidate the render epoch wholesale.
+- Construct engines synchronously. Rendering remains asynchronous because
+  loaders and capabilities may be asynchronous. Engine-level loaders and
+  capabilities are immutable after creation.
+- Implement template execution as a closed native TypeScript interpreter in
+  the caller process. Do not add Rust, Wasm, a worker protocol, or generated
+  JavaScript execution back into the runtime.
+- Parse each complete source into an immutable, data-only AST before executing
+  it. AST nodes must not contain functions, host objects, property descriptors,
+  or executable closures.
+- Do not use `eval`, `Function`, constructor-derived equivalents, `node:vm`,
+  generated JavaScript, dynamic import, or a JavaScript parser to execute
+  template syntax.
+- Copy context and capability results into the closed engine-owned value graph.
+  Never retain live host objects, prototypes, getters, functions, methods, or
+  iteration protocols in template-visible values.
+- Store scopes and records in private maps and implement every lookup,
+  coercion, comparison, and call explicitly by internal value kind. Never use
+  reflective host property access as an evaluator shortcut.
+- Reserve `constructor`, `prototype`, and `__proto__` across input, syntax,
+  scopes, registries, lookup, assignment, and callback results.
+- Make sealed interpreter variants for macros, built-ins, and registered
+  capabilities the only callable values. Context functions and object methods
+  are unsupported.
+- Never retain template sources, dependency graphs, ASTs, values, or output
+  state between renders by default.
 - Treat template source as fully untrusted. Copy context into the safe value
   model; do not expose prototypes, getters, arbitrary functions, or live host
   objects. Host behavior requires explicit capability handles.
-- Apply finite resource limits by default on every render. Callers may
-  explicitly loosen or disable them, which opts out of denial-of-service
-  protection.
+- Apply high finite cooperative resource limits by default on every render.
+  Account for source size, AST nodes, evaluator steps, depth, collection growth,
+  output, loaders, and capabilities. Do not describe these checks as process
+  isolation or exact CPU/RSS accounting.
 - Provide no ambient cwd filesystem access. Loading is inline or through
   explicit loaders; filesystem loaders are rooted and must prevent root escape.
 - Resolve `./` and `../` dependencies from the requesting source's canonical
@@ -66,8 +65,8 @@ implementation and documentation aligned with the architecture in
   replaced Nunjucks lexer token stream, parser AST object model, or mutable
   delimiter configuration through the TypeScript API.
 - Adapt upstream tests into one attributed, language-neutral corpus consumed by
-  Rust and TypeScript. Classify every upstream v3.2.4 test in the parity
-  manifest.
+  parser, interpreter, and public API tests. Classify every upstream v3.2.4
+  test in the parity manifest.
 
 The rationale and detailed contracts live in:
 
@@ -80,20 +79,18 @@ The rationale and detailed contracts live in:
 
 ## Repository structure
 
-- `src/`: TypeScript public API, engine, worker host, and built-in capabilities.
-- `rust/`: the single Rust engine and Wasm ABI crate. Parsing is grouped under
-  `expression/` and `template/`; `wasm/` is divided into runtime, evaluation,
-  filter, and model responsibilities.
+- `src/`: TypeScript public API, parser, interpreter, loaders, and capabilities.
+- `src/parser/`: tokenizer and closed template/expression parser.
+- `src/runtime/`: safe values, scopes, interpreter, output, and limits.
 - `benchmarks/`: equivalent one-shot workloads and the isolated Nunjucks
   comparison harness.
 - `tests/compat/`: shared Nunjucks v3.2.4 cases, provenance, manifest, and
   upstream license.
 - `docs/`: normative architecture documentation.
-- Generated JavaScript, declarations, Wasm, coverage, and fuzz artifacts belong
+- Generated JavaScript, declarations, coverage, and fuzz artifacts belong
   in ignored build directories, never beside authored source.
 
-Do not create additional packages or Rust crates without a documented
-architectural reason.
+Do not create additional packages without a documented architectural reason.
 
 ## TypeScript rules
 
@@ -111,49 +108,42 @@ architectural reason.
 - Keep ESM and CommonJS behavior in one implementation. Format-specific code is
   limited to entry and asset-resolution adapters.
 - Use braced control flow unless the surrounding file has an established
-  different style. Avoid `any` at the safe-value and ABI boundaries.
+  different style. Avoid `any` at safe-value and capability boundaries.
 
-## Rust and Wasm rules
+## Interpreter security rules
 
-- Keep parser, evaluator, memory layout, values, limits, and ABI in separate
-  logical modules within the one crate. Domain logic must remain natively
-  testable where practical.
-- Treat `expression/mod.rs`, `template/mod.rs`, and `wasm/mod.rs` as assembly
-  points. Keep implementations in responsibility-focused included files rather
-  than widening internal visibility solely to create more Rust modules.
-- Keep the Wasm export surface small, numeric, versioned, and validated.
-- Treat all host-provided slot indices, ranges, type IDs, masks, continuation
-  IDs, cursors, and state transitions as untrusted input.
-- Prefer fixed-layout slots and explicit indices over byte-record envelopes or
-  pointer-linked object graphs. Keep the layout versioned and assert every
-  public size, alignment, pool boundary, and field width.
-- Allocate repeated slots monotonically and never reuse one within a render.
-  Large singleton state belongs in the fixed prefix rather than inflating the
-  repeated slot width; repeated entities must not use extension slots.
-- Keep template and value text as UTF-16 ranges. Lazy string operations belong
-  to the worker host's render-local string graph; Wasm yields only when control
-  flow requires a resolved scalar, range, or code-unit sequence.
-- Avoid `unsafe`. When it is necessary for measured memory-layout or ABI
-  behavior, document the invariant at the unsafe boundary and add focused tests
-  that exercise invalid inputs.
-- Account for work and memory before performing it. Use checked arithmetic for
-  sizes, offsets, counters, and limits.
-- Run formatting, linting, native tests, Wasm boundary tests, and relevant fuzz
-  regressions before considering Rust changes complete.
+- Keep tokenizer, parser, AST types, values, scopes, evaluator, capabilities,
+  output, and limits in responsibility-focused modules.
+- Use exhaustive discriminated-union handling for AST nodes, values, and
+  callable variants. An unknown variant is an internal error, never a fallback
+  to JavaScript behavior.
+- Validate the complete template before executing any node from that source.
+- Inspect input records through own property descriptors and reject accessors.
+  Do not invoke getters while copying accepted plain records.
+- Keep parser and evaluator internals private. Do not pass AST nodes, scopes,
+  internal values, or callable variants to host callbacks.
+- Use explicit coercion helpers. Never call `String`, `Number`, `valueOf`,
+  `toString`, iterators, or methods on unvalidated objects.
+- Treat every production dependency imported by parser or runtime code as part
+  of the trusted computing base and review it accordingly.
+- Maintain automated static checks for prohibited dynamic execution and host
+  reflection in parser and interpreter modules.
+- Add attack regression tests before fixing any discovered interpreter escape.
 
 ## Testing rules
 
 - Prefer fewer thorough tests with related assertions over many tiny tests.
 - Put Nunjucks semantic behavior in the shared compatibility corpus rather than
-  duplicating fixtures in Rust and TypeScript.
+  duplicating fixtures across parser, interpreter, and API tests.
 - Never skip or mark an upstream case expected-failing without a parity-manifest
   entry containing provenance and a reason tied to the compatibility contract.
 - Test source `.ts` directly on the minimum Node version. Also test both built
-  package entry paths, worker startup, Wasm loading, and explicit disposal.
-- Every failure and cancellation path must prove that the next render on the
-  same worker starts from clean state.
-- Security-sensitive parsing, record decoding, and ABI changes require malformed
-  input tests and, where appropriate, fuzz coverage.
+  package entry paths and asynchronous rendering.
+- Every failure and cancellation path must prove that the engine retains no
+  partial render state and the next render starts cleanly.
+- Security-sensitive parsing, value copying, lookup, coercion, and call changes
+  require malformed input tests, gadget regression tests, and fuzz coverage
+  where appropriate.
 - Keep performance workloads output-equivalent across Nunjitsu and the pinned
   Nunjucks baseline. Disable Nunjucks template caching, isolate implementations
   in separate processes, and never turn noisy benchmark measurements into test

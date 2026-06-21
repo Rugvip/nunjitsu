@@ -2,121 +2,79 @@
 
 ## Test layers
 
-Nunjitsu uses a small number of thorough suites with clear ownership:
+Nunjitsu uses one implementation-independent compatibility corpus and focused
+tests around its security boundaries:
 
-1. **Rust unit and property tests** cover lexing, parsing, safe values, fixed
-   slots and typed ranges, evaluator semantics, budgets, and cleanup. They run
-   natively where possible for speed.
-2. **Wasm ABI tests** compile the production artifact and exercise versioning,
-   pool and range validation, type masks, state transitions, continuation
-   handling, cancellation, and malformed host data.
-3. **Shared compatibility tests** execute the attributed Nunjucks v3.2.4 corpus
-   directly against Rust behavior and through the TypeScript engine.
-4. **TypeScript source tests** run erasable `.ts` directly on the minimum
-   supported Node version.
-5. **Package contract tests** build the package and exercise both ESM `import`
-   and CommonJS `require`, including worker startup, Wasm loading, rendering,
-   streaming, and disposal.
-6. **Benchmark verification** runs one unscored sample of each workload against
-   Nunjitsu and Nunjucks and rejects output differences or harness failures.
+1. **Tokenizer and parser tests** cover the closed grammar, source spans,
+   malformed input, complete validation, and immutable data-only ASTs.
+2. **Value and interpreter tests** cover copying, scopes, lookup, coercion,
+   operators, calls, limits, output, and cleanup.
+3. **Shared compatibility tests** execute the attributed Nunjucks v3.2.4 cases
+   through the native TypeScript engine.
+4. **Public API tests** cover loaders, capabilities, streaming, cancellation,
+   errors, and both ESM and CommonJS package entry points.
+5. **Security tests** exercise known JavaScript escape gadgets, prototype
+   pollution, accessors, exotic values, capability results, and parser fuzzing.
+6. **Benchmarks** compare equivalent one-shot workloads with caching disabled
+   in Nunjucks.
 
-Avoid duplicating the full compatibility suite in each layer. Shared cases are
-the behavioral source; layer-specific tests should concentrate on that layer's
-boundary and failure modes.
+## Shared compatibility corpus
 
-Cases that require the production Wasm evaluator or an asynchronous host mark
-`nativeRender: false`. They still execute through Rust/Wasm in the TypeScript
-host harness; the small native renderer runs the remaining portable subset
-directly.
+`tests/compat/cases.json` is language-neutral source data adapted from Nunjucks
+v3.2.4. Tests keep that source data stable while adapting harness code to the
+native API. Every upstream case remains classified in the parity manifest with
+provenance and an explicit reason for exclusions or intentional security
+deviations.
 
-## Compatibility corpus
+Avoid duplicating semantic cases across layers. Parser-only assertions may
+reuse the same template source while runtime and public API tests assert the
+observable output.
 
-The `tests/compat/` directory owns:
+## Security regression suite
 
-- the copied/adapted template fixtures;
-- a tagged, language-neutral case format;
-- the parity manifest for every upstream v3.2.4 test;
-- named loader/capability fixtures implemented equivalently by each harness;
-  and
-- the upstream BSD-2-Clause license and attribution.
+The suite includes, at minimum:
 
-The case format must represent Nunjucks-specific distinctions that ordinary
-JSON loses, including `undefined`, safe strings, non-finite numbers, and
-expected failures. It must not embed executable JavaScript as the source of
-expected behavior.
+- `constructor.constructor`, `prototype`, and `__proto__` through dotted,
+  bracket, literal, assignment, registry, context, and callback-result paths;
+- attempts to resolve `globalThis`, `process`, `require`, `module`, `eval`,
+  JavaScript constructors, and dynamic imports;
+- method calls and implicit coercion through `toString`, `valueOf`, iterators,
+  symbols, and getters;
+- polluted prototypes, class instances, accessors, cycles, excessive depth,
+  and unsupported exotic objects;
+- capability identity confusion and unsafe callback-result aliases; and
+- malformed syntax around every call, lookup, literal, and custom-tag grammar.
 
-Every manifest entry identifies its upstream file and test name. Adapted and
-not-applicable entries include a reason tied to
-[the compatibility contract](compatibility.md). CI fails on unclassified
-upstream tests, missing fixtures, or cases that only one implementation layer
-executes without an explicit reason.
+Tests demonstrate that rejected accessors are not invoked. Template-visible
+records and scopes remain unaffected by `Object.prototype` mutation.
 
-`upstream-inventory.json` is a checked-in inventory of all 364 Mocha cases in
-the pinned release. It is regenerated only from an explicit v3.2.4 checkout by
-`scripts/import-nunjucks-inventory.mjs`; CI never fetches upstream. The checked-in
-manifest declares `coverage: "complete"`. A release requires complete coverage,
-one classification for every inventory entry, and no dangling or duplicate case
-mappings.
+Static project checks reject prohibited dynamic execution and host reflection
+inside parser and interpreter modules. These checks complement runtime tests;
+they do not replace code review.
 
-## Security tests
+## Fuzzing
 
-Security tests must cover behavior, not just successful isolation:
+Tokenizer, parser, input copier, and evaluator are fuzz targets. Useful
+invariants include:
 
-- prototype, getter, function, exotic-object, and cycle rejection;
-- filesystem traversal and canonical-root enforcement;
-- evaluator, nesting, output, memory, and capability budgets;
-- cancellation at parser, evaluator, output, and callback yield points;
-- stale continuation responses, slot indices, string handles, and render-epoch
-  ranges;
-- worker cleanup after callback failure or malformed ABI data; and
-- explicit unlimited-limit opt-out behavior.
+- arbitrary template text either produces a bounded data-only AST or a
+  structured parse error;
+- parsing never executes host behavior;
+- evaluation accesses only internal value kinds and sealed callable variants;
+- work, depth, growth, and output counters fail deterministically; and
+- failure or cancellation leaves no state observable by the next render.
 
-Tests must demonstrate that a failed or cancelled render cannot affect the next
-render assigned to the same worker.
+## Benchmarks
 
-## Fuzzing and property testing
+Benchmark output remains equivalent across Nunjitsu and pinned Nunjucks. The
+harness uses separate processes, disables Nunjucks caching, reports setup and
+render time independently, and never turns noisy measurements into pass/fail
+thresholds.
 
-The lexer, parser, slot/range decoder, safe-value decoder, string command/query
-decoder, and raw ABI are fuzzing targets. Useful invariants include:
+The checked-in workloads retain their existing source data:
 
-- malformed input never causes out-of-bounds memory access or panic across the
-  host boundary;
-- every accepted slot, range, and string operation round-trips through its
-  canonical encoding;
-- cleanup invalidates all prior indices, ranges, string handles, and
-  continuations;
-- resource accounting is monotonic and cannot overflow into a lower value.
-
-Fuzz regressions become permanent focused tests.
-
-## Performance tests
-
-Benchmarks must represent the stated optimization target: cold or infrequent
-renders, worker reuse without template reuse, bounded output, and memory
-returned after outliers. Report retained bytes and allocation high-water marks
-alongside elapsed time. Do not improve repeated-template throughput by adding a
-persistent source, AST, or compiled cache contrary to the architecture.
-
-The comparison harness pins Nunjucks 3.2.4 and runs each implementation in a
-separate subprocess. Engine/environment setup is measured separately. Timed
-renders reuse the initialized engine but never reuse a parsed template:
-Nunjitsu has no cross-render template cache, and the Nunjucks loader sets
-`noCache`. Before reporting results, the harness requires byte-for-byte
-equivalent output from both implementations.
-
-The checked-in workloads stress distinct paths:
-
-- `template-graph` parses a graph of inheritance, includes, loops, and dense
-  comments across 50 named templates;
-- `expressions` evaluates arithmetic, powers, comparisons, membership, boolean
-  operations, property access, and concatenation over 750 loop iterations; and
-- `capabilities` crosses the host boundary 1,260 times through synchronous and
-  asynchronous filters, tests, and globals.
-
-Run a short verification pass with `npm run benchmark:quick`. Run the default
-baseline with `npm run benchmark`; pass `-- --iterations=N --warmup=N`,
-`-- --case=template-graph,expressions`, or `-- --json` to control or record a
-run. Results include setup time, median and p95 render latency, render
-throughput, retained RSS delta, peak RSS, and output size. Compare runs only on
-the same otherwise-idle machine and Node version. Measurements are diagnostic,
-not deterministic test thresholds.
+- `template-graph` parses inheritance, includes, loops, and dense comments;
+- `expressions` stresses arithmetic, comparisons, membership, lookup, and
+  concatenation; and
+- `capabilities` invokes synchronous and asynchronous filters, tests, and
+  globals.

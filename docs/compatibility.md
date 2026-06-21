@@ -49,7 +49,7 @@ tests.
 
 The upstream [`tests/`](https://github.com/mozilla/nunjucks/tree/v3.2.4/tests)
 suite is the source of truth. Nunjitsu will adapt its underlying cases into one
-language-neutral corpus under `tests/compat/`. Rust tests and TypeScript public
+language-neutral corpus under `tests/compat/`. Parser, interpreter, and public
 API tests consume the same case definitions.
 
 The corpus contains:
