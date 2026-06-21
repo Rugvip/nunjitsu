@@ -65,6 +65,43 @@ test('applies whitespace controls and supports explicit Cookiecutter mode', () =
   assert.equal(cookiecutter.type, 'Root');
 });
 
+test('scans delimiters only outside literals and rejects malformed complete input', () => {
+  const cookiecutter = {
+    trimBlocks: false,
+    lstripBlocks: false,
+    cookiecutterCompat: true,
+  };
+  assert.equal(
+    findField(parseTemplate('{{ "}}" }}', cookiecutter), value => value === '}}'),
+    '}}',
+  );
+  assert.equal(
+    findField(
+      parseTemplate('{% if "%}" == "%}" %}ok{% endif %}', cookiecutter),
+      value => value === 'ok',
+    ),
+    'ok',
+  );
+  assert.equal(
+    findField(
+      parseTemplate('{% raw %}{{ untouched }}{% endraw %}', cookiecutter),
+      value => value === '{{ untouched }}',
+    ),
+    '{{ untouched }}',
+  );
+
+  for (const source of [
+    '{{',
+    '{{ value( }}',
+    '{% if true %}',
+    '{% for value values %}{% endfor %}',
+    '{% raw %}',
+    '{% endfor %}',
+  ]) {
+    assert.throws(() => parseTemplate(source, cookiecutter), NunjitsuParseError, source);
+  }
+});
+
 test('rejects template loading syntax during complete parsing', () => {
   for (const source of [
     '{% include "x" %}',

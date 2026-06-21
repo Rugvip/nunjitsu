@@ -162,6 +162,7 @@ class Evaluator {
       lstripBlocks: this.#options.lstripBlocks,
       cookiecutterCompat: this.#options.cookiecutterCompat,
       astNodes: this.#options.limits.astNodes,
+      nestingDepth: this.#options.limits.nestingDepth,
     });
     return ast;
   }

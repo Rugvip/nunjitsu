@@ -12,6 +12,8 @@ export interface ParseOptions {
   cookiecutterCompat?: boolean;
   /** Maximum number of syntax nodes created for this source. */
   astNodes?: number;
+  /** Maximum nested template and expression syntax depth. */
+  nestingDepth?: number;
 }
 
 /** Structured failure produced while parsing untrusted template syntax. */
@@ -47,7 +49,11 @@ export function parseTemplate(
   options: ParseOptions = { trimBlocks: false, lstripBlocks: false },
 ): AstNode {
   try {
-    const parser = new TemplateParser(scanTemplate(source, options), options.astNodes);
+    const parser = new TemplateParser(
+      scanTemplate(source, options),
+      options.astNodes,
+      options.nestingDepth,
+    );
     return parser.parse();
   } catch (error) {
     if (error instanceof NunjitsuParseError || error instanceof NunjitsuLimitError) {
@@ -63,12 +69,19 @@ export function parseTemplate(
 class TemplateParser {
   readonly #tokens: readonly TemplateToken[];
   readonly #maximumNodes: number;
+  readonly #maximumDepth: number;
   #index = 0;
   #nodeCount = 0;
+  #bodyDepth = 0;
 
-  constructor(tokens: readonly TemplateToken[], maximumNodes = Number.POSITIVE_INFINITY) {
+  constructor(
+    tokens: readonly TemplateToken[],
+    maximumNodes = Number.POSITIVE_INFINITY,
+    maximumDepth = Number.POSITIVE_INFINITY,
+  ) {
     this.#tokens = tokens;
     this.#maximumNodes = maximumNodes;
+    this.#maximumDepth = maximumDepth;
   }
 
   parse(): AstNode {
@@ -81,6 +94,21 @@ class TemplateParser {
   }
 
   #parseBody(stops: ReadonlySet<string>): ParsedBody {
+    this.#bodyDepth += 1;
+    if (
+      this.#maximumDepth !== Number.POSITIVE_INFINITY &&
+      this.#bodyDepth > this.#maximumDepth
+    ) {
+      throw new NunjitsuLimitError('nestingDepth');
+    }
+    try {
+      return this.#parseBodyContents(stops);
+    } finally {
+      this.#bodyDepth -= 1;
+    }
+  }
+
+  #parseBodyContents(stops: ReadonlySet<string>): ParsedBody {
     const children: AstNode[] = [];
     while (this.#index < this.#tokens.length) {
       const token = this.#tokens[this.#index++]!;
@@ -287,6 +315,7 @@ class TemplateParser {
       token.line,
       token.column,
       node => this.#freezeNode(node),
+      this.#maximumDepth,
     ).parse();
   }
 
@@ -296,6 +325,7 @@ class TemplateParser {
       token.line,
       token.column,
       node => this.#freezeNode(node),
+      this.#maximumDepth,
     ).parseTargetList();
   }
 
@@ -308,6 +338,7 @@ class TemplateParser {
       token.line,
       token.column,
       node => this.#freezeNode(node),
+      this.#maximumDepth,
     ).parseSignature();
   }
 

@@ -233,6 +233,7 @@ test('capability exceptions halt evaluation without inspecting thrown values', (
 test('parser and evaluator sources contain no dynamic execution primitive', async () => {
   const files = [
     '../../src/parser/index.ts',
+    '../../src/parser/expression.ts',
     '../../src/runtime/evaluator.ts',
     '../../src/runtime/builtins.ts',
     '../../src/runtime/scope.ts',
@@ -252,5 +253,6 @@ test('parser and evaluator sources contain no dynamic execution primitive', asyn
     for (const pattern of prohibited) {
       assert.doesNotMatch(source, pattern, `${file} contains ${pattern}`);
     }
+    assert.doesNotMatch(source, /from ['"]nunjucks['"]/, `${file} imports Nunjucks`);
   }
 });

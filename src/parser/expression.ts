@@ -1,4 +1,5 @@
 import { isReservedName } from '../runtime/value.ts';
+import { NunjitsuLimitError } from '../limits.ts';
 import type { AstNode, AstRegexLiteral } from './ast.ts';
 
 interface Token {
@@ -15,16 +16,20 @@ export type AstNodeFactory = (node: AstNode) => AstNode;
 export class ExpressionParser {
   readonly #tokens: readonly Token[];
   readonly #node: AstNodeFactory;
+  readonly #maximumDepth: number;
   #index = 0;
+  #depth = 0;
 
   constructor(
     source: string,
     line: number,
     column: number,
     node: AstNodeFactory,
+    maximumDepth = Number.POSITIVE_INFINITY,
   ) {
     this.#tokens = tokenize(source, line, column);
     this.#node = node;
+    this.#maximumDepth = maximumDepth;
   }
 
   parse(): AstNode {
@@ -54,7 +59,9 @@ export class ExpressionParser {
       return body;
     }
     const cond = this.#parseOr();
-    const otherwise = this.#consumeName('else') ? this.#parseInlineIf() : undefined;
+    const otherwise = this.#consumeName('else')
+      ? this.#nested(() => this.#parseInlineIf())
+      : undefined;
     return this.#make('InlineIf', { cond, body, else_: otherwise }, body);
   }
 
@@ -76,7 +83,7 @@ export class ExpressionParser {
 
   #parseNot(): AstNode {
     if (this.#consumeName('not')) {
-      return this.#make('Not', { target: this.#parseNot() });
+      return this.#make('Not', { target: this.#nested(() => this.#parseNot()) });
     }
     return this.#parseCompare();
   }
@@ -167,7 +174,7 @@ export class ExpressionParser {
   #parsePower(): AstNode {
     let left = this.#parseFilter();
     if (this.#consume('**')) {
-      left = this.#make('Pow', { left, right: this.#parsePower() }, left);
+      left = this.#make('Pow', { left, right: this.#nested(() => this.#parsePower()) }, left);
     }
     return left;
   }
@@ -176,7 +183,9 @@ export class ExpressionParser {
     let expression = this.#parseUnary();
     while (this.#consume('|')) {
       const name = this.#symbol(this.#expect('name'));
-      const supplied = this.#consume('(') ? this.#parseArguments(')') : Object.freeze([]);
+      const supplied = this.#consume('(')
+        ? this.#nested(() => this.#parseArguments(')'))
+        : Object.freeze([]);
       expression = this.#make('Filter', {
         name,
         args: this.#make('NodeList', {
@@ -189,10 +198,10 @@ export class ExpressionParser {
 
   #parseUnary(): AstNode {
     if (this.#consume('-')) {
-      return this.#make('Neg', { target: this.#parseUnary() });
+      return this.#make('Neg', { target: this.#nested(() => this.#parseUnary()) });
     }
     if (this.#consume('+')) {
-      return this.#make('Pos', { target: this.#parseUnary() });
+      return this.#make('Pos', { target: this.#nested(() => this.#parseUnary()) });
     }
     return this.#parsePostfix();
   }
@@ -208,7 +217,7 @@ export class ExpressionParser {
           val: this.#literal(key.value, key),
         }, expression);
       } else if (this.#consume('[')) {
-        const value = this.#parseSubscript();
+        const value = this.#nested(() => this.#parseSubscript());
         this.#expectValue(']');
         if (value.type === 'Literal' && typeof value.value === 'string') {
           this.#assertAllowedName(value.value, value);
@@ -217,7 +226,7 @@ export class ExpressionParser {
       } else if (this.#consume('(')) {
         expression = this.#make('FunCall', {
           name: expression,
-          args: this.#argumentList(),
+          args: this.#nested(() => this.#argumentList()),
         }, expression);
       } else {
         return expression;
@@ -286,47 +295,54 @@ export class ExpressionParser {
       return this.#symbol(token);
     }
     if (this.#consume('(')) {
-      const children = this.#parseDelimited(')');
+      const children = this.#nested(() => this.#parseDelimited(')'));
       if (children.length === 1) {
         return this.#make('Group', { children }, token);
       }
       return this.#make('Group', { children }, token);
     }
     if (this.#consume('[')) {
-      return this.#make('Array', { children: this.#parseDelimited(']') }, token);
+      return this.#make('Array', {
+        children: this.#nested(() => this.#parseDelimited(']')),
+      }, token);
     }
     if (this.#consume('{')) {
-      const pairs: AstNode[] = [];
-      if (!this.#consume('}')) {
-        do {
-          const keyToken = this.#peek();
-          let key: AstNode;
-          if (keyToken.kind === 'name') {
-            this.#index += 1;
-            key = this.#symbol(keyToken);
-          } else if (keyToken.kind === 'string' || keyToken.kind === 'number') {
-            this.#index += 1;
-            key = this.#literal(
-              keyToken.kind === 'number' ? Number(keyToken.value) : keyToken.value,
-              keyToken,
-            );
-          } else {
-            this.#fail('Expected dictionary key');
-          }
-          if (
-            (key.type === 'Symbol' || key.type === 'Literal') &&
-            typeof key.value === 'string'
-          ) {
-            this.#assertAllowedName(key.value, key);
-          }
-          this.#expectValue(':');
-          pairs.push(this.#make('Pair', { key, value: this.#parseInlineIf() }, keyToken));
-        } while (this.#consume(','));
-        this.#expectValue('}');
-      }
+      const pairs = this.#nested(() => this.#parseDictionary());
       return this.#make('Dict', { children: Object.freeze(pairs) }, token);
     }
     this.#fail(`Unexpected expression token ${token.value || 'end of input'}`);
+  }
+
+  #parseDictionary(): AstNode[] {
+    const pairs: AstNode[] = [];
+    if (!this.#consume('}')) {
+      do {
+        const keyToken = this.#peek();
+        let key: AstNode;
+        if (keyToken.kind === 'name') {
+          this.#index += 1;
+          key = this.#symbol(keyToken);
+        } else if (keyToken.kind === 'string' || keyToken.kind === 'number') {
+          this.#index += 1;
+          key = this.#literal(
+            keyToken.kind === 'number' ? Number(keyToken.value) : keyToken.value,
+            keyToken,
+          );
+        } else {
+          this.#fail('Expected dictionary key');
+        }
+        if (
+          (key.type === 'Symbol' || key.type === 'Literal') &&
+          typeof key.value === 'string'
+        ) {
+          this.#assertAllowedName(key.value, key);
+        }
+        this.#expectValue(':');
+        pairs.push(this.#make('Pair', { key, value: this.#parseInlineIf() }, keyToken));
+      } while (this.#consume(','));
+      this.#expectValue('}');
+    }
+    return pairs;
   }
 
   #parseDelimited(end: string): readonly AstNode[] {
@@ -440,6 +456,18 @@ export class ExpressionParser {
   #expectValue(value: string): void {
     if (!this.#consume(value)) {
       this.#fail(`Expected ${value}`);
+    }
+  }
+
+  #nested<T>(parse: () => T): T {
+    this.#depth += 1;
+    if (this.#maximumDepth !== Number.POSITIVE_INFINITY && this.#depth > this.#maximumDepth) {
+      throw new NunjitsuLimitError('nestingDepth');
+    }
+    try {
+      return parse();
+    } finally {
+      this.#depth -= 1;
     }
   }
 

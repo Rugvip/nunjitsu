@@ -231,6 +231,7 @@ test('enforces finite resource limits and recovers after failures', () => {
   });
   const failures: Array<() => unknown> = [
     () => engine.render('source', {}, { limits: { sourceCodeUnits: 1 } }),
+    () => engine.render('${{ value }}', { value: 'node' }, { limits: { astNodes: 2 } }),
     () => engine.render('${{ value }}', { value: 'output' }, { limits: { outputCodeUnits: 1 } }),
     () => engine.render('{% for value in values %}${{ value }}{% endfor %}', {
       values: [1, 2, 3],
@@ -248,6 +249,10 @@ test('enforces finite resource limits and recovers after failures', () => {
   }
   assert.throws(
     () => engine.render('${{ 1 + 2 }}', {}, { limits: { nestingDepth: 2 } }),
+    error => error instanceof NunjitsuLimitError && error.limit === 'nestingDepth',
+  );
+  assert.throws(
+    () => engine.render('${{ (((value))) }}', { value: 1 }, { limits: { nestingDepth: 2 } }),
     error => error instanceof NunjitsuLimitError && error.limit === 'nestingDepth',
   );
   assert.equal(engine.render('clean'), 'clean');
