@@ -144,9 +144,12 @@ export function applyBuiltinFilter(
     }
     const width = Math.max(0, Math.trunc(runtimeNumber(positional[0] ?? 4) || 4));
     const indentFirst = runtimeTruthy(positional[1]);
-    return copySafeness(input, text.split('\n').map((line, index) => (
-      index === 0 && !indentFirst ? line : `${' '.repeat(width)}${line}`
-    )).join('\n'));
+    const lines = text.split('\n');
+    const indentation = ' '.repeat(width);
+    for (let index = indentFirst ? 0 : 1; index < lines.length; index += 1) {
+      lines[index] = `${indentation}${lines[index]}`;
+    }
+    return copySafeness(input, lines.join('\n'));
   }
   if (name === 'length') {
     return runtimeLength(input);
@@ -197,10 +200,13 @@ export function applyBuiltinFilter(
     return copySafeness(input, text);
   }
   if (name === 'title') {
-    return copySafeness(input, renderRuntimeValue(input).split(' ').map(word => {
+    const words = renderRuntimeValue(input).split(' ');
+    for (let index = 0; index < words.length; index += 1) {
+      const word = words[index]!;
       const lower = word.toLowerCase();
-      return lower.charAt(0).toUpperCase() + lower.slice(1);
-    }).join(' '));
+      words[index] = lower.charAt(0).toUpperCase() + lower.slice(1);
+    }
+    return copySafeness(input, words.join(' '));
   }
   if (name === 'trim') {
     return copySafeness(input, renderRuntimeValue(input).trim());
@@ -305,10 +311,14 @@ function listRuntimeValue(input: RuntimeValue): RuntimeValue {
     return new RuntimeArray([...renderRuntimeValue(input)]);
   }
   if (input instanceof RuntimeRecord) {
-    return new RuntimeArray([...input.entries()].map(([key, value]) => new RuntimeRecord([
-      ['key', key],
-      ['value', value],
-    ])));
+    const output: RuntimeValue[] = [];
+    for (const [key, value] of input.entries()) {
+      output.push(new RuntimeRecord([
+        ['key', key],
+        ['value', value],
+      ]));
+    }
+    return new RuntimeArray(output);
   }
   throw new TypeError('list requires an iterable value');
 }
@@ -323,13 +333,16 @@ function selectRuntimeValues(
   }
   const testName = positional[0] === undefined ? 'truthy' : renderRuntimeValue(positional[0]);
   const testArguments = positional.slice(1);
-  const output = [...input.values()].filter(value => {
+  const output: RuntimeValue[] = [];
+  for (const value of input.values()) {
     const result = applyBuiltinTest(testName, value, testArguments);
     if (result === undefined) {
       throw new Error(`Unknown template test ${testName}`);
     }
-    return result === select;
-  });
+    if (result === select) {
+      output.push(value);
+    }
+  }
   return new RuntimeArray(output);
 }
 
@@ -429,18 +442,23 @@ function urlencodeRuntimeValue(input: RuntimeValue): string {
   if (typeof input === 'string' || input instanceof RuntimeSafeString) {
     return encodeURIComponent(renderRuntimeValue(input));
   }
-  const entries = input instanceof RuntimeRecord
-    ? [...input.entries()]
-    : input instanceof RuntimeArray
-      ? [...input.values()].flatMap(value => (
-        value instanceof RuntimeArray && value.length >= 2
-          ? [[value.at(0), value.at(1)] as const]
-          : []
-      ))
-      : [];
-  return entries.map(([key, value]) => (
-    `${encodeURIComponent(renderRuntimeValue(key))}=${encodeURIComponent(renderRuntimeValue(value))}`
-  )).join('&');
+  const output: string[] = [];
+  if (input instanceof RuntimeRecord) {
+    for (const [key, value] of input.entries()) {
+      output.push(urlencodeRuntimePair(key, value));
+    }
+  } else if (input instanceof RuntimeArray) {
+    for (const value of input.values()) {
+      if (value instanceof RuntimeArray && value.length >= 2) {
+        output.push(urlencodeRuntimePair(value.at(0), value.at(1)));
+      }
+    }
+  }
+  return output.join('&');
+}
+
+function urlencodeRuntimePair(key: RuntimeValue, value: RuntimeValue): string {
+  return `${encodeURIComponent(renderRuntimeValue(key))}=${encodeURIComponent(renderRuntimeValue(value))}`;
 }
 
 function urlizeRuntimeValue(
@@ -450,24 +468,27 @@ function urlizeRuntimeValue(
   const lengthValue = runtimeNumber(positional[0]);
   const length = Number.isNaN(lengthValue) ? Number.POSITIVE_INFINITY : lengthValue;
   const nofollow = positional[1] === true ? ' rel="nofollow"' : '';
-  return renderRuntimeValue(input).split(urlizeSeparatorPattern).filter(Boolean).map(word => {
+  const output: string[] = [];
+  for (const word of renderRuntimeValue(input).split(urlizeSeparatorPattern)) {
+    if (word.length === 0) {
+      continue;
+    }
     const match = urlizePunctuationPattern.exec(word);
     const possible = match?.[1] ?? word;
     const short = possible.slice(0, length);
     if (httpUrlPattern.test(possible)) {
-      return `<a href="${possible}"${nofollow}>${short}</a>`;
+      output.push(`<a href="${possible}"${nofollow}>${short}</a>`);
+    } else if (wwwUrlPattern.test(possible)) {
+      output.push(`<a href="http://${possible}"${nofollow}>${short}</a>`);
+    } else if (emailAddressPattern.test(possible)) {
+      output.push(`<a href="mailto:${possible}">${possible}</a>`);
+    } else if (commonDomainPattern.test(possible)) {
+      output.push(`<a href="http://${possible}"${nofollow}>${short}</a>`);
+    } else {
+      output.push(word);
     }
-    if (wwwUrlPattern.test(possible)) {
-      return `<a href="http://${possible}"${nofollow}>${short}</a>`;
-    }
-    if (emailAddressPattern.test(possible)) {
-      return `<a href="mailto:${possible}">${possible}</a>`;
-    }
-    if (commonDomainPattern.test(possible)) {
-      return `<a href="http://${possible}"${nofollow}>${short}</a>`;
-    }
-    return word;
-  }).join('');
+  }
+  return output.join('');
 }
 
 function copySafeness(input: RuntimeValue, output: string): RuntimeValue {
@@ -486,7 +507,11 @@ function toJsonValue(value: RuntimeValue): unknown {
     return value.value;
   }
   if (value instanceof RuntimeArray) {
-    return [...value.values()].map(toJsonValue);
+    const output: unknown[] = [];
+    for (const item of value.values()) {
+      output.push(toJsonValue(item));
+    }
+    return output;
   }
   if (value instanceof RuntimeRecord) {
     const output = Object.create(null) as Record<string, unknown>;
@@ -510,9 +535,11 @@ function joinRuntimeValues(
   }
   const separator = renderRuntimeValue(positional[0] ?? '');
   const attribute = optionalAttributePath(positional[1]);
-  return [...input.values()]
-    .map(value => renderRuntimeValue(attribute ? lookupRuntimePath(value, attribute) : value))
-    .join(separator);
+  const output: string[] = [];
+  for (const value of input.values()) {
+    output.push(renderRuntimeValue(attribute ? lookupRuntimePath(value, attribute) : value));
+  }
+  return output.join(separator);
 }
 
 function sumRuntimeValues(
@@ -565,14 +592,17 @@ function selectRuntimeAttributes(
   }
   const testName = positional[1] === undefined ? 'truthy' : renderRuntimeValue(positional[1]);
   const testArguments = positional.slice(2);
-  const values = [...input.values()].filter(value => {
+  const output: RuntimeValue[] = [];
+  for (const value of input.values()) {
     const result = applyBuiltinTest(testName, lookupRuntimePath(value, attribute), testArguments);
     if (result === undefined) {
       throw new Error(`Unknown template test ${testName}`);
     }
-    return result === select;
-  });
-  return new RuntimeArray(values);
+    if (result === select) {
+      output.push(value);
+    }
+  }
+  return new RuntimeArray(output);
 }
 
 function optionalAttributePath(value: RuntimeValue): readonly string[] | undefined {
@@ -642,12 +672,21 @@ function groupRuntimeValues(input: RuntimeValue, attribute: RuntimeValue): Runti
     values.push(value);
     grouped.set(renderedKey, values);
   }
-  const entries = [...grouped].map(([key, values]) => [key, new RuntimeArray(values)] as const);
-  const numeric = entries
-    .filter(([key]) => isArrayIndex(key))
-    .sort(([left], [right]) => Number(left) - Number(right));
-  const named = entries.filter(([key]) => !isArrayIndex(key));
-  return new RuntimeRecord([...numeric, ...named]);
+  const numeric: Array<readonly [string, RuntimeValue]> = [];
+  const named: Array<readonly [string, RuntimeValue]> = [];
+  for (const [key, values] of grouped) {
+    const entry = [key, new RuntimeArray(values)] as const;
+    if (isArrayIndex(key)) {
+      numeric.push(entry);
+    } else {
+      named.push(entry);
+    }
+  }
+  numeric.sort(([left], [right]) => Number(left) - Number(right));
+  for (const entry of named) {
+    numeric.push(entry);
+  }
+  return new RuntimeRecord(numeric);
 }
 
 function isArrayIndex(value: string): boolean {

@@ -205,7 +205,11 @@ export function renderRuntimeValue(value: RuntimeValue): string {
     return value.value;
   }
   if (value instanceof RuntimeArray) {
-    return [...value.values()].map(renderRuntimeValue).join(',');
+    const output: string[] = [];
+    for (const item of value.values()) {
+      output.push(renderRuntimeValue(item));
+    }
+    return output.join(',');
   }
   if (value instanceof RuntimeRecord) {
     return '[object Object]';
