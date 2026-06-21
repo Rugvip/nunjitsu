@@ -1,14 +1,13 @@
 # Nunjitsu
 
-Nunjitsu is a Node.js template engine aiming for template and runtime
-compatibility with [Nunjucks 3.2.4](https://github.com/mozilla/nunjucks/tree/v3.2.4).
-It is implemented as a closed native TypeScript interpreter behind a new typed
+Nunjitsu is a secure native TypeScript implementation of the Nunjucks template
+behavior used by the Backstage scaffolder backend. It replaces Backstage's
+isolated Nunjucks renderer with a closed interpreter and a small synchronous
 API.
 
 The project prioritizes:
 
-- compatibility with existing Nunjucks templates and observable rendering
-  behavior;
+- compatibility with Backstage scaffolder templates and workflow expressions;
 - secure, resource-bounded execution of untrusted templates;
 - low retained memory for templates rendered infrequently; and
 - a closed value model that gives templates no access to JavaScript objects or
@@ -16,17 +15,16 @@ The project prioritizes:
 - one-shot parsing and rendering without precompilation or persistent
   compiled-template caches.
 
-Nunjitsu intentionally provides a new API rather than emulating the Nunjucks
-JavaScript API. The initial runtime target is Node.js only.
+Nunjitsu intentionally does not emulate the Nunjucks JavaScript API. The
+runtime target is Node.js only.
 
 ## Status
 
-Nunjitsu implements the pinned Nunjucks 3.2.4 compatibility baseline within the
-documented API boundaries. All 364 upstream test cases are classified in the
-attributed parity manifest and enforced by the shared compatibility corpus. The
-normative design, compatibility boundaries, and testing strategy are documented
-in [`docs/`](docs/index.md). Contributors should also read
-[`AGENTS.md`](AGENTS.md).
+The compatibility baseline is the Nunjucks 3.2.4 behavior exposed by
+Backstage's `SecureTemplater`: inline string rendering, `${{ ... }}` variables,
+Cookiecutter compatibility, synchronous filters, and JSON-valued globals. The
+normative design and testing strategy are documented in [`docs/`](docs/index.md).
+Contributors should also read [`AGENTS.md`](AGENTS.md).
 
 ## Setup
 

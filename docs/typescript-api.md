@@ -2,89 +2,68 @@
 
 ## API shape
 
-Engine creation is synchronous. Rendering remains asynchronous:
+Engine creation and rendering are synchronous:
 
 ```ts
 const engine = createEngine({
   filters: {
-    async lookup(input, arguments_, { signal }) {
-      return await applicationLookup(input, arguments_, { signal });
+    lookup(input, ...arguments_) {
+      return applicationLookup(input, arguments_);
     },
+  },
+  globals: {
+    deploymentEnvironment: 'production',
   },
 });
 
-const html = await engine.render(
-  { source: templateSource },
-  { title: 'Nunjitsu' },
-  { signal, limits },
-);
-
-const stream = engine.renderStream(
-  { source: inlineTemplate },
-  context,
-  { signal, limits },
-);
+const output = engine.render(templateSource, {
+  values: { title: 'Nunjitsu' },
+});
 ```
 
 The public contracts are:
 
-- `createEngine(options): Engine` validates immutable configuration without
-  asynchronous setup;
-- loaders and capabilities are immutable for the engine lifetime;
-- `render` resolves to one string or rejects without returning a partial value;
-- `renderStream` returns a pull-driven `ReadableStream<string>` and may error
-  after emitting earlier chunks;
-- render options carry cancellation and cooperative resource limits; and
-- interpolated values are autoescaped by default.
+- `createEngine(options): Engine` validates immutable configuration;
+- `engine.render(source, context?, options?): string` parses and renders one
+  complete inline source;
+- filters and globals are synchronous and immutable for the engine lifetime;
+- render options carry cooperative resource limits; and
+- interpolation is never automatically escaped, matching Backstage.
 
-There are no worker-pool, Wasm-memory, ABI, or mandatory disposal options.
+There are no loaders, streams, cancellation handles, worker pools, Wasm memory,
+or disposal methods.
 
 ## Template and context inputs
 
-A render accepts inline source or a named template resolved by an explicit
-source loader. Nunjitsu has no filesystem loader; callers read files and apply
-path policy outside the engine. Every loaded source has a canonical identity
-used for relative dependency resolution, cycle detection, and render-local
-deduplication.
+The source is always an inline string. Backstage reads each scaffolder file and
+enforces workspace paths before calling the renderer, so Nunjitsu has no
+filesystem or template-loading API.
 
-This matches the Backstage scaffolder integration model: the fetch action
-enumerates and reads each file, enforces workspace paths independently, and
-passes each text file to the template engine as an inline string. Template
-loading directives are not used for filesystem access in that flow.
-
-Context values use a closed recursive public type consisting of primitives,
-safe strings, readonly arrays, and readonly plain records. Runtime validation is
-authoritative and copies all accepted values before parsing or evaluation.
-Unsupported objects, behavior, and reserved keys are rejected.
+Context values are JSON-compatible primitives, arrays, and plain records.
+Runtime validation copies accepted values before evaluation. Unsupported
+objects, behavior, cycles, accessors, and reserved keys are rejected.
 
 ## Capability configuration
 
-`filters`, `tests`, callable `globals`, loaders, and declarative custom tags are
-immutable name-to-function records on `EngineOptions`. They are trusted
-application code and are the only host behavior templates can invoke.
+`filters` and globals are the only host behavior templates can invoke. Filters
+receive their input followed by positional arguments. Globals may be JSON
+values or synchronous functions receiving positional arguments. `undefined`
+from a callback follows Backstage behavior and renders as an absent value.
 
-Callbacks receive copied values and a render-owned `AbortSignal`. Returned
-values cross the same safe-value validator as initial context and are not
-implicitly safe. Context functions and object methods are unsupported.
+Callbacks receive copied values and their results cross the same value
+validator as context input. Context functions and object methods are
+unsupported.
 
-Custom tags use declarative schemas rather than parser callbacks. Schemas may
-declare arguments, a closing tag, and intermediate body sections. The closed
-parser validates those forms and the interpreter invokes the registered
-renderer by identity; no parser or AST object is exposed.
+## Rendering modes
+
+The default mode uses `${{` and `}}` for variables. `cookiecutterCompat: true`
+uses `{{` and `}}`, enables the supported Jinja-compatible behavior, and adds
+`jsonify` as an alias for `dump`. `trimBlocks` and `lstripBlocks` remain engine
+options.
 
 ## Source and build constraints
 
 The package is authored in erasable `.ts`, targets Node.js 24.12 or newer, and
-builds tested ESM and CommonJS outputs with declarations. Production libraries
-may be added normally but enter the trusted computing base and must remain
-lockfile-pinned and reviewed.
-
-Parser and interpreter sources must remain statically auditable. Project checks
-must reject dynamic execution, generated code, Node `vm`, dynamic imports, and
-host-object reflection within those modules.
-
-## Type documentation
-
-Every declared TypeScript type and exported API has TSDoc covering ownership,
-lifetime, failure behavior, cancellation, units, and security implications
-where relevant.
+builds tested ESM and CommonJS outputs with declarations. Parser and interpreter
+sources must reject dynamic execution, generated code, Node `vm`, dynamic
+imports, and host-object reflection.

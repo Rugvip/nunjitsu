@@ -14,8 +14,7 @@ Trusted code outside the guarantee includes:
 
 - application code constructing context containers;
 - engine configuration;
-- loaders;
-- custom filters, tests, globals, and tag renderers; and
+- custom filters and globals; and
 - Nunjitsu and its production dependencies.
 
 The lockfile-pinned Nunjucks 3.2.4 parser is therefore part of the trusted
@@ -68,8 +67,8 @@ objects are never used as scopes or template records.
 ## Capabilities
 
 Capabilities are the only route to trusted application behavior. Engine-level
-loaders, filters, tests, globals, and declarative tags receive immutable
-identities during synchronous engine creation.
+filters and globals receive immutable identities during synchronous engine
+creation.
 
 The interpreter stores capability identities, never callback functions. A call
 copies internal arguments to a null-prototype public value graph, invokes the
@@ -81,24 +80,14 @@ A capability is authority. Applications must expose narrow behavior and assume
 an untrusted template can invoke every registered capability with arbitrary
 valid arguments up to configured limits.
 
-## Loaders
-
-Nunjitsu has no filesystem loader and does not resolve template names as paths.
-The built-in memory loader operates on an owned source map. Custom loaders may
-return source text from application-managed storage, but they are trusted host
-code outside the interpreter's security guarantee.
-
-Applications that source templates from a filesystem must perform discovery,
-root confinement, symbolic-link handling, and reads before passing source into
-Nunjitsu. Templates cannot access Node filesystem APIs directly.
-
-Loaders are trusted. Their returned source is untrusted template text and is
-fully parsed before execution.
+Nunjitsu accepts inline source only and imports no filesystem APIs. Applications
+perform file discovery, path confinement, symbolic-link handling, and reads
+before source crosses into the renderer.
 
 ## Resource limits
 
 High finite defaults cover parsing, evaluator work, nesting, allocation,
-output, loaders, and capabilities. They reduce accidental and intentional
+output, and capabilities. They reduce accidental and intentional
 denial of service but are cooperative checks rather than hard isolation.
 
 Regular-expression literals preserve JavaScript-compatible behavior. A hostile

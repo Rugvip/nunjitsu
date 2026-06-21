@@ -10,9 +10,9 @@ constraints, and cross-cutting decisions belong here.
 | --- | --- | --- |
 | System design | [Architecture](architecture.md) | Components, ownership, render lifecycle, and repository boundaries |
 | Execution core | [Runtime and interpreter](runtime-and-memory.md) | Closed values, AST parsing, evaluation, output, and cooperative limits |
-| Trust boundary | [Security](security.md) | Threat model, safe values, capabilities, loaders, and resource limits |
+| Trust boundary | [Security](security.md) | Threat model, safe values, capabilities, and resource limits |
 | Compatibility | [Nunjucks compatibility](compatibility.md) | v3.2.4 contract, intentional deviations, and attribution |
-| Host API | [TypeScript API](typescript-api.md) | Engine lifecycle, rendering, streams, packaging, and source constraints |
+| Host API | [TypeScript API](typescript-api.md) | Engine lifecycle, rendering, packaging, and source constraints |
 | Verification | [Testing](testing.md) | Shared upstream corpus, test layers, fuzzing, and release gates |
 
 ## Reading order

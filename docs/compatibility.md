@@ -1,93 +1,52 @@
-# Nunjucks compatibility
+# Backstage scaffolder compatibility
 
 ## Baseline
 
-The compatibility baseline is the immutable
-[`mozilla/nunjucks` v3.2.4 release](https://github.com/mozilla/nunjucks/tree/v3.2.4).
-Upstream `master` is not a moving CI dependency. Adopting another release is an
-explicit, reviewed change to this document and the test corpus provenance.
+The compatibility target is the behavior exposed by Backstage's
+`SecureTemplater`, which bundles
+[`mozilla/nunjucks` v3.2.4](https://github.com/mozilla/nunjucks/tree/v3.2.4).
+The Backstage renderer processes inline strings rather than exposing the full
+Nunjucks environment API.
 
-Nunjitsu targets observable template and runtime behavior:
+Nunjitsu targets:
 
-- template syntax and whitespace behavior;
-- expressions, truthiness, scoping, and rendering semantics;
-- built-in filters, tests, and globals;
-- includes, imports, macros, inheritance, and blocks;
-- Jinja-compatible array slice expressions supported by Nunjucks v3.2.4;
-- synchronous and asynchronous template behavior; and
-- the ability to add host filters, tests, globals, loaders, and custom tags
-  through the new capability model.
+- `${{ ... }}` interpolation, `{% ... %}` statements, and `{# ... #}` comments;
+- Cookiecutter `{{ ... }}` mode and its `jsonify` alias;
+- expressions, truthiness, scoping, loops, inline macros, call blocks, and
+  rendering semantics used within one source;
+- built-in filters, tests, and globals used by scaffolder templates;
+- synchronous application filters and JSON-valued or callable globals;
+- `trimBlocks` and `lstripBlocks`; and
+- fixed `autoescape: false` behavior.
 
-Existing Nunjucks templates within this contract should render without edits.
+## Outside the contract
 
-## Explicitly outside the contract
+Nunjitsu does not support:
 
-Compatibility does not include:
+- named templates, includes, imports, inheritance, or loaders;
+- the Nunjucks JavaScript API, object model, CLI, or Express integration;
+- precompilation, persistent caches, browser execution, or streaming;
+- asynchronous filters, globals, or rendering;
+- host-defined tests or custom parser extensions;
+- arbitrary delimiters or public lexer/parser APIs;
+- exact upstream exception classes, messages, or source formatting; or
+- arbitrary JavaScript objects, prototypes, getters, or methods in template
+  data.
 
-- Nunjucks's JavaScript API, object model, CLI, Express integration, or loader
-  registration API;
-- custom lexer delimiter configuration and public lexer token or parser AST
-  inspection APIs; templates use the standard Nunjucks delimiters;
-- precompilation or a persistent compiled-template format;
-- browser execution;
-- exact upstream exception classes, messages, formatting, or source locations;
-- arbitrary JavaScript object/prototype/getter behavior inside template data;
-  or
-- Nunjucks parser-node APIs for arbitrary custom extension parsers.
-
-Invalid upstream cases must fail when the failure is semantically required, but
-matching exact diagnostic text or type is not a compatibility gate. Nunjitsu
-may provide better structured diagnostics under its own API without claiming
-those details are upstream-compatible.
-
-Sandbox constraints are intentional deviations. Safe copied values replace
-live JavaScript objects, and custom tags use declarative grammars. These
-deviations must be visible in the parity manifest rather than hidden as skipped
-tests.
+Unsupported syntax is rejected explicitly. Security deviations are part of the
+contract, not hidden compatibility failures.
 
 ## Upstream test corpus
 
-The upstream [`tests/`](https://github.com/mozilla/nunjucks/tree/v3.2.4/tests)
-suite is the source of truth. Nunjitsu will adapt its underlying cases into one
-language-neutral corpus under `tests/compat/`. Parser, interpreter, and public
-API tests consume the same case definitions.
-
-The corpus contains:
-
-- template source and fixture files;
-- tagged safe input values;
-- expected output or expected failure;
-- named loader and capability fixtures when behavior cannot be represented as
-  data alone; and
-- provenance back to the upstream file and case.
-
-A parity manifest classifies every upstream test as:
-
-- **ported**: represented directly by a shared case;
-- **adapted**: equivalent behavior tested through Nunjitsu's API or security
-  model; or
-- **not applicable**: outside the documented contract, with a specific reason.
-
-No upstream case may remain unclassified. Expected failures require an owner,
-reason, and removal condition; an unexplained skip is not a valid state.
-
-During implementation, the checked-in manifest may declare partial coverage so
-the remaining gap is measurable rather than hidden. Partial coverage is never
-a release-ready state. The immutable inventory still records every upstream
-case from the start, and completion requires a one-to-one classification audit
-against that inventory.
-
-See [Testing](testing.md) for execution and release gates.
+The attributed Nunjucks v3.2.4 test inventory remains the source for applicable
+language behavior. The parity manifest classifies every upstream case against
+the narrower Backstage contract. Applicable behavior is adapted into data-only
+cases under `tests/compat/`; loader, browser, JavaScript API, extension, and
+other out-of-scope cases are marked not applicable with a reason.
 
 ## Attribution and licensing
 
 Nunjucks is licensed under the
 [`BSD-2-Clause` license](https://github.com/mozilla/nunjucks/blob/v3.2.4/LICENSE).
-Copied or adapted test materials must retain that license and clear Mozilla
-Nunjucks attribution adjacent to the corpus. The corpus must record the v3.2.4
-source tag and upstream paths.
-
-The repository's Apache-2.0 license applies to original Nunjitsu code. It does
-not replace the upstream license on copied test material. Do not copy upstream
-tests until their license file, attribution, provenance format, and parity
-manifest are added in the same change.
+Copied or adapted test materials retain that license and Mozilla Nunjucks
+attribution adjacent to the corpus. Original Nunjitsu code remains Apache-2.0.

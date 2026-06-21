@@ -2,79 +2,35 @@
 
 ## Test layers
 
-Nunjitsu uses one implementation-independent compatibility corpus and focused
-tests around its security boundaries:
+1. Parser tests cover the closed grammar, Backstage delimiters, malformed
+   input, complete validation, and immutable data-only ASTs.
+2. Interpreter tests cover copied values, scopes, lookup, coercion, operators,
+   calls, limits, output, and cleanup.
+3. Compatibility tests execute applicable attributed Nunjucks v3.2.4 behavior
+   through the Backstage-focused API.
+4. Public API tests cover filters, globals, rendering modes, errors, and both
+   ESM and CommonJS package entry points.
+5. Security tests exercise JavaScript escape gadgets, prototype pollution,
+   accessors, exotic values, callback results, and parser fuzzing.
 
-1. **Tokenizer and parser tests** cover the closed grammar, source spans,
-   malformed input, complete validation, and immutable data-only ASTs.
-2. **Value and interpreter tests** cover copying, scopes, lookup, coercion,
-   operators, calls, limits, output, and cleanup.
-3. **Shared compatibility tests** execute the attributed Nunjucks v3.2.4 cases
-   through the native TypeScript engine.
-4. **Public API tests** cover source loaders, capabilities, streaming,
-   cancellation, errors, and both ESM and CommonJS package entry points.
-5. **Security tests** exercise known JavaScript escape gadgets, prototype
-   pollution, accessors, exotic values, capability results, and parser fuzzing.
-6. **Benchmarks** compare equivalent one-shot workloads with caching disabled
-   in Nunjucks.
+## Compatibility corpus
 
-## Shared compatibility corpus
-
-`tests/compat/cases.json` is language-neutral source data adapted from Nunjucks
-v3.2.4. Tests keep that source data stable while adapting harness code to the
-native API. Every upstream case remains classified in the parity manifest with
-provenance and an explicit reason for exclusions or intentional security
-deviations.
-
-Avoid duplicating semantic cases across layers. Parser-only assertions may
-reuse the same template source while runtime and public API tests assert the
-observable output.
+`tests/compat/cases.json` contains data-only cases adapted from Nunjucks 3.2.4.
+The manifest retains provenance for all upstream cases and marks behavior
+outside the Backstage contract as not applicable. Applicable cases must render
+through the same synchronous public API used by the scaffolder integration.
 
 ## Security regression suite
 
-The suite includes, at minimum:
-
-- `constructor.constructor`, `prototype`, and `__proto__` through dotted,
-  bracket, literal, assignment, registry, context, and callback-result paths;
-- attempts to resolve `globalThis`, `process`, `require`, `module`, `eval`,
-  JavaScript constructors, and dynamic imports;
-- method calls and implicit coercion through `toString`, `valueOf`, iterators,
-  symbols, and getters;
-- polluted prototypes, class instances, accessors, cycles, excessive depth,
-  and unsupported exotic objects;
-- capability identity confusion and unsafe callback-result aliases; and
-- malformed syntax around every call, lookup, literal, and custom-tag grammar.
-
-Tests demonstrate that rejected accessors are not invoked. Template-visible
-records and scopes remain unaffected by `Object.prototype` mutation.
-
-Static project checks reject prohibited dynamic execution and host reflection
-inside parser and interpreter modules. These checks complement runtime tests;
-they do not replace code review.
+The suite covers reserved prototype names, ambient Node globals, constructor
+gadgets, method calls, implicit coercion, accessors, exotic objects, cyclic
+values, capability identity confusion, malformed syntax, and state cleanup
+after failures. Static checks reject dynamic execution and host reflection in
+parser and interpreter modules.
 
 ## Fuzzing
 
-Tokenizer, parser, input copier, and evaluator are fuzz targets. Useful
-invariants include:
-
-- arbitrary template text either produces a bounded data-only AST or a
-  structured parse error;
-- parsing never executes host behavior;
-- evaluation accesses only internal value kinds and sealed callable variants;
-- work, depth, growth, and output counters fail deterministically; and
-- failure or cancellation leaves no state observable by the next render.
-
-## Benchmarks
-
-Benchmark output remains equivalent across Nunjitsu and pinned Nunjucks. The
-harness uses separate processes, disables Nunjucks caching, reports setup and
-render time independently, and never turns noisy measurements into pass/fail
-thresholds.
-
-The checked-in workloads retain their existing source data:
-
-- `template-graph` parses inheritance, includes, loops, and dense comments;
-- `expressions` stresses arithmetic, comparisons, membership, lookup, and
-  concatenation; and
-- `capabilities` invokes synchronous and asynchronous filters, tests, and
-  globals.
+Tokenizer, parser, input copier, and evaluator are fuzz targets. Arbitrary
+source must either produce a bounded data-only AST or a structured error;
+parsing must never execute host behavior; evaluation must only access closed
+value kinds; and failures must leave the next render clean.

@@ -20,9 +20,8 @@ implementation and documentation aligned with the architecture in
 - Keep the TypeScript/npm package at the repository root. Author one erasable
   `.ts` source tree and compile it into tested ESM and CommonJS builds with
   generated declarations using the lockfile-pinned TypeScript 7.0 RC.
-- Construct engines synchronously. Rendering remains asynchronous because
-  loaders and capabilities may be asynchronous. Engine-level loaders and
-  capabilities are immutable after creation.
+- Construct engines synchronously and render synchronously. Engine-level
+  filters and globals are immutable after creation.
 - Implement template execution as a closed native TypeScript interpreter in
   the caller process. Do not add Rust, Wasm, a worker protocol, or generated
   JavaScript execution back into the runtime.
@@ -43,28 +42,25 @@ implementation and documentation aligned with the architecture in
 - Make sealed interpreter variants for macros, built-ins, and registered
   capabilities the only callable values. Context functions and object methods
   are unsupported.
-- Never retain template sources, dependency graphs, ASTs, values, or output
-  state between renders by default.
+- Never retain template sources, ASTs, values, or output state between renders
+  by default.
 - Treat template source as fully untrusted. Copy context into the safe value
   model; do not expose prototypes, getters, arbitrary functions, or live host
   objects. Host behavior requires explicit capability handles.
 - Apply high finite cooperative resource limits by default on every render.
   Account for source size, AST nodes, evaluator steps, depth, collection growth,
-  output, loaders, and capabilities. Do not describe these checks as process
+  output and capabilities. Do not describe these checks as process
   isolation or exact CPU/RSS accounting.
-- Provide no filesystem loader. Loading is inline or through explicit host
-  loaders that return source text; filesystem discovery and path policy belong
-  to the application outside Nunjitsu.
-- Resolve `./` and `../` dependencies from the requesting source's canonical
-  identity. Preserve that identity through every deferred frame, and key
-  render-local request caches by both canonical parent and requested name.
-- Target Nunjucks v3.2.4 template/runtime behavior, not its JavaScript API.
-  Precompilation, browser execution, exact upstream error text, live-object
-  semantics, and arbitrary parser extensions are outside the compatibility
-  contract.
-- Keep the standard Nunjucks template delimiters fixed. Do not expose the
-  replaced Nunjucks lexer token stream, parser AST object model, or mutable
-  delimiter configuration through the TypeScript API.
+- Accept inline template source only. Filesystem discovery and path policy
+  belong to the application outside Nunjitsu. Reject include, import, from, and
+  extends because Backstage's renderer does not support template loading.
+- Target the Nunjucks v3.2.4 behavior used by Backstage's `SecureTemplater`, not
+  its complete JavaScript or template-loading API. Precompilation, browser
+  execution, streaming, async callbacks, exact upstream error text, live-object
+  semantics, custom tests, and parser extensions are outside the contract.
+- Use `${{` and `}}` as the default variable delimiters. Cookiecutter mode uses
+  `{{` and `}}` with the supported Jinja compatibility behavior. Do not expose
+  arbitrary delimiter configuration or the Nunjucks lexer/parser object model.
 - Adapt upstream tests into one attributed, language-neutral corpus consumed by
   parser, interpreter, and public API tests. Classify every upstream v3.2.4
   test in the parity manifest.
@@ -80,12 +76,9 @@ The rationale and detailed contracts live in:
 
 ## Repository structure
 
-- `src/`: TypeScript public API, parser, interpreter, source loaders, and
-  capabilities.
+- `src/`: TypeScript public API, parser, interpreter, filters, and globals.
 - `src/parser/`: tokenizer and closed template/expression parser.
 - `src/runtime/`: safe values, scopes, interpreter, output, and limits.
-- `benchmarks/`: equivalent one-shot workloads and the isolated Nunjucks
-  comparison harness.
 - `tests/compat/`: shared Nunjucks v3.2.4 cases, provenance, manifest, and
   upstream license.
 - `docs/`: normative architecture documentation.
@@ -105,8 +98,7 @@ Do not create additional packages without a documented architectural reason.
 - Use explicit `type` imports and source file extensions that work when Node
   executes `.ts` directly.
 - Add TSDoc to every declared type and every exported API. Document ownership,
-  lifetime, units, cancellation, failure, partial-stream behavior, and security
-  implications where relevant.
+  lifetime, units, failure behavior, and security implications where relevant.
 - Keep ESM and CommonJS behavior in one implementation. Format-specific code is
   limited to entry and asset-resolution adapters.
 - Use braced control flow unless the surrounding file has an established
@@ -140,16 +132,12 @@ Do not create additional packages without a documented architectural reason.
 - Never skip or mark an upstream case expected-failing without a parity-manifest
   entry containing provenance and a reason tied to the compatibility contract.
 - Test source `.ts` directly on the minimum Node version. Also test both built
-  package entry paths and asynchronous rendering.
-- Every failure and cancellation path must prove that the engine retains no
-  partial render state and the next render starts cleanly.
+  package entry paths and synchronous rendering.
+- Every failure path must prove that the engine retains no partial render state
+  and the next render starts cleanly.
 - Security-sensitive parsing, value copying, lookup, coercion, and call changes
   require malformed input tests, gadget regression tests, and fuzz coverage
   where appropriate.
-- Keep performance workloads output-equivalent across Nunjitsu and the pinned
-  Nunjucks baseline. Disable Nunjucks template caching, isolate implementations
-  in separate processes, and never turn noisy benchmark measurements into test
-  thresholds.
 
 ## Documentation rules
 
