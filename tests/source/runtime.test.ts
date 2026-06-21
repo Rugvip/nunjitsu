@@ -71,7 +71,7 @@ test('allocates immutable worker memory capacities without growing at render tim
 
   const engine = await createEngine({
     memory: {
-      slots: 1,
+      slots: 2,
       sourceCodeUnits: 1,
       valueCodeUnits: 1,
       members: 1,
@@ -1698,7 +1698,7 @@ test('evaluates nested and resumable if branches without rendering inactive bodi
   }
 });
 
-test('iterates arena-backed arrays and records with nested local scopes', async () => {
+test('iterates slot-backed arrays and records with nested local scopes', async () => {
   const engine = await createEngine({
     loaders: [memoryLoader({ 'item.njk': '<{{ item }}>' })],
   });
@@ -2059,7 +2059,7 @@ test('rejects invalid expressions and calls across deferred template frames', as
   }
 });
 
-test('handles trailing macro values through the safe record boundary', async () => {
+test('handles trailing macro values through the safe slot boundary', async () => {
   const noPrototype = Object.assign(Object.create(null) as Record<string, string>, {
     qux: 'world',
   });

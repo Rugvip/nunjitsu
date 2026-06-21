@@ -21,7 +21,13 @@ import {
   type NormalizedRenderLimits,
   type RenderLimits,
 } from './limits.ts';
-import { ArenaWriter, decodeCapabilityRequest, decodeOutput } from './protocol.ts';
+import {
+  ArenaWriter,
+  decodeCapabilityRequest,
+  decodeOutput,
+  type FixedMemoryCursors,
+  type FixedMemoryLayout,
+} from './protocol.ts';
 import type { TemplateContext, TemplateValue } from './values.ts';
 
 const wasmPageBytes = 65_536;
@@ -33,7 +39,7 @@ const memberBytes = 4;
 const stringOperationBytes = 32;
 const stringQueryBytes = 32;
 const outputRangeBytes = 16;
-const expectedAbiVersion = 25;
+const expectedAbiVersion = 26;
 const expectedMemoryLayoutVersion = 1;
 
 /** Identifies the runtime assets used to start workers. */
@@ -256,6 +262,7 @@ interface ReadyMessage {
   layoutVersion: number;
   prefixOffset: number;
   slotSize: number;
+  memoryLayout: FixedMemoryLayout;
 }
 
 /** Successful terminal response for a render. */
@@ -282,6 +289,7 @@ interface LoadMessage {
   name: string;
   from?: string;
   cursor: number;
+  fixedCursors: FixedMemoryCursors;
   ignoreMissing: boolean;
 }
 
@@ -299,6 +307,7 @@ interface CapabilityMessage {
   requestOffset: number;
   requestLength: number;
   cursor: number;
+  fixedCursors: FixedMemoryCursors;
 }
 
 /** Worker response accepted by the host protocol. */
@@ -686,6 +695,7 @@ class WorkerSlot {
 
   readonly #worker: Worker;
   #arenaBase = 0;
+  #fixedLayout: FixedMemoryLayout | undefined;
   #nextRenderId = 1;
   #pending: PendingRender | undefined;
   #resolveReady: (() => void) | undefined;
@@ -757,7 +767,12 @@ class WorkerSlot {
       throw new Error('The Nunjitsu worker already has an active render');
     }
 
-    const encoded = new ArenaWriter(this.memory, this.#arenaBase).encodeRender(
+    const encoded = new ArenaWriter(
+      this.memory,
+      this.#arenaBase,
+      this.#requireFixedLayout(),
+      initialFixedCursors(),
+    ).encodeRender(
       template.source,
       context,
       {
@@ -804,6 +819,7 @@ class WorkerSlot {
         id,
         requestOffset: encoded.requestOffset,
         cursor: encoded.cursor,
+        fixedCursors: encoded.fixedCursors,
       });
     });
   }
@@ -835,7 +851,12 @@ class WorkerSlot {
       throw new Error('The Nunjitsu worker already has an active render');
     }
 
-    const encoded = new ArenaWriter(this.memory, this.#arenaBase).encodeRender(
+    const encoded = new ArenaWriter(
+      this.memory,
+      this.#arenaBase,
+      this.#requireFixedLayout(),
+      initialFixedCursors(),
+    ).encodeRender(
       template.source,
       context,
       {
@@ -892,6 +913,7 @@ class WorkerSlot {
       id: pending.id,
       requestOffset: encoded.requestOffset,
       cursor: encoded.cursor,
+      fixedCursors: encoded.fixedCursors,
     });
     return new WorkerStreamSession(this, pending, finished);
   }
@@ -953,12 +975,14 @@ class WorkerSlot {
         value.layoutVersion !== expectedMemoryLayoutVersion ||
         value.prefixOffset <= 0 ||
         value.slotSize !== repeatedSlotBytes ||
+        !validFixedLayout(value.memoryLayout, this.memory) ||
         value.arenaBase <= 0
       ) {
         this.#fail(new Error('Nunjitsu worker reported an incompatible Wasm ABI'));
         return;
       }
       this.#arenaBase = value.arenaBase;
+      this.#fixedLayout = value.memoryLayout;
       this.#resolveReady?.();
       this.#resolveReady = undefined;
       this.#rejectReady = undefined;
@@ -1054,19 +1078,23 @@ class WorkerSlot {
       let parentCache = pending.loadedByName.get(message.from);
       let cached = parentCache?.get(message.name);
       let cursor = message.cursor;
+      let fixedCursors = message.fixedCursors;
       if (!cached) {
         const loaded = await pending.load(message.name, message.from);
         cached = pending.loadedByCanonicalName.get(loaded.canonicalName);
         if (!cached) {
-          const encoded = new ArenaWriter(this.memory, message.cursor).encodeLoadedTemplate(
-            loaded.source,
-            loaded.canonicalName,
-          );
+          const encoded = new ArenaWriter(
+            this.memory,
+            message.cursor,
+            this.#requireFixedLayout(),
+            message.fixedCursors,
+          ).encodeLoadedTemplate(loaded.source, loaded.canonicalName);
           cached = {
             sourceOffset: encoded.sourceOffset,
             canonicalOffset: encoded.canonicalOffset,
           };
           cursor = encoded.cursor;
+          fixedCursors = encoded.fixedCursors;
           pending.loadedByCanonicalName.set(loaded.canonicalName, cached);
         }
         if (!parentCache) {
@@ -1085,6 +1113,7 @@ class WorkerSlot {
         sourceOffset: cached.sourceOffset,
         canonicalOffset: cached.canonicalOffset,
         cursor,
+        fixedCursors,
       });
     } catch (error) {
       if (this.#pending !== pending) {
@@ -1111,13 +1140,20 @@ class WorkerSlot {
         this.memory,
         message.requestOffset,
         message.requestLength,
+        this.#requireFixedLayout(),
+        message.fixedCursors,
       );
       const result = await pending.call(
         request.kind,
         request.capabilityId,
         request.arguments,
       );
-      const encoded = new ArenaWriter(this.memory, message.cursor).encodeCapabilityResult(result);
+      const encoded = new ArenaWriter(
+        this.memory,
+        message.cursor,
+        this.#requireFixedLayout(),
+        message.fixedCursors,
+      ).encodeCapabilityResult(result);
       if (this.#pending !== pending || this.failed || this.#closed) {
         return;
       }
@@ -1127,6 +1163,7 @@ class WorkerSlot {
         id: pending.id,
         valueOffset: encoded.valueOffset,
         cursor: encoded.cursor,
+        fixedCursors: encoded.fixedCursors,
       });
     } catch (error) {
       if (this.#pending !== pending) {
@@ -1185,6 +1222,13 @@ class WorkerSlot {
       pending.waiter = undefined;
       waiter.resolve({ value: undefined, done: true });
     }
+  }
+
+  #requireFixedLayout(): FixedMemoryLayout {
+    if (!this.#fixedLayout) {
+      throw new Error('Nunjitsu worker has not reported its fixed memory layout');
+    }
+    return this.#fixedLayout;
   }
 }
 
@@ -1272,6 +1316,58 @@ function checkedCapacityBytes(capacity: number, width: number): number {
   return bytes;
 }
 
+function initialFixedCursors(): FixedMemoryCursors {
+  return { slots: 1, sources: 0, values: 0, members: 0 };
+}
+
+function isFixedMemoryCursors(value: unknown): value is FixedMemoryCursors {
+  if (!value || typeof value !== 'object') {
+    return false;
+  }
+  const cursors = value as Record<string, unknown>;
+  return (
+    typeof cursors.slots === 'number' &&
+    typeof cursors.sources === 'number' &&
+    typeof cursors.values === 'number' &&
+    typeof cursors.members === 'number'
+  );
+}
+
+function isFixedMemoryLayout(value: unknown): value is FixedMemoryLayout {
+  if (!value || typeof value !== 'object') {
+    return false;
+  }
+  const layout = value as Record<string, unknown>;
+  return [
+    'slotOffset',
+    'slotCapacity',
+    'sourceOffset',
+    'sourceCapacity',
+    'valueOffset',
+    'valueCapacity',
+    'memberOffset',
+    'memberCapacity',
+  ].every(name => typeof layout[name] === 'number');
+}
+
+function validFixedLayout(layout: FixedMemoryLayout, memory: WebAssembly.Memory): boolean {
+  const end = Math.max(
+    layout.slotOffset + (layout.slotCapacity + 1) * repeatedSlotBytes,
+    layout.sourceOffset + layout.sourceCapacity * 2,
+    layout.valueOffset + layout.valueCapacity * 2,
+    layout.memberOffset + layout.memberCapacity * memberBytes,
+  );
+  return (
+    Object.values(layout).every(Number.isSafeInteger) &&
+    layout.slotOffset > 0 &&
+    layout.slotCapacity > 0 &&
+    layout.sourceCapacity > 0 &&
+    layout.valueCapacity > 0 &&
+    layout.memberCapacity > 0 &&
+    end <= memory.buffer.byteLength
+  );
+}
+
 function isWorkerMessage(value: unknown): value is WorkerMessage {
   if (!value || typeof value !== 'object') {
     return false;
@@ -1283,7 +1379,8 @@ function isWorkerMessage(value: unknown): value is WorkerMessage {
       typeof message.arenaBase === 'number' &&
       typeof message.layoutVersion === 'number' &&
       typeof message.prefixOffset === 'number' &&
-      typeof message.slotSize === 'number'
+      typeof message.slotSize === 'number' &&
+      isFixedMemoryLayout(message.memoryLayout)
     );
   }
   if (message.type === 'load') {
@@ -1292,6 +1389,7 @@ function isWorkerMessage(value: unknown): value is WorkerMessage {
       typeof message.name === 'string' &&
       (message.from === undefined || typeof message.from === 'string') &&
       typeof message.cursor === 'number' &&
+      isFixedMemoryCursors(message.fixedCursors) &&
       typeof message.ignoreMissing === 'boolean'
     );
   }
@@ -1303,7 +1401,8 @@ function isWorkerMessage(value: unknown): value is WorkerMessage {
       typeof message.id === 'number' &&
       typeof message.requestOffset === 'number' &&
       typeof message.requestLength === 'number' &&
-      typeof message.cursor === 'number'
+      typeof message.cursor === 'number' &&
+      isFixedMemoryCursors(message.fixedCursors)
     );
   }
   if (message.type !== 'result' || typeof message.id !== 'number') {

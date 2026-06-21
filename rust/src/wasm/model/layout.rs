@@ -190,6 +190,8 @@ fn configure_pool(cursor: &mut u32, capacity: u32, width: u32) -> Option<PoolSta
 
 fn slot_payload_length(tag: u32) -> Option<u32> {
     match tag {
+        TAG_UNDEFINED | TAG_NULL => Some(0),
+        TAG_BOOLEAN => Some(1),
         TAG_FRAME => Some(FRAME_LENGTH),
         TAG_LOOP_STATE => Some(LOOP_STATE_LENGTH),
         TAG_SCOPE => Some(SCOPE_LENGTH),
@@ -206,12 +208,19 @@ fn slot_payload_length(tag: u32) -> Option<u32> {
 }
 
 fn member_backed_tag(tag: u32) -> bool {
-    matches!(tag, TAG_BINDINGS | TAG_MACRO_ARGUMENTS | TAG_TAG_BOUNDARIES)
+    matches!(
+        tag,
+        TAG_ARRAY
+            | TAG_RECORD
+            | TAG_BINDINGS
+            | TAG_MACRO_ARGUMENTS
+            | TAG_TAG_BOUNDARIES
+    )
 }
 
 fn slot_category_mask(tag: u32) -> u32 {
     match tag {
-        TAG_JOINER => 1,
+        TAG_UNDEFINED | TAG_NULL | TAG_BOOLEAN | TAG_ARRAY | TAG_RECORD | TAG_JOINER => 1,
         TAG_FRAME | TAG_LOOP_STATE | TAG_CAPTURE | TAG_MACRO_CALL | TAG_TAG_CALL => 2,
         TAG_SCOPE | TAG_MACRO_DEFINITION | TAG_BLOCK_DEFINITION => 4,
         TAG_TAG_ARGUMENTS
@@ -396,6 +405,70 @@ pub extern "C" fn nunjitsu_memory_prefix_offset() -> u32 {
 #[unsafe(no_mangle)]
 pub extern "C" fn nunjitsu_slot_size() -> u32 {
     size_of::<Slot>() as u32
+}
+
+fn selected_pool(kind: u32) -> Option<PoolState> {
+    let prefix = memory_prefix();
+    unsafe {
+        match kind {
+            POOL_SLOTS => Some((*prefix).slots),
+            POOL_SOURCES => Some((*prefix).sources),
+            POOL_VALUES => Some((*prefix).values),
+            POOL_MEMBERS => Some((*prefix).members),
+            _ => None,
+        }
+    }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn nunjitsu_pool_offset(kind: u32) -> u32 {
+    selected_pool(kind).map_or(0, |pool| pool.offset)
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn nunjitsu_pool_capacity(kind: u32) -> u32 {
+    selected_pool(kind).map_or(0, |pool| pool.capacity)
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn nunjitsu_pool_cursor(kind: u32) -> u32 {
+    selected_pool(kind).map_or(0, |pool| pool.cursor)
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn nunjitsu_accept_host_cursors(
+    slots: u32,
+    sources: u32,
+    values: u32,
+    members: u32,
+) -> u32 {
+    let prefix = memory_prefix();
+    let current = unsafe {
+        (
+            (*prefix).slots,
+            (*prefix).sources,
+            (*prefix).values,
+            (*prefix).members,
+        )
+    };
+    if slots < current.0.cursor
+        || slots > current.0.capacity.saturating_add(1)
+        || sources < current.1.cursor
+        || sources > current.1.capacity
+        || values < current.2.cursor
+        || values > current.2.capacity
+        || members < current.3.cursor
+        || members > current.3.capacity
+    {
+        return 0;
+    }
+    unsafe {
+        (*prefix).slots.cursor = slots;
+        (*prefix).sources.cursor = sources;
+        (*prefix).values.cursor = values;
+        (*prefix).members.cursor = members;
+    }
+    1
 }
 
 #[unsafe(no_mangle)]

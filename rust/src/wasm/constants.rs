@@ -1,4 +1,4 @@
-const ABI_VERSION: u32 = 25;
+const ABI_VERSION: u32 = 26;
 const MEMORY_LAYOUT_VERSION: u32 = 1;
 const PAGE_SIZE: usize = 65_536;
 const MEMORY_PREFIX_ALIGNMENT: u32 = 64;
@@ -9,6 +9,11 @@ const MEMBER_LENGTH: u32 = 4;
 const STRING_OPERATION_LENGTH: u32 = 32;
 const STRING_QUERY_LENGTH: u32 = 32;
 const OUTPUT_RANGE_LENGTH: u32 = 16;
+
+const POOL_SLOTS: u32 = 1;
+const POOL_SOURCES: u32 = 2;
+const POOL_VALUES: u32 = 3;
+const POOL_MEMBERS: u32 = 4;
 const STREAM_CHUNK_BYTES: u32 = 64 * 1024;
 const RECORD_ALIGNMENT: u32 = 8;
 const RECORD_HEADER_LENGTH: usize = 8;

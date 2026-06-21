@@ -1,6 +1,16 @@
 import { parentPort, workerData, type MessagePort } from 'node:worker_threads';
 
-import { decodeLoadRequest, decodeOutput } from './protocol.ts';
+import {
+  decodeLoadRequest,
+  decodeOutput,
+  type FixedMemoryCursors,
+  type FixedMemoryLayout,
+} from './protocol.ts';
+
+const poolSlots = 1;
+const poolSources = 2;
+const poolValues = 3;
+const poolMembers = 4;
 
 /** Data supplied by the engine when a worker starts. */
 interface NunjitsuWorkerData {
@@ -26,6 +36,7 @@ interface RenderCommand {
   id: number;
   requestOffset: number;
   cursor: number;
+  fixedCursors: FixedMemoryCursors;
 }
 
 /** Loader result command accepted while the evaluator is suspended. */
@@ -35,6 +46,7 @@ interface ResumeLoadCommand {
   sourceOffset: number;
   canonicalOffset: number;
   cursor: number;
+  fixedCursors: FixedMemoryCursors;
 }
 
 /** Recoverable absence result accepted for an optional include. */
@@ -55,6 +67,7 @@ interface ResumeCapabilityCommand {
   id: number;
   valueOffset: number;
   cursor: number;
+  fixedCursors: FixedMemoryCursors;
 }
 
 /** Command accepted by the worker protocol. */
@@ -79,6 +92,15 @@ interface NunjitsuExports {
     stringOperations: number,
     stringQueries: number,
     outputRanges: number,
+  ) => number;
+  poolOffset: (kind: number) => number;
+  poolCapacity: (kind: number) => number;
+  poolCursor: (kind: number) => number;
+  acceptHostCursors: (
+    slots: number,
+    sources: number,
+    values: number,
+    members: number,
   ) => number;
   arenaBase: () => number;
   arenaCursor: () => number;
@@ -147,6 +169,7 @@ async function start(port: MessagePort): Promise<void> {
   }
   exports.arenaReset();
   const controlOffset = exports.controlOffset();
+  const memoryLayout = readFixedMemoryLayout(exports);
 
   port.postMessage({
     type: 'ready',
@@ -155,6 +178,7 @@ async function start(port: MessagePort): Promise<void> {
     layoutVersion: exports.layoutVersion(),
     prefixOffset: exports.memoryPrefixOffset(),
     slotSize: exports.slotSize(),
+    memoryLayout,
   });
 
   let activeRenderId: number | undefined;
@@ -165,6 +189,7 @@ async function start(port: MessagePort): Promise<void> {
         throw new Error('Nunjitsu worker received overlapping render commands');
       }
       activeRenderId = command.id;
+      acceptHostCursors(exports, command.fixedCursors);
       const cursorState = exports.arenaSetCursor(command.cursor);
       if (cursorState !== 1) {
         finishWithError(port, command.id, cursorState === 2 ? 7 : 1, exports);
@@ -203,6 +228,7 @@ async function start(port: MessagePort): Promise<void> {
       return;
     }
     if (command.type === 'resumeCapability') {
+      acceptHostCursors(exports, command.fixedCursors);
       const cursorState = exports.arenaSetCursor(command.cursor);
       if (cursorState !== 1) {
         finishWithError(port, command.id, cursorState === 2 ? 7 : 1, exports);
@@ -236,6 +262,7 @@ async function start(port: MessagePort): Promise<void> {
         : undefined;
       return;
     }
+    acceptHostCursors(exports, command.fixedCursors);
     const cursorState = exports.arenaSetCursor(command.cursor);
     if (cursorState !== 1) {
       finishWithError(port, command.id, cursorState === 2 ? 7 : 1, exports);
@@ -352,6 +379,7 @@ function reportState(
       name: request.name,
       ...(request.from === undefined ? {} : { from: request.from }),
       cursor: exports.arenaCursor(),
+      fixedCursors: readFixedMemoryCursors(exports),
       ignoreMissing: state === 6,
     });
     return true;
@@ -373,6 +401,7 @@ function reportState(
       requestOffset: control.getUint32(4, true),
       requestLength: control.getUint32(8, true),
       cursor: exports.arenaCursor(),
+      fixedCursors: readFixedMemoryCursors(exports),
     });
     return true;
   }
@@ -438,6 +467,57 @@ function parseMemoryLayout(value: unknown): NunjitsuWorkerMemoryLayout {
   return candidate as unknown as NunjitsuWorkerMemoryLayout;
 }
 
+function readFixedMemoryLayout(exports: NunjitsuExports): FixedMemoryLayout {
+  return Object.freeze({
+    slotOffset: exports.poolOffset(poolSlots),
+    slotCapacity: exports.poolCapacity(poolSlots),
+    sourceOffset: exports.poolOffset(poolSources),
+    sourceCapacity: exports.poolCapacity(poolSources),
+    valueOffset: exports.poolOffset(poolValues),
+    valueCapacity: exports.poolCapacity(poolValues),
+    memberOffset: exports.poolOffset(poolMembers),
+    memberCapacity: exports.poolCapacity(poolMembers),
+  });
+}
+
+function readFixedMemoryCursors(exports: NunjitsuExports): FixedMemoryCursors {
+  return Object.freeze({
+    slots: exports.poolCursor(poolSlots),
+    sources: exports.poolCursor(poolSources),
+    values: exports.poolCursor(poolValues),
+    members: exports.poolCursor(poolMembers),
+  });
+}
+
+function acceptHostCursors(
+  exports: NunjitsuExports,
+  cursors: FixedMemoryCursors,
+): void {
+  if (
+    exports.acceptHostCursors(
+      cursors.slots,
+      cursors.sources,
+      cursors.values,
+      cursors.members,
+    ) !== 1
+  ) {
+    throw new Error('Nunjitsu worker rejected host-owned memory cursors');
+  }
+}
+
+function isFixedMemoryCursors(value: unknown): value is FixedMemoryCursors {
+  if (!value || typeof value !== 'object') {
+    return false;
+  }
+  const cursors = value as Record<string, unknown>;
+  return (
+    Number.isSafeInteger(cursors.slots) &&
+    Number.isSafeInteger(cursors.sources) &&
+    Number.isSafeInteger(cursors.values) &&
+    Number.isSafeInteger(cursors.members)
+  );
+}
+
 function parseCommand(value: unknown): WorkerCommand {
   if (!value || typeof value !== 'object') {
     throw new Error('Nunjitsu worker received an invalid command');
@@ -455,17 +535,22 @@ function parseCommand(value: unknown): WorkerCommand {
   if (
     candidate.type === 'resumeCapability' &&
     typeof candidate.valueOffset === 'number' &&
-    typeof candidate.cursor === 'number'
+    typeof candidate.cursor === 'number' &&
+    isFixedMemoryCursors(candidate.fixedCursors)
   ) {
     return {
       type: 'resumeCapability',
       id: candidate.id,
       valueOffset: candidate.valueOffset,
       cursor: candidate.cursor,
+      fixedCursors: candidate.fixedCursors,
     };
   }
   if (candidate.type === 'render' && typeof candidate.requestOffset === 'number') {
-    if (typeof candidate.cursor !== 'number') {
+    if (
+      typeof candidate.cursor !== 'number' ||
+      !isFixedMemoryCursors(candidate.fixedCursors)
+    ) {
       throw new Error('Nunjitsu worker received an invalid render cursor');
     }
     return {
@@ -473,13 +558,15 @@ function parseCommand(value: unknown): WorkerCommand {
       id: candidate.id,
       requestOffset: candidate.requestOffset,
       cursor: candidate.cursor,
+      fixedCursors: candidate.fixedCursors,
     };
   }
   if (
     candidate.type === 'resumeLoad' &&
     typeof candidate.sourceOffset === 'number' &&
     typeof candidate.canonicalOffset === 'number' &&
-    typeof candidate.cursor === 'number'
+    typeof candidate.cursor === 'number' &&
+    isFixedMemoryCursors(candidate.fixedCursors)
   ) {
     return {
       type: 'resumeLoad',
@@ -487,6 +574,7 @@ function parseCommand(value: unknown): WorkerCommand {
       sourceOffset: candidate.sourceOffset,
       canonicalOffset: candidate.canonicalOffset,
       cursor: candidate.cursor,
+      fixedCursors: candidate.fixedCursors,
     };
   }
   throw new Error('Nunjitsu worker received an invalid command');
@@ -499,6 +587,10 @@ function parseExports(value: WebAssembly.Exports): NunjitsuExports {
     memoryPrefixOffset: exportedFunction(value, 'nunjitsu_memory_prefix_offset'),
     slotSize: exportedFunction(value, 'nunjitsu_slot_size'),
     configureLayout: exportedFunction(value, 'nunjitsu_configure_layout'),
+    poolOffset: exportedFunction(value, 'nunjitsu_pool_offset'),
+    poolCapacity: exportedFunction(value, 'nunjitsu_pool_capacity'),
+    poolCursor: exportedFunction(value, 'nunjitsu_pool_cursor'),
+    acceptHostCursors: exportedFunction(value, 'nunjitsu_accept_host_cursors'),
     arenaBase: exportedFunction(value, 'nunjitsu_arena_base'),
     arenaCursor: exportedFunction(value, 'nunjitsu_arena_cursor'),
     arenaReset: exportedFunction(value, 'nunjitsu_arena_reset'),

@@ -13,6 +13,8 @@ import {
 
 const recordHeaderLength = 8;
 const recordAlignment = 8;
+const fixedSlotLength = 72;
+const memberLength = 4;
 
 const recordTag = {
   source: 1,
@@ -40,6 +42,8 @@ export interface EncodedRenderRequest {
   requestOffset: number;
   /** First unallocated byte after the encoded request. */
   cursor: number;
+  /** Frozen fixed-pool cursors submitted with the request. */
+  fixedCursors: FixedMemoryCursors;
 }
 
 /** Offsets for one loader result appended while an evaluator is suspended. */
@@ -50,6 +54,8 @@ export interface EncodedLoadedTemplate {
   canonicalOffset: number;
   /** First unallocated byte after the loader result. */
   cursor: number;
+  /** Frozen fixed-pool cursors submitted with the loader result. */
+  fixedCursors: FixedMemoryCursors;
 }
 
 /** Offset and cursor for one host capability result appended to a suspended render. */
@@ -58,6 +64,28 @@ export interface EncodedCapabilityResult {
   valueOffset: number;
   /** First unallocated byte after the result. */
   cursor: number;
+  /** Frozen fixed-pool cursors submitted with the capability result. */
+  fixedCursors: FixedMemoryCursors;
+}
+
+/** Fixed pool offsets and capacities reported by the configured Wasm instance. */
+export interface FixedMemoryLayout {
+  slotOffset: number;
+  slotCapacity: number;
+  sourceOffset: number;
+  sourceCapacity: number;
+  valueOffset: number;
+  valueCapacity: number;
+  memberOffset: number;
+  memberCapacity: number;
+}
+
+/** Logical allocation cursors transferred between the host and Wasm owner. */
+export interface FixedMemoryCursors {
+  slots: number;
+  sources: number;
+  values: number;
+  members: number;
 }
 
 /** One validated host capability request decoded from shared memory. */
@@ -83,12 +111,21 @@ export class ArenaWriter {
   readonly #memory: WebAssembly.Memory;
   #view: DataView;
   #cursor: number;
+  readonly #layout: FixedMemoryLayout;
+  readonly #fixedCursors: FixedMemoryCursors;
 
   /** Creates a writer beginning at an aligned free arena cursor. */
-  constructor(memory: WebAssembly.Memory, arenaBase: number) {
+  constructor(
+    memory: WebAssembly.Memory,
+    arenaBase: number,
+    layout: FixedMemoryLayout,
+    fixedCursors: FixedMemoryCursors,
+  ) {
     this.#memory = memory;
     this.#view = new DataView(memory.buffer);
     this.#cursor = align(arenaBase, recordAlignment);
+    this.#layout = layout;
+    this.#fixedCursors = { ...fixedCursors };
   }
 
   /** Encodes an inline template, safe context, and render flags into the arena. */
@@ -140,7 +177,11 @@ export class ArenaWriter {
     requestView.setUint32(52, tagsOffset, true);
     const requestOffset = this.#writeRecord(recordTag.request, new Uint8Array(requestPayload));
 
-    return { requestOffset, cursor: this.#cursor };
+    return {
+      requestOffset,
+      cursor: this.#cursor,
+      fixedCursors: this.#snapshotFixedCursors(),
+    };
   }
 
   /** Appends one trusted loader response for a suspended include request. */
@@ -150,13 +191,22 @@ export class ArenaWriter {
     }
     const sourceOffset = this.#writeTextRecord(recordTag.source, source);
     const canonicalOffset = this.#writeTextRecord(recordTag.string, canonicalName);
-    return { sourceOffset, canonicalOffset, cursor: this.#cursor };
+    return {
+      sourceOffset,
+      canonicalOffset,
+      cursor: this.#cursor,
+      fixedCursors: this.#snapshotFixedCursors(),
+    };
   }
 
   /** Appends one copied safe value returned by a trusted host capability. */
   encodeCapabilityResult(value: TemplateValue): EncodedCapabilityResult {
     const valueOffset = this.#writeValue(value, new Set(), new Map());
-    return { valueOffset, cursor: this.#cursor };
+    return {
+      valueOffset,
+      cursor: this.#cursor,
+      fixedCursors: this.#snapshotFixedCursors(),
+    };
   }
 
   #writeCapabilityRegistry(
@@ -344,6 +394,16 @@ export class ArenaWriter {
   }
 
   #writeRecord(tag: number, payload: Uint8Array): number {
+    if (
+      tag === recordTag.undefined ||
+      tag === recordTag.null ||
+      tag === recordTag.boolean
+    ) {
+      return this.#writeFixedSlot(tag, payload);
+    }
+    if (tag === recordTag.array || tag === recordTag.record) {
+      return this.#writeMemberSlot(tag, payload);
+    }
     const offset = align(this.#cursor, recordAlignment);
     const end = offset + recordHeaderLength + payload.byteLength;
     const nextCursor = align(end, recordAlignment);
@@ -354,6 +414,59 @@ export class ArenaWriter {
     new Uint8Array(this.#memory.buffer, offset + recordHeaderLength, payload.byteLength).set(payload);
     this.#cursor = nextCursor;
     return offset;
+  }
+
+  #writeFixedSlot(tag: number, payload: Uint8Array): number {
+    const expectedLength = tag === recordTag.boolean ? 1 : 0;
+    if (payload.byteLength !== expectedLength) {
+      throw new Error('Invalid fixed value slot payload');
+    }
+    const index = this.#reserveSlot();
+    const offset = this.#layout.slotOffset + index * fixedSlotLength;
+    const bytes = new Uint8Array(this.#memory.buffer, offset, fixedSlotLength);
+    bytes.fill(0);
+    this.#view.setUint32(offset, tag | (1 << 8), true);
+    bytes.set(payload, 4);
+    return index;
+  }
+
+  #writeMemberSlot(tag: number, payload: Uint8Array): number {
+    if (payload.byteLength % memberLength !== 0) {
+      throw new Error('Invalid member-backed slot payload');
+    }
+    const index = this.#reserveSlot();
+    const memberCount = payload.byteLength / memberLength;
+    const memberStart = this.#fixedCursors.members;
+    const memberEnd = memberStart + memberCount;
+    if (memberEnd > this.#layout.memberCapacity) {
+      throw new NunjitsuLimitError('arenaBytes');
+    }
+    const slotOffset = this.#layout.slotOffset + index * fixedSlotLength;
+    const slot = new Uint8Array(this.#memory.buffer, slotOffset, fixedSlotLength);
+    slot.fill(0);
+    this.#view.setUint32(slotOffset, tag | (1 << 8), true);
+    this.#view.setUint32(slotOffset + 4, memberStart, true);
+    this.#view.setUint32(slotOffset + 8, payload.byteLength, true);
+    new Uint8Array(
+      this.#memory.buffer,
+      this.#layout.memberOffset + memberStart * memberLength,
+      payload.byteLength,
+    ).set(payload);
+    this.#fixedCursors.members = memberEnd;
+    return index;
+  }
+
+  #reserveSlot(): number {
+    const index = this.#fixedCursors.slots;
+    if (index < 1 || index > this.#layout.slotCapacity) {
+      throw new NunjitsuLimitError('arenaBytes');
+    }
+    this.#fixedCursors.slots = index + 1;
+    return index;
+  }
+
+  #snapshotFixedCursors(): FixedMemoryCursors {
+    return Object.freeze({ ...this.#fixedCursors });
   }
 
   #ensureCapacity(requiredLength: number): void {
@@ -418,6 +531,8 @@ export function decodeCapabilityRequest(
   memory: WebAssembly.Memory,
   offset: number,
   length: number,
+  layout: FixedMemoryLayout,
+  fixedCursors: FixedMemoryCursors,
 ): DecodedCapabilityRequest {
   const payload = readRecord(memory, offset, recordTag.capabilityRequest, length);
   if (payload.byteLength < 12 || (payload.byteLength - 12) % 4 !== 0) {
@@ -439,7 +554,13 @@ export function decodeCapabilityRequest(
   }
   const arguments_: TemplateValue[] = [];
   for (let index = 0; index < count; index += 1) {
-    arguments_.push(decodeValue(memory, view.getUint32(12 + index * 4, true), new Set()));
+    arguments_.push(decodeValue(
+      memory,
+      view.getUint32(12 + index * 4, true),
+      layout,
+      fixedCursors,
+      new Set(),
+    ));
   }
   return Object.freeze({
     kind,
@@ -451,12 +572,14 @@ export function decodeCapabilityRequest(
 function decodeValue(
   memory: WebAssembly.Memory,
   offset: number,
+  layout: FixedMemoryLayout,
+  fixedCursors: FixedMemoryCursors,
   ancestors: Set<number>,
 ): TemplateValue {
   if (ancestors.has(offset)) {
     throw new Error('Wasm returned a cyclic capability value');
   }
-  const { tag, payload } = readAnyRecord(memory, offset);
+  const { tag, payload } = readAnyValue(memory, offset, layout, fixedCursors);
   if (tag === recordTag.undefined && payload.byteLength === 0) {
     return undefined;
   }
@@ -495,7 +618,13 @@ function decodeValue(
       }
       return Object.freeze(Array.from(
         { length: count },
-        (_, index) => decodeValue(memory, view.getUint32(4 + index * 4, true), ancestors),
+        (_, index) => decodeValue(
+          memory,
+          view.getUint32(4 + index * 4, true),
+          layout,
+          fixedCursors,
+          ancestors,
+        ),
       ));
     }
     if (payload.byteLength !== 4 + count * 8) {
@@ -509,12 +638,69 @@ function decodeValue(
         throw new Error('Wasm returned a non-string capability record key');
       }
       const key = new TextDecoder('utf-8', { fatal: true }).decode(keyRecord.payload);
-      result[key] = decodeValue(memory, view.getUint32(entry + 4, true), ancestors);
+      result[key] = decodeValue(
+        memory,
+        view.getUint32(entry + 4, true),
+        layout,
+        fixedCursors,
+        ancestors,
+      );
     }
     return Object.freeze(result);
   } finally {
     ancestors.delete(offset);
   }
+}
+
+function readAnyValue(
+  memory: WebAssembly.Memory,
+  offset: number,
+  layout: FixedMemoryLayout,
+  fixedCursors: FixedMemoryCursors,
+): { tag: number; payload: Uint8Array } {
+  if (offset > 0 && offset < fixedCursors.slots) {
+    const slotOffset = layout.slotOffset + offset * fixedSlotLength;
+    if (offset > layout.slotCapacity || slotOffset + fixedSlotLength > memory.buffer.byteLength) {
+      throw new Error('Wasm returned an out-of-bounds value slot');
+    }
+    const view = new DataView(memory.buffer, slotOffset, fixedSlotLength);
+    const header = view.getUint32(0, true);
+    const tag = header & 0xff;
+    const masks = header >>> 8;
+    if ((masks & 1) === 0) {
+      throw new Error('Wasm returned a non-value slot as a capability argument');
+    }
+    if (tag === recordTag.undefined || tag === recordTag.null) {
+      return { tag, payload: new Uint8Array(memory.buffer, slotOffset + 4, 0) };
+    }
+    if (tag === recordTag.boolean) {
+      return { tag, payload: new Uint8Array(memory.buffer, slotOffset + 4, 1) };
+    }
+    if (tag === recordTag.array || tag === recordTag.record) {
+      const memberStart = view.getUint32(4, true);
+      const byteLength = view.getUint32(8, true);
+      if (byteLength % memberLength !== 0) {
+        throw new Error('Wasm returned a misaligned member range');
+      }
+      const memberCount = byteLength / memberLength;
+      if (
+        memberStart + memberCount > fixedCursors.members ||
+        memberStart + memberCount > layout.memberCapacity
+      ) {
+        throw new Error('Wasm returned an out-of-bounds member range');
+      }
+      return {
+        tag,
+        payload: new Uint8Array(
+          memory.buffer,
+          layout.memberOffset + memberStart * memberLength,
+          byteLength,
+        ),
+      };
+    }
+    throw new Error('Wasm returned an unsupported value slot');
+  }
+  return readAnyRecord(memory, offset);
 }
 
 function readRecord(
