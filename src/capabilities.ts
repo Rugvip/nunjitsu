@@ -96,7 +96,7 @@ export const capabilityKind = Object.freeze({
 /** Numeric capability category used by the internal raw ABI. */
 export type CapabilityKind = typeof capabilityKind[keyof typeof capabilityKind];
 
-/** Stable name-to-ID pair encoded into each render arena. */
+/** Stable name-to-ID pair encoded into each render's fixed memory. */
 export interface CapabilityDescriptor {
   /** Engine-lifetime numeric identity. */
   id: number;
@@ -104,7 +104,7 @@ export interface CapabilityDescriptor {
   name: string;
 }
 
-/** Immutable custom-tag descriptor copied into each render arena. */
+/** Immutable custom-tag descriptor copied into each render's fixed memory. */
 export interface TagCapabilityDescriptor extends CapabilityDescriptor {
   /** Declarative grammar variant. */
   type: 'inline' | 'body';

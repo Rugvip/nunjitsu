@@ -71,7 +71,7 @@ fn start_body_tag(state_offset: u32, call: Call<'_>, schema: TagSchema) -> Resul
     let body_frame = allocate_record(TAG_FRAME, FRAME_LENGTH)?;
     let scope_base = state_field(state_offset, STATE_CURRENT_SCOPE)?;
     let (segment_start, segment_end) =
-        tag_segment(boundaries_offset, 0)?.ok_or(ERROR_INVALID_ARENA)?;
+        tag_segment(boundaries_offset, 0)?.ok_or(ERROR_INVALID_STATE)?;
     write_frame(
         body_frame,
         caller_frame,
@@ -301,7 +301,7 @@ fn finish_tag_segment(state_offset: u32) -> Result<Option<u32>, u32> {
     let call_offset = state_field(state_offset, STATE_CURRENT_TAG_CALL)?;
     let frame_offset = tag_call_field(call_offset, TAG_CALL_BODY_FRAME)?;
     if frame_offset != state_field(state_offset, STATE_CURRENT_FRAME)? {
-        return Err(ERROR_INVALID_ARENA);
+        return Err(ERROR_INVALID_STATE);
     }
     let segment_index = tag_call_field(call_offset, TAG_CALL_SEGMENT_INDEX)? as usize;
     let value_offset = finish_output_capture(state_offset, TAG_STRING)?;

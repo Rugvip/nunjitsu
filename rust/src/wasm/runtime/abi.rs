@@ -9,36 +9,36 @@ pub extern "C" fn nunjitsu_control_offset() -> u32 {
 }
 
 #[unsafe(no_mangle)]
-pub extern "C" fn nunjitsu_arena_base() -> u32 {
-    legacy_arena_base()
+pub extern "C" fn nunjitsu_scratch_base() -> u32 {
+    scratch_base()
 }
 
 #[unsafe(no_mangle)]
-pub extern "C" fn nunjitsu_arena_cursor() -> u32 {
-    legacy_arena_cursor()
+pub extern "C" fn nunjitsu_scratch_cursor() -> u32 {
+    scratch_cursor()
 }
 
 #[unsafe(no_mangle)]
-pub extern "C" fn nunjitsu_arena_reset() {
+pub extern "C" fn nunjitsu_scratch_reset() {
     reset_memory_cursors();
     set_control(STATE_IDLE, 0, 0, ERROR_NONE);
 }
 
 #[unsafe(no_mangle)]
-pub extern "C" fn nunjitsu_arena_set_cursor(cursor: u32) -> u32 {
-    let base = nunjitsu_arena_base();
+pub extern "C" fn nunjitsu_scratch_set_cursor(cursor: u32) -> u32 {
+    let base = nunjitsu_scratch_base();
     let memory_length = linear_memory_length();
     if cursor < base || cursor as usize > memory_length || !cursor.is_multiple_of(SCRATCH_ALIGNMENT)
     {
         return 0;
     }
-    if let Ok(limit) = active_limit(STATE_LIMIT_ARENA_BYTES)
+    if let Ok(limit) = active_limit(STATE_LIMIT_SCRATCH_BYTES)
         && limit != u32::MAX
         && cursor.saturating_sub(base) > limit
     {
         return 2;
     }
-    set_legacy_arena_cursor(cursor);
+    set_scratch_cursor(cursor);
     1
 }
 
@@ -46,7 +46,7 @@ pub extern "C" fn nunjitsu_arena_set_cursor(cursor: u32) -> u32 {
 pub extern "C" fn nunjitsu_render(request_offset: u32) -> u32 {
     set_control(STATE_IDLE, 0, 0, ERROR_NONE);
     if active_render() != 0 {
-        return fail(ERROR_INVALID_ARENA);
+        return fail(ERROR_INVALID_STATE);
     }
     match start_render(request_offset).and_then(|()| run_active_render()) {
         Ok(state) => state,
@@ -59,7 +59,7 @@ pub extern "C" fn nunjitsu_resume_include(source_offset: u32, canonical_offset: 
         control_state(),
         STATE_LOAD_TEMPLATE | STATE_LOAD_OPTIONAL_TEMPLATE
     ) {
-        return fail(ERROR_INVALID_ARENA);
+        return fail(ERROR_INVALID_STATE);
     }
     set_control(STATE_IDLE, 0, 0, ERROR_NONE);
     match resume_include(source_offset, canonical_offset).and_then(|()| run_active_render()) {
@@ -71,7 +71,7 @@ pub extern "C" fn nunjitsu_resume_include(source_offset: u32, canonical_offset: 
 #[unsafe(no_mangle)]
 pub extern "C" fn nunjitsu_resume_include_missing() -> u32 {
     if control_state() != STATE_LOAD_OPTIONAL_TEMPLATE {
-        return fail(ERROR_INVALID_ARENA);
+        return fail(ERROR_INVALID_STATE);
     }
     set_control(STATE_IDLE, 0, 0, ERROR_NONE);
     match resume_include_missing().and_then(|()| run_active_render()) {
@@ -83,7 +83,7 @@ pub extern "C" fn nunjitsu_resume_include_missing() -> u32 {
 #[unsafe(no_mangle)]
 pub extern "C" fn nunjitsu_resume_output() -> u32 {
     if control_state() != STATE_OUTPUT_AVAILABLE {
-        return fail(ERROR_INVALID_ARENA);
+        return fail(ERROR_INVALID_STATE);
     }
     set_control(STATE_IDLE, 0, 0, ERROR_NONE);
     match resume_output().and_then(|()| run_active_render()) {
@@ -95,7 +95,7 @@ pub extern "C" fn nunjitsu_resume_output() -> u32 {
 #[unsafe(no_mangle)]
 pub extern "C" fn nunjitsu_resume_capability(value_offset: u32) -> u32 {
     if control_state() != STATE_CALL_CAPABILITY {
-        return fail(ERROR_INVALID_ARENA);
+        return fail(ERROR_INVALID_STATE);
     }
     set_control(STATE_IDLE, 0, 0, ERROR_NONE);
     match resume_capability(value_offset).and_then(|()| run_active_render()) {
@@ -116,7 +116,7 @@ fn start_render(request_offset: u32) -> Result<(), u32> {
     let limit_work_units = read_u32(request, 16)?;
     let limit_include_depth = read_u32(request, 20)?;
     let limit_output_bytes = read_u32(request, 24)?;
-    let limit_arena_bytes = read_u32(request, 28)?;
+    let limit_scratch_bytes = read_u32(request, 28)?;
     let limit_loader_calls = read_u32(request, 32)?;
     let filters_offset = read_u32(request, 36)?;
     let tests_offset = read_u32(request, 40)?;
@@ -149,7 +149,7 @@ fn start_render(request_offset: u32) -> Result<(), u32> {
     set_state_field(state_offset, STATE_LIMIT_WORK_UNITS, limit_work_units)?;
     set_state_field(state_offset, STATE_LIMIT_INCLUDE_DEPTH, limit_include_depth)?;
     set_state_field(state_offset, STATE_LIMIT_OUTPUT_BYTES, limit_output_bytes)?;
-    set_state_field(state_offset, STATE_LIMIT_ARENA_BYTES, limit_arena_bytes)?;
+    set_state_field(state_offset, STATE_LIMIT_SCRATCH_BYTES, limit_scratch_bytes)?;
     set_state_field(state_offset, STATE_LIMIT_LOADER_CALLS, limit_loader_calls)?;
     set_state_field(state_offset, STATE_INCLUDE_DEPTH, 1)?;
     set_state_field(state_offset, STATE_FILTERS, filters_offset)?;
@@ -176,8 +176,8 @@ fn start_render(request_offset: u32) -> Result<(), u32> {
             state_field(state_offset, STATE_CURRENT_CAPTURE)?,
         )?;
     }
-    set_state_field(state_offset, STATE_TRANSIENT_BASE, legacy_arena_cursor())?;
-    enforce_arena_limit(state_offset, legacy_arena_cursor())?;
+    set_state_field(state_offset, STATE_TRANSIENT_BASE, scratch_cursor())?;
+    enforce_scratch_limit(state_offset, scratch_cursor())?;
     Ok(())
 }
 
@@ -186,7 +186,7 @@ fn resume_include(source_offset: u32, canonical_offset: u32) -> Result<(), u32> 
     let pending_name = state_field(state_offset, STATE_PENDING_NAME)?;
     let load_kind = state_field(state_offset, STATE_PENDING_LOAD_KIND)?;
     if pending_name == 0 {
-        return Err(ERROR_INVALID_ARENA);
+        return Err(ERROR_INVALID_STATE);
     }
     source_at(source_offset)?;
     validate_name(canonical_offset)?;
@@ -200,7 +200,7 @@ fn resume_include(source_offset: u32, canonical_offset: u32) -> Result<(), u32> 
         if (alias == 0) == (bindings == 0)
             || state_field(state_offset, STATE_IMPORT_WITH_CONTEXT)? > 1
         {
-            return Err(ERROR_INVALID_ARENA);
+            return Err(ERROR_INVALID_STATE);
         }
         let namespace =
             write_import_namespace(state_offset, source_offset, canonical_offset, parent)?;
@@ -214,7 +214,7 @@ fn resume_include(source_offset: u32, canonical_offset: u32) -> Result<(), u32> 
         set_state_field(state_offset, STATE_PENDING_IMPORT_ALIAS, 0)?;
         set_state_field(state_offset, STATE_PENDING_IMPORT_BINDINGS, 0)?;
         set_state_field(state_offset, STATE_IMPORT_WITH_CONTEXT, 0)?;
-        set_state_field(state_offset, STATE_TRANSIENT_BASE, legacy_arena_cursor())?;
+        set_state_field(state_offset, STATE_TRANSIENT_BASE, scratch_cursor())?;
         return Ok(());
     }
     let depth = state_field(state_offset, STATE_INCLUDE_DEPTH)?;
@@ -253,7 +253,7 @@ fn resume_include(source_offset: u32, canonical_offset: u32) -> Result<(), u32> 
             state_field(state_offset, STATE_CURRENT_CAPTURE)?,
         )?;
     }
-    set_state_field(state_offset, STATE_TRANSIENT_BASE, legacy_arena_cursor())?;
+    set_state_field(state_offset, STATE_TRANSIENT_BASE, scratch_cursor())?;
     Ok(())
 }
 
@@ -262,7 +262,7 @@ fn resume_include_missing() -> Result<(), u32> {
     if state_field(state_offset, STATE_PENDING_NAME)? == 0
         || state_field(state_offset, STATE_PENDING_LOAD_KIND)? != LOAD_INCLUDE_OPTIONAL
     {
-        return Err(ERROR_INVALID_ARENA);
+        return Err(ERROR_INVALID_STATE);
     }
     set_state_field(state_offset, STATE_PENDING_NAME, 0)?;
     set_state_field(state_offset, STATE_PENDING_LOAD_KIND, LOAD_INCLUDE)
@@ -271,25 +271,25 @@ fn resume_include_missing() -> Result<(), u32> {
 fn resume_output() -> Result<(), u32> {
     let state_offset = active_state()?;
     if !is_streaming(state_offset)? {
-        return Err(ERROR_INVALID_ARENA);
+        return Err(ERROR_INVALID_STATE);
     }
     reset_output_ranges();
     let materialization_base = state_field(state_offset, STATE_MATERIALIZATION_BASE)?;
-    if materialization_base < nunjitsu_arena_base()
-        || materialization_base > legacy_arena_cursor()
+    if materialization_base < nunjitsu_scratch_base()
+        || materialization_base > scratch_cursor()
     {
-        return Err(ERROR_INVALID_ARENA);
+        return Err(ERROR_INVALID_STATE);
     }
-    set_legacy_arena_cursor(materialization_base);
+    set_scratch_cursor(materialization_base);
     if state_field(state_offset, STATE_OUTPUT_LENGTH)? != 0 {
         return Ok(());
     }
 
     let transient_base = state_field(state_offset, STATE_TRANSIENT_BASE)?;
     if transient_base > materialization_base {
-        return Err(ERROR_INVALID_ARENA);
+        return Err(ERROR_INVALID_STATE);
     }
-    set_legacy_arena_cursor(transient_base);
+    set_scratch_cursor(transient_base);
     set_state_field(state_offset, STATE_FIRST_CHUNK, 0)?;
     set_state_field(state_offset, STATE_LAST_CHUNK, 0)?;
     set_state_field(state_offset, STATE_MATERIALIZATION_BASE, 0)
@@ -298,7 +298,7 @@ fn resume_output() -> Result<(), u32> {
 fn resume_capability(value_offset: u32) -> Result<(), u32> {
     let state_offset = active_state()?;
     if state_field(state_offset, STATE_PENDING_EXPRESSION)? == 0 {
-        return Err(ERROR_INVALID_ARENA);
+        return Err(ERROR_INVALID_STATE);
     }
     let value = Value::at(value_offset)?;
     let negate = state_field(state_offset, STATE_NEGATE_RESULT)?;
@@ -311,7 +311,7 @@ fn resume_capability(value_offset: u32) -> Result<(), u32> {
             write_boolean(!result)?
         }
         NEGATE_TRUTHINESS => write_boolean(!value.truthy())?,
-        _ => return Err(ERROR_INVALID_ARENA),
+        _ => return Err(ERROR_INVALID_STATE),
     };
     set_state_field(state_offset, STATE_NEGATE_RESULT, NEGATE_NONE)?;
     set_state_field(state_offset, STATE_CURRENT_VALUE, current)?;
@@ -325,7 +325,7 @@ fn run_active_render() -> Result<u32, u32> {
     }
     if state_field(state_offset, STATE_PENDING_EXPRESSION)? != 0 {
         if state_field(state_offset, STATE_CURRENT_VALUE)? == 0 {
-            return Err(ERROR_INVALID_ARENA);
+            return Err(ERROR_INVALID_STATE);
         }
         if let Some(state) = continue_expression(state_offset)? {
             return Ok(state);

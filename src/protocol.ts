@@ -12,7 +12,7 @@ import {
 } from './limits.ts';
 
 const recordHeaderLength = 8;
-const recordAlignment = 8;
+const scratchAlignment = 8;
 const fixedSlotLength = 72;
 const memberLength = 4;
 
@@ -39,12 +39,12 @@ const recordTag = {
   identifier: 38,
 } as const;
 
-/** The offsets and cursor for one encoded render request. */
+/** The offsets and scratch checkpoint for one encoded render request. */
 export interface EncodedRenderRequest {
-  /** Offset of the request record in the worker arena. */
+  /** Index of the request slot in fixed memory. */
   requestOffset: number;
-  /** First unallocated byte after the encoded request. */
-  cursor: number;
+  /** Absolute scratch cursor to restore before rendering. */
+  scratchCursor: number;
   /** Frozen fixed-pool cursors submitted with the request. */
   fixedCursors: FixedMemoryCursors;
 }
@@ -55,18 +55,18 @@ export interface EncodedLoadedTemplate {
   sourceOffset: number;
   /** Offset of the loader-provided canonical identity. */
   canonicalOffset: number;
-  /** First unallocated byte after the loader result. */
-  cursor: number;
+  /** Absolute scratch cursor to restore before resuming. */
+  scratchCursor: number;
   /** Frozen fixed-pool cursors submitted with the loader result. */
   fixedCursors: FixedMemoryCursors;
 }
 
-/** Offset and cursor for one host capability result appended to a suspended render. */
+/** Offset and scratch checkpoint for one host capability result. */
 export interface EncodedCapabilityResult {
   /** Offset of the copied safe result value. */
   valueOffset: number;
-  /** First unallocated byte after the result. */
-  cursor: number;
+  /** Absolute scratch cursor to restore before resuming. */
+  scratchCursor: number;
   /** Frozen fixed-pool cursors submitted with the capability result. */
   fixedCursors: FixedMemoryCursors;
 }
@@ -116,32 +116,32 @@ export interface DecodedLoadRequest {
   from?: string;
 }
 
-/** Writes render-local records into one worker's shared arena. */
-export class ArenaWriter {
+/** Writes render-local values into one worker's fixed shared-memory pools. */
+export class FixedMemoryWriter {
   readonly #memory: WebAssembly.Memory;
   #view: DataView;
-  #cursor: number;
+  #scratchCursor: number;
   readonly #layout: FixedMemoryLayout;
   readonly #fixedCursors: FixedMemoryCursors;
   readonly #hostStrings: string[];
 
-  /** Creates a writer beginning at an aligned free arena cursor. */
+  /** Creates a writer with the scratch checkpoint owned by the suspended evaluator. */
   constructor(
     memory: WebAssembly.Memory,
-    arenaBase: number,
+    scratchBase: number,
     layout: FixedMemoryLayout,
     fixedCursors: FixedMemoryCursors,
     hostStrings: string[] = [],
   ) {
     this.#memory = memory;
     this.#view = new DataView(memory.buffer);
-    this.#cursor = align(arenaBase, recordAlignment);
+    this.#scratchCursor = align(scratchBase, scratchAlignment);
     this.#layout = layout;
     this.#fixedCursors = { ...fixedCursors };
     this.#hostStrings = hostStrings;
   }
 
-  /** Encodes an inline template, safe context, and render flags into the arena. */
+  /** Encodes an inline template, safe context, and render flags into fixed memory. */
   encodeRender(
     source: string,
     context: TemplateContext,
@@ -181,7 +181,7 @@ export class ArenaWriter {
     requestView.setUint32(16, encodeRenderLimit(options.limits.workUnits), true);
     requestView.setUint32(20, encodeRenderLimit(options.limits.includeDepth), true);
     requestView.setUint32(24, encodeRenderLimit(options.limits.outputBytes), true);
-    requestView.setUint32(28, encodeRenderLimit(options.limits.arenaBytes), true);
+    requestView.setUint32(28, encodeRenderLimit(options.limits.scratchBytes), true);
     requestView.setUint32(32, encodeRenderLimit(options.limits.loaderCalls), true);
     requestView.setUint32(36, filtersOffset, true);
     requestView.setUint32(40, testsOffset, true);
@@ -192,7 +192,7 @@ export class ArenaWriter {
 
     return {
       requestOffset,
-      cursor: this.#cursor,
+      scratchCursor: this.#scratchCursor,
       fixedCursors: this.#snapshotFixedCursors(),
     };
   }
@@ -207,7 +207,7 @@ export class ArenaWriter {
     return {
       sourceOffset,
       canonicalOffset,
-      cursor: this.#cursor,
+      scratchCursor: this.#scratchCursor,
       fixedCursors: this.#snapshotFixedCursors(),
     };
   }
@@ -217,7 +217,7 @@ export class ArenaWriter {
     const valueOffset = this.#writeValue(value, new Set(), new Map());
     return {
       valueOffset,
-      cursor: this.#cursor,
+      scratchCursor: this.#scratchCursor,
       fixedCursors: this.#snapshotFixedCursors(),
     };
   }
@@ -288,7 +288,7 @@ export class ArenaWriter {
     const start = this.#fixedCursors.values;
     const end = start + value.length;
     if (end > this.#layout.valueCapacity) {
-      throw new NunjitsuLimitError('arenaBytes');
+      throw new NunjitsuLimitError('scratchBytes');
     }
     const index = this.#reserveSlot();
     const slotOffset = this.#layout.slotOffset + index * fixedSlotLength;
@@ -309,7 +309,7 @@ export class ArenaWriter {
     const start = this.#fixedCursors.sources;
     const end = start + value.length;
     if (end > this.#layout.sourceCapacity) {
-      throw new NunjitsuLimitError('arenaBytes');
+      throw new NunjitsuLimitError('scratchBytes');
     }
     const index = this.#reserveSlot();
     const slotOffset = this.#layout.slotOffset + index * fixedSlotLength;
@@ -498,7 +498,7 @@ export class ArenaWriter {
     const start = this.#fixedCursors.values;
     const end = start + value.length;
     if (end > this.#layout.valueCapacity) {
-      throw new NunjitsuLimitError('arenaBytes');
+      throw new NunjitsuLimitError('scratchBytes');
     }
     const index = this.#reserveSlot();
     const slotOffset = this.#layout.slotOffset + index * fixedSlotLength;
@@ -525,7 +525,7 @@ export class ArenaWriter {
     const memberStart = this.#fixedCursors.members;
     const memberEnd = memberStart + memberCount;
     if (memberEnd > this.#layout.memberCapacity) {
-      throw new NunjitsuLimitError('arenaBytes');
+      throw new NunjitsuLimitError('scratchBytes');
     }
     const slotOffset = this.#layout.slotOffset + index * fixedSlotLength;
     const slot = new Uint8Array(this.#memory.buffer, slotOffset, fixedSlotLength);
@@ -545,7 +545,7 @@ export class ArenaWriter {
   #reserveSlot(): number {
     const index = this.#fixedCursors.slots;
     if (index < 1 || index > this.#layout.slotCapacity) {
-      throw new NunjitsuLimitError('arenaBytes');
+      throw new NunjitsuLimitError('scratchBytes');
     }
     this.#fixedCursors.slots = index + 1;
     return index;

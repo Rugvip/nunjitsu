@@ -275,7 +275,7 @@ fn slice_lookup_value(
         _ => return Err(ERROR_INVALID_EXPRESSION),
     };
     let Value::Array(source) = Value::at(source_offset)? else {
-        return Err(ERROR_INVALID_ARENA);
+        return Err(ERROR_INVALID_STATE);
     };
     let length = source.count as f64;
     let step = slice_expression_number(state_offset, step)?.unwrap_or(1.0);

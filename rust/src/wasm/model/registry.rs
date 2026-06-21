@@ -216,7 +216,7 @@ fn set_state_field(offset: u32, field: usize, value: u32) -> Result<(), u32> {
 fn active_state() -> Result<u32, u32> {
     let offset = active_render();
     if offset == 0 {
-        return Err(ERROR_INVALID_ARENA);
+        return Err(ERROR_INVALID_STATE);
     }
     Ok(offset)
 }
@@ -224,7 +224,7 @@ fn active_state() -> Result<u32, u32> {
 fn active_limit(field: usize) -> Result<u32, u32> {
     let state_offset = active_render();
     if state_offset == 0 {
-        return Err(ERROR_INVALID_ARENA);
+        return Err(ERROR_INVALID_STATE);
     }
     state_field(state_offset, field)
 }
@@ -248,11 +248,11 @@ fn enforce_limit(value: u32, limit: u32) -> Result<(), u32> {
     Ok(())
 }
 
-fn enforce_arena_limit(state_offset: u32, cursor: u32) -> Result<(), u32> {
+fn enforce_scratch_limit(state_offset: u32, cursor: u32) -> Result<(), u32> {
     let used = cursor
-        .checked_sub(nunjitsu_arena_base())
-        .ok_or(ERROR_INVALID_ARENA)?;
-    enforce_limit(used, state_field(state_offset, STATE_LIMIT_ARENA_BYTES)?)
+        .checked_sub(nunjitsu_scratch_base())
+        .ok_or(ERROR_INVALID_STATE)?;
+    enforce_limit(used, state_field(state_offset, STATE_LIMIT_SCRATCH_BYTES)?)
 }
 
 fn fail(error: u32) -> u32 {

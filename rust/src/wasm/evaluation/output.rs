@@ -36,7 +36,7 @@ fn write_coerced_value(value_offset: u32) -> Result<&'static [u8], u32> {
     let mut cursor = 0usize;
     write_coerced_value_into(value_offset, output, &mut cursor)?;
     if cursor != output.len() {
-        return Err(ERROR_INVALID_ARENA);
+        return Err(ERROR_INVALID_STATE);
     }
     Ok(output)
 }
@@ -94,7 +94,7 @@ fn write_coerced_bytes(output: &mut [u8], cursor: &mut usize, bytes: &[u8]) -> R
     let end = cursor
         .checked_add(bytes.len())
         .ok_or(ERROR_RESOURCE_LIMIT)?;
-    let destination = output.get_mut(*cursor..end).ok_or(ERROR_INVALID_ARENA)?;
+    let destination = output.get_mut(*cursor..end).ok_or(ERROR_INVALID_STATE)?;
     destination.copy_from_slice(bytes);
     *cursor = end;
     Ok(())
@@ -195,11 +195,11 @@ fn yield_output(state_offset: u32) -> Result<u32, u32> {
     set_state_field(
         state_offset,
         STATE_MATERIALIZATION_BASE,
-        legacy_arena_cursor(),
+        scratch_cursor(),
     )?;
     let range_count = publish_pending_output(state_offset, STREAM_CHUNK_BYTES)?;
     if range_count == 0 {
-        return Err(ERROR_INVALID_ARENA);
+        return Err(ERROR_INVALID_STATE);
     }
     set_control(
         STATE_OUTPUT_AVAILABLE,

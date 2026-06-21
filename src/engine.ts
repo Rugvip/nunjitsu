@@ -22,7 +22,7 @@ import {
   type RenderLimits,
 } from './limits.ts';
 import {
-  ArenaWriter,
+  FixedMemoryWriter,
   decodeCapabilityRequest,
   decodeOutputRanges,
   type FixedMemoryCursors,
@@ -243,7 +243,7 @@ interface PendingStreamingRender extends PendingRenderBase {
 /** One active render assigned to a worker. */
 type PendingRender = PendingBufferedRender | PendingStreamingRender;
 
-/** Immutable arena offsets for a source already loaded during this render. */
+/** Immutable fixed-memory offsets for a source already loaded during this render. */
 interface CachedLoadedTemplate {
   sourceOffset: number;
   canonicalOffset: number;
@@ -260,7 +260,7 @@ interface ResolvedTemplate {
 interface ReadyMessage {
   type: 'ready';
   abiVersion: number;
-  arenaBase: number;
+  scratchBase: number;
   layoutVersion: number;
   prefixOffset: number;
   slotSize: number;
@@ -290,7 +290,7 @@ interface LoadMessage {
   id: number;
   name: string;
   from?: string;
-  cursor: number;
+  scratchCursor: number;
   fixedCursors: FixedMemoryCursors;
   ignoreMissing: boolean;
 }
@@ -309,7 +309,7 @@ interface CapabilityMessage {
   id: number;
   requestOffset: number;
   requestLength: number;
-  cursor: number;
+  scratchCursor: number;
   fixedCursors: FixedMemoryCursors;
 }
 
@@ -697,7 +697,7 @@ class WorkerSlot {
   failed = false;
 
   readonly #worker: Worker;
-  #arenaBase = 0;
+  #scratchBase = 0;
   #fixedLayout: FixedMemoryLayout | undefined;
   #nextRenderId = 1;
   #pending: PendingRender | undefined;
@@ -772,9 +772,9 @@ class WorkerSlot {
     }
 
     const hostStrings: string[] = [];
-    const encoded = new ArenaWriter(
+    const encoded = new FixedMemoryWriter(
       this.memory,
-      this.#arenaBase,
+      this.#scratchBase,
       this.#requireFixedLayout(),
       initialFixedCursors(),
       hostStrings,
@@ -791,12 +791,6 @@ class WorkerSlot {
         ...(template.canonicalName ? { canonicalName: template.canonicalName } : {}),
       },
     );
-    if (
-      limits.arenaBytes !== Number.POSITIVE_INFINITY &&
-      encoded.cursor - this.#arenaBase > limits.arenaBytes
-    ) {
-      throw new NunjitsuLimitError('arenaBytes');
-    }
     const id = this.#nextRenderId++;
     return await new Promise<string>((resolve, reject) => {
       const pending: PendingBufferedRender = {
@@ -825,7 +819,7 @@ class WorkerSlot {
         type: 'render',
         id,
         requestOffset: encoded.requestOffset,
-        cursor: encoded.cursor,
+        scratchCursor: encoded.scratchCursor,
         fixedCursors: encoded.fixedCursors,
       });
     });
@@ -859,9 +853,9 @@ class WorkerSlot {
     }
 
     const hostStrings: string[] = [];
-    const encoded = new ArenaWriter(
+    const encoded = new FixedMemoryWriter(
       this.memory,
-      this.#arenaBase,
+      this.#scratchBase,
       this.#requireFixedLayout(),
       initialFixedCursors(),
       hostStrings,
@@ -878,13 +872,6 @@ class WorkerSlot {
         ...(template.canonicalName ? { canonicalName: template.canonicalName } : {}),
       },
     );
-    if (
-      limits.arenaBytes !== Number.POSITIVE_INFINITY &&
-      encoded.cursor - this.#arenaBase > limits.arenaBytes
-    ) {
-      throw new NunjitsuLimitError('arenaBytes');
-    }
-
     let resolveFinished: () => void = () => undefined;
     let rejectFinished: (error: Error) => void = () => undefined;
     const finished = new Promise<void>((resolve, reject) => {
@@ -922,7 +909,7 @@ class WorkerSlot {
       type: 'render',
       id: pending.id,
       requestOffset: encoded.requestOffset,
-      cursor: encoded.cursor,
+      scratchCursor: encoded.scratchCursor,
       fixedCursors: encoded.fixedCursors,
     });
     return new WorkerStreamSession(this, pending, finished);
@@ -986,12 +973,12 @@ class WorkerSlot {
         value.prefixOffset <= 0 ||
         value.slotSize !== repeatedSlotBytes ||
         !validFixedLayout(value.memoryLayout, this.memory) ||
-        value.arenaBase <= 0
+        value.scratchBase <= 0
       ) {
         this.#fail(new Error('Nunjitsu worker reported an incompatible Wasm ABI'));
         return;
       }
-      this.#arenaBase = value.arenaBase;
+      this.#scratchBase = value.scratchBase;
       this.#fixedLayout = value.memoryLayout;
       this.#resolveReady?.();
       this.#resolveReady = undefined;
@@ -1099,15 +1086,15 @@ class WorkerSlot {
     try {
       let parentCache = pending.loadedByName.get(message.from);
       let cached = parentCache?.get(message.name);
-      let cursor = message.cursor;
+      let scratchCursor = message.scratchCursor;
       let fixedCursors = message.fixedCursors;
       if (!cached) {
         const loaded = await pending.load(message.name, message.from);
         cached = pending.loadedByCanonicalName.get(loaded.canonicalName);
         if (!cached) {
-          const encoded = new ArenaWriter(
+          const encoded = new FixedMemoryWriter(
             this.memory,
-            message.cursor,
+            message.scratchCursor,
             this.#requireFixedLayout(),
             message.fixedCursors,
             pending.hostStrings,
@@ -1116,7 +1103,7 @@ class WorkerSlot {
             sourceOffset: encoded.sourceOffset,
             canonicalOffset: encoded.canonicalOffset,
           };
-          cursor = encoded.cursor;
+          scratchCursor = encoded.scratchCursor;
           fixedCursors = encoded.fixedCursors;
           pending.loadedByCanonicalName.set(loaded.canonicalName, cached);
         }
@@ -1135,7 +1122,7 @@ class WorkerSlot {
         id: pending.id,
         sourceOffset: cached.sourceOffset,
         canonicalOffset: cached.canonicalOffset,
-        cursor,
+        scratchCursor,
         fixedCursors,
       });
     } catch (error) {
@@ -1171,9 +1158,9 @@ class WorkerSlot {
         request.capabilityId,
         request.arguments,
       );
-      const encoded = new ArenaWriter(
+      const encoded = new FixedMemoryWriter(
         this.memory,
-        message.cursor,
+        message.scratchCursor,
         this.#requireFixedLayout(),
         message.fixedCursors,
         pending.hostStrings,
@@ -1186,7 +1173,7 @@ class WorkerSlot {
         type: 'resumeCapability',
         id: pending.id,
         valueOffset: encoded.valueOffset,
-        cursor: encoded.cursor,
+        scratchCursor: encoded.scratchCursor,
         fixedCursors: encoded.fixedCursors,
       });
     } catch (error) {
@@ -1412,7 +1399,7 @@ function isWorkerMessage(value: unknown): value is WorkerMessage {
   if (message.type === 'ready') {
     return (
       typeof message.abiVersion === 'number' &&
-      typeof message.arenaBase === 'number' &&
+      typeof message.scratchBase === 'number' &&
       typeof message.layoutVersion === 'number' &&
       typeof message.prefixOffset === 'number' &&
       typeof message.slotSize === 'number' &&
@@ -1424,7 +1411,7 @@ function isWorkerMessage(value: unknown): value is WorkerMessage {
       typeof message.id === 'number' &&
       typeof message.name === 'string' &&
       (message.from === undefined || typeof message.from === 'string') &&
-      typeof message.cursor === 'number' &&
+      typeof message.scratchCursor === 'number' &&
       isFixedMemoryCursors(message.fixedCursors) &&
       typeof message.ignoreMissing === 'boolean'
     );
@@ -1441,7 +1428,7 @@ function isWorkerMessage(value: unknown): value is WorkerMessage {
       typeof message.id === 'number' &&
       typeof message.requestOffset === 'number' &&
       typeof message.requestLength === 'number' &&
-      typeof message.cursor === 'number' &&
+      typeof message.scratchCursor === 'number' &&
       isFixedMemoryCursors(message.fixedCursors)
     );
   }

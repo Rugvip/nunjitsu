@@ -668,7 +668,7 @@ fn write_super_chain(
         let mut index = 0usize;
         let selected = loop {
             if candidate == 0 {
-                return Err(ERROR_INVALID_ARENA);
+                return Err(ERROR_INVALID_STATE);
             }
             if name_eq_bytes(
                 block_definition_field(candidate, BLOCK_DEFINITION_NAME)?,
@@ -733,10 +733,10 @@ fn start_block(state_offset: u32, name: &[u16]) -> Result<(), u32> {
             end_cursor,
         )?;
         set_state_field(state_offset, STATE_CURRENT_FRAME, block_frame)?;
-        set_state_field(state_offset, STATE_TRANSIENT_BASE, legacy_arena_cursor())?;
+        set_state_field(state_offset, STATE_TRANSIENT_BASE, scratch_cursor())?;
         return Ok(());
     }
-    let definition_offset = definition_offset.ok_or(ERROR_INVALID_ARENA)?;
+    let definition_offset = definition_offset.ok_or(ERROR_INVALID_STATE)?;
     let override_source = block_definition_field(definition_offset, BLOCK_DEFINITION_SOURCE)?;
     let override_canonical = frame_canonical_name(block_definition_field(
         definition_offset,
@@ -764,7 +764,7 @@ fn start_block(state_offset: u32, name: &[u16]) -> Result<(), u32> {
         block_definition_field(definition_offset, BLOCK_DEFINITION_END_CURSOR)?,
     )?;
     set_state_field(state_offset, STATE_CURRENT_FRAME, block_frame)?;
-    set_state_field(state_offset, STATE_TRANSIENT_BASE, legacy_arena_cursor())?;
+    set_state_field(state_offset, STATE_TRANSIENT_BASE, scratch_cursor())?;
     let super_name = write_identifier_bytes(b"super")?;
     assign_scope(state_offset, super_name, super_definition)
 }

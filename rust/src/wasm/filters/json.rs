@@ -21,7 +21,7 @@ fn dump_value(value_offset: u32, spaces_offset: Option<u32>) -> Result<u32, u32>
     let mut cursor = 0usize;
     write_json_value(value_offset, indent, 0, output, &mut cursor)?;
     if cursor != output.len() {
-        return Err(ERROR_INVALID_ARENA);
+        return Err(ERROR_INVALID_STATE);
     }
     write_string_value(output)
 }

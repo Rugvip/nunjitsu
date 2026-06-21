@@ -389,31 +389,31 @@ fn write_u32(bytes: &mut [u8], offset: usize, value: u32) -> Result<(), u32> {
     Ok(())
 }
 
-fn arena_alloc(length: u32, alignment: u32) -> Result<u32, u32> {
+fn scratch_alloc(length: u32, alignment: u32) -> Result<u32, u32> {
     if alignment == 0 || !alignment.is_power_of_two() || alignment as usize > align_of::<u128>() {
-        return Err(ERROR_INVALID_ARENA);
+        return Err(ERROR_INVALID_STATE);
     }
-    let cursor = legacy_arena_cursor();
-    let start = align_up(cursor, alignment).ok_or(ERROR_INVALID_ARENA)?;
+    let cursor = scratch_cursor();
+    let start = align_up(cursor, alignment).ok_or(ERROR_INVALID_STATE)?;
     let end = start.checked_add(length).ok_or(ERROR_OUTPUT_TOO_LARGE)?;
     let aligned_end = align_up(end, SCRATCH_ALIGNMENT).ok_or(ERROR_OUTPUT_TOO_LARGE)?;
     let scratch = unsafe { (*memory_prefix()).scratch };
     if aligned_end.saturating_sub(scratch.offset) > scratch.capacity {
         return Err(ERROR_RESOURCE_LIMIT);
     }
-    if let Ok(limit) = active_limit(STATE_LIMIT_ARENA_BYTES) {
+    if let Ok(limit) = active_limit(STATE_LIMIT_SCRATCH_BYTES) {
         let used = aligned_end
-            .checked_sub(nunjitsu_arena_base())
-            .ok_or(ERROR_INVALID_ARENA)?;
+            .checked_sub(nunjitsu_scratch_base())
+            .ok_or(ERROR_INVALID_STATE)?;
         enforce_limit(used, limit)?;
     }
     ensure_memory(aligned_end as usize)?;
-    set_legacy_arena_cursor(aligned_end);
+    set_scratch_cursor(aligned_end);
     Ok(start)
 }
 
 fn allocate_scratch(length: u32) -> Result<(u32, &'static mut [u8]), u32> {
-    let offset = arena_alloc(length, 1)?;
+    let offset = scratch_alloc(length, 1)?;
     Ok((offset, mutable_memory(offset, length)?))
 }
 

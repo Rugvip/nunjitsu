@@ -38,7 +38,7 @@ interface RenderCommand {
   type: 'render';
   id: number;
   requestOffset: number;
-  cursor: number;
+  scratchCursor: number;
   fixedCursors: FixedMemoryCursors;
 }
 
@@ -48,7 +48,7 @@ interface ResumeLoadCommand {
   id: number;
   sourceOffset: number;
   canonicalOffset: number;
-  cursor: number;
+  scratchCursor: number;
   fixedCursors: FixedMemoryCursors;
 }
 
@@ -69,7 +69,7 @@ interface ResumeCapabilityCommand {
   type: 'resumeCapability';
   id: number;
   valueOffset: number;
-  cursor: number;
+  scratchCursor: number;
   fixedCursors: FixedMemoryCursors;
 }
 
@@ -108,10 +108,10 @@ interface NunjitsuExports {
     strings: number,
   ) => number;
   hostStringCount: () => number;
-  arenaBase: () => number;
-  arenaCursor: () => number;
-  arenaReset: () => void;
-  arenaSetCursor: (cursor: number) => number;
+  scratchBase: () => number;
+  scratchCursor: () => number;
+  scratchReset: () => void;
+  scratchSetCursor: (cursor: number) => number;
   controlOffset: () => number;
   render: (requestOffset: number) => number;
   resumeInclude: (sourceOffset: number, canonicalOffset: number) => number;
@@ -174,14 +174,14 @@ async function start(port: MessagePort): Promise<void> {
   ) {
     throw new Error('Nunjitsu worker memory capacities do not fit the Wasm memory');
   }
-  exports.arenaReset();
+  exports.scratchReset();
   const controlOffset = exports.controlOffset();
   const memoryLayout = readFixedMemoryLayout(exports);
 
   port.postMessage({
     type: 'ready',
     abiVersion: exports.abiVersion(),
-    arenaBase: exports.arenaBase(),
+    scratchBase: exports.scratchBase(),
     layoutVersion: exports.layoutVersion(),
     prefixOffset: exports.memoryPrefixOffset(),
     slotSize: exports.slotSize(),
@@ -197,7 +197,7 @@ async function start(port: MessagePort): Promise<void> {
       }
       activeRenderId = command.id;
       acceptHostCursors(exports, command.fixedCursors);
-      const cursorState = exports.arenaSetCursor(command.cursor);
+      const cursorState = exports.scratchSetCursor(command.scratchCursor);
       if (cursorState !== 1) {
         finishWithError(port, command.id, cursorState === 2 ? 7 : 1, exports);
         activeRenderId = undefined;
@@ -238,7 +238,7 @@ async function start(port: MessagePort): Promise<void> {
     }
     if (command.type === 'resumeCapability') {
       acceptHostCursors(exports, command.fixedCursors);
-      const cursorState = exports.arenaSetCursor(command.cursor);
+      const cursorState = exports.scratchSetCursor(command.scratchCursor);
       if (cursorState !== 1) {
         finishWithError(port, command.id, cursorState === 2 ? 7 : 1, exports);
         activeRenderId = undefined;
@@ -274,7 +274,7 @@ async function start(port: MessagePort): Promise<void> {
       return;
     }
     acceptHostCursors(exports, command.fixedCursors);
-    const cursorState = exports.arenaSetCursor(command.cursor);
+    const cursorState = exports.scratchSetCursor(command.scratchCursor);
     if (cursorState !== 1) {
       finishWithError(port, command.id, cursorState === 2 ? 7 : 1, exports);
       activeRenderId = undefined;
@@ -350,7 +350,7 @@ function memoryBytes(
   const normalizedLength = length >>> 0;
   const end = normalizedOffset + normalizedLength;
   if (end > memory.buffer.byteLength) {
-    throw new RangeError('Wasm requested memory outside the worker arena');
+    throw new RangeError('Wasm requested memory outside the worker scratch pool');
   }
   return new Uint8Array(memory.buffer, normalizedOffset, normalizedLength);
 }
@@ -377,7 +377,7 @@ function reportState(
       outputOffset: control.getUint32(4, true),
       outputLength: control.getUint32(8, true),
     });
-    exports.arenaReset();
+    exports.scratchReset();
     return false;
   }
   if (state === 3 || state === 6) {
@@ -394,7 +394,7 @@ function reportState(
       id,
       name: request.name,
       ...(request.from === undefined ? {} : { from: request.from }),
-      cursor: exports.arenaCursor(),
+      scratchCursor: exports.scratchCursor(),
       fixedCursors,
       ignoreMissing: state === 6,
     });
@@ -415,7 +415,7 @@ function reportState(
       id,
       requestOffset: control.getUint32(4, true),
       requestLength: control.getUint32(8, true),
-      cursor: exports.arenaCursor(),
+      scratchCursor: exports.scratchCursor(),
       fixedCursors: readFixedMemoryCursors(exports),
     });
     return true;
@@ -436,7 +436,7 @@ function finishWithError(
     state: 2,
     errorCode,
   });
-  exports.arenaReset();
+  exports.scratchReset();
 }
 
 function parseWorkerData(value: unknown): NunjitsuWorkerData {
@@ -560,29 +560,29 @@ function parseCommand(value: unknown): WorkerCommand {
   if (
     candidate.type === 'resumeCapability' &&
     typeof candidate.valueOffset === 'number' &&
-    typeof candidate.cursor === 'number' &&
+    typeof candidate.scratchCursor === 'number' &&
     isFixedMemoryCursors(candidate.fixedCursors)
   ) {
     return {
       type: 'resumeCapability',
       id: candidate.id,
       valueOffset: candidate.valueOffset,
-      cursor: candidate.cursor,
+      scratchCursor: candidate.scratchCursor,
       fixedCursors: candidate.fixedCursors,
     };
   }
   if (candidate.type === 'render' && typeof candidate.requestOffset === 'number') {
     if (
-      typeof candidate.cursor !== 'number' ||
+      typeof candidate.scratchCursor !== 'number' ||
       !isFixedMemoryCursors(candidate.fixedCursors)
     ) {
-      throw new Error('Nunjitsu worker received an invalid render cursor');
+      throw new Error('Nunjitsu worker received an invalid scratch cursor');
     }
     return {
       type: 'render',
       id: candidate.id,
       requestOffset: candidate.requestOffset,
-      cursor: candidate.cursor,
+      scratchCursor: candidate.scratchCursor,
       fixedCursors: candidate.fixedCursors,
     };
   }
@@ -590,7 +590,7 @@ function parseCommand(value: unknown): WorkerCommand {
     candidate.type === 'resumeLoad' &&
     typeof candidate.sourceOffset === 'number' &&
     typeof candidate.canonicalOffset === 'number' &&
-    typeof candidate.cursor === 'number' &&
+    typeof candidate.scratchCursor === 'number' &&
     isFixedMemoryCursors(candidate.fixedCursors)
   ) {
     return {
@@ -598,7 +598,7 @@ function parseCommand(value: unknown): WorkerCommand {
       id: candidate.id,
       sourceOffset: candidate.sourceOffset,
       canonicalOffset: candidate.canonicalOffset,
-      cursor: candidate.cursor,
+      scratchCursor: candidate.scratchCursor,
       fixedCursors: candidate.fixedCursors,
     };
   }
@@ -617,10 +617,10 @@ function parseExports(value: WebAssembly.Exports): NunjitsuExports {
     poolCursor: exportedFunction(value, 'nunjitsu_pool_cursor'),
     acceptHostCursors: exportedFunction(value, 'nunjitsu_accept_host_cursors'),
     hostStringCount: exportedFunction(value, 'nunjitsu_host_string_count'),
-    arenaBase: exportedFunction(value, 'nunjitsu_arena_base'),
-    arenaCursor: exportedFunction(value, 'nunjitsu_arena_cursor'),
-    arenaReset: exportedFunction(value, 'nunjitsu_arena_reset'),
-    arenaSetCursor: exportedFunction(value, 'nunjitsu_arena_set_cursor'),
+    scratchBase: exportedFunction(value, 'nunjitsu_scratch_base'),
+    scratchCursor: exportedFunction(value, 'nunjitsu_scratch_cursor'),
+    scratchReset: exportedFunction(value, 'nunjitsu_scratch_reset'),
+    scratchSetCursor: exportedFunction(value, 'nunjitsu_scratch_set_cursor'),
     controlOffset: exportedFunction(value, 'nunjitsu_control_offset'),
     render: exportedFunction(value, 'nunjitsu_render'),
     resumeInclude: exportedFunction(value, 'nunjitsu_resume_include'),

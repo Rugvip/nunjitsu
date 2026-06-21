@@ -114,16 +114,16 @@ fn set_active_render(value: u32) {
     }
 }
 
-fn legacy_arena_cursor() -> u32 {
+fn scratch_cursor() -> u32 {
     let pool = unsafe { (*memory_prefix()).scratch };
     pool.offset.saturating_add(pool.cursor)
 }
 
-fn legacy_arena_base() -> u32 {
+fn scratch_base() -> u32 {
     unsafe { (*memory_prefix()).scratch.offset }
 }
 
-fn set_legacy_arena_cursor(value: u32) {
+fn set_scratch_cursor(value: u32) {
     let prefix = memory_prefix();
     let pool = unsafe { (*prefix).scratch };
     if let Some(cursor) = value.checked_sub(pool.offset) {

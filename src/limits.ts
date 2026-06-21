@@ -6,15 +6,15 @@ export interface RenderLimits {
   includeDepth: number;
   /** Maximum rendered UTF-8 output bytes. */
   outputBytes: number;
-  /** Maximum render-local arena bytes, including inputs and evaluator state. */
-  arenaBytes: number;
+  /** Maximum temporary UTF-8 scratch bytes used during evaluation. */
+  scratchBytes: number;
   /** Maximum named-template loader requests, including the entry template. */
   loaderCalls: number;
   /** Maximum trusted host filter, test, and global invocations. */
   capabilityCalls: number;
 }
 
-/** Fully populated limits passed to the arena encoder and evaluator. */
+/** Fully populated limits passed to the fixed-memory encoder and evaluator. */
 export type NormalizedRenderLimits = Readonly<RenderLimits>;
 
 /** A render rejected after exceeding one configured resource dimension. */
@@ -34,7 +34,7 @@ const defaultLimits: NormalizedRenderLimits = Object.freeze({
   workUnits: 1_000_000,
   includeDepth: 64,
   outputBytes: 16 * 1024 * 1024,
-  arenaBytes: 64 * 1024 * 1024,
+  scratchBytes: 64 * 1024 * 1024,
   loaderCalls: 1024,
   capabilityCalls: 4096,
 });

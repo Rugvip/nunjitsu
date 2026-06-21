@@ -2231,7 +2231,7 @@ test('enforces finite per-render limits and permits explicit unlimited values', 
     for (const [template, limits] of [
       [{ source: 'output' }, { outputBytes: 3 }],
       [{ source: 'work' }, { workUnits: 1 }],
-      [{ source: '{{ value | upper }}' }, { arenaBytes: 64 }],
+      [{ source: '{{ value | upper }}' }, { scratchBytes: 64 }],
       [{ name: 'entry.njk' }, { includeDepth: 1 }],
       [{ name: 'entry.njk' }, { loaderCalls: 1 }],
     ] as const) {
@@ -2250,7 +2250,7 @@ test('enforces finite per-render limits and permits explicit unlimited values', 
           limits: {
             workUnits: Number.POSITIVE_INFINITY,
             outputBytes: Number.POSITIVE_INFINITY,
-            arenaBytes: Number.POSITIVE_INFINITY,
+            scratchBytes: Number.POSITIVE_INFINITY,
           },
         },
       ),

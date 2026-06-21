@@ -30,7 +30,7 @@ fn continue_expression(state_offset: u32) -> Result<Option<u32>, u32> {
             EXPRESSION_INCLUDE | EXPRESSION_EXTENDS | EXPRESSION_IMPORT => {
                 Some(issue_include(state_offset, value_offset)?)
             }
-            _ => return Err(ERROR_INVALID_ARENA),
+            _ => return Err(ERROR_INVALID_STATE),
         };
         if next_state.is_none()
             && state_field(state_offset, STATE_PENDING_EXPRESSION)? == 0
@@ -39,10 +39,10 @@ fn continue_expression(state_offset: u32) -> Result<Option<u32>, u32> {
             && state_field(state_offset, STATE_OUTPUT_LENGTH)? == 0
         {
             let transient_base = state_field(state_offset, STATE_TRANSIENT_BASE)?;
-            if transient_base > legacy_arena_cursor() {
-                return Err(ERROR_INVALID_ARENA);
+            if transient_base > scratch_cursor() {
+                return Err(ERROR_INVALID_STATE);
             }
-            set_legacy_arena_cursor(transient_base);
+            set_scratch_cursor(transient_base);
         }
         return Ok(next_state);
     };
@@ -290,7 +290,7 @@ fn skip_active_conditional(state_offset: u32) -> Result<(), u32> {
         find_conditional_boundary(source, cursor, false, parse_options(state_offset)?)
             .map_err(render_error_code)?
     else {
-        return Err(ERROR_INVALID_ARENA);
+        return Err(ERROR_INVALID_STATE);
     };
     set_frame_field(frame_offset, FRAME_CURSOR, next_cursor as u32)
 }

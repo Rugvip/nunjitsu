@@ -3,7 +3,7 @@ export type TemplatePrimitive = undefined | null | boolean | number | string;
 
 /** A string explicitly authorized to bypass template autoescaping. */
 export class SafeString {
-  /** Trusted string content copied into the render arena. */
+  /** Trusted string content copied into the fixed value pool. */
   readonly value: string;
 
   /** Creates an explicitly trusted string. Prefer the descriptive `markSafe` helper. */

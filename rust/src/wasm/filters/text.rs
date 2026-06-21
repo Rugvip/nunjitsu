@@ -206,7 +206,7 @@ fn replace_value(
         let relative = input.bytes[input_cursor..]
             .windows(from.len())
             .position(|window| window == from)
-            .ok_or(ERROR_INVALID_ARENA)?;
+            .ok_or(ERROR_INVALID_STATE)?;
         let match_start = input_cursor + relative;
         let prefix = &input.bytes[input_cursor..match_start];
         output[output_cursor..output_cursor + prefix.len()].copy_from_slice(prefix);
@@ -228,7 +228,7 @@ fn random_value(value_offset: u32) -> Result<u32, u32> {
         _ => return Err(ERROR_INVALID_EXPRESSION),
     };
     let Value::Array(array) = Value::at(listed_offset)? else {
-        return Err(ERROR_INVALID_ARENA);
+        return Err(ERROR_INVALID_STATE);
     };
     if array.count == 0 {
         return allocate_record(TAG_UNDEFINED, 0);
@@ -237,7 +237,7 @@ fn random_value(value_offset: u32) -> Result<u32, u32> {
     // The worker import receives only a validated non-zero bound and must return an index below it.
     let index = unsafe { nunjitsu_random_index(count) };
     if index >= count {
-        return Err(ERROR_INVALID_ARENA);
+        return Err(ERROR_INVALID_STATE);
     }
     read_u32(array.payload, 4 + index as usize * 4)
 }
@@ -301,7 +301,7 @@ fn regex_replace_value(
         )
     };
     if written != output_length {
-        return Err(ERROR_INVALID_ARENA);
+        return Err(ERROR_INVALID_STATE);
     }
     write_materialized_string_value(output, tag == TAG_SAFE_STRING)
 }

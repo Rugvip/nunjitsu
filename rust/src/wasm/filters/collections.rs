@@ -126,7 +126,7 @@ fn batch_value(value_offset: u32, size: usize, fill: Option<u32>) -> Result<u32,
             let item = if index < available {
                 read_u32(array.payload, 4 + (start + index) * 4)?
             } else {
-                fill.ok_or(ERROR_INVALID_ARENA)?
+                fill.ok_or(ERROR_INVALID_STATE)?
             };
             write_u32(
                 mutable_record_at(group_offset, TAG_ARRAY)?,
@@ -194,14 +194,14 @@ fn selection_source(value_offset: u32) -> Result<Array, u32> {
         Value::String(_) | Value::SafeString(_) | Value::Record(_) => {
             let listed = list_value(value_offset)?;
             let Value::Array(array) = Value::at(listed)? else {
-                return Err(ERROR_INVALID_ARENA);
+                return Err(ERROR_INVALID_STATE);
             };
             Ok(array)
         }
         Value::Undefined | Value::Null => {
             let empty = allocate_value_array(0)?;
             let Value::Array(array) = Value::at(empty)? else {
-                return Err(ERROR_INVALID_ARENA);
+                return Err(ERROR_INVALID_STATE);
             };
             Ok(array)
         }
@@ -370,7 +370,7 @@ fn sorted_rank_index(
             return Ok(candidate);
         }
     }
-    Err(ERROR_INVALID_ARENA)
+    Err(ERROR_INVALID_STATE)
 }
 
 fn dictsort_value(value_offset: u32, case_sensitive: bool, by_value: bool) -> Result<u32, u32> {
@@ -433,7 +433,7 @@ fn groupby_value(value_offset: u32, attribute_offset: u32) -> Result<u32, u32> {
         )?;
     }
     let Value::Array(keys) = Value::at(keys_offset)? else {
-        return Err(ERROR_INVALID_ARENA);
+        return Err(ERROR_INVALID_STATE);
     };
     let mut group_count = 0usize;
     for index in 0..keys.count {
@@ -443,7 +443,7 @@ fn groupby_value(value_offset: u32, attribute_offset: u32) -> Result<u32, u32> {
     }
     let output = allocate_value_array(group_count)?;
     for rank in 0..group_count {
-        let key_index = group_key_index_at_rank(keys, rank)?.ok_or(ERROR_INVALID_ARENA)?;
+        let key_index = group_key_index_at_rank(keys, rank)?.ok_or(ERROR_INVALID_STATE)?;
         let key = read_u32(keys.payload, 4 + key_index * 4)?;
         let key_bytes = rendered_value(key)?.bytes;
         let mut item_count = 0usize;
@@ -569,7 +569,7 @@ fn slice_value(value_offset: u32, slices: usize, fill: Option<u32>) -> Result<u3
             let item = if index < available {
                 read_u32(array.payload, 4 + (source_index + index) * 4)?
             } else {
-                fill.ok_or(ERROR_INVALID_ARENA)?
+                fill.ok_or(ERROR_INVALID_STATE)?
             };
             write_u32(mutable_record_at(group, TAG_ARRAY)?, 4 + index * 4, item)?;
         }
