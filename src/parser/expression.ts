@@ -9,6 +9,18 @@ interface Token {
   readonly column: number;
 }
 
+const simpleStringEscapes: Readonly<Record<string, string>> = Object.freeze({
+  n: '\n',
+  r: '\r',
+  t: '\t',
+  b: '\b',
+  f: '\f',
+  v: '\v',
+  '\\': '\\',
+  "'": "'",
+  '"': '"',
+});
+
 /** Creates and freezes one parser-owned AST node. */
 export type AstNodeFactory = (node: AstNode) => AstNode;
 
@@ -581,11 +593,8 @@ function readString(
       break;
     }
     const escaped = source[index]!;
-    const simple: Record<string, string> = {
-      n: '\n', r: '\r', t: '\t', b: '\b', f: '\f', v: '\v', '\\': '\\', "'": "'", '"': '"',
-    };
-    if (Object.hasOwn(simple, escaped)) {
-      value += simple[escaped];
+    if (Object.hasOwn(simpleStringEscapes, escaped)) {
+      value += simpleStringEscapes[escaped];
     } else if (escaped === 'u' || escaped === 'x') {
       const length = escaped === 'u' ? 4 : 2;
       const digits = source.slice(index + 1, index + 1 + length);
