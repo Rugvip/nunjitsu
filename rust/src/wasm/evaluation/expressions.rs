@@ -76,15 +76,32 @@ fn apply_binary_operator(
 fn concatenate_values(left_offset: u32, right_offset: u32) -> Result<u32, u32> {
     let left = rendered_value(left_offset)?.bytes;
     let right = rendered_value(right_offset)?.bytes;
-    let length = left
+    let byte_length = left
         .len()
         .checked_add(right.len())
         .ok_or(ERROR_RESOURCE_LIMIT)?;
-    let offset = allocate_record(TAG_STRING, length as u32)?;
-    let output = mutable_record_at(offset, TAG_STRING)?;
-    output[..left.len()].copy_from_slice(left);
-    output[left.len()..].copy_from_slice(right);
-    Ok(offset)
+    let left = core::str::from_utf8(left).map_err(|_| ERROR_INVALID_RECORD)?;
+    let right = core::str::from_utf8(right).map_err(|_| ERROR_INVALID_RECORD)?;
+    let code_unit_length = left
+        .encode_utf16()
+        .count()
+        .checked_add(right.encode_utf16().count())
+        .and_then(|length| u32::try_from(length).ok())
+        .ok_or(ERROR_RESOURCE_LIMIT)?;
+    let (value_start, output) = allocate_value_code_units(code_unit_length)?;
+    for (cursor, code_unit) in left
+        .encode_utf16()
+        .chain(right.encode_utf16())
+        .enumerate()
+    {
+        output[cursor] = code_unit;
+    }
+    write_materialized_code_unit_value(
+        value_start,
+        code_unit_length,
+        u32::try_from(byte_length).map_err(|_| ERROR_RESOURCE_LIMIT)?,
+        false,
+    )
 }
 fn compare_values(left_offset: u32, operator: Comparison, right_offset: u32) -> Result<bool, u32> {
     let result = match operator {
@@ -332,23 +349,39 @@ fn slice_index_in_bounds(index: f64, stop: f64, step: f64, length: f64) -> bool 
 fn write_string_literal(value: &[u16]) -> Result<u32, u32> {
     let value = code_units_as_utf8(value)?;
     let text = core::str::from_utf8(value).map_err(|_| ERROR_INVALID_EXPRESSION)?;
-    let mut length = 0usize;
+    let mut byte_length = 0usize;
+    let mut code_unit_length = 0usize;
     string_literal_emit(text, &mut |segment| {
-        length = length
+        byte_length = byte_length
             .checked_add(segment.len())
+            .ok_or(ERROR_RESOURCE_LIMIT)?;
+        code_unit_length = code_unit_length
+            .checked_add(
+                core::str::from_utf8(segment)
+                    .map_err(|_| ERROR_INVALID_RECORD)?
+                    .encode_utf16()
+                    .count(),
+            )
             .ok_or(ERROR_RESOURCE_LIMIT)?;
         Ok(())
     })?;
-    let offset = allocate_record(
-        TAG_STRING,
-        u32::try_from(length).map_err(|_| ERROR_RESOURCE_LIMIT)?,
-    )?;
-    let output = mutable_record_at(offset, TAG_STRING)?;
+    let code_unit_length = u32::try_from(code_unit_length).map_err(|_| ERROR_RESOURCE_LIMIT)?;
+    let (value_start, output) = allocate_value_code_units(code_unit_length)?;
     let mut cursor = 0usize;
     string_literal_emit(text, &mut |segment| {
-        write_coerced_bytes(output, &mut cursor, segment)
+        let segment = core::str::from_utf8(segment).map_err(|_| ERROR_INVALID_RECORD)?;
+        for code_unit in segment.encode_utf16() {
+            output[cursor] = code_unit;
+            cursor += 1;
+        }
+        Ok(())
     })?;
-    Ok(offset)
+    write_materialized_code_unit_value(
+        value_start,
+        code_unit_length,
+        u32::try_from(byte_length).map_err(|_| ERROR_RESOURCE_LIMIT)?,
+        false,
+    )
 }
 
 fn string_literal_emit(

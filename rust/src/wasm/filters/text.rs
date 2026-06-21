@@ -258,9 +258,10 @@ fn regex_replace_value(
         _ => return Err(ERROR_INVALID_EXPRESSION),
     };
     let regex = record_at(regex_offset, TAG_REGEX)?;
+    let input_record = write_bytes_record(TAG_STRING, input)?;
     let replacement_offset = write_javascript_string_value(replacement_offset)?;
     let replacement = record_at(replacement_offset, TAG_STRING)?;
-    let input_pointer = input_offset
+    let input_pointer = input_record
         .checked_add(RECORD_HEADER_LENGTH as u32)
         .ok_or(ERROR_INVALID_RECORD)?;
     let regex_pointer = regex_offset
