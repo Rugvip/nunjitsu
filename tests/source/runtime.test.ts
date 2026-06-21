@@ -2229,12 +2229,12 @@ test('enforces finite per-render limits and permits explicit unlimited values', 
     for (const [template, limits] of [
       [{ source: 'output' }, { outputBytes: 3 }],
       [{ source: 'work' }, { workUnits: 1 }],
-      [{ source: '{{ value }}' }, { arenaBytes: 64 }],
+      [{ source: '{{ value | upper }}' }, { arenaBytes: 64 }],
       [{ name: 'entry.njk' }, { includeDepth: 1 }],
       [{ name: 'entry.njk' }, { loaderCalls: 1 }],
     ] as const) {
       await assert.rejects(
-        engine.render(template, { value: 'large input' }, { limits }),
+        engine.render(template, { value: 'large input'.repeat(16) }, { limits }),
         error => error instanceof NunjitsuLimitError,
       );
       assert.equal(await engine.render({ source: 'clean' }), 'clean');
