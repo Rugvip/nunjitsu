@@ -63,9 +63,10 @@ fn json_value_length(value_offset: u32, indent: &[u8], depth: usize) -> Result<u
         }
         Value::Boolean(false) => Ok(5),
         Value::Boolean(true) => Ok(4),
-        Value::Number { numeric, rendered } => {
+        Value::Number { numeric } => {
             if numeric.is_finite() {
-                Ok(rendered.len())
+                let mut buffer = ryu_js::Buffer::new();
+                Ok(buffer.format(numeric).len())
             } else {
                 Ok(4)
             }
@@ -181,15 +182,14 @@ fn write_json_value(
         }
         Value::Boolean(false) => write_coerced_bytes(output, cursor, b"false"),
         Value::Boolean(true) => write_coerced_bytes(output, cursor, b"true"),
-        Value::Number { numeric, rendered } => write_coerced_bytes(
-            output,
-            cursor,
+        Value::Number { numeric } => {
             if numeric.is_finite() {
-                rendered
+                let mut buffer = ryu_js::Buffer::new();
+                write_coerced_bytes(output, cursor, buffer.format(numeric).as_bytes())
             } else {
-                b"null"
-            },
-        ),
+                write_coerced_bytes(output, cursor, b"null")
+            }
+        }
         Value::String(bytes) | Value::SafeString(bytes) => write_json_string(bytes, output, cursor),
         Value::Regex(_) => write_coerced_bytes(output, cursor, b"{}"),
         Value::Array(array) => {

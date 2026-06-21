@@ -1,5 +1,12 @@
 fn rendered_value(value_offset: u32) -> Result<RenderedValue<'static>, u32> {
     let value = Value::at(value_offset)?;
+    if let Value::Number { numeric } = value {
+        let mut buffer = ryu_js::Buffer::new();
+        let rendered_offset = write_bytes_record(TAG_STRING, buffer.format(numeric).as_bytes())?;
+        return Value::at(rendered_offset)?
+            .rendered()
+            .ok_or(ERROR_INVALID_EXPRESSION);
+    }
     if matches!(value, Value::Array(_) | Value::Record(_)) {
         let coerced_offset = write_coerced_value(value_offset)?;
         return Value::at(coerced_offset)?
@@ -37,11 +44,11 @@ fn coerced_value_length(value_offset: u32) -> Result<usize, u32> {
             Ok(length)
         }
         Value::Record(_) => Ok(b"[object Object]".len()),
-        value => Ok(value
-            .rendered()
-            .ok_or(ERROR_INVALID_EXPRESSION)?
-            .bytes
-            .len()),
+        Value::Number { numeric } => {
+            let mut buffer = ryu_js::Buffer::new();
+            Ok(buffer.format(numeric).len())
+        }
+        value => Ok(value.rendered().ok_or(ERROR_INVALID_EXPRESSION)?.bytes.len()),
     }
 }
 
@@ -61,11 +68,13 @@ fn write_coerced_value_into(
             Ok(())
         }
         Value::Record(_) => write_coerced_bytes(output, cursor, b"[object Object]"),
-        value => write_coerced_bytes(
-            output,
-            cursor,
-            value.rendered().ok_or(ERROR_INVALID_EXPRESSION)?.bytes,
-        ),
+        Value::Number { numeric } => {
+            let mut buffer = ryu_js::Buffer::new();
+            write_coerced_bytes(output, cursor, buffer.format(numeric).as_bytes())
+        }
+        value => write_coerced_bytes(output, cursor, value.rendered().ok_or(
+            ERROR_INVALID_EXPRESSION,
+        )?.bytes),
     }
 }
 

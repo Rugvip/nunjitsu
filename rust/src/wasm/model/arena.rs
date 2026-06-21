@@ -30,23 +30,17 @@ fn write_boolean(value: bool) -> Result<u32, u32> {
 fn write_number(source: &[u8]) -> Result<u32, u32> {
     let text = core::str::from_utf8(source).map_err(|_| ERROR_INVALID_EXPRESSION)?;
     let value = text.parse::<f64>().map_err(|_| ERROR_INVALID_EXPRESSION)?;
-    write_number_value(value, source)
+    write_number_value(value)
 }
 
 fn write_computed_number(value: f64) -> Result<u32, u32> {
-    let mut buffer = ryu_js::Buffer::new();
-    let rendered = buffer.format(value);
-    write_number_value(value, rendered.as_bytes())
+    write_number_value(value)
 }
 
-fn write_number_value(value: f64, rendered: &[u8]) -> Result<u32, u32> {
-    let payload_length = 8u32
-        .checked_add(rendered.len() as u32)
-        .ok_or(ERROR_RESOURCE_LIMIT)?;
-    let offset = allocate_record(TAG_NUMBER, payload_length)?;
+fn write_number_value(value: f64) -> Result<u32, u32> {
+    let offset = allocate_record(TAG_NUMBER, 8)?;
     let payload = mutable_record_at(offset, TAG_NUMBER)?;
-    payload[..8].copy_from_slice(&value.to_le_bytes());
-    payload[8..].copy_from_slice(rendered);
+    payload.copy_from_slice(&value.to_le_bytes());
     Ok(offset)
 }
 

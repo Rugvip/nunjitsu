@@ -204,10 +204,7 @@ enum Value {
     Undefined,
     Null,
     Boolean(bool),
-    Number {
-        numeric: f64,
-        rendered: &'static [u8],
-    },
+    Number { numeric: f64 },
     String(&'static [u8]),
     SafeString(&'static [u8]),
     Regex(&'static [u8]),
@@ -229,13 +226,10 @@ impl Value {
                 1 => Ok(Self::Boolean(true)),
                 _ => Err(ERROR_INVALID_RECORD),
             },
-            TAG_NUMBER if payload.len() >= 8 => {
+            TAG_NUMBER if payload.len() == 8 => {
                 let numeric =
                     f64::from_le_bytes(payload[..8].try_into().map_err(|_| ERROR_INVALID_RECORD)?);
-                Ok(Self::Number {
-                    numeric,
-                    rendered: &payload[8..],
-                })
+                Ok(Self::Number { numeric })
             }
             TAG_STRING => Ok(Self::String(payload)),
             TAG_SAFE_STRING => Ok(Self::SafeString(payload)),
@@ -274,10 +268,7 @@ impl Value {
                 bytes: b"true",
                 safe: false,
             }),
-            Self::Number { rendered, .. } => Some(RenderedValue {
-                bytes: rendered,
-                safe: false,
-            }),
+            Self::Number { .. } => None,
             Self::String(value) => Some(RenderedValue {
                 bytes: value,
                 safe: false,
