@@ -1,5 +1,4 @@
-import { createNativeEngine, type Engine, type EngineOptions } from './native-engine.ts';
-
+export { createEngine } from './createEngine.ts';
 export {
   NunjitsuRenderError,
   type Engine,
@@ -18,8 +17,3 @@ export {
   type TemplateContext,
   type TemplateValue,
 } from './values.ts';
-
-/** Creates a CommonJS native TypeScript Nunjitsu engine synchronously. */
-export function createEngine(options: EngineOptions = {}): Engine {
-  return createNativeEngine(options);
-}

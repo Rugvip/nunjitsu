@@ -181,6 +181,12 @@ Do not create additional packages without a documented architectural reason.
 
 - Follow the existing style of each file and language. Do not mix styles within
   a file.
+- Keep `index.ts` and `index.cts` files as thin public entrypoints that
+  generally only re-export declarations from responsibility-focused modules.
+  Do not place substantial implementation in index files.
+- When a module exists primarily to provide one main export, name the file
+  after that export, including its casing, such as `createEngine.ts` for
+  `createEngine`.
 - Add comments only for non-obvious invariants, architecture, or intentionally
   surprising behavior. Prefer self-explanatory names and types.
 - Keep security and memory ownership visible in APIs. Reject invalid states at

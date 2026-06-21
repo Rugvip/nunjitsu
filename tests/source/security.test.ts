@@ -233,6 +233,7 @@ test('capability exceptions halt evaluation without inspecting thrown values', (
 test('parser and evaluator sources contain no dynamic execution primitive', async () => {
   const files = [
     '../../src/parser/index.ts',
+    '../../src/parser/parseTemplate.ts',
     '../../src/parser/expression.ts',
     '../../src/runtime/evaluator.ts',
     '../../src/runtime/builtins.ts',
