@@ -159,7 +159,7 @@ fn finish_output_capture(state_offset: u32, tag: u32) -> Result<u32, u32> {
     {
         return Err(ERROR_UNSUPPORTED_TAG);
     }
-    let value_offset = materialize_output_as(state_offset, tag)?.0;
+    let value_offset = materialize_output_value(state_offset, tag)?;
     set_state_field(
         state_offset,
         STATE_FIRST_CHUNK,

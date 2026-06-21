@@ -366,11 +366,22 @@ fn value_code_units(payload: &[u8]) -> Result<&'static [u16], u32> {
         return Err(ERROR_INVALID_RECORD);
     }
     let handle = read_u32(payload, 0)?;
-    if handle == 0 || handle > unsafe { (*memory_prefix()).host_string_count } {
-        return Err(ERROR_INVALID_RECORD);
-    }
     let start = read_u32(payload, 4)?;
     let length = read_u32(payload, 8)?;
+    if handle & COMPUTED_STRING_HANDLE_MASK == 0 {
+        if handle == 0 || handle > unsafe { (*memory_prefix()).host_string_count } {
+            return Err(ERROR_INVALID_RECORD);
+        }
+    } else {
+        let (operation_start, operation_length) = materialized_string_operation(handle)?;
+        let operation_end = operation_start
+            .checked_add(operation_length)
+            .ok_or(ERROR_INVALID_RECORD)?;
+        let end = start.checked_add(length).ok_or(ERROR_INVALID_RECORD)?;
+        if start < operation_start || end > operation_end {
+            return Err(ERROR_INVALID_RECORD);
+        }
+    }
     let pool = unsafe { (*memory_prefix()).values };
     let end = start.checked_add(length).ok_or(ERROR_INVALID_RECORD)?;
     if end > pool.cursor {
@@ -671,6 +682,24 @@ fn materialized_string_handle(bytes: &[u8]) -> Result<(u32, u32), u32> {
         *destination = code_unit;
     }
 
+    Ok((
+        allocate_materialized_string_operation(
+            value_start,
+            u32::try_from(code_unit_length).map_err(|_| ERROR_RESOURCE_LIMIT)?,
+        )?,
+        u32::try_from(code_unit_length).map_err(|_| ERROR_RESOURCE_LIMIT)?,
+    ))
+}
+
+fn allocate_materialized_string_operation(value_start: u32, value_length: u32) -> Result<u32, u32> {
+    let value_pool = unsafe { (*memory_prefix()).values };
+    if value_start
+        .checked_add(value_length)
+        .ok_or(ERROR_RESOURCE_LIMIT)?
+        > value_pool.cursor
+    {
+        return Err(ERROR_INVALID_RECORD);
+    }
     let prefix = memory_prefix();
     let operation_pool = unsafe { (*prefix).string_operations };
     let operation_index = operation_pool.cursor;
@@ -689,19 +718,75 @@ fn materialized_string_handle(bytes: &[u8]) -> Result<(u32, u32), u32> {
     operation.fill(0);
     write_u32(operation, 0, STRING_OPERATION_MATERIALIZED)?;
     write_u32(operation, 4, value_start)?;
-    write_u32(
-        operation,
-        8,
-        u32::try_from(code_unit_length).map_err(|_| ERROR_RESOURCE_LIMIT)?,
-    )?;
+    write_u32(operation, 8, value_length)?;
     unsafe {
         (*prefix).string_operations.cursor = operation_index + 1;
     }
 
-    Ok((
-        COMPUTED_STRING_HANDLE_MASK | (operation_index + 1),
-        u32::try_from(code_unit_length).map_err(|_| ERROR_RESOURCE_LIMIT)?,
-    ))
+    Ok(COMPUTED_STRING_HANDLE_MASK | (operation_index + 1))
+}
+
+fn materialized_string_operation(handle: u32) -> Result<(u32, u32), u32> {
+    if handle & COMPUTED_STRING_HANDLE_MASK == 0 {
+        return Err(ERROR_INVALID_RECORD);
+    }
+    let operation_index = (handle & !COMPUTED_STRING_HANDLE_MASK)
+        .checked_sub(1)
+        .ok_or(ERROR_INVALID_RECORD)?;
+    let pool = unsafe { (*memory_prefix()).string_operations };
+    if operation_index >= pool.cursor {
+        return Err(ERROR_INVALID_RECORD);
+    }
+    let operation_offset = pool
+        .offset
+        .checked_add(
+            operation_index
+                .checked_mul(STRING_OPERATION_LENGTH)
+                .ok_or(ERROR_INVALID_RECORD)?,
+        )
+        .ok_or(ERROR_INVALID_RECORD)?;
+    let operation = memory(operation_offset, STRING_OPERATION_LENGTH)?;
+    if read_u32(operation, 0)? != STRING_OPERATION_MATERIALIZED {
+        return Err(ERROR_INVALID_RECORD);
+    }
+    Ok((read_u32(operation, 4)?, read_u32(operation, 8)?))
+}
+
+fn materialized_range_code_units(
+    handle: u32,
+    start: u32,
+    length: u32,
+) -> Result<&'static [u16], u32> {
+    let (value_start, value_length) = materialized_string_operation(handle)?;
+    let range_end = start.checked_add(length).ok_or(ERROR_INVALID_RECORD)?;
+    if range_end > value_length {
+        return Err(ERROR_INVALID_RECORD);
+    }
+    let absolute_start = value_start
+        .checked_add(start)
+        .ok_or(ERROR_INVALID_RECORD)?;
+    let pool = unsafe { (*memory_prefix()).values };
+    let absolute_end = absolute_start
+        .checked_add(length)
+        .ok_or(ERROR_INVALID_RECORD)?;
+    if absolute_end > pool.cursor {
+        return Err(ERROR_INVALID_RECORD);
+    }
+    let offset = pool
+        .offset
+        .checked_add(
+            absolute_start
+                .checked_mul(VALUE_CODE_UNIT_LENGTH)
+                .ok_or(ERROR_INVALID_RECORD)?,
+        )
+        .ok_or(ERROR_INVALID_RECORD)?;
+    let bytes = memory(
+        offset,
+        length
+            .checked_mul(VALUE_CODE_UNIT_LENGTH)
+            .ok_or(ERROR_INVALID_RECORD)?,
+    )?;
+    Ok(unsafe { slice::from_raw_parts(bytes.as_ptr().cast::<u16>(), length as usize) })
 }
 
 fn publish_output_range(handle: u32, start: u32, length: u32, byte_length: u32) -> Result<(), u32> {

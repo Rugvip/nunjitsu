@@ -200,106 +200,53 @@ fn publish_pending_output(state_offset: u32, maximum_bytes: u32) -> Result<u32, 
     Ok(published)
 }
 
-fn write_materialized_range_bytes(
-    handle: u32,
-    start: u32,
-    length: u32,
-    output: &mut [u8],
-    cursor: &mut usize,
-) -> Result<(), u32> {
-    if handle & COMPUTED_STRING_HANDLE_MASK == 0 {
-        return Err(ERROR_INVALID_RECORD);
-    }
-    let operation_index = (handle & !COMPUTED_STRING_HANDLE_MASK)
-        .checked_sub(1)
-        .ok_or(ERROR_INVALID_RECORD)?;
-    let pool = unsafe { (*memory_prefix()).string_operations };
-    if operation_index >= pool.cursor {
-        return Err(ERROR_INVALID_RECORD);
-    }
-    let operation_offset = pool
-        .offset
-        .checked_add(
-            operation_index
-                .checked_mul(STRING_OPERATION_LENGTH)
-                .ok_or(ERROR_INVALID_RECORD)?,
-        )
-        .ok_or(ERROR_INVALID_RECORD)?;
-    let operation = memory(operation_offset, STRING_OPERATION_LENGTH)?;
-    if read_u32(operation, 0)? != STRING_OPERATION_MATERIALIZED {
-        return Err(ERROR_INVALID_RECORD);
-    }
-    let value_start = read_u32(operation, 4)?;
-    let value_length = read_u32(operation, 8)?;
-    let range_end = start.checked_add(length).ok_or(ERROR_INVALID_RECORD)?;
-    if range_end > value_length {
-        return Err(ERROR_INVALID_RECORD);
-    }
-    let value_pool = unsafe { (*memory_prefix()).values };
-    let absolute_start = value_start
-        .checked_add(start)
-        .ok_or(ERROR_INVALID_RECORD)?;
-    let absolute_end = absolute_start
-        .checked_add(length)
-        .ok_or(ERROR_INVALID_RECORD)?;
-    if absolute_end > value_pool.cursor {
-        return Err(ERROR_INVALID_RECORD);
-    }
-    let byte_offset = value_pool
-        .offset
-        .checked_add(
-            absolute_start
-                .checked_mul(VALUE_CODE_UNIT_LENGTH)
-                .ok_or(ERROR_INVALID_RECORD)?,
-        )
-        .ok_or(ERROR_INVALID_RECORD)?;
-    let bytes = memory(
-        byte_offset,
-        length
-            .checked_mul(VALUE_CODE_UNIT_LENGTH)
-            .ok_or(ERROR_INVALID_RECORD)?,
-    )?;
-    let code_units = unsafe {
-        slice::from_raw_parts(bytes.as_ptr().cast::<u16>(), length as usize)
-    };
-    for character in core::char::decode_utf16(code_units.iter().copied()) {
-        let character = character.unwrap_or(char::REPLACEMENT_CHARACTER);
-        let end = cursor
-            .checked_add(character.len_utf8())
-            .ok_or(ERROR_OUTPUT_TOO_LARGE)?;
-        let destination = output
-            .get_mut(*cursor..end)
-            .ok_or(ERROR_INVALID_RECORD)?;
-        character.encode_utf8(destination);
-        *cursor = end;
-    }
-    Ok(())
-}
-
-fn materialize_output_as(state_offset: u32, tag: u32) -> Result<(u32, u32), u32> {
-    let output_length = state_field(state_offset, STATE_OUTPUT_LENGTH)?;
-    let output_offset = allocate_record(tag, output_length)?;
-    let output_payload_offset = output_offset
-        .checked_add(RECORD_HEADER_LENGTH as u32)
-        .ok_or(ERROR_OUTPUT_TOO_LARGE)?;
-    let output = mutable_memory(output_payload_offset, output_length)?;
-    let mut output_cursor = 0usize;
+fn materialize_output_value(state_offset: u32, tag: u32) -> Result<u32, u32> {
+    let mut code_unit_length = 0u32;
     let mut descriptor_index = state_field(state_offset, STATE_FIRST_CHUNK)?;
     while descriptor_index != 0 {
         let descriptor = members_at(descriptor_index, 5)?;
-        write_materialized_range_bytes(
+        code_unit_length = code_unit_length
+            .checked_add(read_u32(descriptor, 12)?)
+            .ok_or(ERROR_RESOURCE_LIMIT)?;
+        descriptor_index = read_u32(descriptor, 0)?;
+    }
+
+    let (value_start, output) = allocate_value_code_units(code_unit_length)?;
+    let mut output_cursor = 0usize;
+    descriptor_index = state_field(state_offset, STATE_FIRST_CHUNK)?;
+    while descriptor_index != 0 {
+        let descriptor = members_at(descriptor_index, 5)?;
+        let code_units = materialized_range_code_units(
             read_u32(descriptor, 4)?,
             read_u32(descriptor, 8)?,
             read_u32(descriptor, 12)?,
-            output,
-            &mut output_cursor,
         )?;
+        let end = output_cursor
+            .checked_add(code_units.len())
+            .ok_or(ERROR_RESOURCE_LIMIT)?;
+        output
+            .get_mut(output_cursor..end)
+            .ok_or(ERROR_INVALID_RECORD)?
+            .copy_from_slice(code_units);
+        output_cursor = end;
         descriptor_index = read_u32(descriptor, 0)?;
     }
     if output_cursor != output.len() {
         return Err(ERROR_INVALID_RECORD);
     }
-    Ok((output_offset, output_length))
+
+    let value_tag = match tag {
+        TAG_STRING => TAG_STRING_VALUE,
+        TAG_SAFE_STRING => TAG_SAFE_STRING_VALUE,
+        _ => return Err(ERROR_INVALID_RECORD),
+    };
+    let handle = allocate_materialized_string_operation(value_start, code_unit_length)?;
+    let value_offset = allocate_slot(value_tag, 12)?;
+    let payload = mutable_slot_record(value_offset, value_tag)?.ok_or(ERROR_INVALID_RECORD)?;
+    write_u32(payload, 0, handle)?;
+    write_u32(payload, 4, value_start)?;
+    write_u32(payload, 8, code_unit_length)?;
+    Ok(value_offset)
 }
 
 fn append_output(state_offset: u32, bytes: &[u8]) -> Result<(), u32> {
