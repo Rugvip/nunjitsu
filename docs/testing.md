@@ -47,10 +47,11 @@ value kinds; and failures must leave the next render clean.
 ## Benchmarks
 
 The comparison harness renders output-equivalent workloads in separate
-processes with fresh parsing on every operation. `template-files` models
-independent rendering of many comment-heavy strings against one prepared
-context, while `expressions` stresses computed runtime expressions.
-Context preparation is reported as setup rather than repeated rendering work.
-Callback benchmarks are intentionally excluded because the
-direct-string API is synchronous and callback overhead is not a separate
-target.
+processes with fresh parsing on every operation. The cases cover independent
+comment-heavy templates, computed expressions, many distinct tiny templates,
+deep constant and computed lookups, macro and scope churn, built-in filter
+pipelines, and repeated rendering while a prepared context evolves. Context
+preparation is reported as setup rather than repeated rendering work; the
+evolving case measures each immutable path update and following render.
+Callback benchmarks are intentionally excluded because the direct-string API
+is synchronous and callback overhead is not a separate target.

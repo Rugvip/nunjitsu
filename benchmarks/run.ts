@@ -10,6 +10,7 @@ import {
   benchmarkWorkloads,
   type BenchmarkCaseId,
   type BenchmarkWorkload,
+  type EvolvingContextUpdate,
 } from './cases.ts';
 
 type Implementation = 'nunjitsu' | 'nunjucks';
@@ -191,6 +192,40 @@ function createRunner(
   implementation: Implementation,
   workload: BenchmarkWorkload,
 ): BenchmarkRunner {
+  if (workload.kind === 'evolving-context') {
+    if (implementation === 'nunjitsu') {
+      const engine = createEngine();
+      const initialContext = engine.prepareContext(workload.context);
+      return {
+        render() {
+          let context = initialContext;
+          const output: string[] = [];
+          for (const update of workload.updates) {
+            context = context.withPath(['steps', 'current', 'output'], update);
+            output.push(engine.render(workload.source, context));
+          }
+          return output.join('');
+        },
+      };
+    }
+
+    const environment = createNunjucksEnvironment();
+    const context = {
+      project: { name: 'evolving-context' },
+      steps: { current: { output: null as null | EvolvingContextUpdate } },
+    };
+    return {
+      render() {
+        const output: string[] = [];
+        for (const update of workload.updates) {
+          context.steps.current.output = update;
+          output.push(environment.renderString(workload.source, context));
+        }
+        return output.join('');
+      },
+    };
+  }
+
   if (implementation === 'nunjitsu') {
     const engine = createEngine();
     const context = engine.prepareContext(workload.context);
@@ -203,11 +238,7 @@ function createRunner(
     };
   }
 
-  const environment = new nunjucks.Environment(null, {
-    autoescape: false,
-    noCache: true,
-    tags: { variableStart: '${{', variableEnd: '}}' },
-  });
+  const environment = createNunjucksEnvironment();
   return {
     render() {
       return workload.sources
@@ -215,6 +246,14 @@ function createRunner(
         .join('');
     },
   };
+}
+
+function createNunjucksEnvironment(): nunjucks.Environment {
+  return new nunjucks.Environment(null, {
+    autoescape: false,
+    noCache: true,
+    tags: { variableStart: '${{', variableEnd: '}}' },
+  });
 }
 
 function verifyStableOutput(
