@@ -143,7 +143,7 @@ fn issue_include(state_offset: u32, value_offset: u32) -> Result<u32, u32> {
         STATE_LIMIT_LOADER_CALLS,
         1,
     )?;
-    let name_offset = write_bytes_record(TAG_STRING, name)?;
+    let name_offset = write_identifier_bytes(name)?;
     set_state_field(state_offset, STATE_PENDING_NAME, name_offset)?;
     let frame_offset = state_field(state_offset, STATE_CURRENT_FRAME)?;
     let frame = record_at(frame_offset, TAG_FRAME)?;
