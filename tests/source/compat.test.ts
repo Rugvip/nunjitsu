@@ -115,7 +115,7 @@ test('shared compatibility corpus has attributed provenance and valid mappings',
 test('shared compatibility cases render through the TypeScript engine', async t => {
   for (const compatibilityCase of cases.cases) {
     await t.test(compatibilityCase.id, async () => {
-      const engine = await createEngine({
+      const engine = createEngine({
         ...(compatibilityCase.autoescape === undefined
           ? {}
           : { autoescape: compatibilityCase.autoescape }),
@@ -124,20 +124,16 @@ test('shared compatibility cases render through the TypeScript engine', async t 
           ? { loaders: [memoryLoader(compatibilityCase.templates)] }
           : {}),
       });
-      try {
-        const context = decodeContext(compatibilityCase.context);
-        assert.equal(
-          await engine.render({
-            source: compatibilityCase.template,
-            ...(compatibilityCase.canonicalName === undefined
-              ? {}
-              : { canonicalName: compatibilityCase.canonicalName }),
-          }, context),
-          compatibilityCase.expected,
-        );
-      } finally {
-        await engine.dispose();
-      }
+      const context = decodeContext(compatibilityCase.context);
+      assert.equal(
+        await engine.render({
+          source: compatibilityCase.template,
+          ...(compatibilityCase.canonicalName === undefined
+            ? {}
+            : { canonicalName: compatibilityCase.canonicalName }),
+        }, context),
+        compatibilityCase.expected,
+      );
     });
   }
 });

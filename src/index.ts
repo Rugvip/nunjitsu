@@ -1,8 +1,4 @@
-import {
-  createEngineWithRuntime,
-  type Engine,
-  type EngineOptions,
-} from './engine.ts';
+import { createNativeEngine, type Engine, type EngineOptions } from './native-engine.ts';
 
 export {
   NunjitsuRenderError,
@@ -12,9 +8,7 @@ export {
   type NamedTemplate,
   type RenderOptions,
   type TemplateInput,
-  type WorkerMemoryOptions,
-  type WorkerPoolOptions,
-} from './engine.ts';
+} from './native-engine.ts';
 export type {
   BodyTemplateTag,
   BodyTemplateTagInvocation,
@@ -46,19 +40,7 @@ export {
   type TemplateValue,
 } from './values.ts';
 
-/** Creates a Node.js Nunjitsu engine backed by Rust/Wasm worker threads. */
-export async function createEngine(options: EngineOptions = {}): Promise<Engine> {
-  const sourceExecution = import.meta.url.endsWith('.ts');
-  return await createEngineWithRuntime(
-    {
-      workerUrl: new URL(sourceExecution ? './worker.ts' : './worker.js', import.meta.url),
-      wasmUrl: new URL(
-        sourceExecution
-          ? '../rust/target/wasm32-unknown-unknown/release/nunjitsu_engine.wasm'
-          : '../wasm/nunjitsu_engine.wasm',
-        import.meta.url,
-      ),
-    },
-    options,
-  );
+/** Creates an immutable native TypeScript Nunjitsu engine synchronously. */
+export function createEngine(options: EngineOptions = {}): Engine {
+  return createNativeEngine(options);
 }

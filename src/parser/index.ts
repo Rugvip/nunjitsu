@@ -9,6 +9,16 @@ export interface ParseOptions {
   trimBlocks: boolean;
   /** Removes indentation before block tags on otherwise blank lines. */
   lstripBlocks: boolean;
+  /** Trusted declarative custom-tag grammars accepted by this parse. */
+  tags?: readonly ParseTagDescriptor[];
+}
+
+/** Data-only grammar descriptor for one trusted custom tag. */
+export interface ParseTagDescriptor {
+  readonly name: string;
+  readonly type: 'inline' | 'body';
+  readonly endTag?: string;
+  readonly intermediateTags: readonly string[];
 }
 
 /** Structured failure produced while parsing untrusted template syntax. */
@@ -35,7 +45,21 @@ interface ForeignParser {
   parse(source: string, extensions: readonly unknown[], options: ParseOptions): unknown;
 }
 
+interface ForeignExtensionParser {
+  nextToken(): { readonly value: string; readonly lineno: number; readonly colno: number };
+  peekToken(): { readonly value: string; readonly type: string };
+  parseSignature(tolerant?: boolean, noParens?: boolean): unknown;
+  advanceAfterBlockEnd(name?: string): unknown;
+  parseUntilBlocks(...names: string[]): unknown;
+  skipSymbol(name: string): boolean;
+}
+
+interface ForeignNodes {
+  CallExtension: new (extension: unknown, prop: string, args: unknown, content: unknown[]) => unknown;
+}
+
 const parser = (nunjucks as unknown as { default: { parser: ForeignParser } }).default.parser;
+const foreignNodes = (nunjucks as unknown as { default: { nodes: ForeignNodes } }).default.nodes;
 
 const nodeFields = Object.freeze({
   Root: ['children'],
@@ -98,7 +122,7 @@ export function parseTemplate(
   options: ParseOptions = { trimBlocks: false, lstripBlocks: false },
 ): AstNode {
   try {
-    return convertNode(parser.parse(source, [], options));
+    return convertNode(parser.parse(source, createParserExtensions(options.tags ?? []), options));
   } catch (error) {
     if (error instanceof NunjitsuParseError) {
       throw error;
@@ -111,6 +135,45 @@ export function parseTemplate(
       error,
     );
   }
+}
+
+function createParserExtensions(tags: readonly ParseTagDescriptor[]): readonly unknown[] {
+  return tags.map(tag => {
+    const extension = {
+      __name: tag.name,
+      autoescape: true,
+      tags: [tag.name],
+      parse(parser_: ForeignExtensionParser) {
+        const token = parser_.nextToken();
+        const args = parser_.parseSignature(true) ?? parser_.parseSignature(false, true);
+        parser_.advanceAfterBlockEnd(token.value);
+        if (tag.type === 'inline') {
+          return new foreignNodes.CallExtension(extension, 'render', args, []);
+        }
+        const endTag = tag.endTag ?? `end${tag.name}`;
+        const breakTags = [...tag.intermediateTags, endTag];
+        const content: unknown[] = [parser_.parseUntilBlocks(...breakTags)];
+        const sections = new Map<string, unknown>();
+        while (parser_.peekToken().value !== endTag) {
+          const sectionName = parser_.peekToken().value;
+          if (!tag.intermediateTags.includes(sectionName) || !parser_.skipSymbol(sectionName)) {
+            throw new NunjitsuParseError(`Unexpected custom tag section ${sectionName}`);
+          }
+          parser_.advanceAfterBlockEnd(sectionName);
+          sections.set(sectionName, parser_.parseUntilBlocks(...breakTags));
+        }
+        if (!parser_.skipSymbol(endTag)) {
+          throw new NunjitsuParseError(`Expected custom tag end ${endTag}`);
+        }
+        parser_.advanceAfterBlockEnd(endTag);
+        for (const sectionName of tag.intermediateTags) {
+          content.push(sections.get(sectionName) ?? null);
+        }
+        return new foreignNodes.CallExtension(extension, 'render', args, content);
+      },
+    };
+    return extension;
+  });
 }
 
 function convertNode(value: unknown): AstNode {

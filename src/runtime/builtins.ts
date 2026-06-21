@@ -141,13 +141,14 @@ export function lookupRuntimeValue(
 
 /** Escapes one rendered string for Nunjucks-compatible HTML output. */
 export function escapeHtml(value: string): string {
-  return value.replace(/[&<>"']/g, character => {
+  return value.replace(/[&<>"'\\]/g, character => {
     switch (character) {
       case '&': return '&amp;';
       case '<': return '&lt;';
       case '>': return '&gt;';
       case '"': return '&quot;';
       case "'": return '&#39;';
+      case '\\': return '&#92;';
       default: return character;
     }
   });

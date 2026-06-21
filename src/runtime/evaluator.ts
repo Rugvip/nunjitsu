@@ -1,6 +1,6 @@
 import type { AstData, AstNode, AstRegexLiteral } from '../parser/ast.ts';
 import { astField, astNode, astNodes, optionalAstNode } from '../parser/ast.ts';
-import { parseTemplate } from '../parser/index.ts';
+import { parseTemplate, type ParseTagDescriptor } from '../parser/index.ts';
 import type { NormalizedRenderLimits } from '../limits.ts';
 import { NunjitsuLimitError } from '../limits.ts';
 import type { TemplateContext } from '../values.ts';
@@ -33,6 +33,10 @@ export interface RuntimeArguments {
 
 /** Trusted operations available to the closed interpreter by explicit name. */
 export interface RuntimeHost {
+  /** Declarative grammars exposed to the untrusted parser. */
+  readonly tags?: readonly ParseTagDescriptor[];
+  /** Returns whether one exact global name is registered. */
+  hasGlobal?(name: string): boolean;
   /** Resolves one named template through explicitly configured trusted loaders. */
   load?(
     name: string,
@@ -63,6 +67,13 @@ export interface RuntimeHost {
     arguments_: RuntimeArguments,
     signal: AbortSignal,
   ): Promise<{ readonly found: boolean; readonly value?: RuntimeValue }>;
+  /** Invokes one configured custom tag. */
+  tag?(
+    name: string,
+    arguments_: RuntimeArguments,
+    content: readonly (string | undefined)[],
+    signal: AbortSignal,
+  ): Promise<{ readonly found: boolean; readonly value?: RuntimeValue }>;
 }
 
 /** Options for one native template evaluation. */
@@ -79,6 +90,18 @@ export interface EvaluateOptions {
 interface MacroDefinition {
   readonly node: AstNode;
   readonly scope: RuntimeScope;
+  readonly canonicalName: string | undefined;
+}
+
+interface BlockDefinition {
+  readonly node: AstNode;
+  readonly canonicalName: string | undefined;
+}
+
+interface BlockFrame {
+  readonly chain: readonly BlockDefinition[];
+  readonly index: number;
+  readonly scope: RuntimeScope;
 }
 
 /** Parses and evaluates one inline source through the closed interpreter. */
@@ -90,6 +113,7 @@ export async function evaluateTemplate(
   const ast = parseTemplate(source, {
     trimBlocks: options.trimBlocks,
     lstripBlocks: options.lstripBlocks,
+    ...(options.host?.tags ? { tags: options.host.tags } : {}),
   });
   const evaluator = new Evaluator(options);
   return await evaluator.render(ast, copyRuntimeContext(context), options.canonicalName);
@@ -99,6 +123,10 @@ class Evaluator {
   readonly #options: EvaluateOptions;
   readonly #macros = new Map<number, MacroDefinition>();
   readonly #templates = new Map<string, AstNode>();
+  #activeBlocks = new Map<string, readonly BlockDefinition[]>();
+  readonly #blockStack: BlockFrame[] = [];
+  #probingExtends = false;
+  #pendingExtends: string | undefined;
   #nextCallableId = 1;
   #workUnits = 0;
   #outputBytes = 0;
@@ -113,13 +141,59 @@ class Evaluator {
     context: RuntimeRecord,
     canonicalName?: string,
   ): Promise<string> {
-    const scope = new RuntimeScope();
+    const contextScope = new RuntimeScope();
     for (const [name, value] of context.entries()) {
-      scope.set(name, value);
+      contextScope.setReadonly(name, value);
     }
+    const scope = contextScope.child(true);
     const output: string[] = [];
-    await this.#evaluateNode(ast, scope, output, 0, canonicalName);
+    await this.#renderTemplate(ast, scope, output, 0, canonicalName);
     return output.join('');
+  }
+
+  async #renderTemplate(
+    ast: AstNode,
+    scope: RuntimeScope,
+    output: string[],
+    depth: number,
+    canonicalName: string | undefined,
+    inheritedBlocks: ReadonlyMap<string, readonly BlockDefinition[]> = new Map(),
+  ): Promise<void> {
+    const previousBlocks = this.#activeBlocks;
+    const activeBlocks = mergeBlocks(inheritedBlocks, collectBlocks(ast, canonicalName));
+    this.#activeBlocks = activeBlocks;
+    try {
+      if (containsNodeType(ast, 'Extends')) {
+        const previousProbing = this.#probingExtends;
+        const previousPending = this.#pendingExtends;
+        const probeScope = scope.child();
+        this.#probingExtends = true;
+        this.#pendingExtends = undefined;
+        await this.#evaluateNode(ast, probeScope, [], depth + 1, canonicalName);
+        const parentName = this.#pendingExtends;
+        this.#probingExtends = previousProbing;
+        this.#pendingExtends = previousPending;
+        if (parentName !== undefined) {
+          const loaded = await this.#load(parentName, canonicalName, false);
+          if (!loaded) {
+            throw new Error(`Template ${parentName} was not found`);
+          }
+          const parentAst = this.#parseLoaded(loaded);
+          await this.#renderTemplate(
+            parentAst,
+            probeScope,
+            output,
+            depth + 1,
+            loaded.canonicalName,
+            activeBlocks,
+          );
+          return;
+        }
+      }
+      await this.#evaluateNode(ast, scope, output, depth + 1, canonicalName);
+    } finally {
+      this.#activeBlocks = previousBlocks;
+    }
   }
 
   async #evaluateNode(
@@ -136,6 +210,9 @@ class Evaluator {
         await this.#evaluateSequence(astNodes(node, 'children'), scope, output, depth, canonicalName);
         return;
       case 'Output':
+        if (this.#probingExtends) {
+          return;
+        }
         for (const child of astNodes(node, 'children')) {
           if (child.type === 'TemplateData') {
             this.#append(output, literalString(child));
@@ -155,17 +232,11 @@ class Evaluator {
       case 'IfAsync': {
         const condition = await this.#evaluateExpression(astNode(node, 'cond'), scope, depth + 1);
         if (runtimeTruthy(condition)) {
-          await this.#evaluateNode(
-            astNode(node, 'body'),
-            scope.child(),
-            output,
-            depth + 1,
-            canonicalName,
-          );
+          await this.#evaluateNode(astNode(node, 'body'), scope, output, depth + 1, canonicalName);
         } else {
           const otherwise = optionalAstNode(node, 'else_');
           if (otherwise) {
-            await this.#evaluateNode(otherwise, scope.child(), output, depth + 1, canonicalName);
+            await this.#evaluateNode(otherwise, scope, output, depth + 1, canonicalName);
           }
         }
         return;
@@ -181,18 +252,16 @@ class Evaluator {
       case 'Macro': {
         const name = symbolName(astNode(node, 'name'));
         const id = this.#nextCallableId++;
-        this.#macros.set(id, { node, scope });
-        scope.set(name, new RuntimeCallable('macro', id));
+        const definitionScope = this.#blockStack.at(-1)?.scope ?? scope;
+        this.#macros.set(id, { node, scope: definitionScope, canonicalName });
+        definitionScope.set(name, new RuntimeCallable('macro', id));
         return;
       }
       case 'Block':
-        await this.#evaluateNode(
-          astNode(node, 'body'),
-          scope.child(),
-          output,
-          depth + 1,
-          canonicalName,
-        );
+        if (this.#probingExtends) {
+          return;
+        }
+        await this.#evaluateBlock(node, scope, output, depth + 1, canonicalName);
         return;
       case 'Switch': {
         const value = await this.#evaluateExpression(astNode(node, 'expr'), scope, depth + 1);
@@ -200,19 +269,22 @@ class Evaluator {
         if (!Array.isArray(cases)) {
           throw new Error('Invalid switch case list');
         }
+        let matched = false;
         for (const candidate of cases) {
           if (!isNode(candidate) || candidate.type !== 'Case') {
             throw new Error('Invalid switch case');
           }
-          const condition = await this.#evaluateExpression(
-            astNode(candidate, 'cond'),
-            scope,
-            depth + 1,
-          );
-          if (runtimeEqual(value, condition, false)) {
+          const condition = matched
+            ? undefined
+            : await this.#evaluateExpression(astNode(candidate, 'cond'), scope, depth + 1);
+          if (matched || runtimeEqual(value, condition, false)) {
+            matched = true;
+            if (astNodes(astNode(candidate, 'body'), 'children').length === 0) {
+              continue;
+            }
             await this.#evaluateNode(
               astNode(candidate, 'body'),
-              scope.child(),
+              scope,
               output,
               depth + 1,
               canonicalName,
@@ -222,21 +294,72 @@ class Evaluator {
         }
         const fallback = optionalAstNode(node, 'default');
         if (fallback) {
-          await this.#evaluateNode(fallback, scope.child(), output, depth + 1, canonicalName);
+          await this.#evaluateNode(fallback, scope, output, depth + 1, canonicalName);
         }
         return;
       }
       case 'Include':
+        if (this.#probingExtends) {
+          return;
+        }
         await this.#evaluateInclude(node, scope, output, depth + 1, canonicalName);
         return;
       case 'Import':
       case 'FromImport':
+        await this.#evaluateImport(node, scope, depth + 1, canonicalName);
+        return;
       case 'Extends':
+        if (this.#probingExtends && this.#pendingExtends === undefined) {
+          this.#pendingExtends = renderRuntimeValue(
+            await this.#evaluateExpression(astNode(node, 'template'), scope, depth + 1),
+          );
+        }
+        return;
       case 'CallExtension':
       case 'CallExtensionAsync':
-        throw new Error(`${node.type} is not implemented by the native evaluator yet`);
+        await this.#evaluateTag(node, scope, output, depth + 1, canonicalName);
+        return;
       default:
         throw new Error(`Unexpected statement node ${node.type}`);
+    }
+  }
+
+  async #evaluateBlock(
+    node: AstNode,
+    scope: RuntimeScope,
+    output: string[],
+    depth: number,
+    canonicalName: string | undefined,
+  ): Promise<void> {
+    const name = symbolName(astNode(node, 'name'));
+    const chain: readonly BlockDefinition[] = this.#activeBlocks.get(name) ?? [
+      { node, canonicalName },
+    ];
+    await this.#renderBlock(chain, 0, scope, output, depth + 1);
+  }
+
+  async #renderBlock(
+    chain: readonly BlockDefinition[],
+    index: number,
+    scope: RuntimeScope,
+    output: string[],
+    depth: number,
+  ): Promise<void> {
+    const definition = chain[index];
+    if (!definition) {
+      return;
+    }
+    this.#blockStack.push({ chain, index, scope });
+    try {
+      await this.#evaluateNode(
+        astNode(definition.node, 'body'),
+        scope.child(true),
+        output,
+        depth + 1,
+        definition.canonicalName,
+      );
+    } finally {
+      this.#blockStack.pop();
     }
   }
 
@@ -269,8 +392,9 @@ class Evaluator {
       return;
     }
     const binding = astNode(node, 'name');
+    const loopScope = scope.child();
     for (const [index, entry] of entries.entries()) {
-      const iteration = scope.child();
+      const iteration = loopScope;
       bindTarget(binding, entry, iteration);
       iteration.set('loop', new RuntimeRecord([
         ['index', index + 1],
@@ -305,15 +429,15 @@ class Evaluator {
       if (!body) {
         throw new Error('Invalid block assignment');
       }
-      value = await this.#capture(body, scope.child(), depth + 1, false);
+      const capturedBody = body.type === 'Capture' ? astNode(body, 'body') : body;
+      value = await this.#capture(capturedBody, scope, depth + 1, false);
     }
     if (targets.length === 1) {
       bindAssignment(targets[0]!, value, scope);
       return;
     }
-    const values = value instanceof RuntimeArray ? [...value.values()] : [];
-    for (const [index, target] of targets.entries()) {
-      bindAssignment(target, values[index], scope);
+    for (const target of targets) {
+      bindAssignment(target, value, scope);
     }
   }
 
@@ -346,7 +470,7 @@ class Evaluator {
         if (value !== undefined || scope.has(name)) {
           return value;
         }
-        if (this.#options.host?.global) {
+        if (this.#options.host?.hasGlobal?.(name)) {
           return new RuntimeCallable('capability', this.#registerGlobal(name));
         }
         return undefined;
@@ -515,9 +639,120 @@ class Evaluator {
       await this.#evaluateExpression(astNode(node, 'template'), scope, depth + 1),
     );
     const ignoreMissing = astField(node, 'ignoreMissing') === true;
+    const loaded = await this.#load(name, canonicalName, ignoreMissing);
+    if (!loaded) {
+      return;
+    }
+    await this.#renderTemplate(
+      this.#parseLoaded(loaded),
+      scope.child(true),
+      output,
+      depth + 1,
+      loaded.canonicalName,
+    );
+  }
+
+  async #evaluateImport(
+    node: AstNode,
+    scope: RuntimeScope,
+    depth: number,
+    canonicalName: string | undefined,
+  ): Promise<void> {
+    const name = renderRuntimeValue(
+      await this.#evaluateExpression(astNode(node, 'template'), scope, depth + 1),
+    );
+    const loaded = await this.#load(name, canonicalName, false);
+    if (!loaded) {
+      throw new Error(`Template ${name} was not found`);
+    }
+    const ast = this.#parseLoaded(loaded);
+    const withContext = astField(node, 'withContext') === true;
+    const moduleScope = withContext ? scope.child() : new RuntimeScope();
+    await this.#renderTemplate(ast, moduleScope, [], depth + 1, loaded.canonicalName);
+    const exports = new RuntimeRecord(
+      collectExports(ast).flatMap(exportName => {
+        const value = moduleScope.get(exportName);
+        return value === undefined && !moduleScope.has(exportName)
+          ? []
+          : [[exportName, value] as const];
+      }),
+    );
+    if (node.type === 'Import') {
+      scope.assign(symbolName(astNode(node, 'target')), exports);
+      return;
+    }
+    for (const imported of astNodes(astNode(node, 'names'), 'children')) {
+      const sourceName = imported.type === 'Pair'
+        ? symbolName(astNode(imported, 'key'))
+        : symbolName(imported);
+      const targetName = imported.type === 'Pair'
+        ? symbolName(astNode(imported, 'value'))
+        : sourceName;
+      scope.assign(targetName, exports.get(sourceName));
+    }
+  }
+
+  async #evaluateTag(
+    node: AstNode,
+    scope: RuntimeScope,
+    output: string[],
+    depth: number,
+    canonicalName: string | undefined,
+  ): Promise<void> {
+    const name = astField(node, 'extName');
+    if (typeof name !== 'string') {
+      throw new Error('Invalid custom tag name');
+    }
+    const arguments_ = await this.#evaluateArguments(astNode(node, 'args'), scope, depth + 1);
+    const rawContent = astField(node, 'contentArgs');
+    if (!Array.isArray(rawContent)) {
+      throw new Error(`Invalid custom tag content for ${name}`);
+    }
+    const content: Array<string | undefined> = [];
+    for (const body of rawContent) {
+      if (body === null || body === undefined) {
+        content.push(undefined);
+      } else if (isNode(body)) {
+        const captured = await this.#capture(
+          body,
+          scope.child(),
+          depth + 1,
+          false,
+          canonicalName,
+        );
+        content.push(renderRuntimeValue(captured));
+      } else {
+        throw new Error(`Invalid custom tag content for ${name}`);
+      }
+    }
+    const result = await this.#options.host?.tag?.(
+      name,
+      arguments_,
+      Object.freeze(content),
+      this.#options.signal,
+    );
+    if (!result?.found) {
+      throw new Error(`Unknown custom tag ${name}`);
+    }
+    const value = result.value;
+    const rendered = renderRuntimeValue(value);
+    const autoescape = astField(node, 'autoescape') !== false;
+    this.#append(
+      output,
+      autoescape && this.#options.autoescape && !(value instanceof RuntimeSafeString)
+        ? escapeHtml(rendered)
+        : rendered,
+    );
+  }
+
+  async #load(
+    name: string,
+    canonicalName: string | undefined,
+    ignoreMissing: boolean,
+  ): Promise<{ readonly source: string; readonly canonicalName: string } | undefined> {
     if (!this.#options.host?.load) {
       if (ignoreMissing) {
-        return;
+        return undefined;
       }
       throw new Error(`No template loader is configured for ${name}`);
     }
@@ -528,24 +763,25 @@ class Evaluator {
     ) {
       throw new NunjitsuLimitError('loaderCalls');
     }
-    const loaded = await this.#options.host.load(
+    return await this.#options.host.load(
       name,
       canonicalName,
       ignoreMissing,
       this.#options.signal,
     );
-    if (!loaded) {
-      return;
-    }
+  }
+
+  #parseLoaded(loaded: { readonly source: string; readonly canonicalName: string }): AstNode {
     let ast = this.#templates.get(loaded.canonicalName);
     if (!ast) {
       ast = parseTemplate(loaded.source, {
         trimBlocks: this.#options.trimBlocks,
         lstripBlocks: this.#options.lstripBlocks,
+        ...(this.#options.host?.tags ? { tags: this.#options.host.tags } : {}),
       });
       this.#templates.set(loaded.canonicalName, ast);
     }
-    await this.#evaluateNode(ast, scope.child(), output, depth + 1, loaded.canonicalName);
+    return ast;
   }
 
   async #evaluateTest(node: AstNode, scope: RuntimeScope, depth: number): Promise<boolean> {
@@ -578,8 +814,16 @@ class Evaluator {
 
   async #evaluateCall(node: AstNode, scope: RuntimeScope, depth: number): Promise<RuntimeValue> {
     const targetNode = astNode(node, 'name');
-    const name = targetNode.type === 'Symbol' ? symbolName(targetNode) : undefined;
-    const target = await this.#evaluateExpression(targetNode, scope, depth + 1);
+    const name = callablePath(targetNode);
+    if (name === 'super' && this.#blockStack.length > 0) {
+      const frame = this.#blockStack.at(-1)!;
+      const chunks: string[] = [];
+      await this.#renderBlock(frame.chain, frame.index + 1, frame.scope, chunks, depth + 1);
+      return new RuntimeSafeString(chunks.join(''));
+    }
+    const target = name && this.#options.host?.hasGlobal?.(name)
+      ? new RuntimeCallable('capability', this.#registerGlobal(name))
+      : await this.#evaluateExpression(targetNode, scope, depth + 1);
     const arguments_ = await this.#evaluateArguments(astNode(node, 'args'), scope, depth + 1);
     if (target instanceof RuntimeCallable) {
       if (target.callableKind === 'macro' || target.callableKind === 'caller') {
@@ -602,7 +846,7 @@ class Evaluator {
         return result.value;
       }
     }
-    throw new Error(`Unable to call ${name ?? 'template value'}`);
+    throw new Error(`Unable to call template value${name ? ` ${name}` : ''}`);
   }
 
   async #evaluateArguments(
@@ -644,7 +888,7 @@ class Evaluator {
 
   #registerCaller(node: AstNode, scope: RuntimeScope): RuntimeCallable {
     const id = this.#nextCallableId++;
-    this.#macros.set(id, { node, scope });
+    this.#macros.set(id, { node, scope, canonicalName: undefined });
     return new RuntimeCallable('caller', id);
   }
 
@@ -657,14 +901,14 @@ class Evaluator {
     if (!definition) {
       throw new Error('Unknown template macro');
     }
-    const local = definition.scope.child();
+    const local = definition.scope.child(true);
     const argumentNodes = astNodes(astNode(definition.node, 'args'), 'children');
     let positionalIndex = 0;
     for (const argument of argumentNodes) {
       if (argument.type === 'KeywordArgs') {
         for (const pair of astNodes(argument, 'children')) {
           const name = symbolName(astNode(pair, 'key'));
-          const supplied = arguments_.keyword.get(name);
+          const supplied = arguments_.keyword.get(name) ?? arguments_.positional[positionalIndex++];
           local.set(
             name,
             supplied === undefined
@@ -685,7 +929,13 @@ class Evaluator {
         local.set(name, value);
       }
     }
-    return await this.#capture(astNode(definition.node, 'body'), local, depth + 1, true);
+    return await this.#capture(
+      astNode(definition.node, 'body'),
+      local,
+      depth + 1,
+      true,
+      definition.canonicalName,
+    );
   }
 
   #invokeBuiltinGlobal(name: string, arguments_: RuntimeArguments): RuntimeValue | undefined {
@@ -719,9 +969,10 @@ class Evaluator {
     scope: RuntimeScope,
     depth: number,
     safe: boolean,
+    canonicalName?: string,
   ): Promise<RuntimeValue> {
     const chunks: string[] = [];
-    await this.#evaluateNode(node, scope, chunks, depth + 1);
+    await this.#evaluateNode(node, scope, chunks, depth + 1, canonicalName);
     const value = chunks.join('');
     return safe ? new RuntimeSafeString(value) : value;
   }
@@ -765,6 +1016,22 @@ function symbolName(node: AstNode): string {
     throw new Error('Invalid or reserved template symbol');
   }
   return name;
+}
+
+function callablePath(node: AstNode): string | undefined {
+  if (node.type === 'Symbol') {
+    return symbolName(node);
+  }
+  if (node.type !== 'LookupVal') {
+    return undefined;
+  }
+  const parent = callablePath(astNode(node, 'target'));
+  const key = astNode(node, 'val');
+  const value = astField(key, 'value');
+  if (!parent || (key.type !== 'Literal' && key.type !== 'Symbol') || typeof value !== 'string') {
+    return undefined;
+  }
+  return `${parent}.${value}`;
 }
 
 function literalString(node: AstNode): string {
@@ -879,4 +1146,80 @@ function runtimeContains(container: RuntimeValue, needle: RuntimeValue): boolean
     return container.get(renderRuntimeValue(needle)) !== undefined;
   }
   return false;
+}
+
+function collectBlocks(
+  ast: AstNode,
+  canonicalName: string | undefined,
+): ReadonlyMap<string, readonly BlockDefinition[]> {
+  const blocks = new Map<string, readonly BlockDefinition[]>();
+  visitAst(ast, node => {
+    if (node.type === 'Block') {
+      const name = symbolName(astNode(node, 'name'));
+      if (!blocks.has(name)) {
+        blocks.set(name, Object.freeze([{ node, canonicalName }]));
+      }
+    }
+  });
+  return blocks;
+}
+
+function mergeBlocks(
+  inherited: ReadonlyMap<string, readonly BlockDefinition[]>,
+  local: ReadonlyMap<string, readonly BlockDefinition[]>,
+): Map<string, readonly BlockDefinition[]> {
+  const merged = new Map<string, readonly BlockDefinition[]>(inherited);
+  for (const [name, definitions] of local) {
+    merged.set(name, Object.freeze([...(merged.get(name) ?? []), ...definitions]));
+  }
+  return merged;
+}
+
+function containsNodeType(ast: AstNode, type: AstNode['type']): boolean {
+  let found = false;
+  visitAst(ast, node => {
+    found ||= node.type === type;
+  });
+  return found;
+}
+
+function collectExports(ast: AstNode): readonly string[] {
+  const names = new Set<string>();
+  for (const node of astNodes(ast, 'children')) {
+    if (node.type === 'Macro') {
+      const name = symbolName(astNode(node, 'name'));
+      if (!name.startsWith('_')) {
+        names.add(name);
+      }
+    }
+    if (node.type === 'Set') {
+      const targets = astField(node, 'targets');
+      if (Array.isArray(targets)) {
+        for (const target of targets) {
+          if (isNode(target) && target.type === 'Symbol') {
+            const name = symbolName(target);
+            if (!name.startsWith('_')) {
+              names.add(name);
+            }
+          }
+        }
+      }
+    }
+  }
+  return Object.freeze([...names]);
+}
+
+function visitAst(node: AstNode, visitor: (node: AstNode) => void): void {
+  visitor(node);
+  for (const value of Object.values(node.fields)) {
+    if (isNode(value)) {
+      visitAst(value, visitor);
+    } else if (Array.isArray(value)) {
+      for (const child of value) {
+        if (isNode(child)) {
+          visitAst(child, visitor);
+        }
+      }
+    }
+  }
 }
