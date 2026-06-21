@@ -587,43 +587,101 @@ export function decodeOutputRanges(
   }
   const ranges: string[] = [];
   const view = new DataView(memory.buffer);
+  const resolveString = createStringResolver(memory, layout, hostStrings);
   for (let index = 0; index < count; index += 1) {
     const descriptor = offset + index * 16;
     const handle = view.getUint32(descriptor, true);
     const start = view.getUint32(descriptor + 4, true);
     const length = view.getUint32(descriptor + 8, true);
-    let value: string;
-    if ((handle & 0x8000_0000) === 0) {
-      if (handle === 0 || handle > hostStrings.length) {
-        throw new Error('Wasm returned an unknown host string handle');
-      }
-      value = hostStrings[handle - 1]!;
-    } else {
-      const operationIndex = (handle & 0x7fff_ffff) - 1;
-      if (operationIndex < 0 || operationIndex >= layout.stringOperationCapacity) {
-        throw new Error('Wasm returned an invalid string operation handle');
-      }
-      const operation = layout.stringOperationOffset + operationIndex * 32;
-      if (view.getUint32(operation, true) !== 1) {
-        throw new Error('Wasm returned an unknown string operation');
-      }
-      const valueStart = view.getUint32(operation + 4, true);
-      const valueLength = view.getUint32(operation + 8, true);
-      if (valueStart + valueLength > layout.valueCapacity) {
-        throw new Error('Wasm returned an out-of-bounds materialized string');
-      }
-      value = new TextDecoder('utf-16le', { fatal: true }).decode(new Uint8Array(
-        memory.buffer,
-        layout.valueOffset + valueStart * 2,
-        valueLength * 2,
-      ));
-    }
+    const value = resolveString(handle);
     if (start + length > value.length) {
       throw new Error('Wasm returned an out-of-bounds host string range');
     }
     ranges.push(value.slice(start, start + length));
   }
   return ranges.join('');
+}
+
+function createStringResolver(
+  memory: WebAssembly.Memory,
+  layout: FixedMemoryLayout,
+  hostStrings: readonly string[],
+): (handle: number) => string {
+  const view = new DataView(memory.buffer);
+  const utf16Decoder = new TextDecoder('utf-16le', { fatal: true });
+  const resolvedOperations = new Map<number, string>();
+  const resolvingOperations = new Set<number>();
+  const resolveString = (handle: number, depth = 0): string => {
+    if ((handle & 0x8000_0000) === 0) {
+      if (handle === 0 || handle > hostStrings.length) {
+        throw new Error('Wasm returned an unknown host string handle');
+      }
+      return hostStrings[handle - 1]!;
+    }
+    const operationIndex = (handle & 0x7fff_ffff) - 1;
+    if (operationIndex < 0 || operationIndex >= layout.stringOperationCapacity) {
+      throw new Error('Wasm returned an invalid string operation handle');
+    }
+    const resolved = resolvedOperations.get(operationIndex);
+    if (resolved !== undefined) {
+      return resolved;
+    }
+    if (depth >= 1_024 || resolvingOperations.has(operationIndex)) {
+      throw new Error('Wasm returned a cyclic string operation graph');
+    }
+    resolvingOperations.add(operationIndex);
+    try {
+      const operation = layout.stringOperationOffset + operationIndex * 32;
+      const kind = view.getUint32(operation, true);
+      let value: string;
+      if (kind === 1) {
+        const valueStart = view.getUint32(operation + 4, true);
+        const valueLength = view.getUint32(operation + 8, true);
+        if (valueStart + valueLength > layout.valueCapacity) {
+          throw new Error('Wasm returned an out-of-bounds materialized string');
+        }
+        value = utf16Decoder.decode(new Uint8Array(
+          memory.buffer,
+          layout.valueOffset + valueStart * 2,
+          valueLength * 2,
+        ));
+      } else if (kind === 2) {
+        let descriptorIndex = view.getUint32(operation + 4, true);
+        const descriptorCount = view.getUint32(operation + 8, true);
+        const codeUnitLength = view.getUint32(operation + 12, true);
+        const parts: string[] = [];
+        for (let descriptor = 0; descriptor < descriptorCount; descriptor += 1) {
+          if (descriptorIndex === 0 || descriptorIndex + 5 > layout.memberCapacity) {
+            throw new Error('Wasm returned an invalid concatenation descriptor');
+          }
+          const descriptorOffset = layout.memberOffset + descriptorIndex * 4;
+          const partHandle = view.getUint32(descriptorOffset + 4, true);
+          const partStart = view.getUint32(descriptorOffset + 8, true);
+          const partLength = view.getUint32(descriptorOffset + 12, true);
+          const part = resolveString(partHandle, depth + 1);
+          if (partStart + partLength > part.length) {
+            throw new Error('Wasm returned an out-of-bounds concatenation range');
+          }
+          parts.push(part.slice(partStart, partStart + partLength));
+          descriptorIndex = view.getUint32(descriptorOffset, true);
+        }
+        if (descriptorIndex !== 0) {
+          throw new Error('Wasm returned an inconsistent concatenation chain');
+        }
+        value = parts.join('');
+        if (value.length !== codeUnitLength) {
+          throw new Error('Wasm returned an inconsistent concatenation length');
+        }
+      } else {
+        throw new Error('Wasm returned an unknown string operation');
+      }
+      resolvedOperations.set(operationIndex, value);
+      return value;
+    } finally {
+      resolvingOperations.delete(operationIndex);
+    }
+  };
+  return resolveString;
 }
 
 /** Decodes a dependency request and its optional canonical parent identity. */
@@ -671,6 +729,7 @@ export function decodeCapabilityRequest(
   if (payload.byteLength !== 12 + count * 4) {
     throw new Error('Wasm returned an inconsistent capability argument count');
   }
+  const resolveString = createStringResolver(memory, layout, []);
   const arguments_: TemplateValue[] = [];
   for (let index = 0; index < count; index += 1) {
     arguments_.push(decodeValue(
@@ -679,6 +738,7 @@ export function decodeCapabilityRequest(
       layout,
       fixedCursors,
       new Set(),
+      resolveString,
     ));
   }
   return Object.freeze({
@@ -694,9 +754,28 @@ function decodeValue(
   layout: FixedMemoryLayout,
   fixedCursors: FixedMemoryCursors,
   ancestors: Set<number>,
+  resolveString: (handle: number) => string,
 ): TemplateValue {
   if (ancestors.has(offset)) {
     throw new Error('Wasm returned a cyclic capability value');
+  }
+  if (offset > 0 && offset < fixedCursors.slots && offset <= layout.slotCapacity) {
+    const slotOffset = layout.slotOffset + offset * fixedSlotLength;
+    const slotView = new DataView(memory.buffer, slotOffset, fixedSlotLength);
+    const slotTag = slotView.getUint32(0, true) & 0xff;
+    if (slotTag === recordTag.stringValue || slotTag === recordTag.safeStringValue) {
+      const handle = slotView.getUint32(4, true);
+      if ((handle & 0x8000_0000) !== 0) {
+        const start = slotView.getUint32(8, true);
+        const length = slotView.getUint32(12, true);
+        const operationValue = resolveString(handle);
+        if (start + length > operationValue.length) {
+          throw new Error('Wasm returned an out-of-bounds computed value range');
+        }
+        const value = operationValue.slice(start, start + length);
+        return slotTag === recordTag.safeStringValue ? new SafeString(value) : value;
+      }
+    }
   }
   const { tag, payload } = readAnyValue(memory, offset, layout, fixedCursors);
   if (tag === recordTag.undefined && payload.byteLength === 0) {
@@ -747,6 +826,7 @@ function decodeValue(
           layout,
           fixedCursors,
           ancestors,
+          resolveString,
         ),
       ));
     }
@@ -767,6 +847,7 @@ function decodeValue(
         layout,
         fixedCursors,
         ancestors,
+        resolveString,
       );
     }
     return Object.freeze(result);

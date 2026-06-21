@@ -1,3 +1,11 @@
+struct ComputedOutputValue {
+    handle: u32,
+    start: u32,
+    length: u32,
+    byte_length: u32,
+    safe: bool,
+}
+
 fn rendered_value(value_offset: u32) -> Result<RenderedValue<'static>, u32> {
     let value = Value::at(value_offset)?;
     if let Value::Number { numeric } = value {
@@ -89,8 +97,24 @@ fn write_coerced_bytes(output: &mut [u8], cursor: &mut usize, bytes: &[u8]) -> R
 }
 
 fn emit_value(state_offset: u32, value_offset: u32) -> Result<(), u32> {
-    let value = rendered_value(value_offset)?;
     let autoescape = state_field(state_offset, STATE_FLAGS)? & 1 == 1;
+    match computed_output_value(value_offset)? {
+        Some(value)
+            if (!autoescape || value.safe)
+                && (!is_streaming(state_offset)?
+                    || value.byte_length <= STREAM_CHUNK_BYTES) =>
+        {
+            return append_output_descriptor(
+                state_offset,
+                value.handle,
+                value.start,
+                value.length,
+                value.byte_length,
+            );
+        }
+        _ => {}
+    }
+    let value = rendered_value(value_offset)?;
     if autoescape && !value.safe {
         let mut append_error = None;
         let result = emit_escaped(value.bytes, &mut |segment| {
@@ -107,6 +131,30 @@ fn emit_value(state_offset: u32, value_offset: u32) -> Result<(), u32> {
     } else {
         append_output(state_offset, value.bytes)
     }
+}
+
+fn computed_output_value(value_offset: u32) -> Result<Option<ComputedOutputValue>, u32> {
+    let (tag, payload) = raw_record_at(value_offset)?;
+    if !matches!(tag, TAG_STRING_VALUE | TAG_SAFE_STRING_VALUE) || payload.len() != 12 {
+        return Ok(None);
+    }
+    let handle = read_u32(payload, 0)?;
+    if handle & COMPUTED_STRING_HANDLE_MASK == 0 {
+        return Ok(None);
+    }
+    let start = read_u32(payload, 4)?;
+    let length = read_u32(payload, 8)?;
+    let (operation_length, byte_length) = string_operation_lengths(handle)?;
+    if start != 0 || length != operation_length {
+        return Ok(None);
+    }
+    Ok(Some(ComputedOutputValue {
+        handle,
+        start,
+        length,
+        byte_length,
+        safe: tag == TAG_SAFE_STRING_VALUE,
+    }))
 }
 
 fn complete_render(state_offset: u32) -> Result<u32, u32> {
@@ -202,49 +250,33 @@ fn publish_pending_output(state_offset: u32, maximum_bytes: u32) -> Result<u32, 
 
 fn materialize_output_value(state_offset: u32, tag: u32) -> Result<u32, u32> {
     let mut code_unit_length = 0u32;
+    let mut descriptor_count = 0u32;
     let mut descriptor_index = state_field(state_offset, STATE_FIRST_CHUNK)?;
     while descriptor_index != 0 {
         let descriptor = members_at(descriptor_index, 5)?;
         code_unit_length = code_unit_length
             .checked_add(read_u32(descriptor, 12)?)
             .ok_or(ERROR_RESOURCE_LIMIT)?;
-        descriptor_index = read_u32(descriptor, 0)?;
-    }
-
-    let (value_start, output) = allocate_value_code_units(code_unit_length)?;
-    let mut output_cursor = 0usize;
-    descriptor_index = state_field(state_offset, STATE_FIRST_CHUNK)?;
-    while descriptor_index != 0 {
-        let descriptor = members_at(descriptor_index, 5)?;
-        let code_units = materialized_range_code_units(
-            read_u32(descriptor, 4)?,
-            read_u32(descriptor, 8)?,
-            read_u32(descriptor, 12)?,
-        )?;
-        let end = output_cursor
-            .checked_add(code_units.len())
+        descriptor_count = descriptor_count
+            .checked_add(1)
             .ok_or(ERROR_RESOURCE_LIMIT)?;
-        output
-            .get_mut(output_cursor..end)
-            .ok_or(ERROR_INVALID_RECORD)?
-            .copy_from_slice(code_units);
-        output_cursor = end;
         descriptor_index = read_u32(descriptor, 0)?;
     }
-    if output_cursor != output.len() {
-        return Err(ERROR_INVALID_RECORD);
-    }
-
     let value_tag = match tag {
         TAG_STRING => TAG_STRING_VALUE,
         TAG_SAFE_STRING => TAG_SAFE_STRING_VALUE,
         _ => return Err(ERROR_INVALID_RECORD),
     };
-    let handle = allocate_materialized_string_operation(value_start, code_unit_length)?;
+    let handle = allocate_concat_string_operation(
+        state_field(state_offset, STATE_FIRST_CHUNK)?,
+        descriptor_count,
+        code_unit_length,
+        state_field(state_offset, STATE_OUTPUT_LENGTH)?,
+    )?;
     let value_offset = allocate_slot(value_tag, 12)?;
     let payload = mutable_slot_record(value_offset, value_tag)?.ok_or(ERROR_INVALID_RECORD)?;
     write_u32(payload, 0, handle)?;
-    write_u32(payload, 4, value_start)?;
+    write_u32(payload, 4, 0)?;
     write_u32(payload, 8, code_unit_length)?;
     Ok(value_offset)
 }
@@ -253,18 +285,8 @@ fn append_output(state_offset: u32, bytes: &[u8]) -> Result<(), u32> {
     if bytes.is_empty() {
         return Ok(());
     }
-    let pending_length = state_field(state_offset, STATE_OUTPUT_LENGTH)?;
-    let next_pending_length = pending_length
-        .checked_add(bytes.len() as u32)
-        .ok_or(ERROR_OUTPUT_TOO_LARGE)?;
-    let total_length = state_field(state_offset, STATE_TOTAL_OUTPUT_LENGTH)?;
-    let next_total_length = total_length
-        .checked_add(bytes.len() as u32)
-        .ok_or(ERROR_OUTPUT_TOO_LARGE)?;
-    enforce_limit(
-        next_total_length,
-        state_field(state_offset, STATE_LIMIT_OUTPUT_BYTES)?,
-    )?;
+    let byte_length = u32::try_from(bytes.len()).map_err(|_| ERROR_OUTPUT_TOO_LARGE)?;
+    let (next_pending_length, next_total_length) = next_output_lengths(state_offset, byte_length)?;
     let mut cursor = 0usize;
     while cursor < bytes.len() {
         let end = utf8_chunk_end(bytes, cursor);
@@ -275,18 +297,60 @@ fn append_output(state_offset: u32, bytes: &[u8]) -> Result<(), u32> {
     set_state_field(state_offset, STATE_TOTAL_OUTPUT_LENGTH, next_total_length)
 }
 
+fn append_output_descriptor(
+    state_offset: u32,
+    handle: u32,
+    start: u32,
+    length: u32,
+    byte_length: u32,
+) -> Result<(), u32> {
+    if byte_length == 0 {
+        return Ok(());
+    }
+    let (next_pending_length, next_total_length) = next_output_lengths(state_offset, byte_length)?;
+    append_range_descriptor(state_offset, handle, start, length, byte_length)?;
+    set_state_field(state_offset, STATE_OUTPUT_LENGTH, next_pending_length)?;
+    set_state_field(state_offset, STATE_TOTAL_OUTPUT_LENGTH, next_total_length)
+}
+
+fn next_output_lengths(state_offset: u32, byte_length: u32) -> Result<(u32, u32), u32> {
+    let next_pending_length = state_field(state_offset, STATE_OUTPUT_LENGTH)?
+        .checked_add(byte_length)
+        .ok_or(ERROR_OUTPUT_TOO_LARGE)?;
+    let next_total_length = state_field(state_offset, STATE_TOTAL_OUTPUT_LENGTH)?
+        .checked_add(byte_length)
+        .ok_or(ERROR_OUTPUT_TOO_LARGE)?;
+    enforce_limit(
+        next_total_length,
+        state_field(state_offset, STATE_LIMIT_OUTPUT_BYTES)?,
+    )?;
+    Ok((next_pending_length, next_total_length))
+}
+
 fn append_output_chunk(state_offset: u32, bytes: &[u8]) -> Result<(), u32> {
     let (handle, length) = materialized_string_handle(bytes)?;
+    append_range_descriptor(
+        state_offset,
+        handle,
+        0,
+        length,
+        u32::try_from(bytes.len()).map_err(|_| ERROR_OUTPUT_TOO_LARGE)?,
+    )
+}
+
+fn append_range_descriptor(
+    state_offset: u32,
+    handle: u32,
+    start: u32,
+    length: u32,
+    byte_length: u32,
+) -> Result<(), u32> {
     let (descriptor_index, descriptor) = allocate_members(5)?;
     write_u32(descriptor, 0, 0)?;
     write_u32(descriptor, 4, handle)?;
-    write_u32(descriptor, 8, 0)?;
+    write_u32(descriptor, 8, start)?;
     write_u32(descriptor, 12, length)?;
-    write_u32(
-        descriptor,
-        16,
-        u32::try_from(bytes.len()).map_err(|_| ERROR_OUTPUT_TOO_LARGE)?,
-    )?;
+    write_u32(descriptor, 16, byte_length)?;
 
     let last_chunk = state_field(state_offset, STATE_LAST_CHUNK)?;
     if last_chunk == 0 {
