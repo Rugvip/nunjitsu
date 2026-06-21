@@ -38,7 +38,7 @@ export class RuntimeArray {
   readonly #items: readonly RuntimeValue[];
 
   constructor(items: readonly RuntimeValue[]) {
-    this.#items = Object.freeze([...items]);
+    this.#items = Object.freeze(Array.from(items));
     Object.freeze(this);
   }
 

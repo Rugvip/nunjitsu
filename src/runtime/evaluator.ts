@@ -576,9 +576,9 @@ class Evaluator {
     const stopValue = this.#evaluateExpression(slice.stop, scope, depth + 1);
     const stepValue = this.#evaluateExpression(slice.step, scope, depth + 1);
     const values = target instanceof RuntimeArray
-      ? [...target.values()]
+      ? Array.from(target.values())
       : typeof target === 'string' || target instanceof RuntimeSafeString
-        ? [...renderRuntimeValue(target)]
+        ? Array.from(renderRuntimeValue(target))
         : [];
     const step = Math.trunc(runtimeNumber(stepValue));
     if (!Number.isFinite(step) || step === 0) {
@@ -869,7 +869,7 @@ class Evaluator {
       const id = this.#nextCallableId++;
       this.#builtinCallables.set(id, {
         type: 'cycler',
-        values: Object.freeze([...arguments_.positional]),
+        values: Object.freeze(Array.from(arguments_.positional)),
         index: -1,
       });
       return new RuntimeCallable('builtin', id);
@@ -1256,7 +1256,7 @@ function astChildren(node: AstNode): readonly AstNode[] {
     case 'Block':
       return [node.name, node.body];
     case 'Set': {
-      const children = [...node.targets];
+      const children = Array.from(node.targets);
       if (node.value) {
         children.push(node.value);
       }

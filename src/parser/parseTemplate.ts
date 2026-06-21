@@ -101,7 +101,7 @@ class TemplateParser {
       this.#fail(`Unexpected ${tagName(parsed.stop.value)} tag`, parsed.stop);
     }
     const root = parsed.body.type === 'NodeList' ? parsed.body.children : [parsed.body];
-    return this.#make('Root', { children: Object.freeze([...root]) }, this.#tokens[0]);
+    return this.#make('Root', { children: Object.freeze(Array.from(root)) }, this.#tokens[0]);
   }
 
   #parseBody(stops: ReadonlySet<string>): ParsedBody {
@@ -354,7 +354,7 @@ class TemplateParser {
   }
 
   #nodeList(children: readonly AstNode[], token?: TemplateToken): AstNode {
-    return this.#make('NodeList', { children: Object.freeze([...children]) }, token);
+    return this.#make('NodeList', { children: Object.freeze(Array.from(children)) }, token);
   }
 
   #make(type: AstNode['type'], fields: Record<string, unknown>, token?: TemplateToken): AstNode {

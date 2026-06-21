@@ -268,7 +268,7 @@ function verifyStableOutput(
 }
 
 function summarizeResult(result: WorkerResult): ReportResult {
-  const sorted = [...result.samplesMs].sort((left, right) => left - right);
+  const sorted = Array.from(result.samplesMs).sort((left, right) => left - right);
   const meanMs = sorted.reduce((sum, value) => sum + value, 0) / sorted.length;
   return {
     implementation: result.implementation,

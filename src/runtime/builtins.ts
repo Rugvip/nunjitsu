@@ -112,11 +112,11 @@ export function applyBuiltinFilter(
   }
   if (name === 'reverse') {
     if (typeof input === 'string' || input instanceof RuntimeSafeString) {
-      const reversed = [...renderRuntimeValue(input)].reverse().join('');
+      const reversed = Array.from(renderRuntimeValue(input)).reverse().join('');
       return input instanceof RuntimeSafeString ? new RuntimeSafeString(reversed) : reversed;
     }
     if (input instanceof RuntimeArray) {
-      return new RuntimeArray([...input.values()].reverse());
+      return new RuntimeArray(Array.from(input.values()).reverse());
     }
   }
   if (name === 'groupby') {
@@ -270,7 +270,7 @@ function dictsortRuntimeValues(
   if (by !== 'key' && by !== 'value') {
     throw new TypeError('dictsort can only sort by key or value');
   }
-  const values = [...input.entries()];
+  const values = Array.from(input.entries());
   values.sort((left, right) => compareRuntimeFilterValues(
     by === 'key' ? left[0] : left[1],
     by === 'key' ? right[0] : right[1],
@@ -284,7 +284,7 @@ function edgeRuntimeValue(input: RuntimeValue, last: boolean): RuntimeValue {
     return input.at(last ? input.length - 1 : 0);
   }
   if (typeof input === 'string' || input instanceof RuntimeSafeString) {
-    const characters = [...renderRuntimeValue(input)];
+    const characters = Array.from(renderRuntimeValue(input));
     return characters[last ? characters.length - 1 : 0];
   }
   return undefined;
@@ -298,7 +298,7 @@ function runtimeLength(input: RuntimeValue): number {
     return input.size;
   }
   if (typeof input === 'string' || input instanceof RuntimeSafeString) {
-    return [...renderRuntimeValue(input)].length;
+    return Array.from(renderRuntimeValue(input)).length;
   }
   return 0;
 }
@@ -308,7 +308,7 @@ function listRuntimeValue(input: RuntimeValue): RuntimeValue {
     return input;
   }
   if (typeof input === 'string' || input instanceof RuntimeSafeString) {
-    return new RuntimeArray([...renderRuntimeValue(input)]);
+    return new RuntimeArray(Array.from(renderRuntimeValue(input)));
   }
   if (input instanceof RuntimeRecord) {
     const output: RuntimeValue[] = [];
@@ -369,7 +369,7 @@ function replaceRuntimeValue(
       return input;
     }
     if (needle === '') {
-      output = `${replacement}${[...text].join(replacement)}${replacement}`;
+      output = `${replacement}${Array.from(text).join(replacement)}${replacement}`;
     } else if (maximum < 0) {
       output = text.split(needle).join(replacement);
     } else {
@@ -401,7 +401,7 @@ function sliceRuntimeValues(
   if (!Number.isSafeInteger(count) || count <= 0) {
     throw new TypeError('Slice count must be a positive integer');
   }
-  const values = [...input.values()];
+  const values = Array.from(input.values());
   const base = Math.floor(values.length / count);
   const extra = values.length % count;
   const fill = positional[1];
@@ -568,7 +568,7 @@ function sortRuntimeValues(
   const reverse = runtimeTruthy(keyword.get('reverse') ?? positional[0]);
   const caseSensitive = runtimeTruthy(keyword.get('case_sensitive') ?? positional[1]);
   const attribute = optionalAttributePath(keyword.get('attribute') ?? positional[2]);
-  const values = [...input.values()];
+  const values = Array.from(input.values());
   values.sort((left, right) => {
     const leftValue = attribute ? lookupRuntimePath(left, attribute) : left;
     const rightValue = attribute ? lookupRuntimePath(right, attribute) : right;
@@ -801,7 +801,7 @@ export function lookupRuntimeValue(
       return text[index];
     }
     if (key === 'length') {
-      return [...text].length;
+      return Array.from(text).length;
     }
   }
   return undefined;
@@ -825,7 +825,7 @@ export function lookupRuntimeConstantKey(
       return text[index];
     }
     if (key === 'length') {
-      return [...text].length;
+      return Array.from(text).length;
     }
   }
   return undefined;
