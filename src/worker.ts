@@ -205,6 +205,7 @@ async function start(port: MessagePort): Promise<void> {
         data.memory,
         exports,
         controlOffset,
+        memoryLayout,
         command.id,
         state,
       )
@@ -223,6 +224,7 @@ async function start(port: MessagePort): Promise<void> {
         data.memory,
         exports,
         controlOffset,
+        memoryLayout,
         command.id,
         state,
       )
@@ -244,6 +246,7 @@ async function start(port: MessagePort): Promise<void> {
         data.memory,
         exports,
         controlOffset,
+        memoryLayout,
         command.id,
         state,
       )
@@ -258,6 +261,7 @@ async function start(port: MessagePort): Promise<void> {
         data.memory,
         exports,
         controlOffset,
+        memoryLayout,
         command.id,
         state,
       )
@@ -278,6 +282,7 @@ async function start(port: MessagePort): Promise<void> {
       data.memory,
       exports,
       controlOffset,
+      memoryLayout,
       command.id,
       state,
     )
@@ -351,6 +356,7 @@ function reportState(
   memory: WebAssembly.Memory,
   exports: NunjitsuExports,
   controlOffset: number,
+  memoryLayout: FixedMemoryLayout,
   id: number,
   state: number,
 ): boolean {
@@ -371,10 +377,13 @@ function reportState(
     return false;
   }
   if (state === 3 || state === 6) {
+    const fixedCursors = readFixedMemoryCursors(exports);
     const request = decodeLoadRequest(
       memory,
       control.getUint32(4, true),
       control.getUint32(8, true),
+      memoryLayout,
+      fixedCursors,
     );
     port.postMessage({
       type: 'load',
@@ -382,7 +391,7 @@ function reportState(
       name: request.name,
       ...(request.from === undefined ? {} : { from: request.from }),
       cursor: exports.arenaCursor(),
-      fixedCursors: readFixedMemoryCursors(exports),
+      fixedCursors,
       ignoreMissing: state === 6,
     });
     return true;

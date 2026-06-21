@@ -689,8 +689,19 @@ export function decodeLoadRequest(
   memory: WebAssembly.Memory,
   offset: number,
   length: number,
+  layout?: FixedMemoryLayout,
+  fixedCursors?: FixedMemoryCursors,
 ): DecodedLoadRequest {
-  const payload = readRecord(memory, offset, recordTag.loadRequest, length);
+  const payload = layout && fixedCursors
+    ? readFixedSlotPayload(
+      memory,
+      offset,
+      recordTag.loadRequest,
+      length,
+      layout,
+      fixedCursors,
+    )
+    : readRecord(memory, offset, recordTag.loadRequest, length);
   if (payload.byteLength !== 8) {
     throw new Error('Wasm returned an invalid loader request');
   }
@@ -701,6 +712,32 @@ export function decodeLoadRequest(
     ? undefined
     : decodeNestedString(memory, fromOffset, 'loader parent identity');
   return Object.freeze({ name, ...(from === undefined ? {} : { from }) });
+}
+
+function readFixedSlotPayload(
+  memory: WebAssembly.Memory,
+  index: number,
+  expectedTag: number,
+  expectedLength: number,
+  layout: FixedMemoryLayout,
+  fixedCursors: FixedMemoryCursors,
+): Uint8Array {
+  if (
+    index <= 0 ||
+    index >= fixedCursors.slots ||
+    index > layout.slotCapacity
+  ) {
+    throw new Error('Wasm returned an out-of-bounds fixed slot');
+  }
+  const offset = layout.slotOffset + index * fixedSlotLength;
+  if (offset + fixedSlotLength > memory.buffer.byteLength) {
+    throw new Error('Wasm returned an out-of-bounds fixed slot');
+  }
+  const view = new DataView(memory.buffer, offset, fixedSlotLength);
+  if ((view.getUint32(0, true) & 0xff) !== expectedTag) {
+    throw new Error('Wasm returned an unexpected fixed slot type');
+  }
+  return new Uint8Array(memory.buffer, offset + 4, expectedLength);
 }
 
 /** Decodes a yielded capability request and recursively copies its safe arguments. */

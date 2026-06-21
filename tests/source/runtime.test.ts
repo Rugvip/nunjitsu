@@ -51,6 +51,30 @@ test('validates parent-aware loader request records at the Wasm boundary', () =>
     name: './partial.njk',
   });
 
+  const fixedLayout = {
+    slotOffset: 512,
+    slotCapacity: 2,
+    sourceOffset: 1_024,
+    sourceCapacity: 1,
+    valueOffset: 1_088,
+    valueCapacity: 1,
+    memberOffset: 1_152,
+    memberCapacity: 1,
+    stringOperationOffset: 1_216,
+    stringOperationCapacity: 1,
+    outputRangeOffset: 1_280,
+    outputRangeCapacity: 1,
+  };
+  const fixedCursors = { slots: 2, sources: 0, values: 0, members: 0, strings: 0 };
+  const requestSlot = fixedLayout.slotOffset + 72;
+  view.setUint32(requestSlot, 34 | (8 << 8), true);
+  view.setUint32(requestSlot + 4, nameOffset, true);
+  view.setUint32(requestSlot + 8, fromOffset, true);
+  assert.deepEqual(decodeLoadRequest(memory, 1, 8, fixedLayout, fixedCursors), {
+    name: './partial.njk',
+    from: 'memory:pages%2Fentry.njk',
+  });
+
   assert.throws(() => decodeLoadRequest(memory, requestOffset, 4), /record envelope/);
   view.setUint32(requestOffset, 2, true);
   assert.throws(() => decodeLoadRequest(memory, requestOffset, 8), /record envelope/);

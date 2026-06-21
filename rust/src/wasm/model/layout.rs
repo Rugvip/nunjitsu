@@ -199,6 +199,7 @@ fn slot_payload_length(tag: u32) -> Option<u32> {
         TAG_BOOLEAN => Some(1),
         TAG_NUMBER => Some(8),
         TAG_STRING_VALUE | TAG_SAFE_STRING_VALUE => Some(12),
+        TAG_LOAD_REQUEST => Some(8),
         TAG_FRAME => Some(FRAME_LENGTH),
         TAG_LOOP_STATE => Some(LOOP_STATE_LENGTH),
         TAG_SCOPE => Some(SCOPE_LENGTH),
@@ -243,6 +244,7 @@ fn slot_category_mask(tag: u32) -> u32 {
         TAG_SCOPE | TAG_MACRO_DEFINITION | TAG_BLOCK_DEFINITION => 4,
         TAG_TAG_ARGUMENTS
         | TAG_FILTER_BLOCK
+        | TAG_LOAD_REQUEST
         | TAG_BINDINGS
         | TAG_MACRO_ARGUMENTS
         | TAG_TAG_BOUNDARIES => 8,
