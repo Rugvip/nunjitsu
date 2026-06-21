@@ -10,6 +10,25 @@ import {
   type RuntimeValue,
 } from './value.ts';
 
+const lineBreakPattern = /\r\n|\n/g;
+const htmlTagPattern = /<\/?([a-z][a-z0-9]*)\b[^>]*>|<!--[\s\S]*?-->/gi;
+const lineEdgeSpacesPattern = /^ +| +$/gm;
+const repeatedSpacesPattern = / +/g;
+const windowsLineBreakPattern = /\r\n/g;
+const excessBlankLinesPattern = /\n\n\n+/g;
+const repeatedWhitespacePattern = /\s+/g;
+const wordPattern = /\w+/g;
+const urlizeSeparatorPattern = /(\s+)/;
+const urlizePunctuationPattern = /^(?:\(|<|&lt;)?(.*?)(?:\.|,|\)|\n|&gt;)?$/;
+const httpUrlPattern = /^https?:\/\//;
+const wwwUrlPattern = /^www\./;
+const emailAddressPattern = /^[\w.!#$%&'*+\-/=?^`{|}~]+@[a-z\d-]+(?:\.[a-z\d-]+)+$/i;
+const commonDomainPattern = /\.(?:org|net|com)(?::|\/|$)/;
+const htmlEscapeCharacterPattern = /[&"'<>\\]/g;
+const htmlEscapeReplacements: Readonly<Record<string, string>> = Object.freeze({
+  '&': '&amp;', '"': '&quot;', "'": '&#39;', '<': '&lt;', '>': '&gt;', '\\': '&#92;',
+});
+
 const builtinFilters = new Set([
   'abs', 'batch', 'capitalize', 'center', 'd', 'default', 'dictsort', 'dump', 'e',
   'escape', 'first', 'float', 'forceescape', 'groupby', 'indent', 'int', 'join',
@@ -140,7 +159,7 @@ export function applyBuiltinFilter(
     return name === 'lower' ? text.toLowerCase() : text.toUpperCase();
   }
   if (name === 'nl2br') {
-    return copySafeness(input, renderRuntimeValue(input).replace(/\r\n|\n/g, '<br />\n'));
+    return copySafeness(input, renderRuntimeValue(input).replace(lineBreakPattern, '<br />\n'));
   }
   if (name === 'random') {
     if (!(input instanceof RuntimeArray) || input.length === 0) {
@@ -166,11 +185,15 @@ export function applyBuiltinFilter(
   }
   if (name === 'striptags') {
     const stripped = renderRuntimeValue(input)
-      .replace(/<\/?([a-z][a-z0-9]*)\b[^>]*>|<!--[\s\S]*?-->/gi, '')
+      .replace(htmlTagPattern, '')
       .trim();
     const text = runtimeTruthy(positional[0])
-      ? stripped.replace(/^ +| +$/gm, '').replace(/ +/g, ' ').replace(/\r\n/g, '\n').replace(/\n\n\n+/g, '\n\n')
-      : stripped.replace(/\s+/g, ' ');
+      ? stripped
+        .replace(lineEdgeSpacesPattern, '')
+        .replace(repeatedSpacesPattern, ' ')
+        .replace(windowsLineBreakPattern, '\n')
+        .replace(excessBlankLinesPattern, '\n\n')
+      : stripped.replace(repeatedWhitespacePattern, ' ');
     return copySafeness(input, text);
   }
   if (name === 'title') {
@@ -192,7 +215,7 @@ export function applyBuiltinFilter(
     return urlizeRuntimeValue(input, positional);
   }
   if (name === 'wordcount') {
-    return renderRuntimeValue(input).match(/\w+/g)?.length ?? null;
+    return renderRuntimeValue(input).match(wordPattern)?.length ?? null;
   }
   return undefined;
 }
@@ -427,20 +450,20 @@ function urlizeRuntimeValue(
   const lengthValue = runtimeNumber(positional[0]);
   const length = Number.isNaN(lengthValue) ? Number.POSITIVE_INFINITY : lengthValue;
   const nofollow = positional[1] === true ? ' rel="nofollow"' : '';
-  return renderRuntimeValue(input).split(/(\s+)/).filter(Boolean).map(word => {
-    const match = /^(?:\(|<|&lt;)?(.*?)(?:\.|,|\)|\n|&gt;)?$/.exec(word);
+  return renderRuntimeValue(input).split(urlizeSeparatorPattern).filter(Boolean).map(word => {
+    const match = urlizePunctuationPattern.exec(word);
     const possible = match?.[1] ?? word;
     const short = possible.slice(0, length);
-    if (/^https?:\/\//.test(possible)) {
+    if (httpUrlPattern.test(possible)) {
       return `<a href="${possible}"${nofollow}>${short}</a>`;
     }
-    if (/^www\./.test(possible)) {
+    if (wwwUrlPattern.test(possible)) {
       return `<a href="http://${possible}"${nofollow}>${short}</a>`;
     }
-    if (/^[\w.!#$%&'*+\-/=?^`{|}~]+@[a-z\d-]+(?:\.[a-z\d-]+)+$/i.test(possible)) {
+    if (emailAddressPattern.test(possible)) {
       return `<a href="mailto:${possible}">${possible}</a>`;
     }
-    if (/\.(?:org|net|com)(?::|\/|$)/.test(possible)) {
+    if (commonDomainPattern.test(possible)) {
       return `<a href="http://${possible}"${nofollow}>${short}</a>`;
     }
     return word;
@@ -452,10 +475,10 @@ function copySafeness(input: RuntimeValue, output: string): RuntimeValue {
 }
 
 function escapeHtml(value: string): string {
-  const replacements: Readonly<Record<string, string>> = {
-    '&': '&amp;', '"': '&quot;', "'": '&#39;', '<': '&lt;', '>': '&gt;', '\\': '&#92;',
-  };
-  return value.replace(/[&"'<>\\]/g, character => replacements[character]!);
+  return value.replace(
+    htmlEscapeCharacterPattern,
+    character => htmlEscapeReplacements[character]!,
+  );
 }
 
 function toJsonValue(value: RuntimeValue): unknown {

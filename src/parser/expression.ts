@@ -20,6 +20,12 @@ const simpleStringEscapes: Readonly<Record<string, string>> = Object.freeze({
   "'": "'",
   '"': '"',
 });
+const whitespacePattern = /\s/;
+const namePattern = /^[A-Za-z_][A-Za-z0-9_]*/;
+const numberPattern = /^(?:0[xX][0-9a-fA-F]+|(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?)/;
+const shortHexEscapePattern = /^[0-9a-fA-F]{2}$/;
+const unicodeEscapePattern = /^[0-9a-fA-F]{4}$/;
+const regularExpressionFlagsPattern = /^[A-Za-z]*/;
 
 /** Creates and freezes one parser-owned AST node. */
 export type AstNodeFactory = (node: AstNode) => AstNode;
@@ -513,7 +519,7 @@ function tokenize(source: string, initialLine: number, initialColumn: number): r
   };
   while (index < source.length) {
     const character = source[index]!;
-    if (/\s/.test(character)) {
+    if (whitespacePattern.test(character)) {
       if (character === '\n') {
         line += 1;
         column = 0;
@@ -525,7 +531,7 @@ function tokenize(source: string, initialLine: number, initialColumn: number): r
     }
     const tokenLine = line;
     const tokenColumn = column;
-    const name = /^[A-Za-z_][A-Za-z0-9_]*/.exec(source.slice(index));
+    const name = namePattern.exec(source.slice(index));
     if (name) {
       if (name[0] === 'r' && source[index + 1] === '/') {
         const regex = readRegex(source, index + 2, tokenLine, tokenColumn);
@@ -540,9 +546,7 @@ function tokenize(source: string, initialLine: number, initialColumn: number): r
       }
       continue;
     }
-    const number = /^(?:0[xX][0-9a-fA-F]+|(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?)/.exec(
-      source.slice(index),
-    );
+    const number = numberPattern.exec(source.slice(index));
     if (number) {
       emit('number', number[0], tokenLine, tokenColumn);
       index += number[0].length;
@@ -598,7 +602,8 @@ function readString(
     } else if (escaped === 'u' || escaped === 'x') {
       const length = escaped === 'u' ? 4 : 2;
       const digits = source.slice(index + 1, index + 1 + length);
-      if (!new RegExp(`^[0-9a-fA-F]{${length}}$`).test(digits)) {
+      const pattern = escaped === 'u' ? unicodeEscapePattern : shortHexEscapePattern;
+      if (!pattern.test(digits)) {
         throw new ExpressionSyntaxError('Invalid string escape', line, column);
       }
       value += String.fromCodePoint(Number.parseInt(digits, 16));
@@ -621,7 +626,7 @@ function readRegex(
   for (let index = start; index < source.length; index += 1) {
     const character = source[index]!;
     if (!escaped && character === '/') {
-      const flags = /^[A-Za-z]*/.exec(source.slice(index + 1))![0];
+      const flags = regularExpressionFlagsPattern.exec(source.slice(index + 1))![0];
       try {
         void new RegExp(pattern, flags);
       } catch {

@@ -2,6 +2,17 @@ import { NunjitsuLimitError } from '../limits.ts';
 import type { AstCaseNode, AstNode } from './ast.ts';
 import { ExpressionParser, ExpressionSyntaxError } from './expression.ts';
 
+const macroSignaturePattern = /^([A-Za-z_][A-Za-z0-9_]*)\s*\(([\s\S]*)\)$/;
+const trailingWhitespacePattern = /[\t\n\r ]+$/;
+const leadingWhitespacePattern = /^[\t\n\r ]+/;
+const optionalLeadingWhitespacePattern = /^[\t\n\r ]*/;
+const leadingNewlinePattern = /^(?:\r?\n)/;
+const rawEndPattern = /{%-?\s*endraw\s*(-?)%}/g;
+const verbatimEndPattern = /{%-?\s*endverbatim\s*(-?)%}/g;
+const indentationPattern = /^[\t ]*$/;
+const tagNamePattern = /^[A-Za-z_][A-Za-z0-9_]*/;
+const whitespacePattern = /\s/;
+
 /** Configuration for parsing one complete inline template. */
 export interface ParseOptions {
   /** Removes one newline immediately following a block tag. */
@@ -221,7 +232,7 @@ class TemplateParser {
   }
 
   #parseMacro(header: string, token: TemplateToken): AstNode {
-    const signature = /^([A-Za-z_][A-Za-z0-9_]*)\s*\(([\s\S]*)\)$/.exec(header.trim());
+    const signature = macroSignaturePattern.exec(header.trim());
     if (!signature) {
       this.#fail('Invalid macro signature', token);
     }
@@ -423,7 +434,7 @@ function scanTemplate(source: string, options: ParseOptions): readonly TemplateT
     }
     const leftTrim = source.startsWith(`${opening.value}-`, opening.index);
     if (leftTrim) {
-      pendingText = pendingText.replace(/[\t\n\r ]+$/, '');
+      pendingText = pendingText.replace(trailingWhitespacePattern, '');
     }
     flushText();
     advance(opening.value);
@@ -447,26 +458,26 @@ function scanTemplate(source: string, options: ParseOptions): readonly TemplateT
         line: startLine,
         column: startColumn,
       } as TemplateToken);
-      if (opening.kind === 'block' && ['raw', 'verbatim'].includes(tagName(token.value))) {
-        const rawName = tagName(token.value);
+      const rawName = opening.kind === 'block' ? tagName(token.value) : '';
+      if (rawName === 'raw' || rawName === 'verbatim') {
         const closing = findRawEnd(source, index, rawName);
         if (!closing) {
           throw new NunjitsuParseError(`Missing end${rawName} tag`, startLine, startColumn);
         }
         let raw = source.slice(index, closing.start);
         if (rightTrim) {
-          raw = raw.replace(/^[\t\n\r ]+/, '');
+          raw = raw.replace(leadingWhitespacePattern, '');
         }
         appendText(raw);
         if (closing.leftTrim) {
-          pendingText = pendingText.replace(/[\t\n\r ]+$/, '');
+          pendingText = pendingText.replace(trailingWhitespacePattern, '');
         }
         advance(source.slice(index, closing.end));
         if (closing.rightTrim) {
-          const whitespace = /^[\t\n\r ]*/.exec(source.slice(index))![0];
+          const whitespace = optionalLeadingWhitespacePattern.exec(source.slice(index))![0];
           advance(whitespace);
         } else if (options.trimBlocks) {
-          const newline = /^(?:\r?\n)/.exec(source.slice(index))?.[0];
+          const newline = leadingNewlinePattern.exec(source.slice(index))?.[0];
           if (newline) {
             advance(newline);
           }
@@ -477,10 +488,10 @@ function scanTemplate(source: string, options: ParseOptions): readonly TemplateT
     }
 
     if (rightTrim) {
-      const whitespace = /^[\t\n\r ]*/.exec(source.slice(index))![0];
+      const whitespace = optionalLeadingWhitespacePattern.exec(source.slice(index))![0];
       advance(whitespace);
     } else if (opening.kind === 'block' && options.trimBlocks) {
-      const newline = /^(?:\r?\n)/.exec(source.slice(index))?.[0];
+      const newline = leadingNewlinePattern.exec(source.slice(index))?.[0];
       if (newline) {
         advance(newline);
       }
@@ -549,9 +560,9 @@ function findTagEnd(source: string, start: number, close: string): number {
 function findRawEnd(
   source: string,
   start: number,
-  name: string,
+  name: 'raw' | 'verbatim',
 ): { readonly start: number; readonly end: number; readonly leftTrim: boolean; readonly rightTrim: boolean } | undefined {
-  const pattern = new RegExp(`{%-?\\s*end${name}\\s*(-?)%}`, 'g');
+  const pattern = name === 'raw' ? rawEndPattern : verbatimEndPattern;
   pattern.lastIndex = start;
   const match = pattern.exec(source);
   if (!match) {
@@ -568,11 +579,11 @@ function findRawEnd(
 function stripBlockIndent(value: string): string {
   const newline = Math.max(value.lastIndexOf('\n'), value.lastIndexOf('\r'));
   const suffix = value.slice(newline + 1);
-  return /^[\t ]*$/.test(suffix) ? value.slice(0, newline + 1) : value;
+  return indentationPattern.test(suffix) ? value.slice(0, newline + 1) : value;
 }
 
 function tagName(value: string): string {
-  return /^[A-Za-z_][A-Za-z0-9_]*/.exec(value.trim())?.[0] ?? '';
+  return tagNamePattern.exec(value.trim())?.[0] ?? '';
 }
 
 function tagRemainder(value: string): string {
@@ -604,8 +615,8 @@ function splitKeyword(
     } else if (
       depth === 0 &&
       source.slice(index, index + keyword.length) === keyword &&
-      /\s/.test(source[index - 1] ?? ' ') &&
-      /\s/.test(source[index + keyword.length] ?? ' ')
+      whitespacePattern.test(source[index - 1] ?? ' ') &&
+      whitespacePattern.test(source[index + keyword.length] ?? ' ')
     ) {
       return {
         left: source.slice(0, index).trim(),
