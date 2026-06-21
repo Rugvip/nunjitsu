@@ -130,7 +130,7 @@ class Evaluator {
   readonly #blockStack: BlockFrame[] = [];
   #nextCallableId = 1;
   #workUnits = 0;
-  #outputBytes = 0;
+  #outputCodeUnits = 0;
   #capabilityCalls = 0;
   #sourceCodeUnits = 0;
   #astNodeCount = 0;
@@ -926,12 +926,12 @@ class Evaluator {
   }
 
   #append(output: OutputTarget, value: string): void {
-    this.#outputBytes += Buffer.byteLength(value);
+    this.#outputCodeUnits += value.length;
     if (
-      this.#options.limits.outputBytes !== Number.POSITIVE_INFINITY &&
-      this.#outputBytes > this.#options.limits.outputBytes
+      this.#options.limits.outputCodeUnits !== Number.POSITIVE_INFINITY &&
+      this.#outputCodeUnits > this.#options.limits.outputCodeUnits
     ) {
-      throw new NunjitsuLimitError('outputBytes');
+      throw new NunjitsuLimitError('outputCodeUnits');
     }
     output.push(value);
   }

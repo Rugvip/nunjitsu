@@ -62,17 +62,19 @@ callable.
 
 ## Output
 
-Evaluation collects string chunks in a render-owned buffer and returns their
-joined value. Automatic escaping is disabled to match Backstage. Explicit
-Nunjucks filters such as `escape` still provide their documented behavior.
-Rendered output remains attacker-controlled and is not a general HTML, SQL, or
-shell sanitizer.
+Evaluation appends string slices to a render-owned array and joins it once at
+the end. Automatic escaping is disabled to match Backstage. Explicit Nunjucks
+filters such as `escape` still provide their documented behavior. Rendered
+output remains attacker-controlled and is not a general HTML, SQL, or shell
+sanitizer.
 
 ## Cooperative limits
 
 High finite limits account for source characters, AST nodes, evaluator work,
-interpreter nesting depth, allocation, output, and capability calls. Nesting
-depth is checked before evaluating each statement and expression node. These
-are cooperative availability safeguards, not a process sandbox or exact
-CPU/RSS accounting. Trusted callbacks execute outside interpreter work
-accounting except for their invocation count and returned-value validation.
+interpreter nesting depth, allocation, output code units, and capability calls.
+Output growth uses JavaScript string length as a cheap memory-pressure guard;
+it is intentionally not an exact byte count. Nesting depth is checked before
+evaluating each statement and expression node. These are cooperative
+availability safeguards, not a process sandbox or exact CPU/RSS accounting.
+Trusted callbacks execute outside interpreter work accounting except for their
+invocation count and returned-value validation.

@@ -8,8 +8,8 @@ export interface RenderLimits {
   workUnits: number;
   /** Maximum nested interpreter evaluation depth. */
   nestingDepth: number;
-  /** Maximum rendered UTF-8 output bytes. */
-  outputBytes: number;
+  /** Maximum rendered JavaScript UTF-16 code units. */
+  outputCodeUnits: number;
   /** Maximum temporary UTF-8 scratch bytes used during evaluation. */
   scratchBytes: number;
   /** Maximum trusted host filter and global-function invocations. */
@@ -37,7 +37,7 @@ const defaultLimits: NormalizedRenderLimits = Object.freeze({
   astNodes: 1_000_000,
   workUnits: 1_000_000,
   nestingDepth: 512,
-  outputBytes: 16 * 1024 * 1024,
+  outputCodeUnits: 16 * 1024 * 1024,
   scratchBytes: 64 * 1024 * 1024,
   capabilityCalls: 4096,
 });

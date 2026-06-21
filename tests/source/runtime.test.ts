@@ -157,7 +157,7 @@ test('enforces finite resource limits and recovers after failures', () => {
   });
   const failures: Array<() => unknown> = [
     () => engine.render('source', {}, { limits: { sourceCodeUnits: 1 } }),
-    () => engine.render('${{ value }}', { value: 'output' }, { limits: { outputBytes: 1 } }),
+    () => engine.render('${{ value }}', { value: 'output' }, { limits: { outputCodeUnits: 1 } }),
     () => engine.render('{% for value in values %}${{ value }}{% endfor %}', {
       values: [1, 2, 3],
     }, { limits: { workUnits: 2 } }),
@@ -177,6 +177,10 @@ test('enforces finite resource limits and recovers after failures', () => {
     error => error instanceof NunjitsuLimitError && error.limit === 'nestingDepth',
   );
   assert.equal(engine.render('clean'), 'clean');
+  assert.equal(
+    engine.render('😀', {}, { limits: { outputCodeUnits: 2 } }),
+    '😀',
+  );
 });
 
 test('wraps parse and evaluation failures without retaining render state', () => {

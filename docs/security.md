@@ -99,6 +99,10 @@ High finite defaults cover parsing, evaluator work, nesting, allocation,
 output, and capabilities. They reduce accidental and intentional
 denial of service but are cooperative checks rather than hard isolation.
 
+Output growth is bounded by UTF-16 code units, matching the returned JavaScript
+string and providing a cheap approximate memory guard. It is not exact V8 heap
+or encoded-output accounting.
+
 Interpreter nesting is checked at every statement and expression evaluation
 checkpoint. This bounds recursive evaluator frames; it does not replace source
 size and AST-node limits or claim control over the trusted Nunjucks parser's
