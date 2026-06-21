@@ -151,6 +151,11 @@ test('implements the closed Nunjucks filter and test standard library', () => {
     }, source);
     assert.equal(output, expected, source);
   }
+  const shared = {};
+  assert.equal(
+    engine.render('{{ left is sameas(right) }}', { left: shared, right: shared }),
+    'true',
+  );
 });
 
 test('dispatches only registered synchronous filters and globals', () => {
@@ -207,6 +212,56 @@ test('supports Cookiecutter variables, jsonify, slices, and Jinja constants', ()
     }),
     'demo|[2,3]|true:false:true',
   );
+});
+
+test('matches all upstream Jinja array slice cases', () => {
+  const engine = createEngine({ cookiecutterCompat: true });
+  const context = { arr: ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'], n: 1 };
+  const cases: Array<readonly [string, string]> = [
+    ['arr[1:4]', 'bcd'],
+    ['arr[n:n+3]', 'bcd'],
+    ['arr[3:]', 'defgh'],
+    ['arr[-3:]', 'fgh'],
+    ['arr[:4]', 'abcd'],
+    ['arr[:-3]', 'abcde'],
+    ['arr[::2]', 'aceg'],
+    ['arr[::-1]', 'hgfedcba'],
+    ['arr[4::-1]', 'edcba'],
+    ['arr[-5::-1]', 'dcba'],
+    ['arr[:3:-1]', 'hgfe'],
+    ['arr[1::2]', 'bdfh'],
+    ['arr[1:7:2]', 'bdf'],
+  ];
+  for (const [expression, expected] of cases) {
+    assert.equal(
+      engine.render(`{% for i in ${expression} %}{{ i }}{% endfor %}`, context),
+      expected,
+      expression,
+    );
+  }
+});
+
+test('matches applicable upstream runtime edge cases', () => {
+  const engine = createEngine({ cookiecutterCompat: true });
+  assert.equal(
+    engine.render([
+      '{% macro foo(bar, baz) %}{{ bar }} {{ baz }}{% endmacro %}',
+      '{{ foo("hello", nosuchvar) }}',
+    ].join('')),
+    'hello ',
+  );
+  assert.equal(
+    engine.render([
+      '{% macro foo(bar, baz) %}{{ bar }} {{ baz.qux }}{% endmacro %}',
+      '{{ foo("hello", noProto) }}',
+    ].join(''), { noProto: Object.assign(Object.create(null), { qux: 'world' }) }),
+    'hello world',
+  );
+  assert.throws(
+    () => engine.render('{% block repeated %}a{% endblock %}{% block repeated %}b{% endblock %}'),
+    /more than once/,
+  );
+  assert.throws(() => engine.render('{{ 1 in 2 }}'), /Membership requires/);
 });
 
 test('uses fixed unescaped output and explicit escape filtering', () => {

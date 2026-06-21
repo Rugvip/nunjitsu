@@ -21,6 +21,13 @@
 The manifest retains provenance for all upstream cases and marks behavior
 outside the Backstage contract as not applicable. Applicable cases must render
 through the same synchronous public API used by the scaffolder integration.
+Every ported or adapted manifest entry must have executable coverage. Pure
+rendering belongs in the language-neutral case corpus; behavior requiring
+trusted capabilities, non-JSON fixtures, errors, or boundary assertions may
+link to an exact source test through `tests/compat/coverage.json`. Validation
+also requires reasons for every adapted or inapplicable classification. The
+language-neutral cases execute against both Nunjitsu and the pinned Nunjucks
+development oracle so expected output cannot drift independently.
 
 ## Security regression suite
 

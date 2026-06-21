@@ -104,8 +104,8 @@
     },
     {
       "upstream": {"id":"tests/runtime.js:6","file":"tests/runtime.js","test":"should allow for undefined macro arguments in the last position"},
-      "status": "not applicable",
-      "reason": "Requires automatic escaping, while Backstage fixes autoescape to false."
+      "status": "ported",
+      "reason": "Inline macros accept an undefined final argument and render it as an empty value."
     },
     {
       "upstream": {"id":"tests/runtime.js:7","file":"tests/runtime.js","test":"should allow for objects without a prototype macro arguments in the last position"},
@@ -114,13 +114,13 @@
     },
     {
       "upstream": {"id":"tests/runtime.js:8","file":"tests/runtime.js","test":"should not read variables property from Object.prototype"},
-      "status": "not applicable",
-      "reason": "Requires named-template loading, includes, imports, or inheritance, which the Backstage inline renderer does not support."
+      "status": "adapted",
+      "reason": "Nunjitsu deliberately copies own data properties and ignores inherited Object.prototype values rather than rendering their source text."
     },
     {
       "upstream": {"id":"tests/parser.js:1","file":"tests/parser.js","test":"should parse basic types"},
       "status": "not applicable",
-      "reason": "Requires automatic escaping, while Backstage fixes autoescape to false."
+      "reason": "Asserts the public Nunjucks parser AST object model, which Nunjitsu intentionally does not expose."
     },
     {
       "upstream": {"id":"tests/parser.js:2","file":"tests/parser.js","test":"should parse aggregate types"},
@@ -711,7 +711,8 @@
     },
     {
       "upstream": {"id":"tests/compiler.js:92","file":"tests/compiler.js","test":"should error if same block is defined multiple times"},
-      "status": "adapted"
+      "status": "adapted",
+      "reason": "Duplicate inline blocks fail before rendering; exact Nunjucks exception type and formatting are outside the contract."
     },
     {
       "upstream": {"id":"tests/compiler.js:93","file":"tests/compiler.js","test":"should render nested blocks in child template"},
@@ -870,18 +871,18 @@
     },
     {
       "upstream": {"id":"tests/compiler.js:134","file":"tests/compiler.js","test":"should throw an error when including a file that calls an undefined macro"},
-      "status": "adapted",
-      "reason": "The TypeScript runtime test asserts Nunjitsu's structured render failure instead of the upstream JavaScript error text."
+      "status": "not applicable",
+      "reason": "Requires named-template include loading, which the Backstage inline renderer does not support."
     },
     {
       "upstream": {"id":"tests/compiler.js:135","file":"tests/compiler.js","test":"should throw an error when including a file that calls an undefined macro even inside {% if %} tag"},
-      "status": "adapted",
-      "reason": "The TypeScript runtime test asserts Nunjitsu's structured render failure instead of the upstream JavaScript error text."
+      "status": "not applicable",
+      "reason": "Requires named-template include loading, which the Backstage inline renderer does not support."
     },
     {
       "upstream": {"id":"tests/compiler.js:136","file":"tests/compiler.js","test":"should throw an error when including a file that imports macro that calls an undefined macro"},
-      "status": "adapted",
-      "reason": "The TypeScript runtime test asserts Nunjitsu's structured render failure instead of the upstream JavaScript error text."
+      "status": "not applicable",
+      "reason": "Requires named-template include and import loading, which the Backstage inline renderer does not support."
     },
     {
       "upstream": {"id":"tests/compiler.js:137","file":"tests/compiler.js","test":"should control whitespaces correctly"},

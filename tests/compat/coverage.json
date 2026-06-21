@@ -1,0 +1,128 @@
+{
+  "schemaVersion": 1,
+  "sourceTests": [
+    {
+      "id": "compiler-native-boundaries",
+      "file": "tests/source/runtime.test.ts",
+      "test": "matches applicable upstream runtime edge cases",
+      "upstream": [
+        "tests/compiler.js:5",
+        "tests/compiler.js:56",
+        "tests/compiler.js:92"
+      ]
+    },
+    {
+      "id": "compiler-render-errors",
+      "file": "tests/source/runtime.test.ts",
+      "test": "wraps parse and evaluation failures without retaining render state",
+      "upstream": [
+        "tests/compiler.js:133",
+        "tests/compiler.js:146"
+      ]
+    },
+    {
+      "id": "compiler-capability-errors",
+      "file": "tests/source/security.test.ts",
+      "test": "capability exceptions halt evaluation without inspecting thrown values",
+      "upstream": ["tests/compiler.js:59"]
+    },
+    {
+      "id": "native-filter-library",
+      "file": "tests/source/runtime.test.ts",
+      "test": "implements the closed Nunjucks filter and test standard library",
+      "upstreamRange": {"file": "tests/filters.js", "start": 1, "end": 64},
+      "statuses": ["ported", "adapted"]
+    },
+    {
+      "id": "parser-filter-syntax",
+      "file": "tests/source/runtime.test.ts",
+      "test": "implements the closed Nunjucks filter and test standard library",
+      "upstream": ["tests/parser.js:12", "tests/lexer.js:17"]
+    },
+    {
+      "id": "lexer-whitespace-behavior",
+      "file": "tests/source/runtime.test.ts",
+      "test": "applies whitespace options to each complete inline source",
+      "upstream": [
+        "tests/lexer.js:3",
+        "tests/lexer.js:4",
+        "tests/lexer.js:5",
+        "tests/lexer.js:6",
+        "tests/lexer.js:7"
+      ]
+    },
+    {
+      "id": "lexer-comment-behavior",
+      "file": "tests/source/runtime.test.ts",
+      "test": "matches built-in filters, tests, globals, comments, and raw regions",
+      "upstream": ["tests/lexer.js:19"]
+    },
+    {
+      "id": "native-test-library",
+      "file": "tests/source/runtime.test.ts",
+      "test": "implements the closed Nunjucks filter and test standard library",
+      "upstreamRange": {"file": "tests/tests.js", "start": 1, "end": 28},
+      "statuses": ["ported", "adapted"]
+    },
+    {
+      "id": "native-stateful-globals",
+      "file": "tests/source/runtime.test.ts",
+      "test": "matches stateful range, cycler, and joiner globals",
+      "upstream": [
+        "tests/globals.js:1",
+        "tests/globals.js:2",
+        "tests/globals.js:3"
+      ]
+    },
+    {
+      "id": "configured-globals",
+      "file": "tests/source/runtime.test.ts",
+      "test": "dispatches only registered synchronous filters and globals",
+      "upstream": [
+        "tests/globals.js:4",
+        "tests/globals.js:5",
+        "tests/globals.js:10"
+      ]
+    },
+    {
+      "id": "global-failures",
+      "file": "tests/source/security.test.ts",
+      "test": "capability exceptions halt evaluation without inspecting thrown values",
+      "upstream": ["tests/globals.js:11"]
+    },
+    {
+      "id": "jinja-array-slices",
+      "file": "tests/source/runtime.test.ts",
+      "test": "matches all upstream Jinja array slice cases",
+      "upstreamRange": {"file": "tests/jinja-compat.js", "start": 1, "end": 13},
+      "statuses": ["ported"]
+    },
+    {
+      "id": "runtime-call-errors",
+      "file": "tests/source/evaluator.test.ts",
+      "test": "never treats looked-up values as JavaScript callables",
+      "upstream": [
+        "tests/runtime.js:1",
+        "tests/runtime.js:2",
+        "tests/runtime.js:3",
+        "tests/runtime.js:4",
+        "tests/runtime.js:5"
+      ]
+    },
+    {
+      "id": "runtime-macro-values",
+      "file": "tests/source/runtime.test.ts",
+      "test": "matches applicable upstream runtime edge cases",
+      "upstream": [
+        "tests/runtime.js:6",
+        "tests/runtime.js:7"
+      ]
+    },
+    {
+      "id": "runtime-prototype-boundary",
+      "file": "tests/source/security.test.ts",
+      "test": "scope lookup never falls through to host globals or polluted prototypes",
+      "upstream": ["tests/runtime.js:8"]
+    }
+  ]
+}

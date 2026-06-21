@@ -145,6 +145,13 @@ Do not create additional packages without a documented architectural reason.
   duplicating fixtures across parser, interpreter, and API tests.
 - Never skip or mark an upstream case expected-failing without a parity-manifest
   entry containing provenance and a reason tied to the compatibility contract.
+- Every manifest entry marked `ported` or `adapted` must link executable
+  coverage through `cases.json` or `coverage.json`. `ported` means all
+  applicable assertions in that upstream test are preserved; `adapted` needs a
+  reason identifying the deliberate difference. Suite-level coverage ranges
+  must be explicit and backed by a test that enumerates the selected behavior.
+- When changing the pinned Nunjucks baseline or inventory, compare it against
+  an exact upstream checkout with `scripts/verify-upstream-inventory.mjs`.
 - Test source `.ts` directly on the minimum Node version. Also test both built
   package entry paths and synchronous rendering.
 - Every failure path must prove that the engine retains no partial render state
