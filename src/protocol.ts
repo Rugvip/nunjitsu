@@ -431,7 +431,8 @@ export class ArenaWriter {
       tag === recordTag.undefined ||
       tag === recordTag.null ||
       tag === recordTag.boolean ||
-      tag === recordTag.number
+      tag === recordTag.number ||
+      tag === recordTag.request
     ) {
       return this.#writeFixedSlot(tag, payload);
     }
@@ -451,7 +452,13 @@ export class ArenaWriter {
   }
 
   #writeFixedSlot(tag: number, payload: Uint8Array): number {
-    const expectedLength = tag === recordTag.boolean ? 1 : tag === recordTag.number ? 8 : 0;
+    const expectedLength = tag === recordTag.boolean
+      ? 1
+      : tag === recordTag.number
+        ? 8
+        : tag === recordTag.request
+          ? 56
+          : 0;
     if (payload.byteLength !== expectedLength) {
       throw new Error('Invalid fixed value slot payload');
     }
@@ -459,7 +466,7 @@ export class ArenaWriter {
     const offset = this.#layout.slotOffset + index * fixedSlotLength;
     const bytes = new Uint8Array(this.#memory.buffer, offset, fixedSlotLength);
     bytes.fill(0);
-    this.#view.setUint32(offset, tag | (1 << 8), true);
+    this.#view.setUint32(offset, tag | ((tag === recordTag.request ? 8 : 1) << 8), true);
     bytes.set(payload, 4);
     return index;
   }

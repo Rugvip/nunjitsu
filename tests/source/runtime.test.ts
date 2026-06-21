@@ -95,7 +95,7 @@ test('allocates immutable worker memory capacities without growing at render tim
 
   const engine = await createEngine({
     memory: {
-      slots: 3,
+      slots: 4,
       sourceCodeUnits: 64,
       valueCodeUnits: 64,
       members: 6,
