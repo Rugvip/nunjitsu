@@ -106,6 +106,26 @@ fn write_identifier(code_units: &[u16]) -> Result<u32, u32> {
     Ok(offset)
 }
 
+fn write_identifier_bytes(bytes: &[u8]) -> Result<u32, u32> {
+    let value = core::str::from_utf8(bytes).map_err(|_| ERROR_INVALID_RECORD)?;
+    let length = value.encode_utf16().count();
+    let (start, output) = allocate_value_code_units(
+        u32::try_from(length).map_err(|_| ERROR_RESOURCE_LIMIT)?,
+    )?;
+    for (destination, code_unit) in output.iter_mut().zip(value.encode_utf16()) {
+        *destination = code_unit;
+    }
+    let offset = allocate_slot(TAG_IDENTIFIER, 8)?;
+    let payload = mutable_slot_record(offset, TAG_IDENTIFIER)?.ok_or(ERROR_INVALID_RECORD)?;
+    write_u32(payload, 0, start)?;
+    write_u32(
+        payload,
+        4,
+        u32::try_from(length).map_err(|_| ERROR_RESOURCE_LIMIT)?,
+    )?;
+    Ok(offset)
+}
+
 fn identifier_code_units(offset: u32) -> Result<&'static [u16], u32> {
     let payload = record_at(offset, TAG_IDENTIFIER)?;
     if payload.len() != 8 {

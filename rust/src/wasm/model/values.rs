@@ -141,8 +141,7 @@ impl Record {
             let entry_offset = 4 + index * 8;
             let key_offset = read_u32(self.payload, entry_offset).ok()?;
             let value_offset = read_u32(self.payload, entry_offset + 4).ok()?;
-            let key = record_at(key_offset, TAG_STRING).ok()?;
-            if key == name {
+            if name_eq_bytes(key_offset, name).ok()? {
                 return Some(value_offset);
             }
         }

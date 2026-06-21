@@ -69,7 +69,7 @@ fn handle_tag(state_offset: u32, directive: &[u16]) -> Result<Option<u32>, u32> 
     }
     if let Some(source) = directive_keyword(directive, b"import") {
         let clause = parse_import_clause(source).map_err(|_| ERROR_UNSUPPORTED_TAG)?;
-        let alias = write_code_units_record(TAG_STRING, clause.alias)?;
+        let alias = write_identifier(clause.alias)?;
         set_state_field(state_offset, STATE_PENDING_IMPORT_ALIAS, alias)?;
         set_state_field(state_offset, STATE_PENDING_IMPORT_BINDINGS, 0)?;
         set_state_field(
@@ -389,7 +389,7 @@ fn write_import_namespace(
                             .map_err(|_| ERROR_UNSUPPORTED_TAG)?
                         {
                             if !starts_with_ascii(name, b"_") {
-                                let name_offset = write_code_units_record(TAG_STRING, name)?;
+                                let name_offset = write_identifier(name)?;
                                 if with_context {
                                     set_state_field(
                                         state_offset,
@@ -488,7 +488,7 @@ fn assign_import_bindings(
         let value = namespace
             .get_offset(code_units_as_utf8(binding.name)?)
             .ok_or(ERROR_INVALID_EXPRESSION)?;
-        let alias = write_code_units_record(TAG_STRING, binding.alias)?;
+        let alias = write_identifier(binding.alias)?;
         assign_scope(state_offset, alias, value)?;
         cursor = binding.next_cursor;
     }
@@ -510,7 +510,7 @@ fn write_imported_macro_definition(
     {
         parameter_cursor = parameter.next_cursor;
     }
-    let name = write_code_units_record(TAG_STRING, macro_signature.name)?;
+    let name = write_identifier(macro_signature.name)?;
     let parameters = write_expression(macro_signature.arguments)?;
     let definition_offset = allocate_record(TAG_MACRO_DEFINITION, MACRO_DEFINITION_LENGTH)?;
     let definition = mutable_record_at(definition_offset, TAG_MACRO_DEFINITION)?;
@@ -551,16 +551,16 @@ fn register_block_definition(
     let mut existing_definition = state_field(state_offset, STATE_CURRENT_BLOCK_DEFINITION)?;
     while existing_definition != 0 {
         if block_definition_field(existing_definition, BLOCK_DEFINITION_FRAME)? == frame_offset
-            && record_at(
+            && name_eq_bytes(
                 block_definition_field(existing_definition, BLOCK_DEFINITION_NAME)?,
-                TAG_STRING,
-            )? == block_name
+                block_name,
+            )?
         {
             return Err(ERROR_UNSUPPORTED_TAG);
         }
         existing_definition = block_definition_field(existing_definition, BLOCK_DEFINITION_PARENT)?;
     }
-    let name_offset = write_bytes_record(TAG_STRING, block_name)?;
+    let name_offset = write_identifier(block.name)?;
     let definition_offset = allocate_record(TAG_BLOCK_DEFINITION, BLOCK_DEFINITION_LENGTH)?;
     let definition = mutable_record_at(definition_offset, TAG_BLOCK_DEFINITION)?;
     write_u32(definition, BLOCK_DEFINITION_PARENT, 0)?;
@@ -606,7 +606,7 @@ fn resolve_block(state_offset: u32, name: &[u8]) -> Result<Option<u32>, u32> {
         if definition.len() != BLOCK_DEFINITION_LENGTH as usize {
             return Err(ERROR_INVALID_RECORD);
         }
-        if record_at(read_u32(definition, BLOCK_DEFINITION_NAME)?, TAG_STRING)? == name {
+        if name_eq_bytes(read_u32(definition, BLOCK_DEFINITION_NAME)?, name)? {
             return Ok(Some(definition_offset));
         }
         definition_offset = read_u32(definition, BLOCK_DEFINITION_PARENT)?;
@@ -622,7 +622,7 @@ fn write_super_definition(
     owner_frame: u32,
     next_super: u32,
 ) -> Result<u32, u32> {
-    let name = write_bytes_record(TAG_STRING, b"super")?;
+    let name = write_identifier_bytes(b"super")?;
     let parameters = write_expression(&[])?;
     let definition_offset = allocate_record(TAG_MACRO_DEFINITION, MACRO_DEFINITION_LENGTH)?;
     let definition = mutable_record_at(definition_offset, TAG_MACRO_DEFINITION)?;
@@ -652,10 +652,10 @@ fn write_super_chain(
     let mut count = 0usize;
     let mut candidate = block_definition_field(definition_offset, BLOCK_DEFINITION_PARENT)?;
     while candidate != 0 {
-        if record_at(
+        if name_eq_bytes(
             block_definition_field(candidate, BLOCK_DEFINITION_NAME)?,
-            TAG_STRING,
-        )? == name
+            name,
+        )?
         {
             count = count.checked_add(1).ok_or(ERROR_RESOURCE_LIMIT)?;
         }
@@ -670,10 +670,10 @@ fn write_super_chain(
             if candidate == 0 {
                 return Err(ERROR_INVALID_ARENA);
             }
-            if record_at(
+            if name_eq_bytes(
                 block_definition_field(candidate, BLOCK_DEFINITION_NAME)?,
-                TAG_STRING,
-            )? == name
+                name,
+            )?
             {
                 if index == requested {
                     break candidate;
@@ -765,6 +765,6 @@ fn start_block(state_offset: u32, name: &[u16]) -> Result<(), u32> {
     )?;
     set_state_field(state_offset, STATE_CURRENT_FRAME, block_frame)?;
     set_state_field(state_offset, STATE_TRANSIENT_BASE, legacy_arena_cursor())?;
-    let super_name = write_bytes_record(TAG_STRING, b"super")?;
+    let super_name = write_identifier_bytes(b"super")?;
     assign_scope(state_offset, super_name, super_definition)
 }

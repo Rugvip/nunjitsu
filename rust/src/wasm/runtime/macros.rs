@@ -12,7 +12,7 @@ fn start_call_block(state_offset: u32, source: &[u16]) -> Result<(), u32> {
     .map_err(render_error_code)? as u32;
     set_frame_field(frame_offset, FRAME_CURSOR, end_cursor)?;
 
-    let caller_name = write_bytes_record(TAG_STRING, b"caller")?;
+    let caller_name = write_identifier_bytes(b"caller")?;
     let parameters = write_expression(clause.bindings)?;
     let caller_definition = allocate_record(TAG_MACRO_DEFINITION, MACRO_DEFINITION_LENGTH)?;
     let definition = mutable_record_at(caller_definition, TAG_MACRO_DEFINITION)?;
@@ -100,7 +100,7 @@ fn register_macro_definition(
     let end_cursor = find_macro_end(source, body_cursor as usize, parse_options(state_offset)?)
         .map_err(render_error_code)?;
 
-    let name_offset = write_code_units_record(TAG_STRING, macro_signature.name)?;
+    let name_offset = write_identifier(macro_signature.name)?;
     let parameters_offset = write_expression(macro_signature.arguments)?;
     let definition_offset = allocate_record(TAG_MACRO_DEFINITION, MACRO_DEFINITION_LENGTH)?;
     let definition = mutable_record_at(definition_offset, TAG_MACRO_DEFINITION)?;
@@ -141,7 +141,7 @@ fn resolve_macro(state_offset: u32, name: &[u8]) -> Result<Option<u32>, u32> {
             return Err(ERROR_INVALID_RECORD);
         }
         if frame_is_ancestor(current_frame, read_u32(definition, MACRO_DEFINITION_FRAME)?)?
-            && record_at(read_u32(definition, MACRO_DEFINITION_NAME)?, TAG_STRING)? == name
+            && name_eq_bytes(read_u32(definition, MACRO_DEFINITION_NAME)?, name)?
         {
             return Ok(Some(definition_offset));
         }
@@ -203,7 +203,7 @@ fn write_macro_arguments(
         } else {
             0
         };
-        let name_offset = write_code_units_record(TAG_STRING, parameter.name)?;
+        let name_offset = write_identifier(parameter.name)?;
         let arguments = mutable_record_at(arguments_offset, TAG_MACRO_ARGUMENTS)?;
         write_u32(arguments, 4 + index * 8, name_offset)?;
         write_u32(arguments, 8 + index * 8, value_offset)?;
@@ -439,12 +439,12 @@ fn start_macro_call(
         parameter_cursor = parameter.next_cursor;
     }
     if caller_definition != 0 {
-        let name_offset = write_bytes_record(TAG_STRING, b"caller")?;
+        let name_offset = write_identifier_bytes(b"caller")?;
         assign_scope(state_offset, name_offset, caller_definition)?;
     }
     let super_definition = macro_definition_field(definition_offset, MACRO_DEFINITION_SUPER)?;
     if super_definition != 0 {
-        let name_offset = write_bytes_record(TAG_STRING, b"super")?;
+        let name_offset = write_identifier_bytes(b"super")?;
         assign_scope(state_offset, name_offset, super_definition)?;
     }
     Ok(())
