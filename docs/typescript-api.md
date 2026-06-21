@@ -103,7 +103,7 @@ The package is authored in erasable `.ts`, targets Node.js 22 or newer, and
 has one format-neutral source entrypoint. The build bundles that same entrypoint
 into tested ESM and CommonJS outputs. It emits format-specific ESM and CommonJS
 declarations for modern conditional resolution plus a legacy declaration entry
-for Backstage and other consumers that resolve the top-level `types` field.
-Source code must not branch on or provide adapters for the package module
-format. Parser and interpreter sources must reject dynamic execution, generated
-code, Node `vm`, dynamic imports, and host-object reflection.
+for consumers that resolve the top-level `types` field. Source code must not
+branch on or provide adapters for the package module format. Parser and
+interpreter sources must reject dynamic execution, generated code, Node `vm`,
+dynamic imports, and host-object reflection.

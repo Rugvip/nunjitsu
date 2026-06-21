@@ -4,13 +4,13 @@ export interface RenderLimits {
   sourceCodeUnits: number;
   /** Maximum total immutable AST nodes parsed across one render. */
   astNodes: number;
-  /** Maximum parser/evaluator work units. */
+  /** Maximum evaluator work units. */
   workUnits: number;
   /** Maximum nested interpreter evaluation depth. */
   nestingDepth: number;
   /** Maximum rendered JavaScript UTF-16 code units. */
   outputCodeUnits: number;
-  /** Maximum temporary UTF-8 scratch bytes used during evaluation. */
+  /** Maximum estimated UTF-8 bytes in values supplied to one filter. */
   scratchBytes: number;
   /** Maximum trusted host filter and global-function invocations. */
   capabilityCalls: number;

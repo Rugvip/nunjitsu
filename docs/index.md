@@ -23,8 +23,9 @@ root [AGENTS.md](../AGENTS.md).
 
 ## Documentation policy
 
-These pages describe the intended architecture, including code that has not
-been implemented yet. They use **must**, **must not**, and **only** for settled
+These pages describe the current intended architecture and implemented public
+contract. Any planned behavior that is not implemented must be labeled
+explicitly. They use **must**, **must not**, and **only** for settled
 constraints. Implementation must not silently diverge from them.
 
 When a change affects a cross-cutting decision:

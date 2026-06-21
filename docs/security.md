@@ -18,7 +18,7 @@ Trusted code outside the guarantee includes:
 - Nunjitsu and its production dependencies.
 
 The production parser and standard library are native project code with no
-runtime dependencies. The streaming scanner and closed expression parser can
+runtime dependencies. The single-pass scanner and closed expression parser can
 construct only the supported frozen data-only node variants. No foreign parser
 objects or host filter implementation crosses into evaluation. Nunjucks remains
 a development-only compatibility oracle and benchmark baseline outside the
@@ -47,19 +47,22 @@ dispatch only over sealed interpreter callable variants.
 ## Safe value boundary
 
 Context and capability results are recursively copied into immutable
-engine-owned values before evaluation. The public input model accepts:
+engine-owned values before evaluation. The public context model accepts:
 
-- `undefined`, `null`, booleans, finite or JavaScript-compatible numbers, and
-  strings;
-- explicitly marked safe strings;
+- `null`, booleans, JavaScript numbers, and strings;
 - arrays containing accepted values; and
 - plain records whose enumerable own properties are data descriptors containing
   accepted values.
 
+Capability arguments use the same public shapes. A capability may additionally
+return `undefined`, which becomes the interpreter's absent value. Safe strings
+are created only inside the interpreter by approved built-ins and macro
+captures; callers cannot inject a safe-string wrapper through public data.
+
 Functions, accessors, symbols, class instances, typed arrays, dates, maps,
 sets, weak collections, promises, errors, and other exotic objects are
-rejected. Cycles and excessive depth are rejected. Repeated non-cyclic aliases
-may retain identity through internal graph references.
+rejected. Cycles are rejected. Repeated non-cyclic aliases may retain identity
+through internal graph references.
 
 Prepared contexts retain this copied graph across renders without retaining the
 host objects it came from. They are opaque, bound to one engine, and immutable.
@@ -101,9 +104,10 @@ before source crosses into the renderer.
 
 ## Resource limits
 
-High finite defaults cover parsing, evaluator work, nesting, allocation,
-output, and capabilities. They reduce accidental and intentional
-denial of service but are cooperative checks rather than hard isolation.
+High finite defaults cover source size, AST nodes, evaluator work, interpreter
+nesting, rendered output, filter-argument scratch size, and trusted capability
+calls. They reduce accidental and intentional denial of service but are
+cooperative checks rather than hard isolation or general heap limits.
 
 Output growth is bounded by UTF-16 code units, matching the returned JavaScript
 string and providing a cheap approximate memory guard. It is not exact V8 heap

@@ -68,17 +68,18 @@ callable.
 Evaluation appends string slices to a render-owned array and joins it once at
 the end. Automatic escaping is disabled for the direct-string API. Native
 standard-library filters such as `escape` still provide their documented
-behavior. Rendered
-output remains attacker-controlled and is not a general HTML, SQL, or shell
-sanitizer.
+behavior. Rendered output remains attacker-controlled and is not a general
+HTML, SQL, or shell sanitizer.
 
 ## Cooperative limits
 
-High finite limits account for source characters, AST nodes, evaluator work,
-interpreter nesting depth, allocation, output code units, and capability calls.
-Output growth uses JavaScript string length as a cheap memory-pressure guard;
-it is intentionally not an exact byte count. Nesting depth is checked before
-evaluating each statement and expression node. These are cooperative
+High finite limits account for source code units, AST nodes, evaluator work,
+interpreter nesting depth, rendered output code units, filter-argument scratch
+size, and capability calls. The scratch limit estimates the UTF-8 size of the
+closed values passed into a filter; it is not a general allocation or heap
+limit. Output growth uses JavaScript string length as a cheap memory-pressure
+guard and is intentionally not exact byte accounting. Nesting depth is checked
+before evaluating each statement and expression node. These are cooperative
 availability safeguards, not a process sandbox or exact CPU/RSS accounting.
 Trusted callbacks execute outside interpreter work accounting except for their
 invocation count and returned-value validation.

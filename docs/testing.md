@@ -10,10 +10,10 @@
    through the secure direct-string API.
 4. Public API tests cover filters, globals, rendering modes, errors, ESM and
    CommonJS package conditions, cross-format loading, and declarations through
-   modern NodeNext, bundler, and Backstage-compatible legacy TypeScript
-   resolution.
+   modern NodeNext, bundler, and legacy TypeScript resolution.
 5. Security tests exercise JavaScript escape gadgets, prototype pollution,
-   accessors, exotic values, callback results, and parser fuzzing.
+   accessors, exotic values, callback results, malformed syntax, and static
+   checks for prohibited implementation primitives.
 6. Benchmarks compare synchronous inline parsing and expression evaluation with
    pinned Nunjucks in isolated processes.
 
@@ -39,12 +39,14 @@ values, capability identity confusion, malformed syntax, and state cleanup
 after failures. Static checks reject dynamic execution and host reflection in
 parser and interpreter modules.
 
-## Fuzzing
+## Fuzzing policy
 
-Tokenizer, parser, input copier, and evaluator are fuzz targets. Arbitrary
-source must either produce a bounded data-only AST or a structured error;
-parsing must never execute host behavior; evaluation must only access closed
-value kinds; and failures must leave the next render clean.
+The tokenizer, parser, input copier, and evaluator are appropriate fuzz targets
+for security-sensitive changes. Added fuzz coverage must assert that arbitrary
+source either produces a bounded data-only AST or a structured error, parsing
+never executes host behavior, evaluation accesses only closed value kinds, and
+failures leave the next render clean. Fuzz artifacts remain local build output;
+stable regressions belong in the source test suite.
 
 ## Benchmarks
 

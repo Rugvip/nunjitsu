@@ -22,7 +22,7 @@ conflict.
 ```mermaid
 flowchart LR
     A["Application caller"] --> B["TypeScript engine"]
-    B --> C["JSON value copier"]
+    B --> C["Safe value copier"]
     B --> D["Tokenizer and parser"]
     D --> E["Immutable data-only AST"]
     C --> F["Closed synchronous interpreter"]
@@ -38,7 +38,7 @@ globals. `render` accepts one inline source string and returns one string.
 `prepareContext` optionally copies reusable caller data into an opaque
 engine-bound snapshot; immutable path updates derive new snapshots with
 structural sharing. Nunjitsu has no loaders, filesystem access, streams,
-workers, Wasm modules, or resource to dispose.
+workers, Wasm modules, or resources requiring disposal.
 
 Applications supply strings directly and perform any file discovery, path
 policy, and reads before invoking the renderer. Path traversal, symbolic links,
@@ -47,12 +47,12 @@ execution boundary.
 
 ### Parser
 
-The native parser streams over template text, tokenizes expressions, and uses a
-closed precedence parser for the supported grammar. It does not invoke
-Nunjucks, a JavaScript-language parser, generated JavaScript, or host behavior.
-It constructs frozen discriminated-union object nodes with stable direct
-properties and child references. There is no generic foreign-node conversion
-boundary or packed numeric arena.
+The native parser makes a single-pass scan over each complete template,
+tokenizes expressions, and uses a closed precedence parser for the supported
+grammar. It does not invoke Nunjucks, a JavaScript-language parser, generated
+JavaScript, or host behavior. It constructs frozen discriminated-union object
+nodes with stable direct properties and child references. There is no generic
+foreign-node conversion boundary or packed numeric arena.
 
 Default variables use `${{` and `}}` delimiters. Cookiecutter mode
 uses `{{` and `}}` with the supported Jinja compatibility behavior. Block and

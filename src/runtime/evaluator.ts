@@ -90,7 +90,7 @@ interface BlockFrame {
   readonly scope: RuntimeScope;
 }
 
-/** One allocation-bounded view over values accepted by a template loop. */
+/** One non-materializing view over values accepted by a template loop. */
 interface RuntimeIteration {
   readonly length: number;
   readonly values: IterableIterator<RuntimeValue>;

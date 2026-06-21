@@ -44,9 +44,10 @@ contract, not hidden compatibility failures.
 
 The attributed Nunjucks v3.2.4 test inventory remains the source for applicable
 language behavior. The parity manifest classifies every upstream case against
-the narrower secure direct-string contract. Applicable behavior is adapted into data-only
-cases under `tests/compat/`; loader, browser, JavaScript API, extension, and
-other out-of-scope cases are marked not applicable with a reason.
+the narrower secure direct-string contract. Applicable behavior is adapted
+into data-only cases under `tests/compat/`; loader, browser, JavaScript API,
+extension, and other out-of-scope cases are marked not applicable with a
+reason.
 
 ## Attribution and licensing
 

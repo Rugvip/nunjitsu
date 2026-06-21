@@ -54,9 +54,9 @@ implementation and documentation aligned with the architecture in
   model; do not expose prototypes, getters, arbitrary functions, or live host
   objects. Host behavior requires explicit capability handles.
 - Apply high finite cooperative resource limits by default on every render.
-  Account for source size, AST nodes, evaluator steps, depth, collection growth,
-  output and capabilities. Do not describe these checks as process
-  isolation or exact CPU/RSS accounting.
+  Account for source size, AST nodes, evaluator work, depth, output,
+  filter-argument scratch size, and capability calls. Do not describe these
+  checks as general heap limits, process isolation, or exact CPU/RSS accounting.
 - Accept inline template source only. Filesystem discovery and path policy
   belong to the application outside Nunjitsu. Reject include, import, from, and
   extends because the secure direct-string API does not support template loading.
@@ -67,9 +67,9 @@ implementation and documentation aligned with the architecture in
 - Use `${{` and `}}` as the default variable delimiters. Cookiecutter mode uses
   `{{` and `}}` with the supported Jinja compatibility behavior. Do not expose
   arbitrary delimiter configuration or the Nunjucks lexer/parser object model.
-- Adapt upstream tests into one attributed, language-neutral corpus consumed by
-  parser, interpreter, and public API tests. Classify every upstream v3.2.4
-  test in the parity manifest.
+- Maintain one attributed parity manifest and language-neutral compatibility
+  corpus, with explicit supplemental coverage mappings for parser, interpreter,
+  and public API behavior. Classify every upstream v3.2.4 test in the manifest.
 
 The rationale and detailed contracts live in:
 
@@ -152,8 +152,10 @@ Do not create additional packages without a documented architectural reason.
   must be explicit and backed by a test that enumerates the selected behavior.
 - When changing the pinned Nunjucks baseline or inventory, compare it against
   an exact upstream checkout with `scripts/verify-upstream-inventory.mjs`.
-- Test source `.ts` directly on the minimum Node version. Also test both built
-  package entry paths and synchronous rendering.
+- Test source `.ts` directly on Node.js 22.18 or newer. When runtime or build
+  compatibility changes, validate the built package against the Node.js 22
+  package minimum. Also test both built package entry paths and synchronous
+  rendering.
 - Every failure path must prove that the engine retains no partial render state
   and the next render starts cleanly.
 - Security-sensitive parsing, value copying, lookup, coercion, and call changes
