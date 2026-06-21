@@ -2,20 +2,29 @@
   "name": "nunjitsu",
   "version": "0.0.0",
   "description": "A secure direct string template engine written in TypeScript",
+  "license": "Apache-2.0",
   "type": "module",
   "private": true,
+  "sideEffects": false,
   "engines": {
-    "node": ">=24.12.0"
+    "node": ">=22.0.0"
   },
   "main": "./dist/cjs/index.cjs",
   "module": "./dist/esm/index.js",
-  "types": "./dist/types/index.d.ts",
+  "types": "./dist/types/legacy/index.d.ts",
   "exports": {
     ".": {
-      "types": "./dist/types/index.d.ts",
-      "import": "./dist/esm/index.js",
-      "require": "./dist/cjs/index.cjs"
-    }
+      "import": {
+        "types": "./dist/types/esm/index.d.mts",
+        "default": "./dist/esm/index.js"
+      },
+      "require": {
+        "types": "./dist/types/cjs/index.d.cts",
+        "default": "./dist/cjs/index.cjs"
+      },
+      "default": "./dist/esm/index.js"
+    },
+    "./package.json": "./package.json"
   },
   "files": [
     "dist/",
@@ -29,15 +38,17 @@
     "clean": "node scripts/clean.mjs",
     "test": "npm run typecheck && npm run test:source && npm run test:benchmark && npm run test:package",
     "test:benchmark": "node benchmarks/run.ts --warmup=0 --iterations=1 --loops=1 --json",
-    "test:package": "npm run build && node --test tests/package/esm.test.mjs tests/package/commonjs.test.cjs",
+    "test:package": "npm run build && npm run test:package:types && node --test tests/package/esm.test.mjs tests/package/commonjs.test.cjs",
+    "test:package:types": "node scripts/test-package-types.mjs",
     "test:source": "node --test tests/source/*.test.ts",
     "typecheck": "tsgo -p tsconfig.json"
   },
   "devDependencies": {
-    "@types/node": "^24.0.0",
+    "@types/node": "^22.13.14",
     "@types/nunjucks": "3.2.6",
     "@typescript/native-preview": "7.0.0-dev.20260613.1",
     "esbuild": "^0.25.0",
-    "nunjucks": "3.2.4"
+    "nunjucks": "3.2.4",
+    "typescript": "~5.7.0"
   }
 }

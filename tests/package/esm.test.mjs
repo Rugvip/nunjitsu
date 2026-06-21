@@ -1,7 +1,18 @@
 import assert from 'node:assert/strict';
+import { createRequire } from 'node:module';
 import test from 'node:test';
 
-import { createEngine } from '../../dist/esm/index.js';
+import { createEngine } from 'nunjitsu';
+
+test('resolves the ESM package export', () => {
+  assert.match(import.meta.resolve('nunjitsu'), /\/dist\/esm\/index\.js$/);
+});
+
+test('loads the CommonJS condition from an ESM environment', () => {
+  const require = createRequire(import.meta.url);
+  assert.match(require.resolve('nunjitsu'), /\/dist\/cjs\/index\.cjs$/);
+  assert.equal(typeof require('nunjitsu').createEngine, 'function');
+});
 
 test('renders synchronously through the ESM package entry', () => {
   const engine = createEngine({

@@ -15,7 +15,7 @@ implementation and documentation aligned with the architecture in
 
 ## Project-wide architectural constraints
 
-- Target Node.js 24.12 or newer. Browser support is out of scope, and Node APIs
+- Target Node.js 22 or newer. Browser support is out of scope, and Node APIs
   may be used throughout the package outside the closed interpreter boundary.
 - Keep the TypeScript/npm package at the repository root. Author one erasable
   `.ts` source tree and compile it into tested ESM and CommonJS builds with

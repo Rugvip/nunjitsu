@@ -27,7 +27,7 @@ Contributors should also read [`AGENTS.md`](AGENTS.md).
 
 ## Setup
 
-Development requires Node.js 24.12 or newer and npm. The repository pins its
+Development requires Node.js 22 or newer and npm. The repository pins its
 TypeScript 7 native compiler.
 
 Install dependencies and run the complete source and package test matrix:

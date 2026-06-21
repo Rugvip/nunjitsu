@@ -4,7 +4,7 @@
     "erasableSyntaxOnly": true,
     "exactOptionalPropertyTypes": true,
     "forceConsistentCasingInFileNames": true,
-    "lib": ["DOM", "ESNext"],
+    "lib": ["ES2023"],
     "module": "Preserve",
     "moduleResolution": "Bundler",
     "noEmit": true,
@@ -15,7 +15,7 @@
     "rootDir": ".",
     "skipLibCheck": true,
     "strict": true,
-    "target": "ES2024",
+    "target": "ES2023",
     "types": ["node"],
     "verbatimModuleSyntax": true
   },

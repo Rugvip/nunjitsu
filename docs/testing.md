@@ -8,8 +8,10 @@
    calls, limits, output, and cleanup.
 3. Compatibility tests execute applicable attributed Nunjucks v3.2.4 behavior
    through the secure direct-string API.
-4. Public API tests cover filters, globals, rendering modes, errors, and both
-   ESM and CommonJS package entry points.
+4. Public API tests cover filters, globals, rendering modes, errors, ESM and
+   CommonJS package conditions, cross-format loading, and declarations through
+   modern NodeNext, bundler, and Backstage-compatible legacy TypeScript
+   resolution.
 5. Security tests exercise JavaScript escape gadgets, prototype pollution,
    accessors, exotic values, callback results, and parser fuzzing.
 6. Benchmarks compare synchronous inline parsing and expression evaluation with
