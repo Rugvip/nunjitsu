@@ -1,11 +1,11 @@
-export { createEngine } from './createEngine.ts';
 export {
+  createEngine,
   NunjitsuRenderError,
   type Engine,
   type EngineOptions,
   type PreparedContext,
   type RenderOptions,
-} from './native-engine.ts';
+} from './createEngine.ts';
 export type {
   TemplateCapabilities,
   TemplateFilter,

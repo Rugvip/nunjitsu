@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { createNativeEngine } from '../../src/native-engine.ts';
+import { createEngine } from '../../src/createEngine.ts';
 
 test('renders default and Cookiecutter variable modes synchronously', () => {
-  const engine = createNativeEngine();
+  const engine = createEngine();
   assert.equal(
     engine.render('Hello ${{ values.name }}; {{ untouched }}', {
       values: { name: 'Nunjitsu' },
@@ -12,7 +12,7 @@ test('renders default and Cookiecutter variable modes synchronously', () => {
     'Hello Nunjitsu; {{ untouched }}',
   );
 
-  const cookiecutter = createNativeEngine({ cookiecutterCompat: true });
+  const cookiecutter = createEngine({ cookiecutterCompat: true });
   assert.equal(
     cookiecutter.render('{{ cookiecutter.name }}:{{ cookiecutter.items | jsonify }}', {
       cookiecutter: { name: 'Nunjitsu', items: [1, 2] },
@@ -23,7 +23,7 @@ test('renders default and Cookiecutter variable modes synchronously', () => {
 
 test('invokes synchronous filters and value or function globals through copied data', () => {
   const input = { nested: { value: 'safe' } };
-  const engine = createNativeEngine({
+  const engine = createEngine({
     filters: {
       inspect(value, suffix) {
         assert.equal(Object.getPrototypeOf(value), null);
@@ -53,7 +53,7 @@ test('reuses immutable prepared contexts and derives structurally shared updates
     parameters: { name: 'initial' },
     steps: { first: { output: { value: 1 } } },
   };
-  const engine = createNativeEngine();
+  const engine = createEngine();
   const prepared = engine.prepareContext(input);
 
   input.parameters.name = 'mutated';
@@ -90,13 +90,13 @@ test('reuses immutable prepared contexts and derives structurally shared updates
     /only strings/,
   );
   assert.throws(
-    () => createNativeEngine().render('${{ parameters.name }}', prepared),
+    () => createEngine().render('${{ parameters.name }}', prepared),
     /different engine/,
   );
 });
 
 test('rejects template-loading and extension syntax', () => {
-  const engine = createNativeEngine();
+  const engine = createEngine();
   for (const source of [
     '{% include "partial.njk" %}',
     '{% import "macros.njk" as macros %}',
