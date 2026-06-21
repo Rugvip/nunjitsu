@@ -1,6 +1,4 @@
-import { readFile, realpath } from 'node:fs/promises';
-import { dirname, isAbsolute, posix, relative, resolve, sep } from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
+import { posix } from 'node:path';
 
 /** A template source and stable identity returned by a trusted loader. */
 export interface LoadedTemplate {
@@ -23,12 +21,6 @@ export interface TemplateLoader {
     signal?: AbortSignal,
     from?: string,
   ): Promise<LoadedTemplate | null>;
-}
-
-/** Configuration for a filesystem loader constrained to explicit roots. */
-export interface FileSystemLoaderOptions {
-  /** Absolute directories that may contain template sources, in lookup order. */
-  roots: readonly string[];
 }
 
 /** A failure while resolving a named template through trusted loaders. */
@@ -72,70 +64,6 @@ export function memoryLoader(templates: Readonly<Record<string, string>>): Templ
       return source === undefined
         ? null
         : { canonicalName: `memory:${encodeURIComponent(resolvedName)}`, source };
-    },
-  });
-}
-
-/** Creates a loader that prevents lexical and symlink escape from configured roots. */
-export function fileSystemLoader(options: FileSystemLoaderOptions): TemplateLoader {
-  if (options.roots.length === 0) {
-    throw new TypeError('A filesystem loader requires at least one root');
-  }
-  const roots = options.roots.map(root => {
-    if (!isAbsolute(root)) {
-      throw new TypeError(`Template root must be absolute: ${root}`);
-    }
-    return root;
-  });
-
-  return Object.freeze({
-    async load(
-      name: string,
-      signal?: AbortSignal,
-      from?: string,
-    ): Promise<LoadedTemplate | null> {
-      validateTemplateName(name);
-      if (isAbsolute(name)) {
-        throw new TemplateLoaderError('Absolute template names are not allowed');
-      }
-      throwIfAborted(signal);
-      const relativeBase = resolveFileSystemBase(name, from);
-      const canonicalRelativeBase = relativeBase === undefined
-        ? undefined
-        : await realpath(relativeBase);
-      let relativeCandidateWithinRoot = false;
-
-      for (const configuredRoot of roots) {
-        const root = await realpath(configuredRoot);
-        const lexicalCandidate = resolve(canonicalRelativeBase ?? root, name);
-        if (!isWithinRoot(root, lexicalCandidate)) {
-          if (canonicalRelativeBase !== undefined) {
-            continue;
-          }
-          throw new TemplateLoaderError(`Template path escapes its configured root: ${name}`);
-        }
-        relativeCandidateWithinRoot = true;
-
-        let canonicalPath: string;
-        try {
-          canonicalPath = await realpath(lexicalCandidate);
-        } catch (error) {
-          if (isMissingFileError(error)) {
-            continue;
-          }
-          throw error;
-        }
-        if (!isWithinRoot(root, canonicalPath)) {
-          throw new TemplateLoaderError(`Template symlink escapes its configured root: ${name}`);
-        }
-        throwIfAborted(signal);
-        const source = await readFile(canonicalPath, { encoding: 'utf8', signal });
-        return { canonicalName: pathToFileURL(canonicalPath).href, source };
-      }
-      if (canonicalRelativeBase !== undefined && !relativeCandidateWithinRoot) {
-        throw new TemplateLoaderError(`Template path escapes its configured root: ${name}`);
-      }
-      return null;
     },
   });
 }
@@ -196,24 +124,8 @@ function resolveMemoryName(name: string, from: string | undefined): string {
   return resolvedName;
 }
 
-function resolveFileSystemBase(name: string, from: string | undefined): string | undefined {
-  if (!isRelativeTemplateName(name) || !from?.startsWith('file:')) {
-    return undefined;
-  }
-  try {
-    return dirname(fileURLToPath(from));
-  } catch {
-    throw new TemplateLoaderError(`Invalid filesystem template identity: ${from}`);
-  }
-}
-
 function isRelativeTemplateName(name: string): boolean {
   return name.startsWith('./') || name.startsWith('../');
-}
-
-function isWithinRoot(root: string, candidate: string): boolean {
-  const path = relative(root, candidate);
-  return path === '' || (!path.startsWith(`..${sep}`) && path !== '..' && !isAbsolute(path));
 }
 
 function throwIfAborted(signal: AbortSignal | undefined): void {
@@ -222,8 +134,4 @@ function throwIfAborted(signal: AbortSignal | undefined): void {
     error.name = 'AbortError';
     throw error;
   }
-}
-
-function isMissingFileError(error: unknown): boolean {
-  return error instanceof Error && 'code' in error && error.code === 'ENOENT';
 }

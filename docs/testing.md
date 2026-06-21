@@ -11,8 +11,8 @@ tests around its security boundaries:
    operators, calls, limits, output, and cleanup.
 3. **Shared compatibility tests** execute the attributed Nunjucks v3.2.4 cases
    through the native TypeScript engine.
-4. **Public API tests** cover loaders, capabilities, streaming, cancellation,
-   errors, and both ESM and CommonJS package entry points.
+4. **Public API tests** cover source loaders, capabilities, streaming,
+   cancellation, errors, and both ESM and CommonJS package entry points.
 5. **Security tests** exercise known JavaScript escape gadgets, prototype
    pollution, accessors, exotic values, capability results, and parser fuzzing.
 6. **Benchmarks** compare equivalent one-shot workloads with caching disabled

@@ -52,8 +52,9 @@ implementation and documentation aligned with the architecture in
   Account for source size, AST nodes, evaluator steps, depth, collection growth,
   output, loaders, and capabilities. Do not describe these checks as process
   isolation or exact CPU/RSS accounting.
-- Provide no ambient cwd filesystem access. Loading is inline or through
-  explicit loaders; filesystem loaders are rooted and must prevent root escape.
+- Provide no filesystem loader. Loading is inline or through explicit host
+  loaders that return source text; filesystem discovery and path policy belong
+  to the application outside Nunjitsu.
 - Resolve `./` and `../` dependencies from the requesting source's canonical
   identity. Preserve that identity through every deferred frame, and key
   render-local request caches by both canonical parent and requested name.
@@ -79,7 +80,8 @@ The rationale and detailed contracts live in:
 
 ## Repository structure
 
-- `src/`: TypeScript public API, parser, interpreter, loaders, and capabilities.
+- `src/`: TypeScript public API, parser, interpreter, source loaders, and
+  capabilities.
 - `src/parser/`: tokenizer and closed template/expression parser.
 - `src/runtime/`: safe values, scopes, interpreter, output, and limits.
 - `benchmarks/`: equivalent one-shot workloads and the isolated Nunjucks

@@ -83,10 +83,14 @@ valid arguments up to configured limits.
 
 ## Loaders
 
-There is no default current-working-directory loader. Built-in filesystem
-loading is constrained to explicit canonical roots and rejects traversal,
-symlink escape, and invalid names. A template can request names but cannot use
-Node filesystem APIs directly.
+Nunjitsu has no filesystem loader and does not resolve template names as paths.
+The built-in memory loader operates on an owned source map. Custom loaders may
+return source text from application-managed storage, but they are trusted host
+code outside the interpreter's security guarantee.
+
+Applications that source templates from a filesystem must perform discovery,
+root confinement, symbolic-link handling, and reads before passing source into
+Nunjitsu. Templates cannot access Node filesystem APIs directly.
 
 Loaders are trusted. Their returned source is untrusted template text and is
 fully parsed before execution.

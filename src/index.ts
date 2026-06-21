@@ -23,11 +23,9 @@ export type {
   TemplateTag,
 } from './capabilities.ts';
 export {
-  fileSystemLoader,
   memoryLoader,
   TemplateLoaderError,
   TemplateNotFoundError,
-  type FileSystemLoaderOptions,
   type LoadedTemplate,
   type TemplateLoader,
 } from './loaders.ts';

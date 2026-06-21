@@ -39,6 +39,12 @@ filters, tests, globals, and declarative custom tags. Rendering is asynchronous
 because loaders and capabilities may be asynchronous. A direct interpreter has
 no mandatory worker, Wasm module, or process resource to dispose.
 
+Nunjitsu does not read template files. Applications discover and read files
+outside the engine, apply their own filesystem policy, and pass source text
+inline or through an explicit source loader. This keeps path traversal,
+symbolic links, archive extraction, and workspace policy out of the template
+execution boundary.
+
 ### Parser
 
 The parser uses the lockfile-pinned Nunjucks 3.2.4 grammar as trusted input to a
@@ -109,6 +115,7 @@ or generated JavaScript evaluator.
 - Calling context functions or object methods.
 - A precompiler or persistent compiled-template cache.
 - Implicit filesystem access relative to the process working directory.
+- A built-in filesystem loader or filesystem sandbox.
 - Arbitrary JavaScript parser extensions for custom tags.
 - Custom lexer delimiters or public lexer-token and parser-AST APIs.
 - Sanitizing template-authored output for a particular downstream sink.

@@ -72,6 +72,10 @@ The render-local request cache is keyed by canonical parent plus requested name;
 loaded ASTs are deduplicated by resolved canonical identity. No source, AST, or
 dependency graph survives the render.
 
+Loaders return source text and identities only. Nunjitsu does not include a
+filesystem loader; applications own filesystem access and confinement before
+source crosses into the engine.
+
 ## Output
 
 The evaluator writes string chunks to a render-owned sink. Buffered rendering

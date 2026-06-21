@@ -1,13 +1,8 @@
 import assert from 'node:assert/strict';
-import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import test from 'node:test';
-import { pathToFileURL } from 'node:url';
 
 import {
   createEngine,
-  fileSystemLoader,
   markSafe,
   memoryLoader,
   NunjitsuLimitError,
@@ -432,67 +427,6 @@ test('uses an ordered async loader chain and recovers from loader failures', asy
     assert.deepEqual(requests.slice(0, 2), ['first:fake.njk', 'second:fake.njk']);
     assert.ok(requests.includes('second:broken.njk'));
     assert.ok(requests.includes('second:missing.njk'));
-});
-
-test('filesystem loading stays within explicit canonical roots', async () => {
-  const sandbox = await mkdtemp(join(tmpdir(), 'nunjitsu-'));
-  const emptyRoot = join(sandbox, 'empty');
-  const root = join(sandbox, 'templates');
-  const secret = join(sandbox, 'secret.njk');
-  await mkdir(emptyRoot);
-  await mkdir(root);
-  await mkdir(join(root, 'layout'));
-  await mkdir(join(root, 'pages'));
-  await writeFile(join(root, 'page.njk'), 'File {% include "partial.njk" %}');
-  await writeFile(join(root, 'partial.njk'), '{{ value }}');
-  await writeFile(
-    join(root, 'layout', 'base.njk'),
-    'Nested {% block body %}base{% endblock %}',
-  );
-  await writeFile(
-    join(root, 'pages', 'child.njk'),
-    '{% extends "../layout/base.njk" %}{% block body %}{% include "./partial.njk" %}{% endblock %}',
-  );
-  await writeFile(join(root, 'pages', 'partial.njk'), '{{ value }}');
-  await writeFile(join(root, 'pages', 'escape.njk'), '{% include "../../secret.njk" %}');
-  await writeFile(secret, 'secret');
-
-  const engine = createEngine({
-    loaders: [fileSystemLoader({ roots: [emptyRoot, root] })],
-  });
-  try {
-    assert.equal(
-      await engine.render({ name: 'page.njk' }, { value: 'works' }),
-      'File works',
-    );
-    assert.equal(
-      await engine.render({ name: 'pages/child.njk' }, { value: 'relative' }),
-      'Nested relative',
-    );
-    assert.equal(
-      await engine.render({
-        source: '{% extends "./pages/child.njk" %}',
-        canonicalName: pathToFileURL(join(root, 'inline.njk')).href,
-      }, { value: 'inline' }),
-      'Nested inline',
-    );
-    await assert.rejects(engine.render({ name: '../secret.njk' }), /escapes its configured root/);
-    await assert.rejects(
-      engine.render({ name: 'pages/escape.njk' }),
-      /escapes its configured root/,
-    );
-    await assert.rejects(
-      engine.render({ source: '{% include "../secret.njk" ignore missing %}' }),
-      error => error instanceof TemplateLoaderError && /escapes its configured root/.test(error.message),
-    );
-
-    if (process.platform !== 'win32') {
-      await symlink(secret, join(root, 'link.njk'));
-      await assert.rejects(engine.render({ name: 'link.njk' }), /symlink escapes/);
-    }
-  } finally {
-    await rm(sandbox, { force: true, recursive: true });
-  }
 });
 
 test('autoescaping requires an explicit safe string to bypass', async () => {

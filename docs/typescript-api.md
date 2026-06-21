@@ -6,7 +6,6 @@ Engine creation is synchronous. Rendering remains asynchronous:
 
 ```ts
 const engine = createEngine({
-  loaders: [fileSystemLoader({ roots: [templateRoot] })],
   filters: {
     async lookup(input, arguments_, { signal }) {
       return await applicationLookup(input, arguments_, { signal });
@@ -15,7 +14,7 @@ const engine = createEngine({
 });
 
 const html = await engine.render(
-  { name: 'page.njk' },
+  { source: templateSource },
   { title: 'Nunjitsu' },
   { signal, limits },
 );
@@ -43,9 +42,15 @@ There are no worker-pool, Wasm-memory, ABI, or mandatory disposal options.
 ## Template and context inputs
 
 A render accepts inline source or a named template resolved by an explicit
-loader. There is no implicit filesystem loader. Every loaded source has a
-canonical identity used for relative dependency resolution, cycle detection,
-and render-local deduplication.
+source loader. Nunjitsu has no filesystem loader; callers read files and apply
+path policy outside the engine. Every loaded source has a canonical identity
+used for relative dependency resolution, cycle detection, and render-local
+deduplication.
+
+This matches the Backstage scaffolder integration model: the fetch action
+enumerates and reads each file, enforces workspace paths independently, and
+passes each text file to the template engine as an inline string. Template
+loading directives are not used for filesystem access in that flow.
 
 Context values use a closed recursive public type consisting of primitives,
 safe strings, readonly arrays, and readonly plain records. Runtime validation is
