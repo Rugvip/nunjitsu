@@ -492,6 +492,13 @@ class Evaluator {
         const constantKey = constantLookupKey(valueNode);
         if (constantKey.found) {
           this.#charge(depth + 1);
+          if (
+            target instanceof RuntimeCallable &&
+            target.callableKind === 'builtin' &&
+            typeof constantKey.value === 'string'
+          ) {
+            return this.#lookupBuiltinCallable(target.id, constantKey.value);
+          }
           return lookupRuntimeConstantKey(target, constantKey.value);
         }
         const key = this.#evaluateExpression(valueNode, scope, depth + 1);

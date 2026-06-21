@@ -56,6 +56,29 @@ test('matches built-in filters, tests, globals, comments, and raw regions', () =
   );
 });
 
+test('matches stateful range, cycler, and joiner globals', () => {
+  const engine = createEngine({ cookiecutterCompat: true });
+  assert.equal(
+    engine.render('{% for i in range(10, 5, -2.5) %}{{ i }}{% endfor %}'),
+    '107.5',
+  );
+  assert.equal(
+    engine.render([
+      '{% set cls = cycler("odd", "even") %}',
+      '{{ cls.next() }}{{ cls.next() }}{{ cls.current }}',
+      '{{ cls.reset() }}{{ cls.next() }}',
+    ].join('')),
+    'oddevenevenodd',
+  );
+  assert.equal(
+    engine.render([
+      '{% set separator = joiner("|") %}',
+      'a{{ separator() }}b{{ separator() }}c{{ separator() }}',
+    ].join('')),
+    'ab|c|',
+  );
+});
+
 test('implements the closed Nunjucks filter and test standard library', () => {
   const engine = createEngine({ cookiecutterCompat: true });
   const filterCases: Array<readonly [string, string]> = [
