@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
-import { createEngine } from '../../src/index.ts';
+import { createEngine, NunjitsuRenderError } from '../../src/index.ts';
 import { RuntimeScope } from '../../src/runtime/scope.ts';
 import {
   copyPublicValue,
@@ -181,6 +181,53 @@ test('capability results cross the same closed value boundary', () => {
   });
   assert.throws(() => engine.render('${{ exposeReserved() }}'), /constructor is reserved/);
   assert.throws(() => engine.render('${{ exposeFunction() }}'), /Unsupported template value/);
+});
+
+test('capability exceptions halt evaluation without inspecting thrown values', () => {
+  let messageReads = 0;
+  let laterCalls = 0;
+  const thrown = new Error();
+  Object.defineProperty(thrown, 'message', {
+    get() {
+      messageReads += 1;
+      return 'must not be read';
+    },
+  });
+  const engine = createEngine({
+    filters: {
+      fail() {
+        throw thrown;
+      },
+    },
+    globals: {
+      failWithTypeError() {
+        throw new TypeError('opaque');
+      },
+      later() {
+        laterCalls += 1;
+        return 'not reached';
+      },
+    },
+  });
+
+  assert.throws(
+    () => engine.render('before${{ "value" | fail }}${{ later() }}'),
+    error => (
+      error instanceof NunjitsuRenderError &&
+      error.message === 'Template capability failed' &&
+      error.cause instanceof Error &&
+      error.cause.cause === thrown
+    ),
+  );
+  assert.equal(messageReads, 0);
+  assert.equal(laterCalls, 0);
+
+  assert.throws(
+    () => engine.render('${{ failWithTypeError() }}${{ later() }}'),
+    error => error instanceof NunjitsuRenderError,
+  );
+  assert.equal(laterCalls, 0);
+  assert.equal(engine.render('clean'), 'clean');
 });
 
 test('parser and evaluator sources contain no dynamic execution primitive', async () => {

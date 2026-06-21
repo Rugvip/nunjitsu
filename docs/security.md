@@ -89,6 +89,12 @@ A capability is authority. Applications must expose narrow behavior and assume
 an untrusted template can invoke every registered capability with arbitrary
 valid arguments up to configured limits.
 
+Capability exceptions are fail-stop. The host boundary catches a thrown value
+only to place it opaquely behind an engine-owned error with a fixed message; it
+does not read properties from that value. The exception immediately unwinds
+the interpreter, no later template node or capability executes, no partial
+output is returned, and the thrown value never becomes template-visible.
+
 Nunjitsu accepts inline source only and imports no filesystem APIs. Applications
 perform file discovery, path confinement, symbolic-link handling, and reads
 before source crosses into the renderer.

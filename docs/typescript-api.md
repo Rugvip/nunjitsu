@@ -85,6 +85,11 @@ Callbacks receive copied values and their results cross the same value
 validator as context input. Context functions and object methods are
 unsupported.
 
+If a callback throws, rendering stops immediately. Nunjitsu does not inspect
+the thrown value or expose it to template code, and it never resumes evaluation
+at a later template expression. The host receives a `NunjitsuRenderError` with
+an engine-owned fixed message and an opaque cause chain for diagnostics.
+
 ## Rendering modes
 
 The default mode uses `${{` and `}}` for variables. `cookiecutterCompat: true`

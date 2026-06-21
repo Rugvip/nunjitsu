@@ -11,6 +11,14 @@ import {
 } from './value.ts';
 import type { RuntimeArguments, RuntimeHost } from './evaluator.ts';
 
+/** An opaque fail-stop signal for one trusted capability exception. */
+class RuntimeCapabilityError extends Error {
+  constructor(cause: unknown) {
+    super('Template capability failed', { cause });
+    this.name = 'RuntimeCapabilityError';
+  }
+}
+
 /** Creates an immutable synchronous host dispatcher for the interpreter. */
 export function createRuntimeHost(capabilities: TemplateCapabilities): RuntimeHost {
   const filters = copyFunctions(capabilities.filters, 'filter');
@@ -35,10 +43,15 @@ export function createRuntimeHost(capabilities: TemplateCapabilities): RuntimeHo
       if (!callback) {
         return { found: false };
       }
-      const value = callback(
-        copyPublicValue(input),
-        ...arguments_.positional.map(copyPublicValue),
-      );
+      let value;
+      try {
+        value = callback(
+          copyPublicValue(input),
+          ...arguments_.positional.map(copyPublicValue),
+        );
+      } catch (cause) {
+        throw new RuntimeCapabilityError(cause);
+      }
       return { found: true, value: copyRuntimeValue(value) };
     },
     global(name, arguments_) {
@@ -46,7 +59,12 @@ export function createRuntimeHost(capabilities: TemplateCapabilities): RuntimeHo
       if (!callback) {
         return { found: false };
       }
-      const value = callback(...arguments_.positional.map(copyPublicValue));
+      let value;
+      try {
+        value = callback(...arguments_.positional.map(copyPublicValue));
+      } catch (cause) {
+        throw new RuntimeCapabilityError(cause);
+      }
       return { found: true, value: copyRuntimeValue(value) };
     },
   } satisfies RuntimeHost);
