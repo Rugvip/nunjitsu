@@ -1212,6 +1212,131 @@ test('clears ambient legacy RegExp state after every render', () => {
   assertLegacyStateCleared();
 });
 
+test('isolates capabilities from template-controlled legacy RegExp state', () => {
+  const readLegacyState = (): readonly string[] => [
+    RegExp.$1,
+    RegExp.$2,
+    RegExp.$3,
+    RegExp.$4,
+    RegExp.$5,
+    RegExp.$6,
+    RegExp.$7,
+    RegExp.$8,
+    RegExp.$9,
+    RegExp.input,
+    RegExp.lastMatch,
+    RegExp.lastParen,
+    RegExp.leftContext,
+    RegExp.rightContext,
+  ];
+  const emptyLegacyState = Array.from({ length: 14 }, () => '');
+  const observations: Array<readonly string[]> = [];
+  const observe = (): string => {
+    observations.push(readLegacyState());
+    return '';
+  };
+  const assertLastObservationCleared = (): void => {
+    assert.deepEqual(observations.at(-1), emptyLegacyState);
+  };
+  let laterCalls = 0;
+
+  const engine = createEngine({
+    filters: {
+      observe(input) {
+        observe();
+        return input;
+      },
+    },
+    globals: {
+      observe,
+      poison() {
+        /CAPABILITY:(.*)/.exec('CAPABILITY:poisoned');
+        return '';
+      },
+      invalidResult() {
+        /RESULT:(.*)/.exec('RESULT:poisoned');
+        return (() => 'unsupported') as never;
+      },
+      fail() {
+        /FAILURE:(.*)/.exec('FAILURE:poisoned');
+        throw new Error('expected failure');
+      },
+      later() {
+        laterCalls += 1;
+        return '';
+      },
+    },
+  });
+
+  assert.equal(
+    engine.render('${{ "ATTACK:owned" | replace(r/ATTACK:(.*)/, "redacted") }}${{ observe() }}'),
+    'redacted',
+  );
+  assertLastObservationCleared();
+
+  assert.equal(
+    engine.render('${{ "FILTER:owned" | replace(r/FILTER:(.*)/, "redacted") }}${{ "value" | observe }}'),
+    'redactedvalue',
+  );
+  assertLastObservationCleared();
+
+  /PREVIOUS:(.*)/.exec('PREVIOUS:ambient');
+  assert.equal(RegExp.$1, 'ambient');
+  engine.render('${{ r/PARSER:(.*)/ }}${{ observe() }}');
+  assertLastObservationCleared();
+
+  assert.equal(engine.render('${{ poison() }}${{ observe() }}'), '');
+  assertLastObservationCleared();
+
+  assert.throws(
+    () => engine.render('${{ invalidResult() }}${{ later() }}'),
+    error => error instanceof NunjitsuRenderError,
+  );
+  assert.deepEqual(readLegacyState(), emptyLegacyState);
+  assert.equal(laterCalls, 0);
+
+  assert.throws(
+    () => engine.render('${{ fail() }}${{ later() }}'),
+    error => (
+      error instanceof NunjitsuRenderError &&
+      error.message === 'Template capability failed: expected failure'
+    ),
+  );
+  assert.deepEqual(readLegacyState(), emptyLegacyState);
+  assert.equal(laterCalls, 0);
+
+  let nestedStateAfterRender: readonly string[] | undefined;
+  const innerEngine = createEngine({
+    globals: {
+      observeInner: observe,
+      poisonInner() {
+        /INNER:(.*)/.exec('INNER:poisoned');
+        return '';
+      },
+    },
+  });
+  const outerEngine = createEngine({
+    globals: {
+      nested() {
+        /OUTER:(.*)/.exec('OUTER:poisoned');
+        innerEngine.render('${{ observeInner() }}${{ poisonInner() }}');
+        nestedStateAfterRender = readLegacyState();
+        /OUTER_RETURN:(.*)/.exec('OUTER_RETURN:poisoned');
+        return '';
+      },
+      observe,
+    },
+  });
+  assert.equal(outerEngine.render('${{ nested() }}${{ observe() }}'), '');
+  assert.deepEqual(nestedStateAfterRender, emptyLegacyState);
+  assert.deepEqual(observations.at(-2), emptyLegacyState);
+  assertLastObservationCleared();
+  assert.deepEqual(readLegacyState(), emptyLegacyState);
+
+  assert.equal(engine.render('${{ observe() }}'), '');
+  assertLastObservationCleared();
+});
+
 test('parser and evaluator sources contain no dynamic execution primitive', async () => {
   const files = [
     '../../src/parser/index.ts',

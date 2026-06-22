@@ -6,6 +6,7 @@ import type {
   TemplateGlobalFunction,
 } from '../capabilities.ts';
 import { neutralizeDiagnosticMessage } from '../diagnostics.ts';
+import { clearLegacyRegExpState } from './clearLegacyRegExpState.ts';
 import {
   copyPublicValue,
   copyRuntimeValue,
@@ -48,29 +49,38 @@ export function createRuntimeHost(capabilities: TemplateCapabilities): RuntimeHo
       if (!callback) {
         return { found: false };
       }
-      try {
+      return invokeCapability(() => {
         const value = callback(
           copyPublicValue(input),
           ...arguments_.positional.map(copyPublicValue),
         );
         return { found: true, value: copyRuntimeValue(value) };
-      } catch (thrown) {
-        throw new RuntimeCapabilityError(extractCapabilityMessage(thrown));
-      }
+      });
     },
     global(name, arguments_) {
       const callback = globalFunctions.get(name);
       if (!callback) {
         return { found: false };
       }
-      try {
+      return invokeCapability(() => {
         const value = callback(...arguments_.positional.map(copyPublicValue));
         return { found: true, value: copyRuntimeValue(value) };
-      } catch (thrown) {
-        throw new RuntimeCapabilityError(extractCapabilityMessage(thrown));
-      }
+      });
     },
   } satisfies RuntimeHost);
+}
+
+function invokeCapability<T>(operation: () => T): T {
+  clearLegacyRegExpState();
+  try {
+    try {
+      return operation();
+    } catch (thrown) {
+      throw new RuntimeCapabilityError(extractCapabilityMessage(thrown));
+    }
+  } finally {
+    clearLegacyRegExpState();
+  }
 }
 
 function extractCapabilityMessage(thrown: unknown): string | undefined {

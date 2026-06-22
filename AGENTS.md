@@ -163,6 +163,10 @@ Do not create additional packages without a documented architectural reason.
 - Clear all host-realm legacy RegExp capture state in a public render-level
   `finally` block. Cover successful and failed renders, and do not claim that
   pre-existing legacy state can be restored.
+- Clear legacy RegExp state before every registered filter or global boundary
+  and again after argument copying, callback execution, result validation, or
+  sanitized exception handling completes. Capabilities must not observe
+  template or earlier-capability match state.
 - Implement template-visible randomness with Node's cryptographic random
   source. Built-ins must not read or advance the caller realm's shared
   `Math.random` stream.

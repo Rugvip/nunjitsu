@@ -143,7 +143,14 @@ Trusted callbacks execute outside interpreter work accounting except for their
 invocation count and returned-value validation. Callback return validation is
 inside the fail-stop capability exception boundary.
 
-All parser, evaluator, built-in, and capability exits converge on the public
-render `finally` boundary, which overwrites the host realm's legacy RegExp
-capture fields with deterministic empty values. This boundary clears rather
-than retains or restores ambient match state.
+Every registered filter and global boundary clears the host realm's legacy
+RegExp capture fields immediately before copying arguments and again in a
+`finally` block after callback execution, result validation, or sanitized
+exception handling. A capability therefore cannot observe template parsing or
+runtime match state, and one capability cannot pass match state to another.
+Nested renders apply the same boundary independently.
+
+All parser, evaluator, built-in, and capability exits additionally converge on
+the public render `finally` boundary, which repeats the deterministic reset as
+defense in depth. These boundaries clear rather than retain or restore ambient
+match state.

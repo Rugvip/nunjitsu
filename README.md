@@ -122,7 +122,10 @@ must be handled according to its destination.
 Every render clears the host realm's legacy static RegExp state, including
 `RegExp.$1` through `RegExp.$9`, `input`, and match-context fields, before it
 returns or throws. Pre-existing values are cleared rather than restored because
-the platform does not provide a reliable restoration mechanism.
+the platform does not provide a reliable restoration mechanism. Registered
+filters and globals are also entered and exited with this state cleared, so
+template regex operations and separate capabilities cannot communicate through
+the legacy fields during a render.
 
 ### Prepared contexts
 
