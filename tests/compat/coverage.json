@@ -21,6 +21,22 @@
       ]
     },
     {
+      "id": "observable-expression-grouping",
+      "file": "tests/source/runtime.test.ts",
+      "test": "matches Nunjucks comparison, membership, test, and not grouping",
+      "upstream": ["tests/parser.js:6", "tests/lexer.js:18"]
+    },
+    {
+      "id": "parser-expression-acceptance",
+      "file": "tests/source/runtime.test.ts",
+      "test": "rejects Nunjucks-invalid nested conditionals and dictionary keys before evaluation",
+      "upstream": [
+        "tests/parser.js:6",
+        "tests/lexer.js:15",
+        "tests/compiler.js:16"
+      ]
+    },
+    {
       "id": "compiler-capability-errors",
       "file": "tests/source/security.test.ts",
       "test": "capability exceptions retain only inert sanitized messages and halt evaluation",

@@ -365,6 +365,216 @@ test('matches Nunjucks mixed-operator grouping and evaluation order', () => {
   assert.equal(engine.render('clean'), 'clean');
 });
 
+test('matches Nunjucks comparison, membership, test, and not grouping', () => {
+  const calls: string[] = [];
+  const oracleCalls: string[] = [];
+  let privilegedCalls = 0;
+  let oraclePrivilegedCalls = 0;
+  const engine = createEngine({
+    globals: {
+      mark(name, value) {
+        if (typeof name === 'string') {
+          calls.push(name);
+        }
+        return value;
+      },
+      privileged() {
+        privilegedCalls += 1;
+        return '';
+      },
+    },
+  });
+  const oracle = new nunjucks.Environment(undefined, { autoescape: false });
+  oracle.addGlobal('mark', (name: string, value: unknown) => {
+    oracleCalls.push(name);
+    return value;
+  });
+  oracle.addGlobal('privileged', () => {
+    oraclePrivilegedCalls += 1;
+    return '';
+  });
+
+  const equalityOperators = ['==', '!=', '===', '!=='];
+  const relationalOperators = ['<', '<=', '>', '>='];
+  const mixedComparisons: string[] = [];
+  for (const equality of equalityOperators) {
+    for (const relational of relationalOperators) {
+      mixedComparisons.push(`2 ${equality} 1 ${relational} 1`);
+      mixedComparisons.push(`1 ${relational} 2 ${equality} true`);
+    }
+  }
+  mixedComparisons.push('3 > 2 > 1');
+  const comparisonSource = mixedComparisons
+    .map(expression => `\${{ ${expression} }}`)
+    .join('|');
+  assert.equal(
+    engine.render(comparisonSource),
+    oracle.renderString(comparisonSource.replaceAll('${{', '{{'), {}),
+  );
+
+  const groupingExpressions = [
+    'false == 1 in [1]',
+    '1 == 1 is number',
+    '1 is number in [true]',
+    '(1 is number) in [true]',
+    'not 1 in [true]',
+    'not 1 not in [2]',
+    'not 1 + 1',
+    'not 4 - 2',
+    'not 0 * 0',
+    'not 4 / 2',
+    'not 5 % 2',
+    'not 0 ~ 1',
+    'not 1 == 2',
+    'not 1 != 2',
+    'not 1 === 1',
+    'not 1 !== 2',
+    'not 1 < 2',
+    'not 1 <= 2',
+    'not 2 > 1',
+    'not 2 >= 1',
+    'not 5 // 2',
+    'not 2 ** 3',
+    'not 1 | int',
+    'not 1 is number',
+    'not (1 + 1)',
+    'not not 1 + 1',
+  ];
+  const groupingSource = groupingExpressions
+    .map(expression => `\${{ ${expression} }}`)
+    .join('|');
+  assert.equal(
+    engine.render(groupingSource),
+    oracle.renderString(groupingSource.replaceAll('${{', '{{'), {}),
+  );
+
+  const orderSource = [
+    '${{ mark("a", 2) == mark("b", 1) < mark("c", 1) }}|',
+    '${{ not mark("d", 0) * mark("e", 0) }}|',
+    '${{ not mark("f", 1) in [mark("g", true)] }}',
+  ].join('');
+  assert.equal(
+    engine.render(orderSource),
+    oracle.renderString(orderSource.replaceAll('${{', '{{'), {}),
+  );
+  assert.deepEqual(calls, oracleCalls);
+  assert.deepEqual(calls, ['a', 'b', 'c', 'd', 'e', 'f', 'g']);
+
+  const branchSource = [
+    '{% if 2 == 1 < 1 %}${{ privileged() }}{% endif %}',
+    '{% if not 1 == 2 %}${{ privileged() }}{% endif %}',
+    '{% if not 0 * 0 %}${{ privileged() }}{% endif %}',
+  ].join('');
+  assert.equal(
+    engine.render(branchSource),
+    oracle.renderString(branchSource.replaceAll('${{', '{{'), {}),
+  );
+  assert.equal(privilegedCalls, 0);
+  assert.equal(oraclePrivilegedCalls, 0);
+
+  for (const expression of [
+    '1 in [1] == true',
+    '1 not in [2] == true',
+  ]) {
+    const source = `before\${{ ${expression} }}\${{ privileged() }}`;
+    assert.throws(() => engine.render(source), NunjitsuRenderError);
+    assert.throws(() => oracle.renderString(source.replaceAll('${{', '{{'), {}));
+    assert.equal(privilegedCalls, 0);
+    assert.equal(oraclePrivilegedCalls, 0);
+    assert.equal(engine.render('clean'), 'clean');
+  }
+
+  assert.throws(
+    () => engine.render('${{ not 2 == 1 < 1 }}', {}, { limits: { astNodes: 1 } }),
+    NunjitsuLimitError,
+  );
+  assert.throws(
+    () => engine.render('${{ not 2 == 1 < 1 }}', {}, { limits: { workUnits: 1 } }),
+    NunjitsuLimitError,
+  );
+  assert.equal(engine.render('clean'), 'clean');
+});
+
+test('rejects Nunjucks-invalid nested conditionals and dictionary keys before evaluation', () => {
+  const calls: string[] = [];
+  const oracleCalls: string[] = [];
+  const capabilities = {
+    a() {
+      calls.push('a');
+      return 'a';
+    },
+    b() {
+      calls.push('b');
+      return 'b';
+    },
+    c() {
+      calls.push('c');
+      return 'c';
+    },
+    f(value: unknown) {
+      calls.push('f');
+      return value as never;
+    },
+    privileged() {
+      calls.push('privileged');
+      return '';
+    },
+  };
+  const engine = createEngine({ globals: capabilities });
+  const oracle = new nunjucks.Environment(undefined, { autoescape: false });
+  for (const name of ['a', 'b', 'c', 'f', 'privileged'] as const) {
+    oracle.addGlobal(name, (...arguments_: unknown[]) => {
+      oracleCalls.push(name);
+      if (name === 'f') {
+        return arguments_[0];
+      }
+      return name === 'privileged' ? '' : name;
+    });
+  }
+
+  const invalidConditionalSources = [
+    '${{ a() if false else b() if true else c() }}',
+    '${{ [a() if false else b() if true else c()] }}',
+    '${{ {"x": a() if false else b() if true else c()} | dump }}',
+    '${{ f(a() if false else b() if true else c()) }}',
+    '${{ "x" | default(a() if false else b() if true else c()) }}',
+    '{% set x = a() if false else b() if true else c() %}${{ x }}',
+    '{% if a() if false else b() if true else c() %}x{% endif %}',
+  ];
+  for (const source of invalidConditionalSources) {
+    assert.throws(() => engine.render(source), NunjitsuRenderError);
+    assert.throws(() => oracle.renderString(source.replaceAll('${{', '{{'), {}));
+    assert.deepEqual(calls, []);
+    assert.deepEqual(oracleCalls, []);
+    assert.equal(engine.render('clean'), 'clean');
+  }
+
+  const parenthesizedSource = '${{ a() if false else (b() if true else c()) }}';
+  assert.equal(
+    engine.render(parenthesizedSource),
+    oracle.renderString(parenthesizedSource.replaceAll('${{', '{{'), {}),
+  );
+  assert.deepEqual(calls, ['b']);
+  assert.deepEqual(oracleCalls, calls);
+  calls.length = 0;
+  oracleCalls.length = 0;
+
+  for (const key of ['1', '1.5', 'true', 'false', 'null', 'none']) {
+    const source = `before\${{ {${key}: 2} | dump }}\${{ privileged() }}`;
+    assert.throws(() => engine.render(source), NunjitsuRenderError);
+    assert.throws(() => oracle.renderString(source.replaceAll('${{', '{{'), {}));
+    assert.deepEqual(calls, []);
+    assert.deepEqual(oracleCalls, []);
+    assert.equal(engine.render('clean'), 'clean');
+  }
+
+  const validDictionarySource = '${{ {name: 2, "label": 3} | dump }}';
+  assert.equal(
+    engine.render(validDictionarySource),
+    oracle.renderString(validDictionarySource.replaceAll('${{', '{{'), {}),
+  );
+});
+
 test('uses UTF-16 code units consistently for string operations', () => {
   const engine = createEngine();
   const oracle = new nunjucks.Environment(undefined, { autoescape: false });

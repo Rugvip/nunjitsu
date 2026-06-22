@@ -32,6 +32,12 @@
       "expected": "baz"
     },
     {
+      "id": "compiler-dictionary-string-and-name-keys",
+      "template": "{{ {foo:2, \"bar\":3} | dump }}",
+      "context": {},
+      "expected": "{\"foo\":2,\"bar\":3}"
+    },
+    {
       "id": "compiler-missing-root-value",
       "template": "{{ foo }}",
       "context": {},
@@ -116,6 +122,24 @@
       "expected": "4hello|45|ab5"
     },
     {
+      "id": "compiler-mixed-comparison-precedence",
+      "template": "{{ 2 == 1 < 1 }}|{{ 0 == 0 < 0 }}|{{ 1 === 1 < 2 }}|{{ 1 !== 2 > 0 }}|{{ 1 < 2 == true }}|{{ 3 > 2 > 1 }}",
+      "context": {},
+      "expected": "false|true|false|true|true|false"
+    },
+    {
+      "id": "compiler-membership-test-precedence",
+      "template": "{{ false == 1 in [1] }}|{{ 1 == 1 is number }}|{{ 1 is number in [true] }}|{{ (1 is number) in [true] }}|{{ not 1 in [true] }}|{{ not 1 not in [2] }}",
+      "context": {},
+      "expected": "false|false|true|true|true|false"
+    },
+    {
+      "id": "compiler-observable-not-grouping",
+      "template": "{{ not 1 + 1 }}|{{ not 4 - 2 }}|{{ not 0 * 0 }}|{{ not 4 / 2 }}|{{ not 5 % 2 }}|{{ not 0 ~ 1 }}|{{ not 1 == 2 }}|{{ not 1 != 2 }}|{{ not 1 === 1 }}|{{ not 1 !== 2 }}|{{ not 1 < 2 }}|{{ not 1 <= 2 }}|{{ not 2 > 1 }}|{{ not 2 >= 1 }}|{{ not 5 // 2 }}|{{ not 2 ** 3 }}|{{ not 1 | int }}|{{ not 1 in [true] }}|{{ not 1 is number }}|{{ not (1 + 1) }}|{{ not not 1 + 1 }}",
+      "context": {},
+      "expected": "1|-2|0|0|0|true1|false|true|false|true|true|true|false|false|false|false|false|true|false|false|2"
+    },
+    {
       "id": "compiler-ternary-false",
       "template": "{{ \"foo\" if bar else \"baz\" }}",
       "context": {},
@@ -126,6 +150,12 @@
       "template": "{{ \"foo\" if bar else \"baz\" }}",
       "context": {"bar":true},
       "expected": "foo"
+    },
+    {
+      "id": "compiler-parenthesized-nested-inline-conditional",
+      "template": "{{ a if false else (b if true else c) }}",
+      "context": {"a":"a","b":"b","c":"c"},
+      "expected": "b"
     },
     {
       "id": "compiler-inline-if-true",

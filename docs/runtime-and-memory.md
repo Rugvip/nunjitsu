@@ -77,6 +77,16 @@ records, regex values, and callables remain unequal regardless of content.
 Array membership is separately strict and never unwraps safe strings or other
 closed objects.
 
+Expression grouping follows Nunjucks's observable generated behavior, including
+its non-conventional cases. Relational operators bind above equality;
+membership and tests are separate grouping boundaries; and prefix `not` is
+lowered through the left operand of raw arithmetic, concatenation, and
+comparison expressions while stopping at floor division, power, filters,
+membership, tests, and explicit groups. Nested inline conditionals in an else
+arm require explicit parentheses. Dictionary literal keys accept only strings
+and ordinary identifiers so invalid key forms fail during complete-source
+parsing, before evaluation or capability dispatch.
+
 Input arrays and records are recursively copied. Records are never used as
 JavaScript prototypes or accessed through `object[key]` inside the interpreter.
 `constructor`, `prototype`, and `__proto__` are reserved throughout parsing,

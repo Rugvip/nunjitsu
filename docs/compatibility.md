@@ -29,6 +29,11 @@ Nunjitsu targets:
 - observable Nunjucks mixed-operator grouping, including left-associative
   exponentiation, concatenation in the emitted additive tier, and wrapped
   floor-division behavior among multiplicative operators;
+- observable comparison, membership, test, and prefix-`not` grouping, including
+  Nunjucks's generated-code behavior where it differs from conventional unary
+  precedence;
+- Nunjucks parser acceptance for parenthesized nested inline conditionals and
+  string or ordinary-identifier dictionary keys;
 - built-in filters, tests, and globals used by direct string templates;
 - synchronous application filters and `TemplateValue` data or callable globals;
 - `trimBlocks` and `lstripBlocks`; and

@@ -1187,8 +1187,6 @@ function runtimeCompare(left: RuntimeValue, operator: string, right: RuntimeValu
     case '<=': return runtimeOrder(left, right) <= 0;
     case '>': return runtimeOrder(left, right) > 0;
     case '>=': return runtimeOrder(left, right) >= 0;
-    case 'in': return runtimeContains(right, left);
-    case 'notin': return !runtimeContains(right, left);
     default: throw new Error(`Unsupported comparison operator ${operator}`);
   }
 }

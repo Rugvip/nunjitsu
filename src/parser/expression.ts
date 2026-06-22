@@ -39,6 +39,7 @@ const numberPattern = /^(?:0[xX][0-9a-fA-F]+|(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)
 const shortHexEscapePattern = /^[0-9a-fA-F]{2}$/;
 const unicodeEscapePattern = /^[0-9a-fA-F]{4}$/;
 const regularExpressionFlagsPattern = /^[A-Za-z]*/;
+const dictionaryLiteralNames = new Set(['true', 'false', 'null', 'none']);
 
 /** Creates and freezes one parser-owned AST node. */
 export type AstNodeFactory = (node: AstNode) => AstNode;
@@ -91,7 +92,7 @@ export class ExpressionParser {
     }
     const cond = this.#parseOr();
     const otherwise = this.#consumeName('else')
-      ? this.#nested(() => this.#parseInlineIf())
+      ? this.#nested(() => this.#parseOr())
       : undefined;
     return this.#make('InlineIf', { cond, body, else_: otherwise }, body);
   }
@@ -113,14 +114,31 @@ export class ExpressionParser {
   }
 
   #parseNot(): AstNode {
+    const position = this.#peek();
     if (this.#consumeName('not')) {
-      return this.#make('Not', { target: this.#nested(() => this.#parseNot()) });
+      const target = this.#nested(() => this.#parseNot());
+      return this.#lowerObservableNot(target, position);
     }
-    return this.#parseCompare();
+    return this.#parseMembership();
   }
 
-  #parseCompare(): AstNode {
-    const left = this.#parseAdditive();
+  #parseMembership(): AstNode {
+    let left = this.#parseTest();
+    for (;;) {
+      let negate = false;
+      if (this.#peek().value === 'not' && this.#peek(1).value === 'in') {
+        this.#index += 2;
+        negate = true;
+      } else if (!this.#consumeName('in')) {
+        return left;
+      }
+      const membership = this.#make('In', { left, right: this.#parseTest() }, left);
+      left = negate ? this.#make('Not', { target: membership }, left) : membership;
+    }
+  }
+
+  #parseTest(): AstNode {
+    const left = this.#parseCompare();
     if (this.#consumeName('is')) {
       const negate = this.#consumeName('not');
       const testName = this.#expect('name');
@@ -135,26 +153,38 @@ export class ExpressionParser {
       const test = this.#make('Is', { left, right }, left);
       return negate ? this.#make('Not', { target: test }, left) : test;
     }
+    return left;
+  }
 
+  #parseCompare(): AstNode {
+    return this.#parseEquality();
+  }
+
+  #parseEquality(): AstNode {
+    const left = this.#parseRelational();
     const operations: AstNode[] = [];
-    for (;;) {
-      let operator: string | undefined;
+    while (['==', '===', '!=', '!=='].includes(this.#peek().value)) {
       const token = this.#peek();
-      if (['==', '===', '!=', '!==', '<', '<=', '>', '>='].includes(token.value)) {
-        operator = token.value;
-        this.#index += 1;
-      } else if (this.#consumeName('in')) {
-        operator = 'in';
-      } else if (this.#peek().value === 'not' && this.#peek(1).value === 'in') {
-        this.#index += 2;
-        operator = 'notin';
-      }
-      if (!operator) {
-        break;
-      }
-      const expr = this.#parseAdditive();
-      operations.push(this.#make('CompareOperand', { expr, operator }, expr));
+      this.#index += 1;
+      const expr = this.#parseRelational();
+      operations.push(this.#make('CompareOperand', { expr, operator: token.value }, expr));
     }
+    return this.#makeComparison(left, operations);
+  }
+
+  #parseRelational(): AstNode {
+    const left = this.#parseAdditive();
+    const operations: AstNode[] = [];
+    while (['<', '<=', '>', '>='].includes(this.#peek().value)) {
+      const token = this.#peek();
+      this.#index += 1;
+      const expr = this.#parseAdditive();
+      operations.push(this.#make('CompareOperand', { expr, operator: token.value }, expr));
+    }
+    return this.#makeComparison(left, operations);
+  }
+
+  #makeComparison(left: AstNode, operations: AstNode[]): AstNode {
     if (operations.length === 0) {
       return left;
     }
@@ -162,6 +192,28 @@ export class ExpressionParser {
       expr: left,
       ops: Object.freeze(operations) as never,
     }, left);
+  }
+
+  #lowerObservableNot(target: AstNode, position: Pick<Token, 'line' | 'column'>): AstNode {
+    switch (target.type) {
+      case 'Add':
+      case 'Concat':
+      case 'Sub':
+      case 'Mul':
+      case 'Div':
+      case 'Mod':
+        return this.#make(target.type, {
+          left: this.#lowerObservableNot(target.left, position),
+          right: target.right,
+        }, position);
+      case 'Compare':
+        return this.#make('Compare', {
+          expr: this.#lowerObservableNot(target.expr, position),
+          ops: target.ops,
+        }, position);
+      default:
+        return this.#make('Not', { target }, position);
+    }
   }
 
   #parseAdditive(): AstNode {
@@ -386,17 +438,14 @@ export class ExpressionParser {
       do {
         const keyToken = this.#peek();
         let key: AstNode;
-        if (keyToken.kind === 'name') {
+        if (keyToken.kind === 'name' && !dictionaryLiteralNames.has(keyToken.value)) {
           this.#index += 1;
           key = this.#symbol(keyToken);
-        } else if (keyToken.kind === 'string' || keyToken.kind === 'number') {
+        } else if (keyToken.kind === 'string') {
           this.#index += 1;
-          key = this.#literal(
-            keyToken.kind === 'number' ? Number(keyToken.value) : keyToken.value,
-            keyToken,
-          );
+          key = this.#literal(keyToken.value, keyToken);
         } else {
-          this.#fail('Expected dictionary key');
+          this.#fail('Dictionary keys must be strings or names', keyToken);
         }
         if (
           (key.type === 'Symbol' || key.type === 'Literal') &&
