@@ -644,14 +644,13 @@ class Evaluator {
     depth: number,
   ): boolean {
     let left = this.#evaluateExpression(node.expr, scope, depth + 1);
+    let result = false;
     for (const operation of node.ops) {
       const right = this.#evaluateExpression(operation.expr, scope, depth + 1);
-      if (!runtimeCompare(left, operation.operator, right)) {
-        return false;
-      }
-      left = right;
+      result = runtimeCompare(left, operation.operator, right);
+      left = result;
     }
-    return true;
+    return result;
   }
 
   #evaluateFilter(node: AstCallNode, scope: RuntimeScope, depth: number): RuntimeValue {
@@ -1163,9 +1162,22 @@ function runtimeCompare(left: RuntimeValue, operator: string, right: RuntimeValu
 
 function runtimeOrder(left: RuntimeValue, right: RuntimeValue): number {
   if (isStringValue(left) && isStringValue(right)) {
-    return renderRuntimeValue(left).localeCompare(renderRuntimeValue(right));
+    return compareRuntimeStrings(
+      renderRuntimeValue(left),
+      renderRuntimeValue(right),
+    );
   }
   return runtimeNumber(left) - runtimeNumber(right);
+}
+
+function compareRuntimeStrings(left: string, right: string): number {
+  if (left < right) {
+    return -1;
+  }
+  if (left > right) {
+    return 1;
+  }
+  return 0;
 }
 
 function runtimeContains(container: RuntimeValue, needle: RuntimeValue): boolean {

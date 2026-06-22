@@ -151,6 +151,8 @@ Do not create additional packages without a documented architectural reason.
 - Model strings consistently as UTF-16 code units for length, indexing,
   iteration, filters, slicing, and work accounting. Iterate primitive strings
   by numeric index rather than their host iteration protocol.
+- Compare validated primitive strings with direct UTF-16 relational operators.
+  Do not use locale-aware collation or `Intl` inside template semantics.
 - Treat capability exceptions as fail-stop opaque values. Preserve details only
   from primitive strings or an own string data descriptor after a trap-free
   native-error brand check, neutralize and bound the detail, discard the

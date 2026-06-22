@@ -39,7 +39,10 @@ String semantics follow Nunjucks and JavaScript UTF-16 code units consistently.
 Length, numeric lookup, loops, `list`, edge selection, reversal, replacement,
 and slicing may therefore expose the two surrogate halves of an astral code
 point separately. Primitive strings are iterated by numeric index rather than
-through `String.prototype[Symbol.iterator]`.
+through `String.prototype[Symbol.iterator]`. Relational comparisons use direct
+UTF-16 lexical ordering without locale or ICU collation, so results are stable
+across supported Node.js environments. Chained comparisons retain Nunjucks's
+left-associative JavaScript semantics.
 
 Input arrays and records are recursively copied. Records are never used as
 JavaScript prototypes or accessed through `object[key]` inside the interpreter.

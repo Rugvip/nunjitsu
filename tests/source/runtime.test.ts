@@ -354,6 +354,81 @@ test('uses UTF-16 code units consistently for string operations', () => {
   assert.equal(hostIteratorCalls, 0);
 });
 
+test('orders strings lexicographically by UTF-16 code units', () => {
+  let privilegedCalls = 0;
+  let oraclePrivilegedCalls = 0;
+  const engine = createEngine({
+    globals: {
+      privileged() {
+        privilegedCalls += 1;
+        return 'PRIVILEGED';
+      },
+    },
+  });
+  const oracle = new nunjucks.Environment(undefined, { autoescape: false });
+  oracle.addGlobal('privileged', () => {
+    oraclePrivilegedCalls += 1;
+    return 'PRIVILEGED';
+  });
+  const comparisonSource = [
+    '${{ left < right }}:',
+    '${{ left <= right }}:',
+    '${{ left > right }}:',
+    '${{ left >= right }}',
+  ].join('');
+  const pairs = [
+    ['a', 'A'],
+    ['A', 'a'],
+    ['a', '1'],
+    ['1', 'a'],
+    ['é', 'z'],
+    ['z', 'é'],
+    ['😀', '🧪'],
+    ['\ud83d', '\ude00'],
+    ['é', 'e\u0301'],
+    ['', 'a'],
+    ['a', ''],
+    ['equal', 'equal'],
+  ] as const;
+  for (const [left, right] of pairs) {
+    const context = { left, right };
+    assert.equal(
+      engine.render(comparisonSource, context),
+      oracle.renderString(comparisonSource.replaceAll('${{', '{{'), context),
+      `${JSON.stringify(left)} compared with ${JSON.stringify(right)}`,
+    );
+  }
+
+  const chainedSource = [
+    '${{ first < middle < last }}:',
+    '${{ first >= middle >= last }}:',
+    '${{ 3 > 2 > 1 }}',
+  ].join('');
+  for (const context of [
+    { first: 'A', middle: 'a', last: 'é' },
+    { first: 'e\u0301', middle: 'é', last: '😀' },
+    { first: 'a', middle: 'A', last: '1' },
+  ]) {
+    assert.equal(
+      engine.render(chainedSource, context),
+      oracle.renderString(chainedSource.replaceAll('${{', '{{'), context),
+    );
+  }
+
+  const conditionalSource = [
+    '{% if left < right %}${{ privileged() }}{% endif %}',
+  ].join('');
+  const context = { left: 'a', right: 'A' };
+  assert.equal(engine.render(conditionalSource, context), '');
+  assert.equal(
+    oracle.renderString(conditionalSource.replaceAll('${{', '{{'), context),
+    '',
+  );
+  assert.equal(privilegedCalls, 0);
+  assert.equal(oraclePrivilegedCalls, 0);
+  assert.equal(engine.render('clean'), 'clean');
+});
+
 test('uses fixed unescaped output and explicit escape filtering', () => {
   const engine = createEngine();
   assert.equal(
