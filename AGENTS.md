@@ -145,6 +145,9 @@ Do not create additional packages without a documented architectural reason.
   as a value becoming a key, path segment, binding, or callable identity.
   Enforce the invariant in the owning representation as well as at external
   boundaries.
+- Use presence-aware map and record operations when semantics depend on whether
+  a key exists. Never infer presence from a retrieved value because
+  interpreter-owned records may store `undefined`.
 - Treat capability exceptions as fail-stop opaque values. Preserve details only
   from primitive strings or an own string data descriptor after a trap-free
   native-error brand check, neutralize and bound the detail, discard the

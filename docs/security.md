@@ -98,6 +98,8 @@ Template-controlled data is revalidated whenever its role changes:
   through `RuntimeRecord`, which cannot represent a reserved key;
 - attribute strings are split into explicit path segments, reject reserved
   segments, and traverse only `RuntimeRecord` entries;
+- record membership uses the closed record's presence operation, keeping an
+  allowed key containing `undefined` distinct from a missing or reserved key;
 - assignment, macro, filter, test, and global names originate from validated
   parser symbols and resolve through private maps;
 - macro calls bind only declared formal names at their fixed positions and the

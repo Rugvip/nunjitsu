@@ -645,6 +645,71 @@ test('macro binding uses formal positions and admits only the special caller key
   assert.equal(engine.render('clean'), 'clean');
 });
 
+test('record membership tracks key presence independently of its value', () => {
+  let policyCalls = 0;
+  let privilegedCalls = 0;
+  let oraclePolicyCalls = 0;
+  let oraclePrivilegedCalls = 0;
+  const engine = createEngine({
+    globals: {
+      undefinedPolicy() {
+        policyCalls += 1;
+        return { approved: undefined } as never;
+      },
+      privileged() {
+        privilegedCalls += 1;
+        return 'PRIVILEGED';
+      },
+    },
+  });
+  const oracle = new nunjucks.Environment(undefined, { autoescape: false });
+  oracle.addGlobal('undefinedPolicy', () => {
+    oraclePolicyCalls += 1;
+    return { approved: undefined };
+  });
+  oracle.addGlobal('privileged', () => {
+    oraclePrivilegedCalls += 1;
+    return 'PRIVILEGED';
+  });
+
+  const membershipSource = [
+    '${{ "approved" in {"approved": missing} }}:',
+    '${{ "approved" not in {"approved": missing} }}|',
+    '{% set values = {"nullValue": null, "falseValue": false, "zeroValue": 0, "emptyValue": ""} %}',
+    '${{ "nullValue" in values }}:',
+    '${{ "falseValue" in values }}:',
+    '${{ "zeroValue" in values }}:',
+    '${{ "emptyValue" in values }}|',
+    '${{ "missing" in values }}:',
+    '${{ "missing" not in values }}|',
+    '${{ "approved" in undefinedPolicy() }}:',
+    '${{ "approved" not in undefinedPolicy() }}',
+  ].join('');
+  const expected = 'true:false|true:true:true:true|false:true|true:false';
+  assert.equal(engine.render(membershipSource), expected);
+  assert.equal(
+    oracle.renderString(membershipSource.replaceAll('${{', '{{'), {}),
+    expected,
+  );
+  assert.equal(policyCalls, 2);
+  assert.equal(oraclePolicyCalls, 2);
+
+  const conditionalSource = [
+    '{% set policy = undefinedPolicy() %}',
+    '{% if "approved" not in policy %}${{ privileged() }}{% endif %}',
+  ].join('');
+  assert.equal(engine.render(conditionalSource), '');
+  assert.equal(
+    oracle.renderString(conditionalSource.replaceAll('${{', '{{'), {}),
+    '',
+  );
+  assert.equal(policyCalls, 3);
+  assert.equal(oraclePolicyCalls, 3);
+  assert.equal(privilegedCalls, 0);
+  assert.equal(oraclePrivilegedCalls, 0);
+  assert.equal(engine.render('clean'), 'clean');
+});
+
 test('callable identities stay sealed and regular expressions cross as inert data', () => {
   let captureCalls = 0;
   let received: unknown;

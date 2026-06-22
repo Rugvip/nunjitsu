@@ -1195,7 +1195,7 @@ function runtimeContains(container: RuntimeValue, needle: RuntimeValue): boolean
     return false;
   }
   if (container instanceof RuntimeRecord) {
-    return container.get(renderRuntimeValue(needle)) !== undefined;
+    return container.has(renderRuntimeValue(needle));
   }
   throw new Error('Membership requires an array, record, or string');
 }

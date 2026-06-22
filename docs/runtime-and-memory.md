@@ -55,7 +55,9 @@ dispatch only over internal value kinds and reserve prototype gadget names.
 
 Loops and membership checks iterate internal collections directly. They do not
 materialize a second array containing the full collection; record loop pairs
-are created one at a time as the interpreter consumes them.
+are created one at a time as the interpreter consumes them. Record membership
+uses the map-backed presence operation rather than the retrieved value, so a
+present key containing the interpreter's `undefined` value remains present.
 
 ## Scopes and calls
 
