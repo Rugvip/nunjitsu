@@ -1,6 +1,7 @@
 import type { TemplateCapabilities } from './capabilities.ts';
 import { neutralizeDiagnosticMessage } from './diagnostics.ts';
 import { NunjitsuLimitError, normalizeRenderLimits, type RenderLimits } from './limits.ts';
+import { clearLegacyRegExpState } from './runtime/clearLegacyRegExpState.ts';
 import { evaluateRuntimeTemplate } from './runtime/evaluator.ts';
 import { createRuntimeHost } from './runtime/host.ts';
 import {
@@ -96,31 +97,35 @@ export function createEngine(options: EngineOptions = {}): Engine {
       context?: TemplateContext | PreparedContext,
       renderOptions: RenderOptions = {},
     ): string {
-      if (typeof source !== 'string') {
-        throw new TypeError('Template source must be a string');
-      }
-      const runtimeContext = resolveRuntimeContext(
-        contextOwner,
-        context,
-        emptyContext,
-      );
-      const limits = normalizeRenderLimits(renderOptions.limits);
       try {
-        return evaluateRuntimeTemplate(source, runtimeContext, {
-          cookiecutterCompat,
-          trimBlocks,
-          lstripBlocks,
-          limits,
-          host,
-        });
-      } catch (error) {
-        if (error instanceof NunjitsuLimitError) {
-          throw error;
+        if (typeof source !== 'string') {
+          throw new TypeError('Template source must be a string');
         }
-        const message = error instanceof Error
-          ? neutralizeDiagnosticMessage(error.message)
-          : 'Template rendering failed';
-        throw new NunjitsuRenderError(message, error);
+        const runtimeContext = resolveRuntimeContext(
+          contextOwner,
+          context,
+          emptyContext,
+        );
+        const limits = normalizeRenderLimits(renderOptions.limits);
+        try {
+          return evaluateRuntimeTemplate(source, runtimeContext, {
+            cookiecutterCompat,
+            trimBlocks,
+            lstripBlocks,
+            limits,
+            host,
+          });
+        } catch (error) {
+          if (error instanceof NunjitsuLimitError) {
+            throw error;
+          }
+          const message = error instanceof Error
+            ? neutralizeDiagnosticMessage(error.message)
+            : 'Template rendering failed';
+          throw new NunjitsuRenderError(message, error);
+        }
+      } finally {
+        clearLegacyRegExpState();
       }
     },
   });

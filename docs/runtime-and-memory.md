@@ -123,3 +123,8 @@ CPU/RSS accounting.
 Trusted callbacks execute outside interpreter work accounting except for their
 invocation count and returned-value validation. Callback return validation is
 inside the fail-stop capability exception boundary.
+
+All parser, evaluator, built-in, and capability exits converge on the public
+render `finally` boundary, which overwrites the host realm's legacy RegExp
+capture fields with deterministic empty values. This boundary clears rather
+than retains or restores ambient match state.

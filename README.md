@@ -119,6 +119,11 @@ must read files and enforce path policy outside the engine. Interpolation is
 never automatically escaped; rendered output remains attacker-controlled and
 must be handled according to its destination.
 
+Every render clears the host realm's legacy static RegExp state, including
+`RegExp.$1` through `RegExp.$9`, `input`, and match-context fields, before it
+returns or throws. Pre-existing values are cleared rather than restored because
+the platform does not provide a reliable restoration mechanism.
+
 ### Prepared contexts
 
 ```ts

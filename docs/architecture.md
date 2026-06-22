@@ -88,8 +88,10 @@ call-site syntax never selects host authority.
 4. The synchronous interpreter evaluates the AST with cooperative limits.
 5. Trusted filter and global calls receive copied public values, and their
    results cross the same validator.
-6. The final string is returned.
-7. The AST, scopes, one-shot values, and output state become unreachable.
+6. A render-level `finally` block overwrites host legacy RegExp capture state
+   with deterministic empty values on both success and failure.
+7. The final string is returned, or the structured failure is thrown.
+8. The AST, scopes, one-shot values, and output state become unreachable.
    Prepared context values remain reachable only through caller-held snapshots.
 
 ## Package architecture

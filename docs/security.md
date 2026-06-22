@@ -203,6 +203,19 @@ pattern can cause excessive backtracking between interpreter checkpoints;
 applications requiring strict availability isolation must execute rendering in
 their own worker, process, or container and impose external deadlines.
 
+Native RegExp operations also update legacy host-realm fields such as
+`RegExp.$1`, `input`, and `lastMatch`. Every public render exit executes a
+private nine-capture reset in `finally`, overwriting all capture and context
+fields with deterministic empty values after successful evaluation, parsing or
+evaluation failure, resource failure, and API validation failure. Existing
+legacy state is intentionally cleared because JavaScript exposes no reliable
+way to restore it.
+
+This cleanup prevents template-controlled matches from surviving the render;
+it does not move native regex execution to another realm, prevent backtracking,
+or make the legacy fields suitable application state. Trusted capabilities run
+inside the synchronous render and must not rely on ambient RegExp properties.
+
 ## Output boundary
 
 Autoescaping and safe-string semantics are compatibility features, not a

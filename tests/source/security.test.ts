@@ -1162,6 +1162,56 @@ test('parser diagnostics neutralize untrusted token content', () => {
   );
 });
 
+test('clears ambient legacy RegExp state after every render', () => {
+  const engine = createEngine();
+  const assertLegacyStateCleared = (): void => {
+    assert.equal(RegExp.$1, '');
+    assert.equal(RegExp.$2, '');
+    assert.equal(RegExp.$3, '');
+    assert.equal(RegExp.$4, '');
+    assert.equal(RegExp.$5, '');
+    assert.equal(RegExp.$6, '');
+    assert.equal(RegExp.$7, '');
+    assert.equal(RegExp.$8, '');
+    assert.equal(RegExp.$9, '');
+    assert.equal(RegExp.input, '');
+    assert.equal(RegExp.lastMatch, '');
+    assert.equal(RegExp.lastParen, '');
+    assert.equal(RegExp.leftContext, '');
+    assert.equal(RegExp.rightContext, '');
+  };
+  const seedLegacyState = (): void => {
+    /PREVIOUS:(.*)/.exec('PREVIOUS:ambient');
+    assert.equal(RegExp.$1, 'ambient');
+  };
+
+  assert.equal(
+    engine.render('${{ "ATTACK:owned" | replace(r/ATTACK:(.*)/, "x") }}'),
+    'x',
+  );
+  assertLegacyStateCleared();
+
+  assert.throws(
+    () => engine.render([
+      '${{ "FAIL:secret" | replace(r/FAIL:(.*)/, "x") }}',
+      '${{ missing() }}',
+    ].join('')),
+    error => error instanceof NunjitsuRenderError,
+  );
+  assertLegacyStateCleared();
+
+  seedLegacyState();
+  assert.throws(
+    () => engine.render('${{'),
+    error => error instanceof NunjitsuRenderError,
+  );
+  assertLegacyStateCleared();
+
+  seedLegacyState();
+  assert.equal(engine.render('clean'), 'clean');
+  assertLegacyStateCleared();
+});
+
 test('parser and evaluator sources contain no dynamic execution primitive', async () => {
   const files = [
     '../../src/parser/index.ts',
