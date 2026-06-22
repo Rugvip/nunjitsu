@@ -266,7 +266,7 @@ class Evaluator {
           const condition = matched
             ? undefined
             : this.#evaluateExpression(candidate.cond, scope, depth + 1);
-          if (matched || runtimeEqual(value, condition, false)) {
+          if (matched || runtimeLooseEqual(value, condition)) {
             matched = true;
             if (candidate.body.type === 'NodeList' && candidate.body.children.length === 0) {
               continue;
@@ -690,7 +690,7 @@ class Evaluator {
       arguments_ = Object.freeze({ positional: Object.freeze([]), keyword: new Map() });
     } else if (test.type === 'Literal') {
       const expected = this.#evaluateExpression(test, scope, depth + 1);
-      return runtimeEqual(input, expected, true);
+      return runtimeStrictEqual(input, expected);
     } else {
       throw new Error(`Invalid template test ${test.type}`);
     }
@@ -1128,28 +1128,65 @@ function* recordIterationValues(value: RuntimeRecord): IterableIterator<RuntimeV
 
 function* emptyRuntimeValues(): IterableIterator<RuntimeValue> {}
 
-function runtimeEqual(left: RuntimeValue, right: RuntimeValue, strict: boolean): boolean {
+function runtimeStrictEqual(left: RuntimeValue, right: RuntimeValue): boolean {
+  return left === right;
+}
+
+function runtimeLooseEqual(left: RuntimeValue, right: RuntimeValue): boolean {
   if (left === right) {
     return true;
   }
-  if (!strict && ((left === undefined && right === null) || (left === null && right === undefined))) {
-    return true;
+  if (
+    left === undefined ||
+    left === null ||
+    right === undefined ||
+    right === null
+  ) {
+    return (left === undefined || left === null) && (right === undefined || right === null);
   }
-  if (isStringValue(left) && isStringValue(right)) {
-    return renderRuntimeValue(left) === renderRuntimeValue(right);
+  if (left instanceof RuntimeSafeString) {
+    return isRuntimePrimitive(right) ? runtimeLooseEqual(left.value, right) : false;
   }
-  if (!strict) {
-    return runtimeNumber(left) === runtimeNumber(right);
+  if (right instanceof RuntimeSafeString) {
+    return isRuntimePrimitive(left) ? runtimeLooseEqual(left, right.value) : false;
+  }
+  if (!isRuntimePrimitive(left) || !isRuntimePrimitive(right)) {
+    return false;
+  }
+  if (typeof left === typeof right) {
+    return false;
+  }
+  if (typeof left === 'boolean') {
+    return runtimeLooseEqual(left ? 1 : 0, right);
+  }
+  if (typeof right === 'boolean') {
+    return runtimeLooseEqual(left, right ? 1 : 0);
+  }
+  if (typeof left === 'number' && typeof right === 'string') {
+    return left === runtimeNumber(right);
+  }
+  if (typeof left === 'string' && typeof right === 'number') {
+    return runtimeNumber(left) === right;
   }
   return false;
 }
 
+function isRuntimePrimitive(
+  value: RuntimeValue,
+): value is undefined | null | boolean | number | string {
+  return value === undefined ||
+    value === null ||
+    typeof value === 'boolean' ||
+    typeof value === 'number' ||
+    typeof value === 'string';
+}
+
 function runtimeCompare(left: RuntimeValue, operator: string, right: RuntimeValue): boolean {
   switch (operator) {
-    case '==': return runtimeEqual(left, right, false);
-    case '===': return runtimeEqual(left, right, true);
-    case '!=': return !runtimeEqual(left, right, false);
-    case '!==': return !runtimeEqual(left, right, true);
+    case '==': return runtimeLooseEqual(left, right);
+    case '===': return runtimeStrictEqual(left, right);
+    case '!=': return !runtimeLooseEqual(left, right);
+    case '!==': return !runtimeStrictEqual(left, right);
     case '<': return runtimeOrder(left, right) < 0;
     case '<=': return runtimeOrder(left, right) <= 0;
     case '>': return runtimeOrder(left, right) > 0;
@@ -1186,7 +1223,7 @@ function runtimeContains(container: RuntimeValue, needle: RuntimeValue): boolean
   }
   if (container instanceof RuntimeArray) {
     for (const value of container.values()) {
-      if (runtimeEqual(value, needle, false)) {
+      if (runtimeLooseEqual(value, needle)) {
         return true;
       }
     }

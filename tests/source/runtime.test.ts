@@ -7,6 +7,7 @@ import {
   NunjitsuLimitError,
   NunjitsuRenderError,
 } from '../../src/index.ts';
+import { RuntimeSafeString } from '../../src/runtime/value.ts';
 
 test('renders control flow, loops, macros, call blocks, and assignments', () => {
   const engine = createEngine();
@@ -423,6 +424,119 @@ test('orders strings lexicographically by UTF-16 code units', () => {
   assert.equal(
     oracle.renderString(conditionalSource.replaceAll('${{', '{{'), context),
     '',
+  );
+  assert.equal(privilegedCalls, 0);
+  assert.equal(oraclePrivilegedCalls, 0);
+  assert.equal(engine.render('clean'), 'clean');
+});
+
+test('implements closed strict and loose equality without host coercion', () => {
+  let privilegedCalls = 0;
+  let oraclePrivilegedCalls = 0;
+  const engine = createEngine({
+    globals: {
+      privileged() {
+        privilegedCalls += 1;
+        return 'PRIVILEGED';
+      },
+    },
+  });
+  const oracle = new nunjucks.Environment(undefined, { autoescape: false });
+  oracle.addGlobal('privileged', () => {
+    oraclePrivilegedCalls += 1;
+    return 'PRIVILEGED';
+  });
+  const comparisonSource = [
+    '${{ left == right }}:',
+    '${{ left != right }}:',
+    '${{ left === right }}:',
+    '${{ left !== right }}',
+  ].join('');
+  const pairs = [
+    ['null and undefined', null, undefined],
+    ['null and false', null, false],
+    ['null and zero', null, 0],
+    ['null and empty string', null, ''],
+    ['undefined and false', undefined, false],
+    ['undefined and zero', undefined, 0],
+    ['undefined and empty string', undefined, ''],
+    ['true and one', true, 1],
+    ['false and zero', false, 0],
+    ['numeric string and number', '1', 1],
+    ['empty string and zero', '', 0],
+    ['non-numeric string and zero', 'x', 0],
+    ['NaN with itself', Number.NaN, Number.NaN],
+    ['positive and negative zero', 0, -0],
+  ] as const;
+  for (const [label, left, right] of pairs) {
+    const context = { left, right };
+    assert.equal(
+      engine.render(comparisonSource, context as never),
+      oracle.renderString(comparisonSource.replaceAll('${{', '{{'), context),
+      label,
+    );
+  }
+
+  const identitySource = [
+    '{% set safeA = "x" | safe %}',
+    '{% set safeB = "x" | safe %}',
+    '{% set arrayA = [] %}',
+    '{% set arrayB = [] %}',
+    '{% set recordA = {"value": 1} %}',
+    '{% set recordB = {"value": 1} %}',
+    '{% set callable = privileged %}',
+    '${{ safeA == "x" }}:${{ safeA === "x" }}:${{ "x" == safeA }}:${{ "x" === safeA }}|',
+    '${{ safeA == safeB }}:${{ safeA === safeB }}:${{ safeA == safeA }}:${{ safeA === safeA }}|',
+    '${{ arrayA == arrayA }}:${{ arrayA === arrayA }}:${{ arrayA == arrayB }}:${{ arrayA === arrayB }}|',
+    '${{ recordA == recordA }}:${{ recordA === recordA }}:${{ recordA == recordB }}:${{ recordA === recordB }}|',
+    '${{ callable == callable }}:${{ callable === callable }}',
+  ].join('');
+  const expectedIdentities = oracle.renderString(
+    identitySource.replaceAll('${{', '{{'),
+    {},
+  );
+  assert.equal(engine.render(identitySource), expectedIdentities);
+  assert.equal(privilegedCalls, 0);
+  assert.equal(oraclePrivilegedCalls, 0);
+
+  let coercionHookCalls = 0;
+  const coercionKeys = ['valueOf', 'toString', Symbol.toPrimitive] as const;
+  const descriptors = new Map<PropertyKey, PropertyDescriptor | undefined>();
+  for (const key of coercionKeys) {
+    descriptors.set(key, Object.getOwnPropertyDescriptor(RuntimeSafeString.prototype, key));
+    Object.defineProperty(RuntimeSafeString.prototype, key, {
+      configurable: true,
+      value() {
+        coercionHookCalls += 1;
+        throw new Error('Safe-string host coercion must not run');
+      },
+    });
+  }
+  try {
+    assert.equal(engine.render(identitySource), expectedIdentities);
+  } finally {
+    for (const [key, descriptor] of descriptors) {
+      if (descriptor) {
+        Object.defineProperty(RuntimeSafeString.prototype, key, descriptor);
+      } else {
+        Reflect.deleteProperty(RuntimeSafeString.prototype, key);
+      }
+    }
+  }
+  assert.equal(coercionHookCalls, 0);
+
+  const conditionalSource = [
+    '{% if null == false %}${{ privileged() }}{% endif %}',
+    '{% if missing == 0 %}${{ privileged() }}{% endif %}',
+    '{% switch null %}',
+    '{% case false %}${{ privileged() }}',
+    '{% default %}default',
+    '{% endswitch %}',
+  ].join('');
+  assert.equal(engine.render(conditionalSource), 'default');
+  assert.equal(
+    oracle.renderString(conditionalSource.replaceAll('${{', '{{'), {}),
+    'default',
   );
   assert.equal(privilegedCalls, 0);
   assert.equal(oraclePrivilegedCalls, 0);

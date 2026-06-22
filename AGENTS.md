@@ -153,6 +153,9 @@ Do not create additional packages without a documented architectural reason.
   by numeric index rather than their host iteration protocol.
 - Compare validated primitive strings with direct UTF-16 relational operators.
   Do not use locale-aware collation or `Intl` inside template semantics.
+- Implement strict equality as direct closed-value identity and loose equality
+  through explicit supported primitive rules. Never apply generic numeric,
+  string, `valueOf`, or `toString` coercion to interpreter objects.
 - Treat capability exceptions as fail-stop opaque values. Preserve details only
   from primitive strings or an own string data descriptor after a trap-free
   native-error brand check, neutralize and bound the detail, discard the

@@ -44,6 +44,15 @@ UTF-16 lexical ordering without locale or ICU collation, so results are stable
 across supported Node.js environments. Chained comparisons retain Nunjucks's
 left-associative JavaScript semantics.
 
+Strict equality is direct primitive or interpreter-object identity. Loose
+equality implements only the supported JavaScript abstract-equality rules:
+null and undefined pair only with each other, booleans become zero or one,
+primitive strings and numbers use explicit numeric conversion, and a safe
+string unwraps only when compared with a primitive. Distinct safe strings,
+arrays, records, regex values, and callables remain unequal regardless of
+content. Equality never invokes object coercion hooks or renders objects to
+compare them.
+
 Input arrays and records are recursively copied. Records are never used as
 JavaScript prototypes or accessed through `object[key]` inside the interpreter.
 `constructor`, `prototype`, and `__proto__` are reserved throughout parsing,
