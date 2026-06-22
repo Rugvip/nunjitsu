@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
+import { inspect } from 'node:util';
 import nunjucks from 'nunjucks';
 
 import { createEngine, NunjitsuRenderError } from '../../src/index.ts';
@@ -618,25 +619,76 @@ test('capability results are recopied before reaching another capability', () =>
   }
 });
 
-test('capability exceptions halt evaluation without inspecting thrown values', () => {
+test('capability exceptions retain only inert sanitized messages and halt evaluation', () => {
   let messageReads = 0;
+  let proxyTraps = 0;
+  let exoticHooks = 0;
   let laterCalls = 0;
-  const thrown = new Error();
-  Object.defineProperty(thrown, 'message', {
+  const getterError = new Error();
+  Object.defineProperty(getterError, 'message', {
     get() {
       messageReads += 1;
       return 'must not be read';
     },
   });
+  const proxyError = new Proxy(new Error('must not be retained'), {
+    get(target, property, receiver) {
+      proxyTraps += 1;
+      return Reflect.get(target, property, receiver);
+    },
+    getOwnPropertyDescriptor(target, property) {
+      proxyTraps += 1;
+      return Reflect.getOwnPropertyDescriptor(target, property);
+    },
+    getPrototypeOf(target) {
+      proxyTraps += 1;
+      return Reflect.getPrototypeOf(target);
+    },
+    ownKeys(target) {
+      proxyTraps += 1;
+      return Reflect.ownKeys(target);
+    },
+  });
+  const customInspect = Symbol.for('nodejs.util.inspect.custom');
+  const exotic = {
+    toString() {
+      exoticHooks += 1;
+      return 'must not run';
+    },
+    toJSON() {
+      exoticHooks += 1;
+      return 'must not run';
+    },
+    [Symbol.toPrimitive]() {
+      exoticHooks += 1;
+      return 'must not run';
+    },
+    [customInspect]() {
+      exoticHooks += 1;
+      return 'must not run';
+    },
+  };
   const engine = createEngine({
     filters: {
-      fail() {
-        throw thrown;
+      failUseful() {
+        throw new Error('useful message');
       },
     },
     globals: {
-      failWithTypeError() {
-        throw new TypeError('opaque');
+      failString() {
+        throw 'first\nsecond\u001b[31m';
+      },
+      failGetter() {
+        throw getterError;
+      },
+      failProxy() {
+        throw proxyError;
+      },
+      failExotic() {
+        throw exotic;
+      },
+      failLong() {
+        throw new Error('x'.repeat(5_000));
       },
       later() {
         laterCalls += 1;
@@ -645,22 +697,58 @@ test('capability exceptions halt evaluation without inspecting thrown values', (
     },
   });
 
-  assert.throws(
-    () => engine.render('before${{ "value" | fail }}${{ later() }}'),
-    error => (
-      error instanceof NunjitsuRenderError &&
-      error.message === 'Template capability failed' &&
-      error.cause instanceof Error &&
-      error.cause.cause === thrown
-    ),
-  );
-  assert.equal(messageReads, 0);
-  assert.equal(laterCalls, 0);
+  const failureCases = [
+    {
+      source: 'before${{ "value" | failUseful }}${{ later() }}',
+      message: 'Template capability failed: useful message',
+    },
+    {
+      source: 'before${{ failString() }}${{ later() }}',
+      message: 'Template capability failed: first\\u000asecond\\u001b[31m',
+    },
+    { source: 'before${{ failGetter() }}${{ later() }}', message: 'Template capability failed' },
+    { source: 'before${{ failProxy() }}${{ later() }}', message: 'Template capability failed' },
+    { source: 'before${{ failExotic() }}${{ later() }}', message: 'Template capability failed' },
+  ];
+  for (const { source, message } of failureCases) {
+    let caught: NunjitsuRenderError | undefined;
+    assert.throws(
+      () => engine.render(source),
+      error => {
+        if (!(error instanceof NunjitsuRenderError)) {
+          return false;
+        }
+        caught = error;
+        return true;
+      },
+    );
+    assert.equal(caught?.message, message);
+    assert.ok(caught?.cause instanceof Error);
+    assert.equal(caught.cause.cause, undefined);
+    inspect(caught, { showHidden: true, depth: 5 });
+    JSON.stringify(caught, ['name', 'message', 'cause']);
+    assert.equal(messageReads, 0);
+    assert.equal(proxyTraps, 0);
+    assert.equal(exoticHooks, 0);
+    assert.equal(laterCalls, 0);
+    assert.equal(engine.render('clean'), 'clean');
+  }
 
+  let longError: NunjitsuRenderError | undefined;
   assert.throws(
-    () => engine.render('${{ failWithTypeError() }}${{ later() }}'),
-    error => error instanceof NunjitsuRenderError,
+    () => engine.render('${{ failLong() }}${{ later() }}'),
+    error => {
+      if (!(error instanceof NunjitsuRenderError)) {
+        return false;
+      }
+      longError = error;
+      return true;
+    },
   );
+  assert.match(longError?.message ?? '', /^Template capability failed: x+…$/);
+  assert.ok((longError?.message.length ?? 0) <= 1_025);
+  assert.ok(longError?.cause instanceof Error);
+  assert.equal(longError.cause.cause, undefined);
   assert.equal(laterCalls, 0);
   assert.equal(engine.render('clean'), 'clean');
 });

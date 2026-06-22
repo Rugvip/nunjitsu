@@ -1,8 +1,11 @@
+import { types } from 'node:util';
+
 import type {
   TemplateCapabilities,
   TemplateFilter,
   TemplateGlobalFunction,
 } from '../capabilities.ts';
+import { neutralizeDiagnosticMessage } from '../diagnostics.ts';
 import {
   copyPublicValue,
   copyRuntimeValue,
@@ -15,8 +18,8 @@ const templateIdentifierPattern = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
 /** An opaque fail-stop signal for one trusted capability exception. */
 class RuntimeCapabilityError extends Error {
-  constructor(cause: unknown) {
-    super('Template capability failed', { cause });
+  constructor(detail?: string) {
+    super(detail ? `Template capability failed: ${detail}` : 'Template capability failed');
     this.name = 'RuntimeCapabilityError';
   }
 }
@@ -51,8 +54,8 @@ export function createRuntimeHost(capabilities: TemplateCapabilities): RuntimeHo
           copyPublicValue(input),
           ...arguments_.positional.map(copyPublicValue),
         );
-      } catch (cause) {
-        throw new RuntimeCapabilityError(cause);
+      } catch (thrown) {
+        throw new RuntimeCapabilityError(extractCapabilityMessage(thrown));
       }
       return { found: true, value: copyRuntimeValue(value) };
     },
@@ -64,12 +67,30 @@ export function createRuntimeHost(capabilities: TemplateCapabilities): RuntimeHo
       let value;
       try {
         value = callback(...arguments_.positional.map(copyPublicValue));
-      } catch (cause) {
-        throw new RuntimeCapabilityError(cause);
+      } catch (thrown) {
+        throw new RuntimeCapabilityError(extractCapabilityMessage(thrown));
       }
       return { found: true, value: copyRuntimeValue(value) };
     },
   } satisfies RuntimeHost);
+}
+
+function extractCapabilityMessage(thrown: unknown): string | undefined {
+  if (typeof thrown === 'string') {
+    return neutralizeDiagnosticMessage(thrown);
+  }
+  if (!types.isNativeError(thrown)) {
+    return undefined;
+  }
+  const descriptor = Object.getOwnPropertyDescriptor(thrown as object, 'message');
+  if (
+    !descriptor ||
+    !('value' in descriptor) ||
+    typeof descriptor.value !== 'string'
+  ) {
+    return undefined;
+  }
+  return neutralizeDiagnosticMessage(descriptor.value);
 }
 
 function copyFunctions<T extends TemplateFilter | TemplateGlobalFunction>(

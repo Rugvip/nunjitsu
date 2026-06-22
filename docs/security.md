@@ -136,11 +136,22 @@ A capability is authority. Applications must expose narrow behavior and assume
 an untrusted template can invoke every registered capability with arbitrary
 valid arguments up to configured limits.
 
-Capability exceptions are fail-stop. The host boundary catches a thrown value
-only to place it opaquely behind an engine-owned error with a fixed message; it
-does not read properties from that value. The exception immediately unwinds
-the interpreter, no later template node or capability executes, no partial
-output is returned, and the thrown value never becomes template-visible.
+Capability exceptions are fail-stop. The host boundary preserves diagnostic
+text only from a primitive string or a native error with an own string-valued
+`message` data descriptor. Native-error branding rejects proxies without
+invoking traps, and descriptor inspection never reads an accessor. The detail
+passes through the central control-character neutralizer and length bound.
+Every other thrown value produces a fixed message.
+
+The boundary constructs a new engine-owned error containing only that inert
+string and discards the original thrown value. No original error, proxy, or
+exotic object remains reachable through the public cause chain, so later
+logging, recursive inspection, or serialization cannot execute its getters,
+proxy traps, coercion methods, `toJSON`, or custom inspection hooks. The
+exception immediately unwinds the interpreter, no later template node or
+capability executes, no partial output is returned, and the thrown value never
+becomes template-visible. Sanitized diagnostic text may still contain secrets
+or internal details and must not be returned automatically to untrusted clients.
 
 Public API validation completes before entering the template-evaluation error
 boundary. Invalid source, context, prepared-context ownership, and render-limit

@@ -23,7 +23,7 @@
     {
       "id": "compiler-capability-errors",
       "file": "tests/source/security.test.ts",
-      "test": "capability exceptions halt evaluation without inspecting thrown values",
+      "test": "capability exceptions retain only inert sanitized messages and halt evaluation",
       "upstream": ["tests/compiler.js:59"]
     },
     {
@@ -87,7 +87,7 @@
     {
       "id": "global-failures",
       "file": "tests/source/security.test.ts",
-      "test": "capability exceptions halt evaluation without inspecting thrown values",
+      "test": "capability exceptions retain only inert sanitized messages and halt evaluation",
       "upstream": ["tests/globals.js:11"]
     },
     {

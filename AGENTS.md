@@ -138,9 +138,10 @@ Do not create additional packages without a documented architectural reason.
   as a value becoming a key, path segment, binding, or callable identity.
   Enforce the invariant in the owning representation as well as at external
   boundaries.
-- Treat capability exceptions as fail-stop opaque values. Do not inspect the
-  thrown value, resume template evaluation, or make any part of it visible to
-  the template runtime.
+- Treat capability exceptions as fail-stop opaque values. Preserve details only
+  from primitive strings or an own string data descriptor after a trap-free
+  native-error brand check, neutralize and bound the detail, discard the
+  original thrown value, and never resume template evaluation.
 - Complete public API validation before template evaluation. Pass through only
   `NunjitsuLimitError` from evaluation and wrap every other evaluation failure
   in `NunjitsuRenderError`, regardless of its underlying JavaScript error class.

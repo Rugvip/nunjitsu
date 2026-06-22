@@ -240,6 +240,13 @@ host objects, object methods, or capability exceptions. If a capability
 throws, rendering stops immediately and no later template expression or
 capability executes.
 
+Capability failures preserve a bounded, control-free detail only when the
+thrown value is a primitive string or a native error with an own string data
+property named `message`. Every other value produces a fixed diagnostic. The
+original thrown value is discarded and never retained in the public error's
+cause chain. Preserved details may still contain sensitive application data;
+do not return them automatically to untrusted clients.
+
 Capability authors must still treat all arguments as attacker-controlled data.
 The value boundary prevents access to JavaScript authority; it does not make
 the data trustworthy for application-specific operations.
