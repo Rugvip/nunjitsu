@@ -19,7 +19,7 @@ Nunjitsu targets:
 - expressions, truthiness, scoping, loops, inline macros, call blocks, and
   rendering semantics used within one source;
 - built-in filters, tests, and globals used by direct string templates;
-- synchronous application filters and JSON-valued or callable globals;
+- synchronous application filters and `TemplateValue` data or callable globals;
 - `trimBlocks` and `lstripBlocks`; and
 - fixed `autoescape: false` behavior.
 

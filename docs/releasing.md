@@ -12,17 +12,9 @@ The only supported automated publisher is the GitHub-hosted workflow at
 `.github/workflows/publish.yml`. It authenticates to npm through GitHub's OIDC
 identity and must not use an npm access token.
 
-## Bootstrap constraint
+## Registry trust configuration
 
-npm can configure a trusted publisher only after the package exists. The first
-`0.1.0` release must therefore be published once by a maintainer using
-interactive npm authentication and 2FA. No bootstrap token belongs in GitHub
-or the repository. Run the frozen install and complete tests locally, then use
-`npm publish`; the `prepack` lifecycle rebuilds the package. Tag `v0.1.0`, but
-do not create a GitHub Release for that already-published version because the
-release workflow would correctly reject the duplicate submission.
-
-After the package exists, its npm trusted-publisher settings must name:
+The npm trusted-publisher settings must name:
 
 - GitHub owner `Rugvip`;
 - repository `nunjitsu`;
@@ -30,8 +22,9 @@ After the package exists, its npm trusted-publisher settings must name:
 - environment name `npm`; and
 - allowed action `npm stage publish` only.
 
-After the first OIDC release succeeds, npm package settings should require 2FA
-and disallow token-based publication.
+No npm access token belongs in GitHub or the repository. After verifying the
+OIDC workflow, npm package settings should require 2FA and disallow token-based
+publication.
 
 ## Versioning and changelog
 
@@ -54,11 +47,12 @@ must reject a release whose `v<version>` tag does not exactly match the stable
 version in `package.json`. Prerelease versions remain unsupported until the
 versioning policy defines their npm distribution tags.
 
-The job installs from `pnpm-lock.yaml`, runs the complete test matrix, builds
-the package, and submits it with `npm stage publish`. npm CLI 11.15 or newer and
-Node.js 22.14 or newer are required for staged trusted publishing. The workflow
-uses a GitHub-hosted runner with `id-token: write`, no npm token, and the exact
-trusted-publisher identity configured above.
+The job installs from `pnpm-lock.yaml`, runs the complete repository test
+command on Node.js 24, builds the package, and submits it with
+`npm stage publish`. npm CLI 11.15 or newer and Node.js 22.14 or newer are
+required for staged trusted publishing. The workflow uses a GitHub-hosted
+runner with `id-token: write`, no npm token, and the exact trusted-publisher
+identity configured above.
 
 The publish job uses the GitHub environment named `npm`, making the environment
 part of its OIDC identity. Repository settings should restrict that environment

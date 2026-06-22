@@ -22,7 +22,7 @@
 GitHub Actions runs the complete test matrix on the current Node.js 22 and 24
 releases for every pull request and every push to `main`.
 
-All jobs install with the `packageManager`-pinned pnpm version and
+All CI matrix jobs install with the `packageManager`-pinned pnpm version and
 `pnpm install --frozen-lockfile`. CI has read-only repository permissions,
 cancels superseded runs for the same ref, and does not receive publishing
 permissions or credentials.

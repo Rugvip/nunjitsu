@@ -53,21 +53,21 @@ The source is always an inline string. Applications perform any file reads and
 enforce their own path policy before calling the renderer, so Nunjitsu has no
 filesystem or template-loading API.
 
-Context values are JSON-compatible primitives, arrays, and plain records.
-Runtime validation copies accepted values before evaluation. Unsupported
-objects, behavior, cycles, accessors, and reserved keys are rejected.
+Context values follow the exported `TemplateValue` type: `null`, booleans,
+numbers, strings, arrays, and plain records. Runtime validation copies accepted
+values before evaluation. Unsupported objects, behavior, cycles, accessors, and
+reserved keys are rejected.
 
 A plain context is copied on every render and remains the convenient one-shot
 API. A prepared context retains only its closed copied value graph and can be
 reused without inspecting the host input again. Prepared contexts are bound to
 the engine that created them; passing one to another engine is rejected.
 
-`withPath` is the explicit update mechanism for workflow data such as
-`steps.<id>.output`. It copies and validates the replacement value, copies only
-the records along the updated path, and shares all unchanged closed values.
-Missing record segments are created, while traversing an existing non-record
-value fails. The original snapshot remains unchanged. Temporary `each`, secret,
-and redacted variants should be derived snapshots rather than mutations.
+`withPath` copies and validates the replacement value, copies only the records
+along the updated path, and shares all unchanged closed values. Missing record
+segments are created, while traversing an existing non-record value fails. The
+original snapshot remains unchanged. Callers needing temporary overlays should
+derive snapshots rather than mutating shared data.
 
 Prepared snapshots become eligible for garbage collection when the caller
 releases them. Applications should keep secret-bearing snapshots scoped to one
@@ -77,9 +77,9 @@ snapshot is not a secret-erasure guarantee.
 ## Capability configuration
 
 `filters` and globals are the only host behavior templates can invoke. Filters
-receive their input followed by positional arguments. Globals may be JSON
-values or synchronous functions receiving positional arguments. `undefined`
-from a callback renders as an absent value.
+receive their input followed by positional arguments. Globals may be
+`TemplateValue` data or synchronous functions receiving positional arguments.
+`undefined` from a callback renders as an absent value.
 
 Callbacks receive copied values and their results cross the same value
 validator as context input. Context functions and object methods are

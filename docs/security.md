@@ -83,10 +83,10 @@ filters and globals receive immutable identities during synchronous engine
 creation.
 
 The interpreter stores capability identities, never callback functions. A call
-copies internal arguments to a null-prototype public value graph, invokes the
-exact registered callback through the host dispatcher, and copies its result
-back through the safe value validator. Capability results are not implicitly
-safe.
+copies internal arguments to a public value graph whose records have null
+prototypes, invokes the exact registered callback through the host dispatcher,
+and copies its result back through the safe value validator. Capability results
+are not implicitly safe.
 
 A capability is authority. Applications must expose narrow behavior and assume
 an untrusted template can invoke every registered capability with arbitrary
