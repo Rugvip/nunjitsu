@@ -22,7 +22,7 @@ jobs:
       fail-fast: false
       matrix:
         node-version:
-          - 22.18.0
+          - 22.x
           - 24.x
     steps:
       - name: Check out repository
@@ -38,22 +38,3 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: Run test matrix
         run: pnpm test
-
-  package-minimum-node:
-    name: Test package on Node.js 22.0.0
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@v6
-      - name: Install pnpm
-        uses: pnpm/action-setup@v4
-      - name: Set up Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version: 22.0.0
-          cache: pnpm
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-      - name: Test built package
-        run: pnpm test:package

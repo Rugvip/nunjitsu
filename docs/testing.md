@@ -19,11 +19,8 @@
 
 ## Continuous integration
 
-GitHub Actions runs the complete test matrix on Node.js 22.18 and the current
-Node.js 24 release for every pull request and every push to `main`. A separate
-job builds and tests only the published ESM, CommonJS, and declaration entry
-paths on Node.js 22.0, enforcing the package's declared minimum without trying
-to execute source TypeScript on a runtime predating default type stripping.
+GitHub Actions runs the complete test matrix on the current Node.js 22 and 24
+releases for every pull request and every push to `main`.
 
 All jobs install with the `packageManager`-pinned pnpm version and
 `pnpm install --frozen-lockfile`. CI has read-only repository permissions,
