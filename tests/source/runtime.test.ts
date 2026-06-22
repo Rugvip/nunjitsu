@@ -342,6 +342,20 @@ test('enforces finite resource limits and recovers after failures', () => {
 
 test('wraps parse and evaluation failures without retaining render state', () => {
   const engine = createEngine();
+
+  assert.throws(
+    () => engine.render('valid', { invalid: new Date() as never }),
+    error => error instanceof TypeError && !(error instanceof NunjitsuRenderError),
+  );
+  assert.throws(
+    () => engine.render('valid', {}, { limits: { workUnits: -1 } }),
+    error => error instanceof RangeError && !(error instanceof NunjitsuRenderError),
+  );
+  assert.throws(
+    () => engine.render('too much work', {}, { limits: { workUnits: 0 } }),
+    error => error instanceof NunjitsuLimitError,
+  );
+
   assert.throws(
     () => engine.render('${{ broken( }}'),
     error => error instanceof NunjitsuRenderError,
@@ -350,5 +364,33 @@ test('wraps parse and evaluation failures without retaining render state', () =>
     () => engine.render('${{ value.toString() }}', { value: 'x' }),
     error => error instanceof NunjitsuRenderError,
   );
-  assert.equal(engine.render('${{ value }}', { value: 'clean' }), 'clean');
+
+  const templateFailures: ReadonlyArray<{
+    readonly source: string;
+    readonly cause: ErrorConstructor;
+  }> = [
+    { source: 'before${{ [] | batch(0) }}after', cause: TypeError },
+    { source: 'before${{ [1] | dictsort }}after', cause: TypeError },
+    {
+      source: 'before${{ [{"key":"__proto__"}] | groupby("key") }}after',
+      cause: TypeError,
+    },
+    { source: 'before${{ "x" | center(1e309) }}after', cause: RangeError },
+    {
+      source: 'before${{ "' + String.fromCharCode(0xd800) + '" | urlencode }}after',
+      cause: URIError,
+    },
+    { source: 'before${{ "x" | unknownFilter }}after', cause: Error },
+  ];
+  for (const { source, cause } of templateFailures) {
+    assert.throws(
+      () => engine.render(source),
+      error => (
+        error instanceof NunjitsuRenderError &&
+        error.cause instanceof cause
+      ),
+      source,
+    );
+    assert.equal(engine.render('${{ value }}', { value: 'clean' }), 'clean');
+  }
 });

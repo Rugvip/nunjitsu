@@ -281,9 +281,13 @@ The package exports two error classes:
 - `NunjitsuLimitError` reports a resource-limit failure. Its `limit` property
   identifies the exceeded `RenderLimits` field when available.
 
-Invalid API values and reserved names throw `TypeError`. Invalid limit values
-throw `RangeError`. All render failures discard partial output and leave the
-engine ready for a clean subsequent render.
+Invalid source, context, prepared-context ownership, capability configuration,
+and reserved names supplied through those API inputs throw `TypeError` before
+template evaluation. Invalid limit values similarly throw `RangeError`.
+After API validation, every parser or evaluator failure other than resource
+limit exhaustion is wrapped in `NunjitsuRenderError`, regardless of its
+underlying JavaScript error class. All render failures discard partial output
+and leave the engine ready for a clean subsequent render.
 
 ### Exported API
 

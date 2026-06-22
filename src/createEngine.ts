@@ -47,7 +47,13 @@ export interface PreparedContext {
 export interface Engine {
   /** Copies and validates context data once for reuse across renders. */
   prepareContext(context?: TemplateContext): PreparedContext;
-  /** Parses and renders one complete inline template source. */
+  /**
+   * Parses and renders one complete inline template source.
+   *
+   * Invalid API inputs throw `TypeError` or `RangeError`. Evaluation resource
+   * exhaustion throws `NunjitsuLimitError`; all other parser and evaluator
+   * failures throw `NunjitsuRenderError` without returning partial output.
+   */
   render(
     source: string,
     context?: TemplateContext | PreparedContext,
@@ -92,24 +98,22 @@ export function createEngine(options: EngineOptions = {}): Engine {
       if (typeof source !== 'string') {
         throw new TypeError('Template source must be a string');
       }
+      const runtimeContext = resolveRuntimeContext(
+        contextOwner,
+        context,
+        emptyContext,
+      );
+      const limits = normalizeRenderLimits(renderOptions.limits);
       try {
-        return evaluateRuntimeTemplate(source, resolveRuntimeContext(
-          contextOwner,
-          context,
-          emptyContext,
-        ), {
+        return evaluateRuntimeTemplate(source, runtimeContext, {
           cookiecutterCompat,
           trimBlocks,
           lstripBlocks,
-          limits: normalizeRenderLimits(renderOptions.limits),
+          limits,
           host,
         });
       } catch (error) {
-        if (
-          error instanceof TypeError ||
-          error instanceof RangeError ||
-          error instanceof NunjitsuLimitError
-        ) {
+        if (error instanceof NunjitsuLimitError) {
           throw error;
         }
         const message = error instanceof Error ? error.message : 'Template rendering failed';

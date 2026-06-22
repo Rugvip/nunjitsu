@@ -138,6 +138,9 @@ Do not create additional packages without a documented architectural reason.
 - Treat capability exceptions as fail-stop opaque values. Do not inspect the
   thrown value, resume template evaluation, or make any part of it visible to
   the template runtime.
+- Complete public API validation before template evaluation. Pass through only
+  `NunjitsuLimitError` from evaluation and wrap every other evaluation failure
+  in `NunjitsuRenderError`, regardless of its underlying JavaScript error class.
 - Ensure transient JavaScript containers passed to host operations such as
   serialization cannot observe inherited accessors, coercion hooks,
   serialization hooks, or methods.

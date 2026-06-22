@@ -137,6 +137,14 @@ does not read properties from that value. The exception immediately unwinds
 the interpreter, no later template node or capability executes, no partial
 output is returned, and the thrown value never becomes template-visible.
 
+Public API validation completes before entering the template-evaluation error
+boundary. Invalid source, context, prepared-context ownership, and render-limit
+configuration therefore retain their direct `TypeError` or `RangeError`
+contracts. Once evaluation starts, every failure except `NunjitsuLimitError`
+is wrapped in `NunjitsuRenderError`; an attacker-controlled template cannot
+select a built-in JavaScript error class to bypass application render-error
+handling.
+
 Nunjitsu accepts inline source only and imports no filesystem APIs. Applications
 perform file discovery, path confinement, symbolic-link handling, and reads
 before source crosses into the renderer.
