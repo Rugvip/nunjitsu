@@ -24,6 +24,7 @@ import {
   runtimeNumber,
 } from './builtins.ts';
 import { RuntimeScope } from './scope.ts';
+import { stringCodeUnits } from './stringCodeUnits.ts';
 import {
   copyRuntimeContext,
   isReservedName,
@@ -588,24 +589,18 @@ class Evaluator {
     const values = target instanceof RuntimeArray
       ? Array.from(target.values())
       : typeof target === 'string' || target instanceof RuntimeSafeString
-        ? Array.from(renderRuntimeValue(target))
+        ? renderRuntimeValue(target).split('')
         : [];
     const step = Math.trunc(runtimeNumber(stepValue));
     if (!Number.isFinite(step) || step === 0) {
       throw new Error('Slice step must be a non-zero finite integer');
     }
-    let start = startValue === null
+    const start = startValue === null
       ? (step < 0 ? values.length - 1 : 0)
-      : Math.trunc(runtimeNumber(startValue));
-    let stop = stopValue === null
+      : normalizeSliceIndex(startValue, values.length, step);
+    const stop = stopValue === null
       ? (step < 0 ? -1 : values.length)
-      : Math.trunc(runtimeNumber(stopValue));
-    if (start < 0) {
-      start += values.length;
-    }
-    if (stopValue !== null && stop < 0) {
-      stop += values.length;
-    }
+      : normalizeSliceIndex(stopValue, values.length, step);
     const output: RuntimeValue[] = [];
     for (let index = start; ; index += step) {
       if (index < 0 || index >= values.length) {
@@ -1121,7 +1116,7 @@ function iterableEntries(value: RuntimeValue): RuntimeIteration {
   }
   if (typeof value === 'string' || value instanceof RuntimeSafeString) {
     const text = typeof value === 'string' ? value : value.value;
-    return { length: codePointLength(text), values: text[Symbol.iterator]() };
+    return { length: text.length, values: stringCodeUnits(text) };
   }
   return { length: 0, values: emptyRuntimeValues() };
 }
@@ -1133,15 +1128,6 @@ function* recordIterationValues(value: RuntimeRecord): IterableIterator<RuntimeV
 }
 
 function* emptyRuntimeValues(): IterableIterator<RuntimeValue> {}
-
-function codePointLength(value: string): number {
-  let length = 0;
-  for (const unused of value) {
-    void unused;
-    length += 1;
-  }
-  return length;
-}
 
 function runtimeEqual(left: RuntimeValue, right: RuntimeValue, strict: boolean): boolean {
   if (left === right) {
@@ -1198,6 +1184,16 @@ function runtimeContains(container: RuntimeValue, needle: RuntimeValue): boolean
     return container.has(renderRuntimeValue(needle));
   }
   throw new Error('Membership requires an array, record, or string');
+}
+
+function normalizeSliceIndex(value: RuntimeValue, length: number, step: number): number {
+  let index = Math.trunc(runtimeNumber(value));
+  if (index < 0) {
+    index += length;
+  }
+  return step < 0
+    ? Math.min(length - 1, Math.max(-1, index))
+    : Math.min(length, Math.max(0, index));
 }
 
 function runtimeValueBytes(value: RuntimeValue): number {

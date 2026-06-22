@@ -35,6 +35,12 @@ The interpreter owns all values:
 - regular-expression literals represented as inert pattern/flag data; and
 - sealed callable variants created by the interpreter.
 
+String semantics follow Nunjucks and JavaScript UTF-16 code units consistently.
+Length, numeric lookup, loops, `list`, edge selection, reversal, replacement,
+and slicing may therefore expose the two surrogate halves of an astral code
+point separately. Primitive strings are iterated by numeric index rather than
+through `String.prototype[Symbol.iterator]`.
+
 Input arrays and records are recursively copied. Records are never used as
 JavaScript prototypes or accessed through `object[key]` inside the interpreter.
 `constructor`, `prototype`, and `__proto__` are reserved throughout parsing,
@@ -58,6 +64,8 @@ materialize a second array containing the full collection; record loop pairs
 are created one at a time as the interpreter consumes them. Record membership
 uses the map-backed presence operation rather than the retrieved value, so a
 present key containing the interpreter's `undefined` value remains present.
+String loops consume one UTF-16 code unit per iteration, so loop work scales
+with code-unit count and `loop.length` stays consistent with valid indices.
 
 ## Scopes and calls
 
@@ -96,9 +104,10 @@ interpreter nesting depth, rendered output code units, filter-argument scratch
 size, and capability calls. The scratch limit estimates the UTF-8 size of the
 closed values passed into a filter; it is not a general allocation or heap
 limit. Output growth uses JavaScript string length as a cheap memory-pressure
-guard and is intentionally not exact byte accounting. Nesting depth is checked
-before evaluating each statement and expression node. These are cooperative
-availability safeguards, not a process sandbox or exact CPU/RSS accounting.
+guard and is intentionally UTF-16 code-unit rather than exact byte accounting.
+Nesting depth is checked before evaluating each statement and expression node.
+These are cooperative availability safeguards, not a process sandbox or exact
+CPU/RSS accounting.
 Trusted callbacks execute outside interpreter work accounting except for their
 invocation count and returned-value validation. Callback return validation is
 inside the fail-stop capability exception boundary.

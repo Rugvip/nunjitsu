@@ -148,6 +148,9 @@ Do not create additional packages without a documented architectural reason.
 - Use presence-aware map and record operations when semantics depend on whether
   a key exists. Never infer presence from a retrieved value because
   interpreter-owned records may store `undefined`.
+- Model strings consistently as UTF-16 code units for length, indexing,
+  iteration, filters, slicing, and work accounting. Iterate primitive strings
+  by numeric index rather than their host iteration protocol.
 - Treat capability exceptions as fail-stop opaque values. Preserve details only
   from primitive strings or an own string data descriptor after a trap-free
   native-error brand check, neutralize and bound the detail, discard the

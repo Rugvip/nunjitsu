@@ -21,6 +21,8 @@ Nunjitsu targets:
 - lexical and context shadowing when resolving callable globals;
 - presence-based macro defaults that preserve explicit null, undefined, and
   falsey arguments;
+- Nunjucks-compatible UTF-16 code-unit semantics for string length, lookup,
+  iteration, filters, replacement, and Jinja-compatible slicing;
 - built-in filters, tests, and globals used by direct string templates;
 - synchronous application filters and `TemplateValue` data or callable globals;
 - `trimBlocks` and `lstripBlocks`; and

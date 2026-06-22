@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import nunjucks from 'nunjucks';
 
 import {
   createEngine,
@@ -37,7 +38,7 @@ test('renders control flow, loops, macros, call blocks, and assignments', () => 
       text: 'A😀',
       record: { first: 1, second: 2 },
     }),
-    '1:A:2;2:😀:2;first=1;second=2;',
+    '1:A:3;2:\ud83d:3;3:\ude00:3;first=1;second=2;',
   );
 });
 
@@ -95,7 +96,7 @@ test('implements the closed Nunjucks filter and test standard library', () => {
     ['{{ [{"k":"a"},{"k":"a"}] | groupby("k") | dump }}', '{"a":[{"k":"a"},{"k":"a"}]}'],
     ['{{ "a\\nb" | indent(2, true) }}', '  a\n  b'],
     ['{{ [1,2] | join("-") }}', '1-2'],
-    ['{{ [1,2] | length }}:{{ {"a":1} | length }}:{{ "😀" | length }}', '2:1:1'],
+    ['{{ [1,2] | length }}:{{ {"a":1} | length }}:{{ "😀" | length }}', '2:1:2'],
     ['{{ "ab" | list | dump }}', '["a","b"]'],
     ['{{ "ABC" | lower }}:{{ "abc" | upper }}', 'abc:ABC'],
     ['{{ "a\\nb" | nl2br }}', 'a<br />\nb'],
@@ -262,6 +263,95 @@ test('matches applicable upstream runtime edge cases', () => {
     /more than once/,
   );
   assert.throws(() => engine.render('{{ 1 in 2 }}'), /Membership requires/);
+});
+
+test('uses UTF-16 code units consistently for string operations', () => {
+  const engine = createEngine();
+  const oracle = new nunjucks.Environment(undefined, { autoescape: false });
+  const values = [
+    'Ax',
+    '😀',
+    '😀x',
+    '\ud83d',
+    '\ude00',
+    '😀🧪',
+  ];
+  const operationSource = [
+    '${{ value | length }}|${{ value.length }}|',
+    '{% for character in value %}[${{ loop.index }}/${{ loop.length }}=${{ character | dump }}]{% endfor %}|',
+    '${{ value | list | dump }}|',
+    '${{ value | first | dump }}:${{ value | last | dump }}|',
+    '${{ value | reverse | dump }}|',
+    '${{ value | replace("", "-") | dump }}:',
+    '${{ value | replace("", "-", 2) | dump }}|',
+    '${{ value[value | length] is undefined }}',
+  ].join('');
+
+  for (const value of values) {
+    const context = { value, index: value.length - 1 };
+    const operationOutput = engine.render(operationSource, context);
+    assert.equal(
+      operationOutput,
+      oracle.renderString(operationSource.replaceAll('${{', '{{'), context),
+      JSON.stringify(value),
+    );
+    assert.match(operationOutput, new RegExp(`^${value.length}\\|${value.length}\\|`));
+
+    const codeUnits: string[] = [];
+    for (let index = 0; index < value.length; index += 1) {
+      codeUnits.push(value[index]!);
+    }
+    const constantLookups = codeUnits
+      .map((unused, index) => `\${{ value[${index}] | dump }}`)
+      .join(':');
+    const lookupSource = `${constantLookups}|\${{ value[index] | dump }}`;
+    assert.equal(
+      engine.render(lookupSource, context),
+      oracle.renderString(lookupSource.replaceAll('${{', '{{'), context),
+      JSON.stringify(value),
+    );
+
+    const sliceSource = [
+      '${{ value[0:2] | dump }}',
+      '${{ value[-2:] | dump }}',
+      '${{ value[1:-1] | dump }}',
+      '${{ value[::2] | dump }}',
+      '${{ value[::-1] | dump }}',
+    ].join('|');
+    const expectedSlices = [
+      codeUnits.slice(0, 2),
+      codeUnits.slice(-2),
+      codeUnits.slice(1, -1),
+      codeUnits.filter((unused, index) => index % 2 === 0),
+      codeUnits.toReversed(),
+    ].map(value_ => JSON.stringify(value_)).join('|');
+    assert.equal(engine.render(sliceSource, context), expectedSlices, JSON.stringify(value));
+  }
+
+  let hostIteratorCalls = 0;
+  const iteratorDescriptor = Object.getOwnPropertyDescriptor(
+    String.prototype,
+    Symbol.iterator,
+  );
+  const context = { value: '😀x', index: 2 };
+  const expectedWithoutHostIteration = engine.render(operationSource, context);
+  Object.defineProperty(String.prototype, Symbol.iterator, {
+    configurable: true,
+    value() {
+      hostIteratorCalls += 1;
+      throw new Error('String iteration protocol must not run');
+    },
+  });
+  try {
+    assert.equal(engine.render(operationSource, context), expectedWithoutHostIteration);
+  } finally {
+    if (iteratorDescriptor) {
+      Object.defineProperty(String.prototype, Symbol.iterator, iteratorDescriptor);
+    } else {
+      Reflect.deleteProperty(String.prototype, Symbol.iterator);
+    }
+  }
+  assert.equal(hostIteratorCalls, 0);
 });
 
 test('uses fixed unescaped output and explicit escape filtering', () => {

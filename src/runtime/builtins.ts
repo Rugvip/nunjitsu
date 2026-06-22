@@ -112,7 +112,7 @@ export function applyBuiltinFilter(
   }
   if (name === 'reverse') {
     if (typeof input === 'string' || input instanceof RuntimeSafeString) {
-      const reversed = Array.from(renderRuntimeValue(input)).reverse().join('');
+      const reversed = renderRuntimeValue(input).split('').reverse().join('');
       return input instanceof RuntimeSafeString ? new RuntimeSafeString(reversed) : reversed;
     }
     if (input instanceof RuntimeArray) {
@@ -284,8 +284,8 @@ function edgeRuntimeValue(input: RuntimeValue, last: boolean): RuntimeValue {
     return input.at(last ? input.length - 1 : 0);
   }
   if (typeof input === 'string' || input instanceof RuntimeSafeString) {
-    const characters = Array.from(renderRuntimeValue(input));
-    return characters[last ? characters.length - 1 : 0];
+    const text = renderRuntimeValue(input);
+    return text[last ? text.length - 1 : 0];
   }
   return undefined;
 }
@@ -298,7 +298,7 @@ function runtimeLength(input: RuntimeValue): number {
     return input.size;
   }
   if (typeof input === 'string' || input instanceof RuntimeSafeString) {
-    return Array.from(renderRuntimeValue(input)).length;
+    return renderRuntimeValue(input).length;
   }
   return 0;
 }
@@ -308,7 +308,7 @@ function listRuntimeValue(input: RuntimeValue): RuntimeValue {
     return input;
   }
   if (typeof input === 'string' || input instanceof RuntimeSafeString) {
-    return new RuntimeArray(Array.from(renderRuntimeValue(input)));
+    return new RuntimeArray(renderRuntimeValue(input).split(''));
   }
   if (input instanceof RuntimeRecord) {
     const output: RuntimeValue[] = [];
@@ -369,7 +369,7 @@ function replaceRuntimeValue(
       return input;
     }
     if (needle === '') {
-      output = `${replacement}${Array.from(text).join(replacement)}${replacement}`;
+      output = `${replacement}${text.split('').join(replacement)}${replacement}`;
     } else if (maximum < 0) {
       output = text.split(needle).join(replacement);
     } else {
@@ -804,7 +804,7 @@ export function lookupRuntimeValue(
       return text[index];
     }
     if (key === 'length') {
-      return Array.from(text).length;
+      return text.length;
     }
   }
   return undefined;
@@ -828,7 +828,7 @@ export function lookupRuntimeConstantKey(
       return text[index];
     }
     if (key === 'length') {
-      return Array.from(text).length;
+      return text.length;
     }
   }
   return undefined;

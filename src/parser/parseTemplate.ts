@@ -397,7 +397,8 @@ function scanTemplate(source: string, options: ParseOptions): readonly TemplateT
   let textColumn = 0;
 
   const advance = (value: string): void => {
-    for (const character of value) {
+    for (let offset = 0; offset < value.length; offset += 1) {
+      const character = value[offset]!;
       if (character === '\n') {
         line += 1;
         column = 0;

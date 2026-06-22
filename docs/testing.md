@@ -48,10 +48,11 @@ gadgets, method calls, implicit coercion, accessors, exotic objects, cyclic
 values, trap-free rejection of nested and revoked proxies, inherited iteration
 and serialization hooks, capability identity confusion, fixed-position macro
 binding, undeclared keyword isolation, undefined-valued record membership,
-malformed syntax, public error classification, diagnostic control characters
-and truncation, inert capability exception handling, and state cleanup after
-failures. Static checks reject dynamic execution and host reflection in parser
-and interpreter modules.
+UTF-16 string operations and isolated surrogate handling, malformed syntax,
+public error classification, diagnostic control characters and truncation,
+inert capability exception handling, and state cleanup after failures. Static
+checks reject dynamic execution and host reflection in parser and interpreter
+modules.
 
 ## Fuzzing policy
 
