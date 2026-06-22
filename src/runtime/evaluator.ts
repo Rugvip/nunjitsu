@@ -96,7 +96,13 @@ interface RuntimeIteration {
   readonly values: IterableIterator<RuntimeValue>;
 }
 
+type BuiltinGlobalName = 'range' | 'cycler' | 'joiner';
+
 type BuiltinCallableDefinition =
+  | {
+    readonly type: 'global';
+    readonly name: BuiltinGlobalName;
+  }
   | {
     readonly type: 'cycler';
     readonly values: readonly RuntimeValue[];
@@ -137,6 +143,7 @@ class Evaluator {
   readonly #options: EvaluateOptions;
   readonly #macros = new Map<number, MacroDefinition>();
   readonly #builtinCallables = new Map<number, BuiltinCallableDefinition>();
+  readonly #capabilityNames = new Map<number, string>();
   #activeBlocks = new Map<string, readonly BlockDefinition[]>();
   readonly #blockStack: BlockFrame[] = [];
   #nextCallableId = 1;
@@ -444,7 +451,10 @@ class Evaluator {
         if (this.#options.host?.hasGlobal?.(name)) {
           return new RuntimeCallable('capability', this.#registerGlobal(name));
         }
-        return undefined;
+        if (name === 'super' && this.#blockStack.length > 0) {
+          return new RuntimeCallable('super', 0);
+        }
+        return this.#registerBuiltinGlobal(name);
       }
       case 'Array':
       case 'Group': {
@@ -699,43 +709,36 @@ class Evaluator {
 
   #evaluateCall(node: AstCallNode, scope: RuntimeScope, depth: number): RuntimeValue {
     const targetNode = node.name;
-    const name = callablePath(targetNode);
-    if (name === 'super' && this.#blockStack.length > 0) {
-      const frame = this.#blockStack.at(-1)!;
-      const chunks: string[] = [];
-      this.#renderBlock(frame.chain, frame.index + 1, frame.scope, chunks, depth + 1);
-      return new RuntimeSafeString(chunks.join(''));
-    }
-    const target = name && this.#options.host?.hasGlobal?.(name)
-      ? new RuntimeCallable('capability', this.#registerGlobal(name))
-      : this.#evaluateExpression(targetNode, scope, depth + 1);
+    const target = this.#evaluateExpression(targetNode, scope, depth + 1);
+    const name = diagnosticCallablePath(targetNode);
     const arguments_ = this.#evaluateArguments(node.args, scope, depth + 1);
     if (target instanceof RuntimeCallable) {
       if (target.callableKind === 'macro' || target.callableKind === 'caller') {
         return this.#invokeMacro(target.id, arguments_, depth + 1);
       }
       if (target.callableKind === 'builtin') {
-        return this.#invokeBuiltinCallable(target.id);
+        return this.#invokeBuiltinCallable(target.id, arguments_);
       }
-      if (target.callableKind === 'capability' && name && this.#options.host?.global) {
+      if (target.callableKind === 'super') {
+        const frame = this.#blockStack.at(-1);
+        if (!frame) {
+          throw new Error('Unknown super callable');
+        }
+        const chunks: string[] = [];
+        this.#renderBlock(frame.chain, frame.index + 1, frame.scope, chunks, depth + 1);
+        return new RuntimeSafeString(chunks.join(''));
+      }
+      if (target.callableKind === 'capability') {
+        const capabilityName = this.#capabilityNames.get(target.id);
+        if (!capabilityName || !this.#options.host?.global) {
+          throw new Error('Unknown template capability');
+        }
         this.#chargeCapability();
-        const result = this.#options.host.global(name, arguments_);
+        const result = this.#options.host.global(capabilityName, arguments_);
         if (result.found) {
           return result.value;
         }
-      }
-    }
-    if (name) {
-      const builtin = this.#invokeBuiltinGlobal(name, arguments_);
-      if (builtin !== undefined) {
-        return builtin;
-      }
-      if (this.#options.host?.hasGlobal?.(name)) {
-        this.#chargeCapability();
-        const result = this.#options.host.global?.(name, arguments_);
-        if (result?.found) {
-          return result.value;
-        }
+        throw new Error('Unknown template capability');
       }
     }
     throw new Error(`Unable to call template value${name ? ` ${name}` : ''}`);
@@ -777,11 +780,18 @@ class Evaluator {
   }
 
   #registerGlobal(name: string): number {
-    let hash = 0;
-    for (const character of name) {
-      hash = (hash * 31 + character.charCodeAt(0)) >>> 0;
+    const id = this.#nextCallableId++;
+    this.#capabilityNames.set(id, name);
+    return id;
+  }
+
+  #registerBuiltinGlobal(name: string): RuntimeCallable | undefined {
+    if (name !== 'range' && name !== 'cycler' && name !== 'joiner') {
+      return undefined;
     }
-    return hash || 1;
+    const id = this.#nextCallableId++;
+    this.#builtinCallables.set(id, { type: 'global', name });
+    return new RuntimeCallable('builtin', id);
   }
 
   #registerCaller(node: AstCallableBodyNode, scope: RuntimeScope): RuntimeCallable {
@@ -842,7 +852,7 @@ class Evaluator {
     );
   }
 
-  #invokeBuiltinGlobal(name: string, arguments_: RuntimeArguments): RuntimeValue | undefined {
+  #invokeBuiltinGlobal(name: BuiltinGlobalName, arguments_: RuntimeArguments): RuntimeValue {
     if (name === 'range') {
       const values = arguments_.positional.map(runtimeNumber);
       const start = values.length > 1 ? values[0]! : 0;
@@ -874,16 +884,13 @@ class Evaluator {
       });
       return new RuntimeCallable('builtin', id);
     }
-    if (name === 'joiner') {
-      const id = this.#nextCallableId++;
-      this.#builtinCallables.set(id, {
-        type: 'joiner',
-        separator: renderRuntimeValue(arguments_.positional[0] ?? ','),
-        used: false,
-      });
-      return new RuntimeCallable('builtin', id);
-    }
-    return undefined;
+    const id = this.#nextCallableId++;
+    this.#builtinCallables.set(id, {
+      type: 'joiner',
+      separator: renderRuntimeValue(arguments_.positional[0] ?? ','),
+      used: false,
+    });
+    return new RuntimeCallable('builtin', id);
   }
 
   #lookupBuiltinCallable(id: number, key: string): RuntimeValue {
@@ -902,10 +909,13 @@ class Evaluator {
     return new RuntimeCallable('builtin', methodId);
   }
 
-  #invokeBuiltinCallable(id: number): RuntimeValue {
+  #invokeBuiltinCallable(id: number, arguments_: RuntimeArguments): RuntimeValue {
     const definition = this.#builtinCallables.get(id);
     if (!definition) {
       throw new Error('Unknown interpreter builtin callable');
+    }
+    if (definition.type === 'global') {
+      return this.#invokeBuiltinGlobal(definition.name, arguments_);
     }
     if (definition.type === 'joiner') {
       if (!definition.used) {
@@ -1006,14 +1016,14 @@ function symbolName(node: AstNode): string {
   return name;
 }
 
-function callablePath(node: AstNode): string | undefined {
+function diagnosticCallablePath(node: AstNode): string | undefined {
   if (node.type === 'Symbol') {
     return symbolName(node);
   }
   if (node.type !== 'LookupVal') {
     return undefined;
   }
-  const parent = callablePath(node.target);
+  const parent = diagnosticCallablePath(node.target);
   const key = node.val;
   const value = key.type === 'Literal' || key.type === 'Symbol' ? key.value : undefined;
   if (!parent || typeof value !== 'string') {

@@ -80,7 +80,7 @@ behavior, and rendering mode cannot be changed after creation.
 | Option | Type | Default | Description |
 | --- | --- | --- | --- |
 | `filters` | `Readonly<Record<string, TemplateFilter>>` | `{}` | Trusted synchronous filters available through `value \| name(...)`. |
-| `globals` | `Readonly<Record<string, TemplateGlobal>>` | `{}` | Trusted values and synchronous functions available by exact name. |
+| `globals` | `Readonly<Record<string, TemplateGlobal>>` | `{}` | Trusted values and synchronous functions available by one valid template identifier. |
 | `cookiecutterCompat` | `boolean` | `false` | Uses `{{` and `}}`, supported Jinja behavior, and the `jsonify` alias. |
 | `trimBlocks` | `boolean` | `false` | Removes one LF or CRLF immediately after each block tag. |
 | `lstripBlocks` | `boolean` | `false` | Removes indentation before block tags on otherwise blank lines. |
@@ -205,6 +205,12 @@ Capabilities are trusted host code and are the only way templates invoke
 JavaScript behavior. They must execute synchronously. Filters receive their
 input followed by positional arguments; global functions receive positional
 arguments. Returning `undefined` creates an absent template value.
+
+Global names must be single template identifiers; dotted registry names are
+rejected. A call first resolves its target through lexical scope and the closed
+runtime value model. Context and local bindings therefore shadow configured
+globals normally. Capability aliases retain a sealed identity for the exact
+registered callback rather than deriving authority from call-site spelling.
 
 ```ts
 const configured = createEngine({

@@ -73,7 +73,10 @@ They never delegate to JavaScript property lookup or implicit object coercion.
 
 The only callable values are sealed interpreter variants for inline macros,
 built-ins, and registered global functions. A template value cannot contain a
-JavaScript function or constructor.
+JavaScript function or constructor. Calls always evaluate their target through
+normal scope and closed-value lookup before dispatch. Registered capabilities
+carry an evaluator-owned identity mapped privately to one exact host callback;
+call-site syntax never selects host authority.
 
 ## Render lifecycle
 

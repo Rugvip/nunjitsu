@@ -117,10 +117,15 @@ filters and globals receive immutable identities during synchronous engine
 creation.
 
 The interpreter stores capability identities, never callback functions. A call
-copies internal arguments to a public value graph whose records have null
-prototypes, invokes the exact registered callback through the host dispatcher,
-and copies its result back through the safe value validator. Capability results
-are not implicitly safe.
+first resolves its target through lexical scope and closed-value lookup. Only a
+resolved capability callable can reach the host dispatcher, and its opaque ID
+maps privately to the exact registered callback independent of call-site
+spelling. Context data, local bindings, computed strings, and object paths
+cannot manufacture or redirect that identity. Global registry names must be
+single valid template identifiers; dotted names are rejected rather than
+treated as implicit namespaces. The call copies internal arguments to a public
+value graph whose records have null prototypes and copies its result back
+through the safe value validator. Capability results are not implicitly safe.
 
 Built-ins that temporarily materialize internal data as JavaScript containers
 must also prevent inherited host hooks from becoming observable. In particular,

@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
+import nunjucks from 'nunjucks';
 
 import { createEngine, NunjitsuRenderError } from '../../src/index.ts';
 import { NunjitsuParseError, parseTemplate } from '../../src/parser/index.ts';
@@ -286,6 +287,86 @@ test('templates cannot reach ambient authority or invoke looked-up values', () =
   ]) {
     assert.throws(() => engine.render(source, { value: { toString: 'data' } }), source);
   }
+});
+
+test('call targets resolve through closed runtime values before capability dispatch', () => {
+  let calls = 0;
+  const engine = createEngine({
+    globals: {
+      dangerous() {
+        calls += 1;
+        return 'host callback';
+      },
+    },
+  });
+
+  assert.throws(() => engine.render('${{ dangerous() }}', { dangerous: 'not callable' }));
+  assert.equal(calls, 0);
+  assert.throws(() => engine.render([
+    '{% set dangerous = "not callable" %}',
+    '${{ dangerous() }}',
+  ].join('')));
+  assert.equal(calls, 0);
+  assert.equal(engine.render('${{ dangerous() }}'), 'host callback');
+  assert.equal(calls, 1);
+  assert.equal(
+    engine.render('{% set alias = dangerous %}${{ alias() }}'),
+    'host callback',
+  );
+  assert.equal(calls, 2);
+  assert.equal(
+    engine.render('{% set aliases = [dangerous] %}${{ aliases[0]() }}'),
+    'host callback',
+  );
+  assert.equal(calls, 3);
+  assert.throws(() => engine.render('${{ values[name]() }}', {
+    values: { dangerous: 'dangerous' },
+    name: 'dangerous',
+  }));
+  assert.equal(calls, 3);
+
+  for (const name of ['ops.exec', 'cycle.next']) {
+    const dottedGlobals = Object.create(null) as Record<string, () => string>;
+    dottedGlobals[name] = () => {
+      calls += 1;
+      return 'host callback';
+    };
+    assert.throws(
+      () => createEngine({ globals: dottedGlobals }),
+      /valid template identifier/,
+    );
+  }
+  const builtinEngine = createEngine();
+  assert.equal(
+    builtinEngine.render('{% set cycle = cycler("internal") %}${{ cycle.next() }}'),
+    'internal',
+  );
+  assert.throws(() => builtinEngine.render('${{ range(0, 1) }}', {
+    range: 'not callable',
+  }));
+  assert.equal(calls, 3);
+  assert.equal(builtinEngine.render('clean'), 'clean');
+
+  let oracleCalls = 0;
+  const oracle = new nunjucks.Environment(undefined, { autoescape: false });
+  oracle.addGlobal('dangerous', () => {
+    oracleCalls += 1;
+    return 'host callback';
+  });
+  assert.throws(() => oracle.renderString(
+    '{% set dangerous = "not callable" %}{{ dangerous() }}',
+    {},
+  ));
+  oracle.addGlobal('ops.exec', () => {
+    oracleCalls += 1;
+    return 'host callback';
+  });
+  assert.throws(() => oracle.renderString('{{ ops.exec("ignored") }}', {}));
+  assert.throws(() => oracle.renderString('{{ ops.exec("ignored") }}', {
+    ops: { exec: 'not callable' },
+  }));
+  assert.equal(oracleCalls, 0);
+  assert.equal(engine.render('clean'), 'clean');
 });
 
 test('callable identities stay sealed and regular expressions cross as inert data', () => {

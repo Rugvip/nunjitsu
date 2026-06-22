@@ -18,6 +18,6 @@ export type TemplateGlobal = TemplateValue | TemplateGlobalFunction;
 export interface TemplateCapabilities {
   /** Filters addressable through `value | name(...)`. */
   filters?: Readonly<Record<string, TemplateFilter>>;
-  /** Values and functions addressable by exact global name. */
+  /** Values and functions addressable by one valid template identifier. */
   globals?: Readonly<Record<string, TemplateGlobal>>;
 }

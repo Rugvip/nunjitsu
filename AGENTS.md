@@ -49,6 +49,9 @@ implementation and documentation aligned with the architecture in
 - Make sealed interpreter variants for macros, built-ins, and registered
   capabilities the only callable values. Context functions and object methods
   are unsupported.
+- Resolve every call target through lexical scope and the closed value model.
+  Dispatch capabilities only through evaluator-owned IDs mapped privately to
+  exact registered callbacks; never derive authority from call-site spelling.
 - Never retain template sources, ASTs, values, or output state between renders
   by default. Retain values only through an explicit caller-owned prepared
   context snapshot; keep snapshots immutable and engine-bound, and copy every

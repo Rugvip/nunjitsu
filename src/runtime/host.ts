@@ -11,6 +11,8 @@ import {
 } from './value.ts';
 import type { RuntimeArguments, RuntimeHost } from './evaluator.ts';
 
+const templateIdentifierPattern = /^[A-Za-z_][A-Za-z0-9_]*$/;
+
 /** An opaque fail-stop signal for one trusted capability exception. */
 class RuntimeCapabilityError extends Error {
   constructor(cause: unknown) {
@@ -113,6 +115,9 @@ function copyGlobals(
     }
     if (isReservedName(key)) {
       throw new TypeError(`Template global name ${key} is reserved`);
+    }
+    if (!templateIdentifierPattern.test(key)) {
+      throw new TypeError('Template global name must be a valid template identifier');
     }
     const descriptor = Object.getOwnPropertyDescriptor(globals, key);
     if (!descriptor?.enumerable) {
