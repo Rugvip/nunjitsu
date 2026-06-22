@@ -37,6 +37,21 @@ const semanticNameCases = Object.freeze([
   { name: 'x'.repeat(4_096), reserved: false },
 ]);
 
+const bidiControlCharacters = Object.freeze([
+  '\u061c',
+  '\u200e',
+  '\u200f',
+  '\u202a',
+  '\u202b',
+  '\u202c',
+  '\u202d',
+  '\u202e',
+  '\u2066',
+  '\u2067',
+  '\u2068',
+  '\u2069',
+]);
+
 test('copies only plain data without invoking accessors or host behavior', () => {
   let getterCalls = 0;
   const withGetter = Object.defineProperty({}, 'secret', {
@@ -1094,10 +1109,11 @@ test('capability exceptions retain only inert sanitized messages and halt evalua
 
 test('parser diagnostics neutralize untrusted token content', () => {
   const engine = createEngine();
-  const unsafeDiagnosticCharacterPattern = /[\u0000-\u001f\u007f-\u009f\u2028\u2029\u202a-\u202e\u2066-\u2069]/;
+  const unsafeDiagnosticCharacterPattern = /[\u0000-\u001f\u007f-\u009f\u061c\u200e\u200f\u2028\u2029\u202a-\u202e\u2066-\u2069]/;
   const values = [
     'first-line\nsecond-line',
     '\u0000\u001f\u007f\u0085\u009b',
+    bidiControlCharacters.join(''),
     '\u001b[31mFORGED\u001b[0m',
     '\u001b]8;;https://example.com\u0007link\u001b]8;;\u0007',
     'x'.repeat(1_000) + 'TRUNCATED-TAIL',
@@ -1159,10 +1175,29 @@ test('parser diagnostics neutralize untrusted token content', () => {
     () => engine.render(longEvaluatorSource),
     error => error instanceof NunjitsuRenderError && error.message.length <= 1_025,
   );
+
+  for (const character of bidiControlCharacters) {
+    const source = '${{ value[' + JSON.stringify(`LEFT${character}RIGHT`) + ']() }}';
+    let caught: NunjitsuRenderError | undefined;
+    assert.throws(
+      () => engine.render(source, { value: {} }),
+      error => {
+        if (!(error instanceof NunjitsuRenderError)) {
+          return false;
+        }
+        caught = error;
+        return true;
+      },
+    );
+    const escaped = `\\u${character.charCodeAt(0).toString(16).padStart(4, '0')}`;
+    assert.ok(!caught?.message.includes(character), escaped);
+    assert.ok(caught?.message.includes(escaped), escaped);
+    assert.ok(!inspect(caught, { showHidden: true }).includes(character), escaped);
+  }
 });
 
 test('public render diagnostics expose safe structure without internal causes', () => {
-  const unsafeControlPattern = /[\u0000-\u0008\u000b-\u001f\u007f-\u009f\u2028\u2029\u202a-\u202e\u2066-\u2069]/;
+  const unsafeControlPattern = /[\u0000-\u0008\u000b-\u001f\u007f-\u009f\u061c\u200e\u200f\u2028\u2029\u202a-\u202e\u2066-\u2069]/;
   const source = '${{ value["FORGED\\n\\x1b]52;c;YXR0YWNrZXI=\\x07\\u202eTXT"]() }}';
   let evaluationError: NunjitsuRenderError | undefined;
   assert.throws(

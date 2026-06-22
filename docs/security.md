@@ -185,12 +185,13 @@ native engine errors contribute only an own string-valued message data property.
 
 Parser diagnostics never interpolate raw token content. Source-derived values
 use a central quoted formatter that escapes C0, C1, terminal, line-separator,
-and bidirectional formatting controls and truncates long values. The public
-render boundary independently neutralizes controls and bounds the complete
-message, so logging `NunjitsuRenderError.message` cannot create additional log
-lines or terminal control sequences. Logging or recursively inspecting the
-complete error is also safe because `cause` is always `undefined` and no raw
-internal stack or error object crosses the boundary.
+and every Unicode `Bidi_Control` character—including U+061C, U+200E, and
+U+200F—and truncates long values. The public render boundary independently
+neutralizes controls and bounds the complete message, so logging
+`NunjitsuRenderError.message` cannot create additional log lines, terminal
+control sequences, or bidirectional visual spoofing. Logging or recursively
+inspecting the complete error is also safe because `cause` is always
+`undefined` and no raw internal stack or error object crosses the boundary.
 
 Nunjitsu accepts inline source only and imports no filesystem APIs. Applications
 perform file discovery, path confinement, symbolic-link handling, and reads

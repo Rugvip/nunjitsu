@@ -187,7 +187,8 @@ Do not create additional packages without a documented architectural reason.
   `cause`; the public `cause` property remains `undefined`.
 - Never interpolate raw template source or decoded token values into
   diagnostics. Use the central bounded diagnostic formatter and keep the public
-  render-error message independently neutralized and single-line.
+  render-error message independently neutralized and single-line. Escape every
+  Unicode `Bidi_Control` character, including U+061C, U+200E, and U+200F.
 - Ensure transient JavaScript containers passed to host operations such as
   serialization cannot observe inherited accessors, coercion hooks,
   serialization hooks, or methods.

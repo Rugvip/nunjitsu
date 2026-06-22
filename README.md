@@ -343,9 +343,9 @@ template evaluation. Invalid limit values similarly throw `RangeError`.
 After API validation, every parser or evaluator failure other than resource
 limit exhaustion is wrapped in `NunjitsuRenderError`, regardless of its
 underlying JavaScript error class. Public diagnostic messages escape terminal
-and line-control characters, remain single-line, and have bounded length. All
-render failures discard partial output and leave the engine ready for a clean
-subsequent render.
+and line-control characters plus the complete Unicode `Bidi_Control` set,
+remain single-line, and have bounded length. All render failures discard partial
+output and leave the engine ready for a clean subsequent render.
 
 ### Exported API
 

@@ -32,4 +32,14 @@ test('renders synchronously through the ESM package entry', t => {
   const context = engine.prepareContext({ value: 'prepared' });
   assert.equal(engine.render('ESM ${{ value | upper }}', context), 'ESM PREPARED');
   assert.equal(engine.render('${{ ["only"] | random }}'), 'only');
+  assert.throws(
+    () => engine.render('${{ value["LEFT\\u061cARABIC\\u200eLTR\\u200fRTL"]() }}', {
+      value: {},
+    }),
+    error => (
+      !error.message.includes('\u061c') &&
+      !error.message.includes('\u200e') &&
+      !error.message.includes('\u200f')
+    ),
+  );
 });

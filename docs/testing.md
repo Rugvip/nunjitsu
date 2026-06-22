@@ -51,11 +51,12 @@ binding, undeclared keyword isolation, undefined-valued record membership,
 UTF-16 string operations, deterministic ordering, and isolated surrogate
 handling, strict and loose equality, malformed syntax, public error
 classification, centralized coercion and canonical indices, diagnostic control
-characters and truncation, inert capability exception handling, legacy RegExp
-state isolation at capability and nested-render boundaries, render-exit cleanup,
-mixed-operator grouping and operand order, structured cause-free public
-diagnostics, and render state cleanup after failures. Static checks reject
-dynamic execution and host reflection in parser and interpreter modules.
+characters, explicit coverage of every Unicode `Bidi_Control` character, and
+truncation, inert capability exception handling, legacy RegExp state isolation
+at capability and nested-render boundaries, render-exit cleanup, mixed-operator
+grouping and operand order, structured cause-free public diagnostics, and render
+state cleanup after failures. Static checks reject dynamic execution and host
+reflection in parser and interpreter modules.
 
 ## Fuzzing policy
 
