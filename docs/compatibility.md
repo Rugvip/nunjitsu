@@ -40,6 +40,9 @@ Nunjitsu targets:
 - render-local canonical identity for direct callable globals, fresh sealed
   identity for ordinary callable member lookup, and strict identity-based
   switch matching;
+- declaration-specific macro and caller validation, Nunjucks positional/default
+  ordering, positional call arguments after keywords, and complete structural
+  tag validation including named blocks and raw regions;
 - built-in filters, tests, and globals used by direct string templates;
 - synchronous application filters and `TemplateValue` data or callable globals;
 - `trimBlocks` and `lstripBlocks`; and

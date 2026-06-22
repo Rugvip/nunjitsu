@@ -145,9 +145,20 @@ export function evaluateRuntimeTemplate(
   context: RuntimeRecord,
   options: EvaluateOptions,
 ): string {
-  const evaluator = new Evaluator(options);
-  const ast = evaluator.parse(source);
-  return evaluator.render(ast, context);
+  if (
+    options.limits.sourceCodeUnits !== Number.POSITIVE_INFINITY &&
+    source.length > options.limits.sourceCodeUnits
+  ) {
+    throw new NunjitsuLimitError('sourceCodeUnits');
+  }
+  const ast = parseTemplate(source, {
+    trimBlocks: options.trimBlocks,
+    lstripBlocks: options.lstripBlocks,
+    cookiecutterCompat: options.cookiecutterCompat,
+    astNodes: options.limits.astNodes,
+    nestingDepth: options.limits.nestingDepth,
+  });
+  return new Evaluator(options).render(ast, context);
 }
 
 class Evaluator {
@@ -163,28 +174,9 @@ class Evaluator {
   #workUnits = 0;
   #outputCodeUnits = 0;
   #capabilityCalls = 0;
-  #sourceCodeUnits = 0;
 
   constructor(options: EvaluateOptions) {
     this.#options = options;
-  }
-
-  parse(source: string): AstNode {
-    this.#sourceCodeUnits += source.length;
-    if (
-      this.#options.limits.sourceCodeUnits !== Number.POSITIVE_INFINITY &&
-      this.#sourceCodeUnits > this.#options.limits.sourceCodeUnits
-    ) {
-      throw new NunjitsuLimitError('sourceCodeUnits');
-    }
-    const ast = parseTemplate(source, {
-      trimBlocks: this.#options.trimBlocks,
-      lstripBlocks: this.#options.lstripBlocks,
-      cookiecutterCompat: this.#options.cookiecutterCompat,
-      astNodes: this.#options.limits.astNodes,
-      nestingDepth: this.#options.limits.nestingDepth,
-    });
-    return ast;
   }
 
   render(
@@ -880,6 +872,7 @@ class Evaluator {
     const argumentNodes = args.children;
     let formalIndex = 0;
     let declaresCaller = false;
+    const boundNames = new Set<string>();
     for (const argument of argumentNodes) {
       if (argument.type === 'KeywordArgs') {
         for (const pair of argument.children) {
@@ -897,12 +890,13 @@ class Evaluator {
             supplied = arguments_.keyword.get(name);
             hasSupplied = true;
           }
-          local.set(
-            name,
-            hasSupplied
-              ? supplied
-              : this.#evaluateExpression(pair.value, local, depth + 1),
-          );
+          const value = hasSupplied
+            ? supplied
+            : this.#evaluateExpression(pair.value, local, depth + 1);
+          if (!boundNames.has(name)) {
+            local.set(name, value);
+            boundNames.add(name);
+          }
           formalIndex += 1;
         }
       } else {
@@ -914,7 +908,10 @@ class Evaluator {
         } else if (arguments_.keyword.has(name)) {
           supplied = arguments_.keyword.get(name);
         }
-        local.set(name, supplied);
+        if (!boundNames.has(name)) {
+          local.set(name, supplied);
+          boundNames.add(name);
+        }
         formalIndex += 1;
       }
     }

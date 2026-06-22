@@ -13,6 +13,16 @@ const verbatimEndPattern = /{%-?\s*endverbatim\s*(-?)%}/g;
 const indentationPattern = /^[\t ]*$/;
 const tagNamePattern = /^[A-Za-z_][A-Za-z0-9_]*/;
 const whitespacePattern = /\s/;
+const emptyStructuralTags = new Set([
+  'else',
+  'endif',
+  'endfor',
+  'endmacro',
+  'endcall',
+  'endset',
+  'default',
+  'endswitch',
+]);
 
 /** Configuration for parsing one complete inline template. */
 export interface ParseOptions {
@@ -141,6 +151,7 @@ class TemplateParser {
       }
       const name = tagName(token.value);
       if (stops.has(name)) {
+        this.#validateStructuralStop(name, token);
         return { body: this.#nodeList(children, token), stop: token };
       }
       children.push(this.#parseStatement(name, tagRemainder(token.value), token));
@@ -241,6 +252,9 @@ class TemplateParser {
       this.#fail('Invalid macro signature', token);
     }
     const name = this.#expression(signature[1]!, token);
+    if (name.type !== 'Symbol') {
+      this.#fail('Macro name must be an identifier', token);
+    }
     const args = this.#signature(signature[2]!, token);
     const parsed = this.#parseBody(new Set(['endmacro']));
     if (!parsed.stop) {
@@ -291,6 +305,10 @@ class TemplateParser {
     const parsed = this.#parseBody(new Set(['endblock']));
     if (!parsed.stop) {
       this.#fail('Missing endblock tag', token);
+    }
+    const closingName = tagRemainder(parsed.stop.value);
+    if (closingName !== '' && closingName !== name.value) {
+      this.#fail('Endblock name must match its opening block', parsed.stop);
     }
     return this.#make('Block', { name, body: parsed.body }, token);
   }
@@ -359,6 +377,12 @@ class TemplateParser {
 
   #nodeList(children: readonly AstNode[], token?: TemplateToken): AstNode {
     return this.#make('NodeList', { children: Object.freeze(Array.from(children)) }, token);
+  }
+
+  #validateStructuralStop(name: string, token: TemplateToken): void {
+    if (emptyStructuralTags.has(name) && tagRemainder(token.value) !== '') {
+      this.#fail(`${name} tag does not accept trailing content`, token);
+    }
   }
 
   #make(type: AstNode['type'], fields: Record<string, unknown>, token?: TemplateToken): AstNode {
@@ -465,6 +489,13 @@ function scanTemplate(source: string, options: ParseOptions): readonly TemplateT
       } as TemplateToken);
       const rawName = opening.kind === 'block' ? tagName(token.value) : '';
       if (rawName === 'raw' || rawName === 'verbatim') {
+        if (tagRemainder(token.value) !== '') {
+          throw new NunjitsuParseError(
+            `${rawName} tag does not accept trailing content`,
+            startLine,
+            startColumn,
+          );
+        }
         const closing = findRawEnd(source, index, rawName);
         if (!closing) {
           throw new NunjitsuParseError(

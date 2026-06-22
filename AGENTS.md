@@ -56,6 +56,11 @@ implementation and documentation aligned with the architecture in
   presence second, never value nullishness or a conditional positional cursor.
   Ignore undeclared keywords except for the explicit call-block `caller`
   binding. Evaluate defaults only for genuinely absent arguments.
+- Validate macro and caller declarations separately from ordinary calls. Every
+  positional formal must be a symbol; default keys must be parser-created
+  allowed names. Store ordinary formals before defaulted formals, allow source
+  positionals after defaults or call keywords, and retain the first binding for
+  duplicate formal names while preserving applicable default evaluation.
 - Never retain template sources, ASTs, values, or output state between renders
   by default. Retain values only through an explicit caller-owned prepared
   context snapshot; keep snapshots immutable and engine-bound, and copy every
@@ -134,6 +139,10 @@ Do not create additional packages without a documented architectural reason.
   callable variants. An unknown variant is an internal error, never a fallback
   to JavaScript behavior.
 - Validate the complete template before executing any node from that source.
+- Validate the complete contents of structural tags. `else`, `endif`, `endfor`,
+  `endmacro`, `endcall`, `endset`, `default`, and `endswitch` accept no trailing
+  content; `endblock` accepts only an optional matching opening name; and raw or
+  verbatim openers accept no arguments before scanner raw-mode entry.
 - Inspect input records through own property descriptors and reject accessors.
   Do not invoke getters while copying accepted plain records.
 - Reject Node-detected proxies before array detection or any reflective value

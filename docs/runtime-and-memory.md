@@ -25,6 +25,15 @@ Full parsing reports syntax errors in inactive branches and unused macros.
 Template-loading and extension nodes are rejected. No AST or source survives a
 render.
 
+Macro and call-block declarations apply a stricter policy than ordinary call
+arguments: positional formals must be symbols and default keys must be
+parser-created allowed names. Ordinary formals are stored before the defaulted
+formal map, matching Nunjucks even when a positional formal follows a default
+in source. Ordinary calls similarly collect positionals separately and permit
+them after keywords. Structural stop tags are validated in full rather than by
+their first word; named block closers must match, and raw or verbatim openers
+must be argument-free before the scanner enters raw mode.
+
 Expression nodes encode the observable result of Nunjucks's parser and
 generated-JavaScript grouping without generating or executing JavaScript.
 Exponentiation chains associate left. Concatenation, addition, and subtraction
@@ -162,6 +171,12 @@ target one parameter. Explicit `null`, absent-value `undefined`, `false`, zero,
 and empty strings remain supplied values. A default expression is evaluated
 only when neither the formal position nor its keyword was supplied, so defaults
 cannot introduce capability side effects for explicit values.
+
+When a declaration repeats a formal name, the first formal owns the visible
+binding. Later duplicates still consume their formal positions and evaluate a
+genuinely needed default, but cannot overwrite that first binding. This
+reproduces Nunjucks's generated declaration behavior without weakening the
+closed scope model.
 
 Undeclared keyword arguments do not become macro locals. The sole exception is
 the `caller` keyword synthesized by call blocks, which is installed explicitly

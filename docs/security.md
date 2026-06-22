@@ -32,6 +32,13 @@ objects or host filter implementation crosses into evaluation. Nunjucks remains
 a development-only compatibility oracle and benchmark baseline outside the
 production trust boundary.
 
+Complete-source validation includes unused macro and call-block declarations,
+the full contents of structural stop tags, matching named block closers, and raw
+or verbatim opening tags before raw scanning begins. Invalid formal expressions
+or trailing structural content therefore fail before evaluator construction;
+earlier output, declaration defaults, wrapper macros, raw contents, and later
+capabilities cannot execute.
+
 Strings, numbers, booleans, nulls, arrays, and record data supplied through
 trusted application code may contain hostile data. Node's native proxy brand
 check rejects proxy-backed values, including nested and revoked proxies, before

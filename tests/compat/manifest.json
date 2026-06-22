@@ -152,8 +152,9 @@
     },
     {
       "upstream": {"id":"tests/parser.js:7","file":"tests/parser.js","test":"should parse blocks"},
-      "status": "not applicable",
-      "reason": "Requires named-template loading, includes, imports, or inheritance, which the secure direct-string API does not support."
+      "status": "adapted",
+      "reason": "Standalone inline block bodies and matching named closing tags are verified without template inheritance.",
+      "cases": ["compiler-named-endblock"]
     },
     {
       "upstream": {"id":"tests/parser.js:8","file":"tests/parser.js","test":"should accept attributes and methods of static arrays, objects and primitives"},
@@ -186,7 +187,7 @@
       "upstream": {"id":"tests/parser.js:13","file":"tests/parser.js","test":"should parse macro definitions"},
       "status": "adapted",
       "reason": "Macro parameters, defaults, bodies, and calls are verified through rendered behavior rather than Macro AST nodes.",
-      "cases": ["compiler-macro-basic","compiler-macro-default-arguments"]
+      "cases": ["compiler-macro-basic","compiler-macro-default-arguments","compiler-post-default-formal-order"]
     },
     {
       "upstream": {"id":"tests/parser.js:14","file":"tests/parser.js","test":"should parse call blocks"},
@@ -198,12 +199,12 @@
       "upstream": {"id":"tests/parser.js:15","file":"tests/parser.js","test":"should parse call blocks with args"},
       "status": "adapted",
       "reason": "Call-block bindings plus positional and keyword arguments are verified through rendered output.",
-      "cases": ["compiler-call-block-arguments"]
+      "cases": ["compiler-call-block-arguments","compiler-caller-post-default-formal-order"]
     },
     {
       "upstream": {"id":"tests/parser.js:16","file":"tests/parser.js","test":"should parse raw"},
-      "status": "not applicable",
-      "reason": "Requires automatic escaping, while the direct-string API fixes autoescape to false."
+      "status": "adapted",
+      "reason": "Raw scanning and argument-free opening-tag validation are verified with fixed autoescape false."
     },
     {
       "upstream": {"id":"tests/parser.js:17","file":"tests/parser.js","test":"should parse raw with broken variables"},
@@ -242,8 +243,8 @@
     },
     {
       "upstream": {"id":"tests/parser.js:24","file":"tests/parser.js","test":"should parse verbatim"},
-      "status": "not applicable",
-      "reason": "Requires automatic escaping, while the direct-string API fixes autoescape to false."
+      "status": "adapted",
+      "reason": "Verbatim scanning and argument-free opening-tag validation are verified with fixed autoescape false."
     },
     {
       "upstream": {"id":"tests/parser.js:25","file":"tests/parser.js","test":"should parse verbatim with broken variables"},
@@ -289,8 +290,8 @@
     {
       "upstream": {"id":"tests/parser.js:33","file":"tests/parser.js","test":"should parse keyword and non-keyword arguments"},
       "status": "adapted",
-      "reason": "Positional and keyword argument binding is verified through macro and custom-tag rendering rather than argument AST nodes.",
-      "cases": ["compiler-macro-keyword-argument"]
+      "reason": "Positional and keyword argument binding, including positional arguments after keywords, is verified through macro rendering rather than argument AST nodes.",
+      "cases": ["compiler-macro-keyword-argument","compiler-post-keyword-positional-call"]
     },
     {
       "upstream": {"id":"tests/parser.js:34","file":"tests/parser.js","test":"should parse imports"},
@@ -304,8 +305,8 @@
     },
     {
       "upstream": {"id":"tests/parser.js:36","file":"tests/parser.js","test":"should throw errors"},
-      "status": "not applicable",
-      "reason": "Requires named-template loading, includes, imports, or inheritance, which the secure direct-string API does not support."
+      "status": "adapted",
+      "reason": "Applicable invalid declarations and malformed structural tags fail during complete-source parsing; exact upstream diagnostics are outside the contract."
     },
     {
       "upstream": {"id":"tests/parser.js:37","file":"tests/parser.js","test":"should parse custom tags"},
@@ -576,7 +577,7 @@
     {
       "upstream": {"id":"tests/compiler.js:64","file":"tests/compiler.js","test":"should compile macros with optional args"},
       "status": "ported",
-      "cases": ["compiler-macro-optional-positional"]
+      "cases": ["compiler-macro-optional-positional","compiler-post-default-formal-order"]
     },
     {
       "upstream": {"id":"tests/compiler.js:65","file":"tests/compiler.js","test":"should compile macros with args that can be passed to filters"},
@@ -591,12 +592,12 @@
     {
       "upstream": {"id":"tests/compiler.js:67","file":"tests/compiler.js","test":"should compile macros with arg defaults"},
       "status": "ported",
-      "cases": ["compiler-macro-default-arguments","compiler-macro-explicit-values-skip-default"]
+      "cases": ["compiler-macro-default-arguments","compiler-macro-explicit-values-skip-default","compiler-post-default-formal-order"]
     },
     {
       "upstream": {"id":"tests/compiler.js:68","file":"tests/compiler.js","test":"should compile macros with keyword args"},
       "status": "ported",
-      "cases": ["compiler-macro-keyword-argument"]
+      "cases": ["compiler-macro-keyword-argument","compiler-post-keyword-positional-call"]
     },
     {
       "upstream": {"id":"tests/compiler.js:69","file":"tests/compiler.js","test":"should compile macros with only keyword args"},
@@ -611,7 +612,7 @@
     {
       "upstream": {"id":"tests/compiler.js:71","file":"tests/compiler.js","test":"should compile macros with out-of-order keyword args"},
       "status": "ported",
-      "cases": ["compiler-macro-out-of-order-keyword"]
+      "cases": ["compiler-macro-out-of-order-keyword","compiler-post-keyword-positional-call"]
     },
     {
       "upstream": {"id":"tests/compiler.js:72","file":"tests/compiler.js","test":"should compile macros"},
@@ -671,7 +672,7 @@
     {
       "upstream": {"id":"tests/compiler.js:83","file":"tests/compiler.js","test":"should compile call blocks with args"},
       "status": "ported",
-      "cases": ["compiler-call-block-arguments"]
+      "cases": ["compiler-call-block-arguments","compiler-caller-post-default-formal-order"]
     },
     {
       "upstream": {"id":"tests/compiler.js:84","file":"tests/compiler.js","test":"should compile call blocks using imported macros"},
@@ -756,7 +757,7 @@
     {
       "upstream": {"id":"tests/compiler.js:100","file":"tests/compiler.js","test":"should render blocks in their own scope"},
       "status": "ported",
-      "cases": ["compiler-standalone-block-scope-isolation"]
+      "cases": ["compiler-standalone-block-scope-isolation","compiler-named-endblock"]
     },
     {
       "upstream": {"id":"tests/compiler.js:101","file":"tests/compiler.js","test":"should include templates"},

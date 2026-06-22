@@ -62,6 +62,45 @@
       "upstream": ["tests/parser.js:32", "tests/compiler.js:13"]
     },
     {
+      "id": "declaration-ordering",
+      "file": "tests/source/runtime.test.ts",
+      "test": "matches Nunjucks declaration ordering and post-keyword positional calls",
+      "upstream": [
+        "tests/parser.js:13",
+        "tests/parser.js:15",
+        "tests/parser.js:33",
+        "tests/compiler.js:64",
+        "tests/compiler.js:67",
+        "tests/compiler.js:68",
+        "tests/compiler.js:71",
+        "tests/compiler.js:83"
+      ]
+    },
+    {
+      "id": "declaration-validation",
+      "file": "tests/source/security.test.ts",
+      "test": "rejects invalid macro and caller declarations before capability dispatch",
+      "upstream": [
+        "tests/parser.js:13",
+        "tests/parser.js:14",
+        "tests/parser.js:15",
+        "tests/parser.js:36"
+      ]
+    },
+    {
+      "id": "structural-tag-validation",
+      "file": "tests/source/security.test.ts",
+      "test": "rejects malformed structural tags before any template capability executes",
+      "upstream": [
+        "tests/parser.js:7",
+        "tests/parser.js:16",
+        "tests/parser.js:24",
+        "tests/parser.js:32",
+        "tests/parser.js:36",
+        "tests/compiler.js:100"
+      ]
+    },
+    {
       "id": "compiler-capability-errors",
       "file": "tests/source/security.test.ts",
       "test": "capability exceptions retain only inert sanitized messages and halt evaluation",

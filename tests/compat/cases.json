@@ -362,6 +362,18 @@
       "expected": "2|5"
     },
     {
+      "id": "compiler-post-default-formal-order",
+      "template": "{% macro value(a=1, b) %}[{{ a | dump }},{{ b | dump }}]{% endmacro %}{{ value(2,3) }}|{{ value(b=4,5) }}",
+      "context": {},
+      "expected": "[3,2]|[1,5]"
+    },
+    {
+      "id": "compiler-post-keyword-positional-call",
+      "template": "{% macro value(a, b) %}[{{ a | dump }},{{ b | dump }}]{% endmacro %}{{ value(a=1,2) }}|{{ value(b=1,2) }}",
+      "context": {},
+      "expected": "[2,]|[2,1]"
+    },
+    {
       "id": "compiler-macro-explicit-values-skip-default",
       "template": "{% macro render(value=\"DEFAULT\") %}[{{ value }}]{% endmacro %}{{ render(null) }}|{{ render(value=null) }}|{{ render(missing) }}|{{ render(value=missing) }}|{{ render(false) }}|{{ render(value=false) }}|{{ render(0) }}|{{ render(value=0) }}|{{ render(\"\") }}|{{ render(value=\"\") }}|{{ render() }}",
       "context": {},
@@ -458,10 +470,22 @@
       "expected": "<ul><li>a</li><li>b</li></ul>"
     },
     {
+      "id": "compiler-caller-post-default-formal-order",
+      "template": "{% macro wrap() %}{{ caller(2,3) }}{% endmacro %}{% call(a=1,b) wrap() %}[{{ a | dump }},{{ b | dump }}]{% endcall %}",
+      "context": {},
+      "expected": "[3,2]"
+    },
+    {
       "id": "compiler-standalone-block-scope-isolation",
       "template": "{% set var = \"parent\" %}{% block main %}{% set var = \"inner\" %}{% endblock %}{{ var }}",
       "context": {},
       "expected": "parent"
+    },
+    {
+      "id": "compiler-named-endblock",
+      "template": "{% block content %}body{% endblock content %}",
+      "context": {},
+      "expected": "body"
     },
     {
       "id": "compiler-nested-loop-scope",

@@ -659,6 +659,151 @@ test('macro binding uses formal positions and admits only the special caller key
   assert.equal(engine.render('clean'), 'clean');
 });
 
+test('rejects invalid macro and caller declarations before capability dispatch', () => {
+  const engineCalls: string[] = [];
+  const oracleCalls: string[] = [];
+  const capabilities = {
+    capability() {
+      engineCalls.push('capability');
+      return 'value';
+    },
+    wrapperCall() {
+      engineCalls.push('wrapper');
+      return '';
+    },
+    bodyCall() {
+      engineCalls.push('body');
+      return '';
+    },
+    privileged() {
+      engineCalls.push('privileged');
+      return '';
+    },
+    failingWrapper() {
+      engineCalls.push('failing-wrapper');
+      throw new Error('wrapper failed');
+    },
+  };
+  const engine = createEngine({ globals: capabilities });
+  const oracle = new nunjucks.Environment(undefined, { autoescape: false });
+  for (const name of Object.keys(capabilities)) {
+    oracle.addGlobal(name, () => {
+      oracleCalls.push(name);
+      if (name === 'failingWrapper') {
+        throw new Error('wrapper failed');
+      }
+      return name === 'capability' ? 'value' : '';
+    });
+  }
+  const invalidFormals = [
+    '1',
+    'true',
+    'null',
+    '"name"',
+    '[value]',
+    'left + right',
+    'capability()',
+    'record.field',
+  ];
+  for (const formal of invalidFormals) {
+    const macroSources = [
+      `{% macro unused(${formal}) %}` + '${{ bodyCall() }}{% endmacro %}${{ privileged() }}',
+      `{% macro invoked(${formal}) %}` + '${{ bodyCall() }}{% endmacro %}${{ invoked() }}${{ privileged() }}',
+    ];
+    for (const source of macroSources) {
+      assert.throws(() => engine.render(source), NunjitsuRenderError);
+      assert.throws(() => oracle.renderString(source.replaceAll('${{', '{{'), {}));
+      assert.deepEqual(engineCalls, []);
+      assert.deepEqual(oracleCalls, []);
+      assert.equal(engine.render('clean'), 'clean');
+    }
+
+    const wrapperBodies = [
+      '${{ wrapperCall() }}',
+      '${{ wrapperCall() }}${{ caller() }}',
+      '${{ failingWrapper() }}',
+      'normal',
+    ];
+    for (const wrapperBody of wrapperBodies) {
+      const source = [
+        `{% macro wrapper() %}${wrapperBody}{% endmacro %}`,
+        `{% call(${formal}) wrapper() %}` + '${{ bodyCall() }}{% endcall %}',
+        '${{ privileged() }}',
+      ].join('');
+      assert.throws(() => engine.render(source), NunjitsuRenderError);
+      assert.throws(() => oracle.renderString(source.replaceAll('${{', '{{'), {}));
+      assert.deepEqual(engineCalls, []);
+      assert.deepEqual(oracleCalls, []);
+      assert.equal(engine.render('clean'), 'clean');
+    }
+  }
+});
+
+test('rejects malformed structural tags before any template capability executes', () => {
+  const engineCalls: string[] = [];
+  const oracleCalls: string[] = [];
+  const names = ['before', 'inside', 'after', 'ignored'] as const;
+  const engineGlobals = Object.fromEntries(names.map(name => [name, () => {
+    engineCalls.push(name);
+    return name;
+  }]));
+  const engine = createEngine({ globals: engineGlobals });
+  const oracle = new nunjucks.Environment(undefined, { autoescape: false });
+  for (const name of names) {
+    oracle.addGlobal(name, () => {
+      oracleCalls.push(name);
+      return name;
+    });
+  }
+  const malformedSources = [
+    '${{ before() }}{% if false %}${{ inside() }}{% else junk %}${{ inside() }}{% endif %}${{ after() }}',
+    '${{ before() }}{% if true %}${{ inside() }}{% endif junk %}${{ after() }}',
+    '${{ before() }}{% for value in [] %}${{ inside() }}{% else junk %}${{ inside() }}{% endfor %}${{ after() }}',
+    '${{ before() }}{% for value in [] %}${{ inside() }}{% endfor junk %}${{ after() }}',
+    '${{ before() }}{% macro value() %}${{ inside() }}{% endmacro junk %}${{ after() }}',
+    '{% macro wrapper() %}wrapper{% endmacro %}${{ before() }}{% call wrapper() %}${{ inside() }}{% endcall junk %}${{ after() }}',
+    '${{ before() }}{% set value %}${{ inside() }}{% endset junk %}${{ after() }}',
+    '${{ before() }}{% switch 1 %}{% case 2 %}${{ inside() }}{% default junk %}${{ inside() }}{% endswitch %}${{ after() }}',
+    '${{ before() }}{% switch 1 %}{% case 1 %}${{ inside() }}{% endswitch junk %}${{ after() }}',
+    '${{ before() }}{% block content %}${{ inside() }}{% endblock different %}${{ after() }}',
+    '${{ before() }}{% block content %}${{ inside() }}{% endblock content junk %}${{ after() }}',
+    '${{ before() }}{% block content %}${{ inside() }}{% endblock expression() %}${{ after() }}',
+    '${{ before() }}{% block content %}${{ inside() }}{% endblock "literal" %}${{ after() }}',
+    '${{ before() }}{% raw junk %}${{ ignored() }}{% endraw %}${{ after() }}',
+    '${{ before() }}{% verbatim junk %}${{ ignored() }}{% endverbatim %}${{ after() }}',
+  ];
+  for (const source of malformedSources) {
+    assert.throws(() => engine.render(source), NunjitsuRenderError);
+    assert.throws(() => oracle.renderString(source.replaceAll('${{', '{{'), {}));
+    assert.deepEqual(engineCalls, []);
+    assert.deepEqual(oracleCalls, []);
+    assert.equal(engine.render('clean'), 'clean');
+  }
+
+  const validBlockSources = [
+    '{% block content %}body{% endblock %}',
+    '{% block content %}body{% endblock content %}',
+  ];
+  for (const source of validBlockSources) {
+    assert.equal(engine.render(source), oracle.renderString(source, {}));
+  }
+
+  const rawEngine = createEngine({
+    cookiecutterCompat: true,
+    globals: engineGlobals,
+  });
+  for (const source of [
+    '{% raw %}{{ ignored() }}{% endraw %}{{ after() }}',
+    '{% verbatim %}{{ ignored() }}{% endverbatim %}{{ after() }}',
+  ]) {
+    engineCalls.length = 0;
+    oracleCalls.length = 0;
+    assert.equal(rawEngine.render(source), oracle.renderString(source, {}));
+    assert.deepEqual(engineCalls, ['after']);
+    assert.deepEqual(oracleCalls, engineCalls);
+  }
+});
+
 test('record membership tracks key presence independently of its value', () => {
   let policyCalls = 0;
   let privilegedCalls = 0;

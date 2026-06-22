@@ -86,6 +86,17 @@ export class ExpressionParser {
   parseSignature(): AstNode {
     const children = this.#parseArguments(')');
     this.#expect('eof');
+    for (const child of children) {
+      if (child.type === 'KeywordArgs') {
+        for (const pair of child.children) {
+          if (pair.type !== 'Pair' || pair.key.type !== 'Symbol') {
+            this.#fail('Defaulted formal parameters must use names', pair);
+          }
+        }
+      } else if (child.type !== 'Symbol') {
+        this.#fail('Formal parameters must be names', child);
+      }
+    }
     return this.#make('NodeList', { children });
   }
 
@@ -493,9 +504,6 @@ export class ExpressionParser {
         this.#expectValue('=');
         keywords.push(this.#make('Pair', { key, value: this.#parseInlineIf() }, key));
       } else {
-        if (keywords.length > 0) {
-          this.#fail('Positional arguments cannot follow keyword arguments');
-        }
         positional.push(this.#parseInlineIf());
       }
     } while (this.#consume(','));

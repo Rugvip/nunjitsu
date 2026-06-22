@@ -440,6 +440,112 @@ test('uses strict closed identity for switch matching and preserves evaluation o
   assert.equal(engine.render('clean'), 'clean');
 });
 
+test('matches Nunjucks declaration ordering and post-keyword positional calls', () => {
+  const engineOrder: string[] = [];
+  const oracleOrder: string[] = [];
+  const engineGlobalArguments: unknown[][] = [];
+  const oracleGlobalArguments: unknown[][] = [];
+  const engineFilterArguments: unknown[][] = [];
+  const oracleFilterArguments: unknown[][] = [];
+  let engineDefaultCalls = 0;
+  let oracleDefaultCalls = 0;
+  const engine = createEngine({
+    filters: {
+      inspectFilter(input, ...arguments_) {
+        engineFilterArguments.push([input, ...arguments_]);
+        return `${input}:${arguments_[0]}`;
+      },
+    },
+    globals: {
+      defaultValue() {
+        engineDefaultCalls += 1;
+        return 'DEFAULT';
+      },
+      inspect(...arguments_) {
+        engineGlobalArguments.push(Array.from(arguments_));
+        return arguments_[0];
+      },
+      mark(value) {
+        if (typeof value === 'string') {
+          engineOrder.push(value);
+        }
+        return value;
+      },
+    },
+  });
+  const oracle = new nunjucks.Environment(undefined, { autoescape: false });
+  oracle.addFilter('inspectFilter', (input: unknown, ...arguments_: unknown[]) => {
+    oracleFilterArguments.push([input, ...arguments_]);
+    return `${input}:${arguments_[0]}`;
+  });
+  oracle.addGlobal('defaultValue', () => {
+    oracleDefaultCalls += 1;
+    return 'DEFAULT';
+  });
+  oracle.addGlobal('inspect', (...arguments_: unknown[]) => {
+    oracleGlobalArguments.push(Array.from(arguments_));
+    return arguments_[0];
+  });
+  oracle.addGlobal('mark', (value: unknown) => {
+    if (typeof value === 'string') {
+      oracleOrder.push(value);
+    }
+    return value;
+  });
+
+  const declarationSource = [
+    '{% macro first(a=1,b) %}[${{ a | dump }},${{ b | dump }}]{% endmacro %}',
+    '${{ first(2,3) }}|${{ first(b=4,5) }}|',
+    '{% macro second(a,b=1,c) %}[${{ a | dump }},${{ b | dump }},${{ c | dump }}]{% endmacro %}',
+    '${{ second(2,3,4) }}|${{ second(b=5,6) }}|',
+    '{% macro third(a=1,b=2,c) %}[${{ a | dump }},${{ b | dump }},${{ c | dump }}]{% endmacro %}',
+    '${{ third(3,4,5) }}|${{ third(a=6,7) }}|',
+    '{% macro duplicate(a,a=2) %}[${{ a | dump }}]{% endmacro %}',
+    '${{ duplicate(1,3) }}|${{ duplicate(a=4,5) }}|',
+    '{% macro duplicateDefault(a,a=defaultValue()) %}[${{ a | dump }}]{% endmacro %}',
+    '${{ duplicateDefault(8) }}|',
+    '{% macro literalName(true=1) %}${{ true }}{% endmacro %}${{ literalName() }}|',
+    '{% macro defaults(a=defaultValue(),b) %}[${{ a }},${{ b }}]{% endmacro %}',
+    '${{ defaults() }}|${{ defaults(missing,2) }}|${{ defaults(a=missing) }}|',
+    '{% macro pair(a,b) %}[${{ a | dump }},${{ b | dump }}]{% endmacro %}',
+    '${{ pair(a=1,2) }}|${{ pair(b=1,2) }}|',
+    '{% macro wrap() %}${{ caller(2,3) }}{% endmacro %}',
+    '{% call(a=1,b) wrap() %}[${{ a | dump }},${{ b | dump }}]{% endcall %}|',
+    '{% call(a,b=1,c) wrap() %}[${{ a | dump }},${{ b | dump }},${{ c | dump }}]{% endcall %}',
+  ].join('');
+  assert.equal(
+    engine.render(declarationSource),
+    oracle.renderString(declarationSource.replaceAll('${{', '{{'), {}),
+  );
+  assert.equal(engineDefaultCalls, 2);
+  assert.equal(oracleDefaultCalls, engineDefaultCalls);
+
+  const capabilitySource = [
+    '${{ inspect(option=mark("option"),mark("value")) }}|',
+    '${{ "input" | inspectFilter(option=mark("filter-option"),mark("filter-value")) }}',
+  ].join('');
+  assert.equal(
+    engine.render(capabilitySource),
+    oracle.renderString(capabilitySource.replaceAll('${{', '{{'), {}),
+  );
+  assert.deepEqual(engineOrder, ['value', 'option', 'filter-value', 'filter-option']);
+  assert.deepEqual(oracleOrder, engineOrder);
+  assert.deepEqual(engineGlobalArguments, [['value']]);
+  assert.equal(oracleGlobalArguments[0]?.[0], 'value');
+  assert.deepEqual(engineFilterArguments, [['input', 'filter-value']]);
+  assert.deepEqual(oracleFilterArguments[0]?.slice(0, 2), ['input', 'filter-value']);
+
+  assert.throws(
+    () => engine.render(
+      '{% macro value(a=1,b,c=3) %}${{ a }}{% endmacro %}',
+      {},
+      { limits: { astNodes: 1 } },
+    ),
+    NunjitsuLimitError,
+  );
+  assert.equal(engine.render('clean'), 'clean');
+});
+
 test('matches built-in filters, tests, globals, comments, and raw regions', () => {
   const engine = createEngine();
   assert.equal(
