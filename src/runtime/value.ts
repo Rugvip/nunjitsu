@@ -1,3 +1,5 @@
+import { types } from 'node:util';
+
 import type { TemplateValue } from '../values.ts';
 
 /** Names denied throughout the interpreter to eliminate prototype gadget paths. */
@@ -260,6 +262,9 @@ function copyValue(
   }
   if (typeof value !== 'object') {
     throw new TypeError(`Unsupported template value of type ${typeof value}`);
+  }
+  if (types.isProxy(value)) {
+    throw new TypeError('Proxy objects cannot be used as template values');
   }
   if (ancestors.has(value)) {
     throw new TypeError('Cyclic template values are not supported');

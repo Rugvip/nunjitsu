@@ -67,6 +67,127 @@ test('copies only plain data without invoking accessors or host behavior', () =>
   );
 });
 
+test('rejects proxy-backed values before invoking reflection traps', () => {
+  let getPrototypeOfCalls = 0;
+  let ownKeysCalls = 0;
+  let descriptorCalls = 0;
+  let laterCalls = 0;
+  const trapFailure = { secret: 'must not be retained' };
+  const traps = {
+    getPrototypeOf() {
+      getPrototypeOfCalls += 1;
+      throw trapFailure;
+    },
+    ownKeys() {
+      ownKeysCalls += 1;
+      throw trapFailure;
+    },
+    getOwnPropertyDescriptor() {
+      descriptorCalls += 1;
+      throw trapFailure;
+    },
+  };
+  const recordProxy = new Proxy({ value: 'blocked' }, traps);
+  const arrayProxy = new Proxy([1, 2], traps);
+  const revocable = Proxy.revocable({ value: 'blocked' }, traps);
+  revocable.revoke();
+
+  for (const value of [
+    recordProxy,
+    arrayProxy,
+    revocable.proxy,
+    { nested: recordProxy },
+    [recordProxy],
+  ]) {
+    assert.throws(
+      () => copyRuntimeValue(value),
+      /Proxy objects cannot be used as template values/,
+    );
+  }
+
+  const contextEngine = createEngine();
+  assert.throws(
+    () => contextEngine.render('clean', recordProxy),
+    /Proxy objects cannot be used as template values/,
+  );
+  assert.throws(
+    () => contextEngine.render('${{ nested }}', { nested: recordProxy }),
+    /Proxy objects cannot be used as template values/,
+  );
+  assert.throws(
+    () => contextEngine.prepareContext({ value: recordProxy }),
+    /Proxy objects cannot be used as template values/,
+  );
+  const prepared = contextEngine.prepareContext({ steps: {} });
+  assert.throws(
+    () => prepared.withPath(['steps', 'unsafe'], revocable.proxy),
+    /Proxy objects cannot be used as template values/,
+  );
+  assert.throws(
+    () => createEngine({ globals: { unsafe: arrayProxy } }),
+    /Proxy objects cannot be used as template values/,
+  );
+
+  const capabilityEngine = createEngine({
+    filters: {
+      proxyResult() {
+        return recordProxy;
+      },
+    },
+    globals: {
+      proxyResult() {
+        return recordProxy;
+      },
+      nestedProxyResult() {
+        return { nested: recordProxy };
+      },
+      arrayProxyResult() {
+        return arrayProxy;
+      },
+      revokedProxyResult() {
+        return revocable.proxy;
+      },
+      later() {
+        laterCalls += 1;
+        return 'not reached';
+      },
+    },
+  });
+  for (const source of [
+    '${{ "value" | proxyResult }}${{ later() }}',
+    '${{ proxyResult() }}${{ later() }}',
+    '${{ nestedProxyResult() }}${{ later() }}',
+    '${{ arrayProxyResult() }}${{ later() }}',
+    '${{ revokedProxyResult() }}${{ later() }}',
+  ]) {
+    let caught: NunjitsuRenderError | undefined;
+    assert.throws(
+      () => capabilityEngine.render(source),
+      error => {
+        if (!(error instanceof NunjitsuRenderError)) {
+          return false;
+        }
+        caught = error;
+        return error.message ===
+          'Template capability failed: Proxy objects cannot be used as template values';
+      },
+    );
+    assert.ok(caught?.cause instanceof Error);
+    assert.notEqual(caught.cause, trapFailure);
+    assert.equal(caught.cause.cause, undefined);
+    assert.equal(laterCalls, 0);
+    assert.equal(capabilityEngine.render('clean'), 'clean');
+  }
+
+  assert.equal(getPrototypeOfCalls, 0);
+  assert.equal(ownKeysCalls, 0);
+  assert.equal(descriptorCalls, 0);
+  assert.equal(
+    contextEngine.render('${{ value | dump }}', { value: { items: [1, 2] } }),
+    '{"items":[1,2]}',
+  );
+});
+
 test('copying arrays does not invoke inherited host iteration hooks', () => {
   let getterCalls = 0;
   let iteratorCalls = 0;

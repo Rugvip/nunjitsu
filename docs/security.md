@@ -33,9 +33,10 @@ a development-only compatibility oracle and benchmark baseline outside the
 production trust boundary.
 
 Strings, numbers, booleans, nulls, arrays, and record data supplied through
-trusted application code may contain hostile data. Hostile JavaScript proxies
-are outside the boundary because JavaScript provides no trap-free way to
-inspect them.
+trusted application code may contain hostile data. Node's native proxy brand
+check rejects proxy-backed values, including nested and revoked proxies, before
+the copier performs array detection, prototype lookup, key enumeration, or
+descriptor inspection. Rejection therefore does not execute proxy traps.
 
 ## Prohibited execution paths
 
@@ -69,10 +70,10 @@ captures; callers cannot inject a safe-string wrapper through public data.
 
 Functions, accessors, symbols, class instances, typed arrays, dates, maps,
 sets, weak collections, promises, errors, and other exotic objects are
-rejected. Cycles are rejected. Repeated non-cyclic aliases may retain identity
-through internal graph references. Accepted arrays are copied by inspecting own
-indexed data descriptors; the copier never consumes an inherited iteration
-protocol.
+rejected. Proxies and cycles are rejected recursively. Repeated non-cyclic
+aliases may retain identity through internal graph references. Accepted arrays
+are copied by inspecting own indexed data descriptors; the copier never
+consumes an inherited iteration protocol.
 
 Prepared contexts retain this copied graph across renders without retaining the
 host objects it came from. They are opaque, bound to one engine, and immutable.
@@ -126,6 +127,9 @@ single valid template identifiers; dotted names are rejected rather than
 treated as implicit namespaces. The call copies internal arguments to a public
 value graph whose records have null prototypes and copies its result back
 through the safe value validator. Capability results are not implicitly safe.
+Callback execution and result validation share one protected failure boundary,
+so a proxy or other invalid result becomes an opaque capability failure rather
+than exposing the rejected value or a trap-thrown object.
 
 Built-ins that temporarily materialize internal data as JavaScript containers
 must also prevent inherited host hooks from becoming observable. In particular,

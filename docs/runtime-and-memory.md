@@ -39,6 +39,8 @@ Input arrays and records are recursively copied. Records are never used as
 JavaScript prototypes or accessed through `object[key]` inside the interpreter.
 `constructor`, `prototype`, and `__proto__` are reserved throughout parsing,
 copying, scopes, lookup, assignment, registries, and callback results.
+Node-detected proxies, including revoked and nested proxies, are rejected before
+array detection or reflective inspection, so copying never invokes their traps.
 
 One-shot renders discard their copied value graph after rendering. Callers that
 render several sources against the same data may explicitly prepare an opaque,
@@ -88,4 +90,5 @@ guard and is intentionally not exact byte accounting. Nesting depth is checked
 before evaluating each statement and expression node. These are cooperative
 availability safeguards, not a process sandbox or exact CPU/RSS accounting.
 Trusted callbacks execute outside interpreter work accounting except for their
-invocation count and returned-value validation.
+invocation count and returned-value validation. Callback return validation is
+inside the fail-stop capability exception boundary.

@@ -134,6 +134,9 @@ Do not create additional packages without a documented architectural reason.
 - Validate the complete template before executing any node from that source.
 - Inspect input records through own property descriptors and reject accessors.
   Do not invoke getters while copying accepted plain records.
+- Reject Node-detected proxies before array detection or any reflective value
+  inspection. Keep capability result copying inside the opaque fail-stop
+  exception boundary.
 - Keep parser and evaluator internals private. Do not pass AST nodes, scopes,
   internal values, or callable variants to host callbacks.
 - Revalidate template-controlled data whenever it changes semantic role, such

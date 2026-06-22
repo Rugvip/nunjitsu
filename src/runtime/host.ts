@@ -48,29 +48,27 @@ export function createRuntimeHost(capabilities: TemplateCapabilities): RuntimeHo
       if (!callback) {
         return { found: false };
       }
-      let value;
       try {
-        value = callback(
+        const value = callback(
           copyPublicValue(input),
           ...arguments_.positional.map(copyPublicValue),
         );
+        return { found: true, value: copyRuntimeValue(value) };
       } catch (thrown) {
         throw new RuntimeCapabilityError(extractCapabilityMessage(thrown));
       }
-      return { found: true, value: copyRuntimeValue(value) };
     },
     global(name, arguments_) {
       const callback = globalFunctions.get(name);
       if (!callback) {
         return { found: false };
       }
-      let value;
       try {
-        value = callback(...arguments_.positional.map(copyPublicValue));
+        const value = callback(...arguments_.positional.map(copyPublicValue));
+        return { found: true, value: copyRuntimeValue(value) };
       } catch (thrown) {
         throw new RuntimeCapabilityError(extractCapabilityMessage(thrown));
       }
-      return { found: true, value: copyRuntimeValue(value) };
     },
   } satisfies RuntimeHost);
 }
@@ -156,6 +154,9 @@ function copyGlobals(
 }
 
 function assertPlainRecord(value: object, description: string): void {
+  if (types.isProxy(value)) {
+    throw new TypeError(`Template ${description} cannot be a Proxy object`);
+  }
   const prototype = Object.getPrototypeOf(value);
   if (prototype !== Object.prototype && prototype !== null) {
     throw new TypeError(`Template ${description} must be a plain record`);

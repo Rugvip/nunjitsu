@@ -175,7 +175,9 @@ type TemplateContext = Readonly<Record<string, TemplateValue>>;
 At runtime, records must be plain objects with either `Object.prototype` or a
 null prototype. Nunjitsu copies enumerable own data properties without invoking
 getters. It rejects accessors, symbols, custom prototypes, class instances,
-functions, promises, cycles, and other behavior-bearing values.
+functions, promises, proxies, cycles, and other behavior-bearing values. Proxy
+objects, including revoked and nested proxies, are rejected before any proxy
+trap can run.
 
 The names `constructor`, `prototype`, and `__proto__` are reserved throughout
 the template boundary. Later mutation of the caller's input objects is never
@@ -237,8 +239,9 @@ const configured = createEngine({
 Arguments are frozen copies of internal values. Results pass through the same
 validator as context input. Templates cannot access callback functions, live
 host objects, object methods, or capability exceptions. If a capability
-throws, rendering stops immediately and no later template expression or
-capability executes.
+throws or returns an invalid value, rendering stops immediately and no later
+template expression or capability executes. Result validation failures use the
+same opaque capability-error boundary as callback exceptions.
 
 Capability failures preserve a bounded, control-free detail only when the
 thrown value is a primitive string or a native error with an own string data
