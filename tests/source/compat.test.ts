@@ -120,12 +120,12 @@ test('compatibility corpus retains complete attributed provenance', async () => 
   assert.match(license, /Copyright \(c\) 2012-2015, James Long/);
 });
 
-test('applicable upstream cases render synchronously in Cookiecutter mode', t => {
+test('applicable upstream cases render synchronously in Cookiecutter mode', async t => {
   const applicable = cases.cases;
   assert.ok(applicable.length >= 60);
   const engine = createEngine({ cookiecutterCompat: true });
   for (const compatibilityCase of applicable) {
-    void t.test(compatibilityCase.id, () => {
+    await t.test(compatibilityCase.id, () => {
       assert.equal(
         engine.render(compatibilityCase.template, compatibilityCase.context),
         compatibilityCase.expected,
