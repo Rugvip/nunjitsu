@@ -64,7 +64,14 @@ export class RuntimeRecord {
   readonly #entries: ReadonlyMap<string, RuntimeValue>;
 
   constructor(entries: Iterable<readonly [string, RuntimeValue]>) {
-    this.#entries = new Map(entries);
+    const validatedEntries = new Map<string, RuntimeValue>();
+    for (const [name, value] of entries) {
+      if (isReservedName(name)) {
+        throw new TypeError(`Template record key ${name} is reserved`);
+      }
+      validatedEntries.set(name, value);
+    }
+    this.#entries = validatedEntries;
     Object.freeze(this);
   }
 
@@ -397,6 +404,9 @@ function toPublicValue(
     const output = Object.create(null) as Record<string, TemplateValue>;
     aliases.set(value, output);
     for (const [key, item] of value.entries()) {
+      if (isReservedName(key)) {
+        throw new TypeError(`Template record key ${key} is reserved`);
+      }
       const publicItem = toPublicValue(item, aliases);
       if (publicItem !== undefined) {
         output[key] = publicItem;

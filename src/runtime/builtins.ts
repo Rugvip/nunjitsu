@@ -668,6 +668,9 @@ function groupRuntimeValues(input: RuntimeValue, attribute: RuntimeValue): Runti
       key = undefined;
     }
     const renderedKey = key === undefined ? 'undefined' : renderRuntimeValue(key);
+    if (isReservedName(renderedKey)) {
+      throw new TypeError(`Template record key ${renderedKey} is reserved`);
+    }
     const values = grouped.get(renderedKey) ?? [];
     values.push(value);
     grouped.set(renderedKey, values);

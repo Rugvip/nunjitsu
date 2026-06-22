@@ -71,10 +71,13 @@ new snapshot; template execution cannot commit assignments into a snapshot.
 This prevents later host mutation, iteration overlays, and redacted views from
 changing one another.
 
-The names `constructor`, `prototype`, and `__proto__` are rejected at every
-ingress and syntax location and always fail closed during lookup. Prototype
-pollution of `Object.prototype` cannot affect interpreter lookup because host
-objects are never used as scopes or template records.
+The names `constructor`, `prototype`, and `__proto__` are rejected at input,
+syntax, scope, internal record construction, lookup, assignment, registry, and
+capability boundaries. This invariant is enforced again when records cross to
+capability arguments, so a built-in cannot synthesize a reserved property that
+reaches host code. Prototype pollution of `Object.prototype` cannot affect
+interpreter lookup because host objects are never used as scopes or template
+records.
 
 ## Capabilities
 

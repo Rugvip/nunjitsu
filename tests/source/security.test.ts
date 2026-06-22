@@ -183,6 +183,35 @@ test('capability results cross the same closed value boundary', () => {
   assert.throws(() => engine.render('${{ exposeFunction() }}'), /Unsupported template value/);
 });
 
+test('reserved names cannot be synthesized by groupby or cross into capabilities', () => {
+  for (const name of ['__proto__', 'constructor', 'prototype']) {
+    let calls = 0;
+    const target = {};
+    const engine = createEngine({
+      globals: {
+        merge(value) {
+          calls += 1;
+          Object.assign(target, value as object);
+          return null;
+        },
+      },
+    });
+    assert.throws(
+      () => engine.render(
+        `\${{ merge([{"key":"${name}","payload":"attacker-controlled"}] | groupby("key")) }}`,
+      ),
+      /reserved/,
+    );
+    assert.equal(calls, 0);
+    assert.equal(Object.getPrototypeOf(target), Object.prototype);
+    assert.equal(engine.render('clean'), 'clean');
+    assert.throws(
+      () => new RuntimeRecord([[name, 'blocked']]),
+      /reserved/,
+    );
+  }
+});
+
 test('capability exceptions halt evaluation without inspecting thrown values', () => {
   let messageReads = 0;
   let laterCalls = 0;

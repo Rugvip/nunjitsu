@@ -44,7 +44,8 @@ implementation and documentation aligned with the architecture in
   coercion, comparison, and call explicitly by internal value kind. Never use
   reflective host property access as an evaluator shortcut.
 - Reserve `constructor`, `prototype`, and `__proto__` across input, syntax,
-  scopes, registries, lookup, assignment, and callback results.
+  scopes, registries, internal record construction, lookup, assignment, and
+  capability arguments and results.
 - Make sealed interpreter variants for macros, built-ins, and registered
   capabilities the only callable values. Context functions and object methods
   are unsupported.
