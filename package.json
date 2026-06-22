@@ -47,7 +47,7 @@
     "changeset": "changeset",
     "clean": "node scripts/clean.mjs",
     "prepack": "pnpm run build",
-    "release:check": "node scripts/verify-release-version.mjs",
+    "release:check": "node scripts/release/verifyReleaseVersion.mjs",
     "test": "pnpm run typecheck && pnpm run test:source && pnpm run test:benchmark && pnpm run test:package",
     "test:benchmark": "node benchmarks/run.ts --warmup=0 --iterations=1 --loops=1 --silent",
     "test:package": "pnpm run build && pnpm run test:package:types && node --test tests/package/esm.test.mjs tests/package/commonjs.test.cjs",

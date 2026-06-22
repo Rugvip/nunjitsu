@@ -29,5 +29,5 @@ To verify the inventory against an exact checkout of its pinned upstream
 commit, run:
 
 ```sh
-node scripts/verify-upstream-inventory.mjs /path/to/nunjucks
+node scripts/compat/verifyNunjucksInventory.mjs /path/to/nunjucks
 ```

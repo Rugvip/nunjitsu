@@ -4,7 +4,10 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
-const script = fileURLToPath(new URL('../../scripts/verify-release-version.mjs', import.meta.url));
+const script = fileURLToPath(new URL(
+  '../../scripts/release/verifyReleaseVersion.mjs',
+  import.meta.url,
+));
 const packageJson = JSON.parse(readFileSync(
   new URL('../../package.json', import.meta.url),
   'utf8',

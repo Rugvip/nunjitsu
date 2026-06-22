@@ -158,7 +158,8 @@ Do not create additional packages without a documented architectural reason.
   reason identifying the deliberate difference. Suite-level coverage ranges
   must be explicit and backed by a test that enumerates the selected behavior.
 - When changing the pinned Nunjucks baseline or inventory, compare it against
-  an exact upstream checkout with `scripts/verify-upstream-inventory.mjs`.
+  an exact upstream checkout with
+  `scripts/compat/verifyNunjucksInventory.mjs`.
 - Test source `.ts` directly on Node.js 22.18 or newer. When runtime or build
   compatibility changes, validate the built package against the Node.js 22
   package minimum. Also test both built package entry paths and synchronous
