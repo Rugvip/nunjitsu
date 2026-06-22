@@ -254,8 +254,8 @@ same opaque capability-error boundary as callback exceptions.
 Capability failures preserve a bounded, control-free detail only when the
 thrown value is a primitive string or a native error with an own string data
 property named `message`. Every other value produces a fixed diagnostic. The
-original thrown value is discarded and never retained in the public error's
-cause chain. Preserved details may still contain sensitive application data;
+original thrown value is discarded and never retained in the public error.
+Preserved details may still contain sensitive application data;
 do not return them automatically to untrusted clients.
 
 Capability authors must still treat all arguments as attacker-controlled data.
@@ -299,11 +299,43 @@ cooperative guards, not exact CPU, heap, RSS, or process-isolation controls.
 
 The package exports two error classes:
 
-- `NunjitsuRenderError` reports parser or interpreter failures. Its `cause`
-  retains the host-visible diagnostic chain, but thrown capability values are
-  never exposed to template code.
+- `NunjitsuRenderError` reports parser or interpreter failures through an
+  engine-owned sanitized message and structured diagnostic fields. Its `cause`
+  is always `undefined`; internal evaluator errors and capability exceptions
+  are never retained.
 - `NunjitsuLimitError` reports a resource-limit failure. Its `limit` property
   identifies the exceeded `RenderLimits` field when available.
+
+```ts
+type NunjitsuRenderErrorCode =
+  | 'syntax_error'
+  | 'evaluation_error'
+  | 'capability_error';
+
+type NunjitsuRenderErrorPhase = 'parse' | 'evaluate';
+
+interface NunjitsuRenderErrorDetails {
+  readonly code: NunjitsuRenderErrorCode;
+  readonly phase: NunjitsuRenderErrorPhase;
+  readonly line: number | undefined;
+  readonly column: number | undefined;
+}
+
+class NunjitsuRenderError extends Error {
+  readonly code: NunjitsuRenderErrorCode;
+  readonly phase: NunjitsuRenderErrorPhase;
+  readonly line: number | undefined;
+  readonly column: number | undefined;
+  readonly cause: undefined;
+
+  constructor(message: string, details?: NunjitsuRenderErrorDetails);
+}
+```
+
+`line` and `column` are one-based and identify the deepest template node known
+to the engine. They are `undefined` only when no safe template location is
+available. `code` is stable for programmatic handling; `message` remains the
+bounded human-readable diagnostic.
 
 Invalid source, context, prepared-context ownership, capability configuration,
 and reserved names supplied through those API inputs throw `TypeError` before
@@ -334,6 +366,9 @@ The package root exports:
 | `TemplateGlobalFunction` | type | Trusted synchronous global signature. |
 | `RenderLimits` | type | All configurable resource dimensions. |
 | `NunjitsuRenderError` | class | Structured parser or evaluator failure. |
+| `NunjitsuRenderErrorCode` | type | Stable render-failure category. |
+| `NunjitsuRenderErrorPhase` | type | Parse or evaluation failure stage. |
+| `NunjitsuRenderErrorDetails` | type | Structured safe render diagnostic fields. |
 | `NunjitsuLimitError` | class | Resource-limit failure with an optional `limit` field. |
 
 For the supported template-language subset, security model, and detailed

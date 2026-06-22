@@ -163,3 +163,10 @@ All parser, evaluator, built-in, and capability exits additionally converge on
 the public render `finally` boundary, which repeats the deterministic reset as
 defense in depth. These boundaries clear rather than retain or restore ambient
 match state.
+
+Expected parser and evaluator failures are reduced to engine-owned diagnostic
+data before crossing the public boundary. The public render error carries a
+bounded message, stable phase and code, and the deepest available one-based
+template line and column. It never retains an internal error or stack as its
+cause. This keeps diagnostics useful for template authors without making
+logging or recursive inspection another path for untrusted source text.

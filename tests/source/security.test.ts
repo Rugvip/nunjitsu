@@ -172,9 +172,8 @@ test('rejects proxy-backed values before invoking reflection traps', () => {
           'Template capability failed: Proxy objects cannot be used as template values';
       },
     );
-    assert.ok(caught?.cause instanceof Error);
-    assert.notEqual(caught.cause, trapFailure);
-    assert.equal(caught.cause.cause, undefined);
+    assert.equal(caught?.code, 'capability_error');
+    assert.equal(caught?.cause, undefined);
     assert.equal(laterCalls, 0);
     assert.equal(capabilityEngine.render('clean'), 'clean');
   }
@@ -1063,8 +1062,8 @@ test('capability exceptions retain only inert sanitized messages and halt evalua
       },
     );
     assert.equal(caught?.message, message);
-    assert.ok(caught?.cause instanceof Error);
-    assert.equal(caught.cause.cause, undefined);
+    assert.equal(caught?.code, 'capability_error');
+    assert.equal(caught?.cause, undefined);
     inspect(caught, { showHidden: true, depth: 5 });
     JSON.stringify(caught, ['name', 'message', 'cause']);
     assert.equal(messageReads, 0);
@@ -1087,8 +1086,8 @@ test('capability exceptions retain only inert sanitized messages and halt evalua
   );
   assert.match(longError?.message ?? '', /^Template capability failed: x+…$/);
   assert.ok((longError?.message.length ?? 0) <= 1_025);
-  assert.ok(longError?.cause instanceof Error);
-  assert.equal(longError.cause.cause, undefined);
+  assert.equal(longError?.code, 'capability_error');
+  assert.equal(longError?.cause, undefined);
   assert.equal(laterCalls, 0);
   assert.equal(engine.render('clean'), 'clean');
 });
@@ -1160,6 +1159,74 @@ test('parser diagnostics neutralize untrusted token content', () => {
     () => engine.render(longEvaluatorSource),
     error => error instanceof NunjitsuRenderError && error.message.length <= 1_025,
   );
+});
+
+test('public render diagnostics expose safe structure without internal causes', () => {
+  const unsafeControlPattern = /[\u0000-\u0008\u000b-\u001f\u007f-\u009f\u2028\u2029\u202a-\u202e\u2066-\u2069]/;
+  const source = '${{ value["FORGED\\n\\x1b]52;c;YXR0YWNrZXI=\\x07\\u202eTXT"]() }}';
+  let evaluationError: NunjitsuRenderError | undefined;
+  assert.throws(
+    () => createEngine().render(source, { value: {} }),
+    error => {
+      if (!(error instanceof NunjitsuRenderError)) {
+        return false;
+      }
+      evaluationError = error;
+      return true;
+    },
+  );
+  assert.equal(evaluationError?.phase, 'evaluate');
+  assert.equal(evaluationError?.code, 'evaluation_error');
+  assert.equal(evaluationError?.line, 1);
+  assert.equal(evaluationError?.column, 1);
+  assert.equal(evaluationError?.cause, undefined);
+  assert.match(evaluationError?.message ?? '', /FORGED\\u000a\\u001b/);
+  const inspectedEvaluationError = inspect(evaluationError, { showHidden: true, depth: 5 });
+  assert.doesNotMatch(inspectedEvaluationError, unsafeControlPattern);
+  assert.ok(!inspectedEvaluationError.includes('FORGED\n'));
+
+  let parseError: NunjitsuRenderError | undefined;
+  assert.throws(
+    () => createEngine().render('first line\n${{ broken( }}'),
+    error => {
+      if (!(error instanceof NunjitsuRenderError)) {
+        return false;
+      }
+      parseError = error;
+      return true;
+    },
+  );
+  assert.equal(parseError?.phase, 'parse');
+  assert.equal(parseError?.code, 'syntax_error');
+  assert.equal(parseError?.line, 2);
+  assert.equal(parseError?.column, 8);
+  assert.equal(parseError?.cause, undefined);
+
+  const capabilityEngine = createEngine({
+    globals: {
+      fail() {
+        throw new Error('capability\n\u001b[31m');
+      },
+    },
+  });
+  let capabilityError: NunjitsuRenderError | undefined;
+  assert.throws(
+    () => capabilityEngine.render('prefix ${{ fail() }}'),
+    error => {
+      if (!(error instanceof NunjitsuRenderError)) {
+        return false;
+      }
+      capabilityError = error;
+      return true;
+    },
+  );
+  assert.equal(capabilityError?.phase, 'evaluate');
+  assert.equal(capabilityError?.code, 'capability_error');
+  assert.equal(capabilityError?.line, 1);
+  assert.equal(capabilityError?.column, 8);
+  assert.equal(capabilityError?.cause, undefined);
+  assert.doesNotMatch(inspect(capabilityError, { showHidden: true }), unsafeControlPattern);
+  assert.equal(capabilityEngine.render('clean'), 'clean');
 });
 
 test('clears ambient legacy RegExp state after every render', () => {

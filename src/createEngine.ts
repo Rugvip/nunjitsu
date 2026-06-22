@@ -1,9 +1,11 @@
 import type { TemplateCapabilities } from './capabilities.ts';
 import { neutralizeDiagnosticMessage } from './diagnostics.ts';
 import { NunjitsuLimitError, normalizeRenderLimits, type RenderLimits } from './limits.ts';
+import { NunjitsuParseError } from './parser/index.ts';
 import { clearLegacyRegExpState } from './runtime/clearLegacyRegExpState.ts';
 import { evaluateRuntimeTemplate } from './runtime/evaluator.ts';
 import { createRuntimeHost } from './runtime/host.ts';
+import { RuntimeEvaluationError } from './runtime/RuntimeEvaluationError.ts';
 import {
   copyRuntimeContext,
   copyRuntimeValue,
@@ -71,11 +73,64 @@ interface PreparedContextState {
 
 const preparedContextStates = new WeakMap<object, PreparedContextState>();
 
+/** Stable category for a public template render failure. */
+export type NunjitsuRenderErrorCode =
+  | 'syntax_error'
+  | 'evaluation_error'
+  | 'capability_error';
+
+/** Stage of template processing that produced a public render failure. */
+export type NunjitsuRenderErrorPhase = 'parse' | 'evaluate';
+
+/** Engine-owned structured details for a public render failure. */
+export interface NunjitsuRenderErrorDetails {
+  /** Stable machine-readable failure category. */
+  readonly code: NunjitsuRenderErrorCode;
+  /** Template processing stage that failed. */
+  readonly phase: NunjitsuRenderErrorPhase;
+  /** One-based template line when the engine can identify it. */
+  readonly line: number | undefined;
+  /** One-based template column when the engine can identify it. */
+  readonly column: number | undefined;
+}
+
 /** A structured parse or evaluation failure from the closed interpreter. */
 export class NunjitsuRenderError extends Error {
-  constructor(message: string, cause?: unknown) {
-    super(message, { cause });
+  /** Stable machine-readable failure category. */
+  readonly code: NunjitsuRenderErrorCode;
+  /** Template processing stage that failed. */
+  readonly phase: NunjitsuRenderErrorPhase;
+  /** One-based template line when the engine can identify it. */
+  readonly line: number | undefined;
+  /** One-based template column when the engine can identify it. */
+  readonly column: number | undefined;
+  /** Public render errors never expose an underlying thrown value. */
+  declare readonly cause: undefined;
+
+  /** Creates an engine-owned structured render diagnostic. */
+  constructor(
+    message: string,
+    details: NunjitsuRenderErrorDetails = {
+      code: 'evaluation_error',
+      phase: 'evaluate',
+      line: undefined,
+      column: undefined,
+    },
+  ) {
+    super(neutralizeDiagnosticMessage(
+      typeof message === 'string' ? message : 'Template rendering failed',
+    ));
     this.name = 'NunjitsuRenderError';
+    this.code = details.code;
+    this.phase = details.phase;
+    this.line = details.line;
+    this.column = details.column;
+    Object.defineProperty(this, 'cause', {
+      configurable: false,
+      enumerable: false,
+      value: undefined,
+      writable: false,
+    });
   }
 }
 
@@ -119,16 +174,48 @@ export function createEngine(options: EngineOptions = {}): Engine {
           if (error instanceof NunjitsuLimitError) {
             throw error;
           }
-          const message = error instanceof Error
-            ? neutralizeDiagnosticMessage(error.message)
-            : 'Template rendering failed';
-          throw new NunjitsuRenderError(message, error);
+          const diagnostic = publicRenderDiagnostic(error);
+          throw new NunjitsuRenderError(diagnostic.message, diagnostic);
         }
       } finally {
         clearLegacyRegExpState();
       }
     },
   });
+}
+
+function publicRenderDiagnostic(
+  error: unknown,
+): NunjitsuRenderErrorDetails & { readonly message: string } {
+  if (error instanceof NunjitsuParseError) {
+    return {
+      code: 'syntax_error',
+      phase: 'parse',
+      line: oneBased(error.line),
+      column: oneBased(error.column),
+      message: error.message,
+    };
+  }
+  if (RuntimeEvaluationError.is(error)) {
+    return {
+      code: error.code,
+      phase: 'evaluate',
+      line: oneBased(error.line),
+      column: oneBased(error.column),
+      message: error.message,
+    };
+  }
+  return {
+    code: 'evaluation_error',
+    phase: 'evaluate',
+    line: undefined,
+    column: undefined,
+    message: 'Template rendering failed',
+  };
+}
+
+function oneBased(value: number | undefined): number | undefined {
+  return value === undefined ? undefined : value + 1;
 }
 
 function createPreparedContext(

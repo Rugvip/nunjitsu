@@ -181,6 +181,10 @@ Do not create additional packages without a documented architectural reason.
 - Complete public API validation before template evaluation. Pass through only
   `NunjitsuLimitError` from evaluation and wrap every other evaluation failure
   in `NunjitsuRenderError`, regardless of its underlying JavaScript error class.
+- Public render errors must expose only engine-owned bounded messages, stable
+  phase and code fields, and one-based template coordinates. Never retain an
+  internal error, stack, thrown capability value, or other original value as
+  `cause`; the public `cause` property remains `undefined`.
 - Never interpolate raw template source or decoded token values into
   diagnostics. Use the central bounded diagnostic formatter and keep the public
   render-error message independently neutralized and single-line.

@@ -7,6 +7,7 @@ import type {
 } from '../capabilities.ts';
 import { neutralizeDiagnosticMessage } from '../diagnostics.ts';
 import { clearLegacyRegExpState } from './clearLegacyRegExpState.ts';
+import { RuntimeEvaluationError } from './RuntimeEvaluationError.ts';
 import {
   copyPublicValue,
   copyRuntimeValue,
@@ -16,14 +17,6 @@ import {
 import type { RuntimeArguments, RuntimeHost } from './evaluator.ts';
 
 const templateIdentifierPattern = /^[A-Za-z_][A-Za-z0-9_]*$/;
-
-/** An opaque fail-stop signal for one trusted capability exception. */
-class RuntimeCapabilityError extends Error {
-  constructor(detail?: string) {
-    super(detail ? `Template capability failed: ${detail}` : 'Template capability failed');
-    this.name = 'RuntimeCapabilityError';
-  }
-}
 
 /** Creates an immutable synchronous host dispatcher for the interpreter. */
 export function createRuntimeHost(capabilities: TemplateCapabilities): RuntimeHost {
@@ -76,7 +69,11 @@ function invokeCapability<T>(operation: () => T): T {
     try {
       return operation();
     } catch (thrown) {
-      throw new RuntimeCapabilityError(extractCapabilityMessage(thrown));
+      const detail = extractCapabilityMessage(thrown);
+      throw new RuntimeEvaluationError(
+        'capability_error',
+        detail ? `Template capability failed: ${detail}` : 'Template capability failed',
+      );
     }
   } finally {
     clearLegacyRegExpState();

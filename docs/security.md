@@ -163,7 +163,7 @@ Every other thrown value produces a fixed message.
 
 The boundary constructs a new engine-owned error containing only that inert
 string and discards the original thrown value. No original error, proxy, or
-exotic object remains reachable through the public cause chain, so later
+exotic object remains reachable through the public error, so later
 logging, recursive inspection, or serialization cannot execute its getters,
 proxy traps, coercion methods, `toJSON`, or custom inspection hooks. The
 exception immediately unwinds the interpreter, no later template node or
@@ -177,14 +177,20 @@ configuration therefore retain their direct `TypeError` or `RangeError`
 contracts. Once evaluation starts, every failure except `NunjitsuLimitError`
 is wrapped in `NunjitsuRenderError`; an attacker-controlled template cannot
 select a built-in JavaScript error class to bypass application render-error
-handling.
+handling. The wrapper retains no underlying cause. It exposes only a bounded
+engine-owned message, stable parse/evaluation phase and failure code, and the
+deepest available one-based template coordinates. Unknown internal thrown
+values are never retained; non-native values receive a fixed diagnostic, while
+native engine errors contribute only an own string-valued message data property.
 
 Parser diagnostics never interpolate raw token content. Source-derived values
 use a central quoted formatter that escapes C0, C1, terminal, line-separator,
 and bidirectional formatting controls and truncates long values. The public
 render boundary independently neutralizes controls and bounds the complete
 message, so logging `NunjitsuRenderError.message` cannot create additional log
-lines or terminal control sequences.
+lines or terminal control sequences. Logging or recursively inspecting the
+complete error is also safe because `cause` is always `undefined` and no raw
+internal stack or error object crosses the boundary.
 
 Nunjitsu accepts inline source only and imports no filesystem APIs. Applications
 perform file discovery, path confinement, symbolic-link handling, and reads

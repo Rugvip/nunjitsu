@@ -32,6 +32,7 @@ import {
   runtimeToPropertyKey,
   runtimeToString,
 } from './coercion.ts';
+import { RuntimeEvaluationError } from './RuntimeEvaluationError.ts';
 import { RuntimeScope } from './scope.ts';
 import { stringCodeUnits } from './stringCodeUnits.ts';
 import {
@@ -194,8 +195,15 @@ class Evaluator {
     }
     const scope = contextScope.child(true);
     const output: OutputTarget = [];
-    this.#renderTemplate(ast, scope, output, 0);
-    return output.join('');
+    try {
+      this.#renderTemplate(ast, scope, output, 0);
+      return output.join('');
+    } catch (error) {
+      if (error instanceof NunjitsuLimitError) {
+        throw error;
+      }
+      throw RuntimeEvaluationError.from(error, ast.line, ast.column);
+    }
   }
 
   #renderTemplate(
@@ -216,6 +224,22 @@ class Evaluator {
   }
 
   #evaluateNode(
+    node: AstNode,
+    scope: RuntimeScope,
+    output: OutputTarget,
+    depth: number,
+  ): void {
+    try {
+      this.#evaluateNodeUnchecked(node, scope, output, depth);
+    } catch (error) {
+      if (error instanceof NunjitsuLimitError) {
+        throw error;
+      }
+      throw RuntimeEvaluationError.from(error, node.line, node.column);
+    }
+  }
+
+  #evaluateNodeUnchecked(
     node: AstNode,
     scope: RuntimeScope,
     output: OutputTarget,
@@ -415,6 +439,21 @@ class Evaluator {
   }
 
   #evaluateExpression(
+    node: AstNode,
+    scope: RuntimeScope,
+    depth: number,
+  ): RuntimeValue {
+    try {
+      return this.#evaluateExpressionUnchecked(node, scope, depth);
+    } catch (error) {
+      if (error instanceof NunjitsuLimitError) {
+        throw error;
+      }
+      throw RuntimeEvaluationError.from(error, node.line, node.column);
+    }
+  }
+
+  #evaluateExpressionUnchecked(
     node: AstNode,
     scope: RuntimeScope,
     depth: number,

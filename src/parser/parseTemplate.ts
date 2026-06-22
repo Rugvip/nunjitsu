@@ -33,8 +33,8 @@ export class NunjitsuParseError extends Error {
   readonly line: number | undefined;
   readonly column: number | undefined;
 
-  constructor(message: string, line?: number, column?: number, cause?: unknown) {
-    super(message, { cause });
+  constructor(message: string, line?: number, column?: number) {
+    super(message);
     this.name = 'NunjitsuParseError';
     this.line = line;
     this.column = column;
@@ -72,9 +72,9 @@ export function parseTemplate(
       throw error;
     }
     if (error instanceof ExpressionSyntaxError) {
-      throw new NunjitsuParseError(error.message, error.line, error.column, error);
+      throw new NunjitsuParseError(error.message, error.line, error.column);
     }
-    throw new NunjitsuParseError('Invalid template syntax', undefined, undefined, error);
+    throw new NunjitsuParseError('Invalid template syntax');
   }
 }
 

@@ -3,6 +3,9 @@ export {
   NunjitsuRenderError,
   type Engine,
   type EngineOptions,
+  type NunjitsuRenderErrorCode,
+  type NunjitsuRenderErrorDetails,
+  type NunjitsuRenderErrorPhase,
   type PreparedContext,
   type RenderOptions,
 } from './createEngine.ts';

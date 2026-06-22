@@ -919,29 +919,22 @@ test('wraps parse and evaluation failures without retaining render state', () =>
     error => error instanceof NunjitsuRenderError,
   );
 
-  const templateFailures: ReadonlyArray<{
-    readonly source: string;
-    readonly cause: ErrorConstructor;
-  }> = [
-    { source: 'before${{ [] | batch(0) }}after', cause: TypeError },
-    { source: 'before${{ [1] | dictsort }}after', cause: TypeError },
-    {
-      source: 'before${{ [{"key":"__proto__"}] | groupby("key") }}after',
-      cause: TypeError,
-    },
-    { source: 'before${{ "x" | center(1e309) }}after', cause: RangeError },
-    {
-      source: 'before${{ "' + String.fromCharCode(0xd800) + '" | urlencode }}after',
-      cause: URIError,
-    },
-    { source: 'before${{ "x" | unknownFilter }}after', cause: Error },
+  const templateFailures = [
+    'before${{ [] | batch(0) }}after',
+    'before${{ [1] | dictsort }}after',
+    'before${{ [{"key":"__proto__"}] | groupby("key") }}after',
+    'before${{ "x" | center(1e309) }}after',
+    'before${{ "' + String.fromCharCode(0xd800) + '" | urlencode }}after',
+    'before${{ "x" | unknownFilter }}after',
   ];
-  for (const { source, cause } of templateFailures) {
+  for (const source of templateFailures) {
     assert.throws(
       () => engine.render(source),
       error => (
         error instanceof NunjitsuRenderError &&
-        error.cause instanceof cause
+        error.phase === 'evaluate' &&
+        error.code === 'evaluation_error' &&
+        error.cause === undefined
       ),
       source,
     );
