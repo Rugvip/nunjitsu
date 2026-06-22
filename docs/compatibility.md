@@ -26,6 +26,9 @@ Nunjitsu targets:
 - explicit Nunjucks-compatible strict and loose equality over closed values;
 - Nunjucks-compatible closed primitive, property-key, numeric, concatenation,
   lookup, membership, and relational coercion without host object hooks;
+- observable Nunjucks mixed-operator grouping, including left-associative
+  exponentiation, concatenation in the emitted additive tier, and wrapped
+  floor-division behavior among multiplicative operators;
 - built-in filters, tests, and globals used by direct string templates;
 - synchronous application filters and `TemplateValue` data or callable globals;
 - `trimBlocks` and `lstripBlocks`; and

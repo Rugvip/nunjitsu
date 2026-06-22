@@ -25,6 +25,15 @@ Full parsing reports syntax errors in inactive branches and unused macros.
 Template-loading and extension nodes are rejected. No AST or source survives a
 render.
 
+Expression nodes encode the observable result of Nunjucks's parser and
+generated-JavaScript grouping without generating or executing JavaScript.
+Exponentiation chains associate left. Concatenation, addition, and subtraction
+form one left-associative emitted tier. Floor division becomes an explicit
+closed floor node around the multiplicative sequence that Nunjucks would place
+inside `Math.floor`, including adjacent modulo operations. Parenthesized groups
+remain explicit AST boundaries, and evaluator traversal preserves source-order
+operand and capability evaluation.
+
 ## Closed values
 
 The interpreter owns all values:

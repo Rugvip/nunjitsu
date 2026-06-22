@@ -152,7 +152,6 @@ export interface AstBinaryNode extends AstNodeBase {
     | 'Sub'
     | 'Mul'
     | 'Div'
-    | 'FloorDiv'
     | 'Mod'
     | 'Pow';
   readonly left: AstNode;
@@ -161,7 +160,7 @@ export interface AstBinaryNode extends AstNodeBase {
 
 /** A unary expression. */
 export interface AstUnaryNode extends AstNodeBase {
-  readonly type: 'Not' | 'Neg' | 'Pos';
+  readonly type: 'Not' | 'Neg' | 'Pos' | 'Floor';
   readonly target: AstNode;
 }
 

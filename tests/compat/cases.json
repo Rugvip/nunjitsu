@@ -68,10 +68,34 @@
       "expected": "1024"
     },
     {
+      "id": "compiler-mixed-power-associativity",
+      "template": "{{ 2 ** 3 ** 2 }}|{{ 2 ** (3 ** 2) }}|{{ (2 ** 3) ** 2 }}",
+      "context": {},
+      "expected": "64|512|64"
+    },
+    {
+      "id": "compiler-unary-power-precedence",
+      "template": "{{ -2 ** 2 }}|{{ (-2) ** 2 }}|{{ -(2 ** 2) }}",
+      "context": {},
+      "expected": "4|4|-4"
+    },
+    {
+      "id": "compiler-mixed-concatenation-precedence",
+      "template": "{{ 1 ~ 2 + 3 }}|{{ 1 ~ (2 + 3) }}|{{ (1 ~ 2) + 3 }}|{{ 1 ~ 2 - 3 }}",
+      "context": {},
+      "expected": "123|15|123|9"
+    },
+    {
       "id": "compiler-floor-division",
       "template": "{{ 9//5 }}",
       "context": {},
       "expected": "1"
+    },
+    {
+      "id": "compiler-mixed-floor-division-precedence",
+      "template": "{{ 20 * 6 // 4 }}|{{ 20 / 6 // 2 }}|{{ 20 // 6 * 4 }}|{{ 20 // 6 // 2 }}|{{ 20 % 6 // 2 }}",
+      "context": {},
+      "expected": "20|6.666666666666667|12|1|1"
     },
     {
       "id": "compiler-modulus",

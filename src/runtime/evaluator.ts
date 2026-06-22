@@ -555,12 +555,15 @@ class Evaluator {
         return -runtimeToNumber(this.#evaluateExpression(node.target, scope, depth + 1));
       case 'Pos':
         return runtimeToNumber(this.#evaluateExpression(node.target, scope, depth + 1));
+      case 'Floor':
+        return Math.floor(runtimeToNumber(
+          this.#evaluateExpression(node.target, scope, depth + 1),
+        ));
       case 'Add':
       case 'Concat':
       case 'Sub':
       case 'Mul':
       case 'Div':
-      case 'FloorDiv':
       case 'Mod':
       case 'Pow':
         return this.#evaluateBinary(node, scope, depth + 1);
@@ -639,7 +642,6 @@ class Evaluator {
       case 'Sub': return leftNumber - rightNumber;
       case 'Mul': return leftNumber * rightNumber;
       case 'Div': return leftNumber / rightNumber;
-      case 'FloorDiv': return Math.floor(leftNumber / rightNumber);
       case 'Mod': return leftNumber % rightNumber;
       case 'Pow': return leftNumber ** rightNumber;
       default: throw new Error(`Invalid binary operator ${node.type}`);
@@ -1284,13 +1286,13 @@ function astChildren(node: AstNode): readonly AstNode[] {
     case 'Sub':
     case 'Mul':
     case 'Div':
-    case 'FloorDiv':
     case 'Mod':
     case 'Pow':
       return [node.left, node.right];
     case 'Not':
     case 'Neg':
     case 'Pos':
+    case 'Floor':
       return [node.target];
     case 'Compare':
       return [node.expr, ...node.ops];

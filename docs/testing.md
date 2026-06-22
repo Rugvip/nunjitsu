@@ -53,8 +53,9 @@ handling, strict and loose equality, malformed syntax, public error
 classification, centralized coercion and canonical indices, diagnostic control
 characters and truncation, inert capability exception handling, legacy RegExp
 state isolation at capability and nested-render boundaries, render-exit cleanup,
-and render state cleanup after failures. Static checks reject dynamic execution
-and host reflection in parser and interpreter modules.
+mixed-operator grouping and operand order, and render state cleanup after
+failures. Static checks reject dynamic execution and host reflection in parser
+and interpreter modules.
 
 ## Fuzzing policy
 

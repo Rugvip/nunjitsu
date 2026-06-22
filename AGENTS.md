@@ -160,6 +160,10 @@ Do not create additional packages without a documented architectural reason.
 - Accept array and string indices only after property-key conversion and only
   when the key is the canonical in-range nonnegative integer spelling. Treat
   array membership as strict identity rather than loose equality.
+- Match pinned Nunjucks observable mixed-operator grouping rather than assuming
+  conventional precedence or copying its parser tree literally. Power is
+  left-associative, concatenation participates in the additive emitted tier,
+  and floor division preserves Nunjucks's wrapped multiplicative behavior.
 - Clear all host-realm legacy RegExp capture state in a public render-level
   `finally` block. Cover successful and failed renders, and do not claim that
   pre-existing legacy state can be restored.

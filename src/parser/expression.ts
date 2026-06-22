@@ -10,6 +10,18 @@ interface Token {
   readonly column: number;
 }
 
+type MultiplicativeOperator = 'Mul' | 'Div' | 'Mod';
+
+interface MultiplicativeOperation {
+  readonly type: MultiplicativeOperator;
+  readonly right: AstNode;
+}
+
+interface MultiplicativeSequence {
+  readonly first: AstNode;
+  readonly operations: MultiplicativeOperation[];
+}
+
 const simpleStringEscapes: Readonly<Record<string, string>> = Object.freeze({
   n: '\n',
   r: '\r',
@@ -108,7 +120,7 @@ export class ExpressionParser {
   }
 
   #parseCompare(): AstNode {
-    const left = this.#parseConcat();
+    const left = this.#parseAdditive();
     if (this.#consumeName('is')) {
       const negate = this.#consumeName('not');
       const testName = this.#expect('name');
@@ -140,7 +152,7 @@ export class ExpressionParser {
       if (!operator) {
         break;
       }
-      const expr = this.#parseConcat();
+      const expr = this.#parseAdditive();
       operations.push(this.#make('CompareOperand', { expr, operator }, expr));
     }
     if (operations.length === 0) {
@@ -152,21 +164,15 @@ export class ExpressionParser {
     }, left);
   }
 
-  #parseConcat(): AstNode {
-    let left = this.#parseAdd();
-    while (this.#consume('~')) {
-      left = this.#make('Concat', { left, right: this.#parseAdd() }, left);
-    }
-    return left;
-  }
-
-  #parseAdd(): AstNode {
+  #parseAdditive(): AstNode {
     let left = this.#parseMultiply();
     for (;;) {
       if (this.#consume('+')) {
         left = this.#make('Add', { left, right: this.#parseMultiply() }, left);
       } else if (this.#consume('-')) {
         left = this.#make('Sub', { left, right: this.#parseMultiply() }, left);
+      } else if (this.#consume('~')) {
+        left = this.#make('Concat', { left, right: this.#parseMultiply() }, left);
       } else {
         return left;
       }
@@ -174,26 +180,66 @@ export class ExpressionParser {
   }
 
   #parseMultiply(): AstNode {
-    let left = this.#parsePower();
-    for (;;) {
-      if (this.#consume('*')) {
-        left = this.#make('Mul', { left, right: this.#parsePower() }, left);
-      } else if (this.#consume('/')) {
-        left = this.#make('Div', { left, right: this.#parsePower() }, left);
-      } else if (this.#consume('//')) {
-        left = this.#make('FloorDiv', { left, right: this.#parsePower() }, left);
-      } else if (this.#consume('%')) {
-        left = this.#make('Mod', { left, right: this.#parsePower() }, left);
-      } else {
-        return left;
-      }
+    return this.#materializeMultiplicative(this.#parseMultiplySequence());
+  }
+
+  #parseMultiplySequence(): MultiplicativeSequence {
+    const sequence = this.#parseDivideSequence();
+    while (this.#consume('*')) {
+      this.#appendMultiplicative(sequence, 'Mul', this.#parseDivideSequence());
     }
+    return sequence;
+  }
+
+  #parseDivideSequence(): MultiplicativeSequence {
+    const sequence = this.#parseFloorDivideSequence();
+    while (this.#consume('/')) {
+      this.#appendMultiplicative(sequence, 'Div', this.#parseFloorDivideSequence());
+    }
+    return sequence;
+  }
+
+  #parseFloorDivideSequence(): MultiplicativeSequence {
+    let sequence = this.#parseModuloSequence();
+    while (this.#consume('//')) {
+      this.#appendMultiplicative(sequence, 'Div', this.#parseModuloSequence());
+      const target = this.#materializeMultiplicative(sequence);
+      sequence = { first: this.#make('Floor', { target }, target), operations: [] };
+    }
+    return sequence;
+  }
+
+  #parseModuloSequence(): MultiplicativeSequence {
+    const sequence: MultiplicativeSequence = {
+      first: this.#parsePower(),
+      operations: [],
+    };
+    while (this.#consume('%')) {
+      sequence.operations.push({ type: 'Mod', right: this.#parsePower() });
+    }
+    return sequence;
+  }
+
+  #appendMultiplicative(
+    sequence: MultiplicativeSequence,
+    type: MultiplicativeOperator,
+    right: MultiplicativeSequence,
+  ): void {
+    sequence.operations.push({ type, right: right.first }, ...right.operations);
+  }
+
+  #materializeMultiplicative(sequence: MultiplicativeSequence): AstNode {
+    let left = sequence.first;
+    for (const operation of sequence.operations) {
+      left = this.#make(operation.type, { left, right: operation.right }, left);
+    }
+    return left;
   }
 
   #parsePower(): AstNode {
     let left = this.#parseFilter();
-    if (this.#consume('**')) {
-      left = this.#make('Pow', { left, right: this.#nested(() => this.#parsePower()) }, left);
+    while (this.#consume('**')) {
+      left = this.#make('Pow', { left, right: this.#parseFilter() }, left);
     }
     return left;
   }

@@ -289,6 +289,82 @@ test('matches applicable upstream runtime edge cases', () => {
   assert.throws(() => engine.render('{{ 1 in 2 }}'), /Membership requires/);
 });
 
+test('matches Nunjucks mixed-operator grouping and evaluation order', () => {
+  const calls: string[] = [];
+  const oracleCalls: string[] = [];
+  let privilegedCalls = 0;
+  let oraclePrivilegedCalls = 0;
+  const engine = createEngine({
+    globals: {
+      mark(name, value) {
+        if (typeof name === 'string') {
+          calls.push(name);
+        }
+        return value;
+      },
+      privileged() {
+        privilegedCalls += 1;
+        return 'privileged';
+      },
+      fail() {
+        calls.push('fail');
+        throw new Error('expected failure');
+      },
+    },
+  });
+  const oracle = new nunjucks.Environment(undefined, { autoescape: false });
+  oracle.addGlobal('mark', (name: string, value: unknown) => {
+    oracleCalls.push(name);
+    return value;
+  });
+  oracle.addGlobal('privileged', () => {
+    oraclePrivilegedCalls += 1;
+    return 'privileged';
+  });
+  oracle.addGlobal('fail', () => {
+    oracleCalls.push('fail');
+    throw new Error('expected failure');
+  });
+
+  const operationSource = [
+    '${{ mark("power-a", 2) ** mark("power-b", 3) ** mark("power-c", 2) }}|',
+    '${{ mark("concat-a", 1) ~ mark("concat-b", 2) + mark("concat-c", 3) }}|',
+    '${{ mark("floor-a", 20) * mark("floor-b", 6) // mark("floor-c", 4) }}|',
+    '${{ mark("group-a", 1) ~ (mark("group-b", 2) + mark("group-c", 3)) }}',
+  ].join('');
+  const expectedOutput = oracle.renderString(operationSource.replaceAll('${{', '{{'), {});
+  assert.equal(engine.render(operationSource), expectedOutput);
+  assert.equal(expectedOutput, '64|123|20|15');
+  assert.deepEqual(calls, oracleCalls);
+  assert.deepEqual(calls, [
+    'power-a', 'power-b', 'power-c',
+    'concat-a', 'concat-b', 'concat-c',
+    'floor-a', 'floor-b', 'floor-c',
+    'group-a', 'group-b', 'group-c',
+  ]);
+
+  const branchSource = [
+    '{% if 2 ** 3 ** 2 == 64 %}${{ privileged() }}{% endif %}|',
+    '{% if 1 ~ 2 + 3 == "123" %}${{ privileged() }}{% endif %}|',
+    '{% if 20 * 6 // 4 == 20 %}${{ privileged() }}{% endif %}',
+  ].join('');
+  assert.equal(
+    engine.render(branchSource),
+    oracle.renderString(branchSource.replaceAll('${{', '{{'), {}),
+  );
+  assert.equal(privilegedCalls, 3);
+  assert.equal(oraclePrivilegedCalls, 3);
+
+  calls.length = 0;
+  oracleCalls.length = 0;
+  const failureSource = '${{ mark("before", 1) + fail() + mark("after", 2) }}';
+  assert.throws(() => engine.render(failureSource), NunjitsuRenderError);
+  assert.throws(() => oracle.renderString(failureSource.replaceAll('${{', '{{'), {}));
+  assert.deepEqual(calls, ['before', 'fail']);
+  assert.deepEqual(oracleCalls, calls);
+  assert.equal(engine.render('clean'), 'clean');
+});
+
 test('uses UTF-16 code units consistently for string operations', () => {
   const engine = createEngine();
   const oracle = new nunjucks.Environment(undefined, { autoescape: false });
