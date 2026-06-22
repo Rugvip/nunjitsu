@@ -31,3 +31,10 @@ commit, run:
 ```sh
 node scripts/compat/verifyNunjucksInventory.mjs /path/to/nunjucks
 ```
+
+When intentionally replacing the pinned baseline, regenerate the inventory
+from that exact checkout before classifying it:
+
+```sh
+node scripts/compat/importNunjucksInventory.mjs /path/to/nunjucks
+```
