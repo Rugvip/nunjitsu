@@ -282,8 +282,9 @@
     },
     {
       "upstream": {"id":"tests/parser.js:32","file":"tests/parser.js","test":"should parse switch statements"},
-      "status": "not applicable",
-      "reason": "Requires automatic escaping, while the direct-string API fixes autoescape to false."
+      "status": "adapted",
+      "reason": "Switch parsing and strict case selection are verified through rendered output with fixed autoescape false.",
+      "cases": ["compiler-switch-strict-primitives","compiler-switch-reference-identity"]
     },
     {
       "upstream": {"id":"tests/parser.js:33","file":"tests/parser.js","test":"should parse keyword and non-keyword arguments"},
@@ -1004,8 +1005,9 @@
     },
     {
       "upstream": {"id":"tests/compiler.js:13","file":"tests/compiler.js","test":"should compile switch statements"},
-      "status": "not applicable",
-      "reason": "Requires automatic escaping, while the direct-string API fixes autoescape to false."
+      "status": "adapted",
+      "reason": "Observable strict switch matching and reference identity are verified through the direct-string interpreter with fixed autoescape false.",
+      "cases": ["compiler-switch-strict-primitives","compiler-switch-reference-identity"]
     },
     {
       "upstream": {"id":"tests/compiler.js:17","file":"tests/compiler.js","test":"should loop over simple arrays"},
@@ -1639,7 +1641,8 @@
     },
     {
       "upstream": {"id":"tests/tests.js:26","file":"tests/tests.js","test":"sameas should alias to equalto"},
-      "status": "ported"
+      "status": "ported",
+      "cases": ["compiler-builtin-callable-identity","compiler-macro-member-identity"]
     },
     {
       "upstream": {"id":"tests/tests.js:27","file":"tests/tests.js","test":"lower should detect whether or not a string is lowercased"},

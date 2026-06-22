@@ -157,6 +157,11 @@ Do not create additional packages without a documented architectural reason.
   equality semantics in closed coercion helpers that dispatch exhaustively by
   runtime value kind. Never reuse output rendering for semantic conversion or
   invoke `valueOf`, `toString`, or another host object hook.
+- Give each directly resolved registered or built-in global one canonical
+  sealed callable handle per render. Ordinary array, record, and callable-valued
+  built-in member lookup must return a fresh sealed alias carrying only the same
+  evaluator-owned kind and ID; scope lookup and loop destructuring retain the
+  canonical handle. Use closed strict identity for `switch` case matching.
 - Accept array and string indices only after property-key conversion and only
   when the key is the canonical in-range nonnegative integer spelling. Treat
   array membership as strict identity rather than loose equality.

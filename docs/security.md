@@ -102,6 +102,8 @@ Template-controlled data is revalidated whenever its role changes:
   allowed key containing `undefined` distinct from a missing or reserved key;
 - equality dispatches explicitly by closed value kind; strict comparisons use
   identity and loose comparisons never invoke object coercion hooks;
+- switch selection uses closed strict identity, and callable identity comparison
+  never invokes the registered host callback;
 - lookup, membership, derived keys, arithmetic, concatenation, and relational
   operations use centralized closed coercion rather than output rendering;
   callable coercion fails closed;
@@ -140,6 +142,14 @@ through the safe value validator. Capability results are not implicitly safe.
 Callback execution and result validation share one protected failure boundary,
 so a proxy or other invalid result becomes an opaque capability failure rather
 than exposing the rejected value or a trap-thrown object.
+
+Direct resolution of one registered global reuses a canonical render-local
+sealed handle. Ordinary member lookup creates a fresh sealed alias with the
+same private kind and ID so identity changes without changing authority. The
+alias contains no callback, receiver, prototype, binding object, or host
+reference, and dispatch still consults the evaluator's private ID map. Neither
+canonical handles nor aliases can cross capability arguments or results, be
+forged by public template data, or survive the evaluator that owns them.
 
 Built-ins that temporarily materialize internal data as JavaScript containers
 must also prevent inherited host hooks from becoming observable. In particular,

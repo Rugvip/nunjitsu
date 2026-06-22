@@ -206,6 +206,30 @@
       "expected": "yes|yes|no|no"
     },
     {
+      "id": "compiler-switch-strict-primitives",
+      "template": "{% switch 1 %}{% case \"1\" %}A{% default %}D{% endswitch %}|{% switch 0 %}{% case false %}A{% default %}D{% endswitch %}|{% switch null %}{% case missing %}A{% default %}D{% endswitch %}|{% switch \"x\" | safe %}{% case \"x\" %}A{% default %}D{% endswitch %}|{% switch 0 %}{% case -0 %}M{% default %}D{% endswitch %}",
+      "context": {},
+      "expected": "D|D|D|D|M"
+    },
+    {
+      "id": "compiler-switch-reference-identity",
+      "template": "{% set array = [1] %}{% set arrayAlias = array %}{% set record = {x:1} %}{% set recordAlias = record %}{% switch array %}{% case arrayAlias %}A{% default %}D{% endswitch %}|{% switch array %}{% case [1] %}W{% default %}D{% endswitch %}|{% switch record %}{% case recordAlias %}R{% default %}D{% endswitch %}|{% switch record %}{% case {x:1} %}W{% default %}D{% endswitch %}",
+      "context": {},
+      "expected": "A|D|R|D"
+    },
+    {
+      "id": "compiler-builtin-callable-identity",
+      "template": "{{ range === range }}|{{ range is sameas(range) }}|{{ cycler === cycler }}|{{ joiner === joiner }}|{{ cycler(1,2) !== cycler(1,2) }}|{{ joiner() !== joiner() }}|{% set record = {fn:range} %}{{ record.fn !== record.fn }}|{{ record.fn !== range }}",
+      "context": {},
+      "expected": "true|true|true|true|true|true|true|true"
+    },
+    {
+      "id": "compiler-macro-member-identity",
+      "template": "{% macro value() %}M{% endmacro %}{% set record = {fn:value} %}{% set values = [value] %}{{ value === value }}|{{ value is sameas(value) }}|{{ record.fn !== record.fn }}|{{ record.fn !== value }}|{{ values[0] !== values[0] }}|{{ record.fn() }}{{ values[0]() }}",
+      "context": {},
+      "expected": "true|true|true|true|true|MM"
+    },
+    {
       "id": "compiler-three-value-loop-destructuring",
       "template": "{% for a, b, c in arr %}{{ a }},{{ b }},{{ c }}.{% endfor %}",
       "context": {"arr":[["x","y","z"],["1","2","3"]]},

@@ -753,6 +753,24 @@ test('callable identities stay sealed and regular expressions cross as inert dat
   ].join('')));
   assert.equal(captureCalls, 1);
   assert.equal(laterCalls, 0);
+
+  assert.throws(() => engine.render('${{ capture(capture) }}${{ later() }}'));
+  assert.equal(captureCalls, 1);
+  assert.equal(laterCalls, 0);
+
+  assert.throws(() => engine.render([
+    '{% set holders = [capture] %}',
+    '${{ capture(holders[0]) }}',
+    '${{ later() }}',
+  ].join('')));
+  assert.equal(captureCalls, 1);
+  assert.equal(laterCalls, 0);
+
+  assert.throws(() => engine.render('${{ forged() }}${{ later() }}', {
+    forged: { kind: 'callable', callableKind: 'capability', id: 1 },
+  }));
+  assert.equal(captureCalls, 1);
+  assert.equal(laterCalls, 0);
   assert.equal(engine.render('clean'), 'clean');
 });
 

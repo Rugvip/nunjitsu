@@ -242,6 +242,204 @@ test('rejects invalid targets and nullish destructuring before loop bodies execu
   }
 });
 
+test('matches Nunjucks canonical global and fresh member callable identities', () => {
+  let engineCalls = 0;
+  let oracleCalls = 0;
+  const engine = createEngine({
+    globals: {
+      p() {
+        engineCalls += 1;
+        return 'P';
+      },
+      q() {
+        throw new Error('q must not be called');
+      },
+    },
+  });
+  const oracle = new nunjucks.Environment(undefined, { autoescape: false });
+  oracle.addGlobal('p', () => {
+    oracleCalls += 1;
+    return 'P';
+  });
+  oracle.addGlobal('q', () => {
+    throw new Error('q must not be called');
+  });
+  const source = [
+    '${{ p == p }}|${{ p === p }}|${{ p != p }}|${{ p !== p }}|',
+    '${{ p is sameas(p) }}|${{ p in [p] }}|${{ p not in [p] }}|',
+    '${{ p === q }}|${{ p !== q }}|',
+    '${{ range === range }}|${{ cycler === cycler }}|${{ joiner === joiner }}|',
+    '${{ cycler(1,2) !== cycler(1,2) }}|${{ joiner() !== joiner() }}|',
+    '{% set alias = p %}',
+    '${{ alias === alias }}|${{ alias === p }}|${{ alias in [p] }}|',
+    '{% for loopAlias in [p] %}${{ loopAlias === p }}|{% endfor %}',
+    '{% macro aliasCheck(value) %}${{ value === p }}{% endmacro %}',
+    '${{ aliasCheck(p) }}|',
+    '{% set record = {fn:p} %}{% set values = [p] %}',
+    '${{ record.fn !== record.fn }}|${{ record.fn !== p }}|',
+    '${{ values[0] !== values[0] }}|${{ values[0] !== p }}|',
+    '${{ record.fn() }}${{ values[0]() }}|',
+    '{% set inner = {fn:p} %}{% set nestedRecord = {inner:inner} %}',
+    '{% set nestedValues = [[p]] %}',
+    '${{ nestedRecord.inner.fn !== nestedRecord.inner.fn }}|',
+    '${{ nestedValues[0][0] !== nestedValues[0][0] }}|',
+    '${{ nestedRecord.inner.fn() }}${{ nestedValues[0][0]() }}|',
+    '{% macro macroValue() %}M{% endmacro %}',
+    '{% set macroRecord = {fn:macroValue} %}{% set macroValues = [macroValue] %}',
+    '${{ macroValue === macroValue }}|${{ macroRecord.fn !== macroRecord.fn }}|',
+    '${{ macroRecord.fn !== macroValue }}|${{ macroValues[0] !== macroValues[0] }}|',
+    '${{ macroRecord.fn() }}${{ macroValues[0]() }}|',
+    '{% set builtinRecord = {fn:range} %}{% set builtinValues = [range] %}',
+    '${{ builtinRecord.fn !== builtinRecord.fn }}|${{ builtinRecord.fn !== range }}|',
+    '${{ builtinValues[0] !== builtinValues[0] }}|',
+    '${{ builtinRecord.fn(1,3) | join("") }}${{ builtinValues[0](1,3) | join("") }}|',
+    '{% set cycle = cycler("a","b") %}',
+    '${{ cycle.next !== cycle.next }}|${{ cycle.reset !== cycle.reset }}|',
+    '{% set next = cycle.next %}${{ next === next }}|${{ next !== cycle.next }}|',
+    '{% set callableCycle = cycler(p) %}{% set ignored = callableCycle.next() %}',
+    '${{ callableCycle.current !== callableCycle.current }}|',
+    '${{ callableCycle.current !== p }}|${{ callableCycle.current() }}|',
+    '{% if p !== p %}${{ p() }}{% endif %}',
+    '{% if p not in [p] %}${{ p() }}{% endif %}',
+  ].join('');
+  const expected = oracle.renderString(source.replaceAll('${{', '{{'), {});
+  assert.equal(engine.render(source), expected);
+  assert.equal(engineCalls, 5);
+  assert.equal(oracleCalls, engineCalls);
+  assert.equal(engine.render(source), expected);
+  assert.equal(engineCalls, 10);
+  assert.equal(oracleCalls, 5);
+});
+
+test('uses strict closed identity for switch matching and preserves evaluation order', () => {
+  const engineCalls: string[] = [];
+  const oracleCalls: string[] = [];
+  let privilegedCalls = 0;
+  let oraclePrivilegedCalls = 0;
+  const engine = createEngine({
+    globals: {
+      p() {
+        throw new Error('p must not be called');
+      },
+      mark(value) {
+        if (typeof value === 'string') {
+          engineCalls.push(value);
+        }
+        return value;
+      },
+      privileged() {
+        privilegedCalls += 1;
+        return 'WRONG';
+      },
+      fail() {
+        engineCalls.push('fail');
+        throw new Error('expected failure');
+      },
+      later() {
+        engineCalls.push('later');
+        return 'later';
+      },
+    },
+  });
+  const oracle = new nunjucks.Environment(undefined, { autoescape: false });
+  oracle.addGlobal('p', () => {
+    throw new Error('p must not be called');
+  });
+  oracle.addGlobal('mark', (value: unknown) => {
+    if (typeof value === 'string') {
+      oracleCalls.push(value);
+    }
+    return value;
+  });
+  oracle.addGlobal('privileged', () => {
+    oraclePrivilegedCalls += 1;
+    return 'WRONG';
+  });
+  oracle.addGlobal('fail', () => {
+    oracleCalls.push('fail');
+    throw new Error('expected failure');
+  });
+  oracle.addGlobal('later', () => {
+    oracleCalls.push('later');
+    return 'later';
+  });
+
+  const primitiveSource = [
+    '{% switch 1 %}{% case "1" %}A{% default %}D{% endswitch %}|',
+    '{% switch 1 %}{% case true %}A{% default %}D{% endswitch %}|',
+    '{% switch 0 %}{% case false %}A{% default %}D{% endswitch %}|',
+    '{% switch null %}{% case missing %}A{% default %}D{% endswitch %}|',
+    '{% switch missing %}{% case null %}A{% default %}D{% endswitch %}|',
+    '{% switch "x" | safe %}{% case "x" %}A{% default %}D{% endswitch %}|',
+    '{% set safeValue = "x" | safe %}',
+    '{% switch safeValue %}{% case safeValue %}M{% default %}D{% endswitch %}|',
+    '{% switch 0 / 0 %}{% case 0 / 0 %}A{% default %}D{% endswitch %}|',
+    '{% switch 0 %}{% case -0 %}M{% default %}D{% endswitch %}',
+  ].join('');
+  assert.equal(
+    engine.render(primitiveSource),
+    oracle.renderString(primitiveSource.replaceAll('${{', '{{'), {}),
+  );
+
+  const referenceSource = [
+    '{% set array = [1] %}{% set arrayAlias = array %}',
+    '{% set record = {x:1} %}{% set recordAlias = record %}',
+    '{% switch array %}{% case arrayAlias %}A{% default %}D{% endswitch %}|',
+    '{% switch array %}{% case [1] %}WRONG{% default %}D{% endswitch %}|',
+    '{% switch record %}{% case recordAlias %}R{% default %}D{% endswitch %}|',
+    '{% switch record %}{% case {x:1} %}WRONG{% default %}D{% endswitch %}|',
+    '{% set callableRecord = {fn:p} %}',
+    '{% switch p %}{% case p %}P{% default %}D{% endswitch %}|',
+    '{% switch range %}{% case range %}B{% default %}D{% endswitch %}|',
+    '{% switch callableRecord.fn %}{% case p %}WRONG{% default %}D{% endswitch %}|',
+    '{% macro macroValue() %}M{% endmacro %}{% set macroRecord = {fn:macroValue} %}',
+    '{% switch macroValue %}{% case macroValue %}M{% default %}D{% endswitch %}|',
+    '{% switch macroRecord.fn %}{% case macroValue %}WRONG{% default %}D{% endswitch %}',
+  ].join('');
+  assert.equal(
+    engine.render(referenceSource),
+    oracle.renderString(referenceSource.replaceAll('${{', '{{'), {}),
+  );
+
+  const orderSource = [
+    '{% switch mark("value") %}',
+    '{% case mark("a") %}A',
+    '{% case mark("value") %}',
+    '{% case mark("skip") %}F',
+    '{% default %}D{% endswitch %}',
+  ].join('');
+  assert.equal(
+    engine.render(orderSource),
+    oracle.renderString(orderSource.replaceAll('${{', '{{'), {}),
+  );
+  assert.deepEqual(engineCalls, ['value', 'a', 'value']);
+  assert.deepEqual(oracleCalls, engineCalls);
+
+  const guardedSource = [
+    '{% switch 1 %}{% case "1" %}${{ privileged() }}',
+    '{% default %}DENY{% endswitch %}',
+  ].join('');
+  assert.equal(engine.render(guardedSource), 'DENY');
+  assert.equal(
+    oracle.renderString(guardedSource.replaceAll('${{', '{{'), {}),
+    'DENY',
+  );
+  assert.equal(privilegedCalls, 0);
+  assert.equal(oraclePrivilegedCalls, 0);
+
+  const failingSource = [
+    'before{% switch "value" %}',
+    '{% case fail() %}WRONG',
+    '{% case later() %}WRONG',
+    '{% default %}D{% endswitch %}',
+  ].join('');
+  assert.throws(() => engine.render(failingSource), NunjitsuRenderError);
+  assert.throws(() => oracle.renderString(failingSource.replaceAll('${{', '{{'), {}));
+  assert.deepEqual(engineCalls, ['value', 'a', 'value', 'fail']);
+  assert.deepEqual(oracleCalls, engineCalls);
+  assert.equal(engine.render('clean'), 'clean');
+});
+
 test('matches built-in filters, tests, globals, comments, and raw regions', () => {
   const engine = createEngine();
   assert.equal(

@@ -37,6 +37,9 @@ Nunjitsu targets:
 - target-count-sensitive Nunjucks loop behavior for arrays, primitive and safe
   strings, and array-like or key-value records, including raw loop-length
   metadata, else selection, and flat symbol-only binding targets;
+- render-local canonical identity for direct callable globals, fresh sealed
+  identity for ordinary callable member lookup, and strict identity-based
+  switch matching;
 - built-in filters, tests, and globals used by direct string templates;
 - synchronous application filters and `TemplateValue` data or callable globals;
 - `trimBlocks` and `lstripBlocks`; and

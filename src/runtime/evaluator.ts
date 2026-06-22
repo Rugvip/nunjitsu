@@ -155,6 +155,8 @@ class Evaluator {
   readonly #macros = new Map<number, MacroDefinition>();
   readonly #builtinCallables = new Map<number, BuiltinCallableDefinition>();
   readonly #capabilityNames = new Map<number, string>();
+  readonly #capabilityHandles = new Map<string, RuntimeCallable>();
+  readonly #builtinGlobalHandles = new Map<BuiltinGlobalName, RuntimeCallable>();
   #activeBlocks = new Map<string, readonly BlockDefinition[]>();
   readonly #blockStack: BlockFrame[] = [];
   #nextCallableId = 1;
@@ -299,7 +301,7 @@ class Evaluator {
           const condition = matched
             ? undefined
             : this.#evaluateExpression(candidate.cond, scope, depth + 1);
-          if (matched || runtimeLooseEqual(value, condition)) {
+          if (matched || runtimeStrictEqual(value, condition)) {
             matched = true;
             if (candidate.body.type === 'NodeList' && candidate.body.children.length === 0) {
               continue;
@@ -504,7 +506,7 @@ class Evaluator {
           return globalValue.value;
         }
         if (this.#options.host?.hasGlobal?.(name)) {
-          return new RuntimeCallable('capability', this.#registerGlobal(name));
+          return this.#registerGlobal(name);
         }
         if (name === 'super' && this.#blockStack.length > 0) {
           return new RuntimeCallable('super', 0);
@@ -564,13 +566,13 @@ class Evaluator {
           ) {
             return this.#lookupBuiltinCallable(target.id, constantKey.value);
           }
-          return lookupRuntimeConstantKey(target, constantKey.value);
+          return freshMemberCallable(lookupRuntimeConstantKey(target, constantKey.value));
         }
         const key = this.#evaluateExpression(valueNode, scope, depth + 1);
         if (target instanceof RuntimeCallable && target.callableKind === 'builtin') {
           return this.#lookupBuiltinCallable(target.id, runtimeToPropertyKey(key));
         }
-        return lookupRuntimeValue(target, key);
+        return freshMemberCallable(lookupRuntimeValue(target, key));
       }
       case 'InlineIf': {
         const condition = this.#evaluateExpression(node.cond, scope, depth + 1);
@@ -828,19 +830,31 @@ class Evaluator {
     return Object.freeze({ positional: Object.freeze(positional), keyword });
   }
 
-  #registerGlobal(name: string): number {
+  #registerGlobal(name: string): RuntimeCallable {
+    const existing = this.#capabilityHandles.get(name);
+    if (existing) {
+      return existing;
+    }
     const id = this.#nextCallableId++;
     this.#capabilityNames.set(id, name);
-    return id;
+    const handle = new RuntimeCallable('capability', id);
+    this.#capabilityHandles.set(name, handle);
+    return handle;
   }
 
   #registerBuiltinGlobal(name: string): RuntimeCallable | undefined {
     if (name !== 'range' && name !== 'cycler' && name !== 'joiner') {
       return undefined;
     }
+    const existing = this.#builtinGlobalHandles.get(name);
+    if (existing) {
+      return existing;
+    }
     const id = this.#nextCallableId++;
     this.#builtinCallables.set(id, { type: 'global', name });
-    return new RuntimeCallable('builtin', id);
+    const handle = new RuntimeCallable('builtin', id);
+    this.#builtinGlobalHandles.set(name, handle);
+    return handle;
   }
 
   #registerCaller(node: AstCallableBodyNode, scope: RuntimeScope): RuntimeCallable {
@@ -962,7 +976,9 @@ class Evaluator {
       return undefined;
     }
     if (key === 'current') {
-      return definition.index < 0 ? null : definition.values[definition.index];
+      return definition.index < 0
+        ? null
+        : freshMemberCallable(definition.values[definition.index]);
     }
     if (key !== 'next' && key !== 'reset') {
       return undefined;
@@ -1137,6 +1153,12 @@ function constantLookupKey(node: AstNode): (
 
 function isStringValue(value: RuntimeValue): boolean {
   return typeof value === 'string' || value instanceof RuntimeSafeString;
+}
+
+function freshMemberCallable(value: RuntimeValue): RuntimeValue {
+  return value instanceof RuntimeCallable
+    ? new RuntimeCallable(value.callableKind, value.id)
+    : value;
 }
 
 function bindLoopTargets(

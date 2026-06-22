@@ -58,9 +58,11 @@ grouping and operand order, comparison, membership, test, and prefix-`not`
 grouping, nested inline-conditional and dictionary-key parser acceptance,
 container- and target-sensitive loop planning, raw record-length metadata,
 flat-target validation, nullish destructuring failures before capability
-dispatch, structured cause-free public diagnostics, and render state cleanup
-after failures. Static checks reject dynamic execution and host reflection in
-parser and interpreter modules.
+dispatch, canonical and fresh-member callable identities, strict switch
+matching and case evaluation order, callable-boundary rejection, structured
+cause-free public diagnostics, and render state cleanup after failures. Static
+checks reject dynamic execution and host reflection in parser and interpreter
+modules.
 
 ## Fuzzing policy
 

@@ -50,6 +50,18 @@
       "upstream": ["tests/parser.js:10", "tests/compiler.js:20"]
     },
     {
+      "id": "callable-identity",
+      "file": "tests/source/runtime.test.ts",
+      "test": "matches Nunjucks canonical global and fresh member callable identities",
+      "upstream": ["tests/tests.js:26"]
+    },
+    {
+      "id": "switch-strict-identity",
+      "file": "tests/source/runtime.test.ts",
+      "test": "uses strict closed identity for switch matching and preserves evaluation order",
+      "upstream": ["tests/parser.js:32", "tests/compiler.js:13"]
+    },
+    {
       "id": "compiler-capability-errors",
       "file": "tests/source/security.test.ts",
       "test": "capability exceptions retain only inert sanitized messages and halt evaluation",

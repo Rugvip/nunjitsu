@@ -75,7 +75,9 @@ equality first preserves object identity, then applies closed object-to-primitiv
 conversion only when one side is primitive. Distinct safe strings, arrays,
 records, regex values, and callables remain unequal regardless of content.
 Array membership is separately strict and never unwraps safe strings or other
-closed objects.
+closed objects. Switch cases use the same strict identity operation, preserving
+primitive type distinctions, `NaN` behavior, signed-zero equality, and exact
+closed reference identity without host coercion.
 
 Expression grouping follows Nunjucks's observable generated behavior, including
 its non-conventional cases. Relational operators bind above equality;
@@ -142,6 +144,16 @@ writability entries plus explicit parent links. Calls dispatch only to inline
 macros, interpreter built-ins, or exact registered global-function identities.
 Context functions, methods, constructors, and looked-up values are never
 callable.
+
+Each directly resolved registered or built-in global has one canonical sealed
+handle within a render. Scope assignments, loop bindings, direct equality,
+membership, tests, and switch matching retain that handle identity. Ordinary
+array and record member lookup instead returns a new sealed alias containing
+only the same evaluator-owned callable kind and opaque ID, reproducing
+Nunjucks's fresh bound-function identity without creating authority, storing a
+receiver, or exposing a host function. Callable-valued built-in members follow
+the same rule, while stateful method lookup remains fresh. These maps and
+handles belong to one evaluator and are discarded after the render.
 
 Macro binding assigns each positional value only to the formal parameter at the
 same index, then consults the matching keyword only when that position is
