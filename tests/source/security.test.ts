@@ -370,6 +370,52 @@ test('call targets resolve through closed runtime values before capability dispa
   assert.equal(engine.render('clean'), 'clean');
 });
 
+test('macro defaults execute only when an argument is genuinely absent', () => {
+  let defaultCalls = 0;
+  let failDefault = false;
+  const engine = createEngine({
+    globals: {
+      privilegedDefault() {
+        defaultCalls += 1;
+        if (failDefault) {
+          throw new Error('default failed');
+        }
+        return 'DEFAULT';
+      },
+    },
+  });
+  const source = [
+    '{% macro render(value=privilegedDefault()) %}[${{ value }}]{% endmacro %}',
+    '${{ render(null) }}|${{ render(value=null) }}|',
+    '${{ render(missing) }}|${{ render(value=missing) }}|',
+    '${{ render(false) }}|${{ render(value=false) }}|',
+    '${{ render(0) }}|${{ render(value=0) }}|',
+    '${{ render("") }}|${{ render(value="") }}|',
+    '${{ render() }}',
+  ].join('');
+  const expected = '[]|[]|[]|[]|[false]|[false]|[0]|[0]|[]|[]|[DEFAULT]';
+
+  assert.equal(engine.render(source), expected);
+  assert.equal(defaultCalls, 1);
+
+  let oracleCalls = 0;
+  const oracle = new nunjucks.Environment(undefined, { autoescape: false });
+  oracle.addGlobal('privilegedDefault', () => {
+    oracleCalls += 1;
+    return 'DEFAULT';
+  });
+  assert.equal(oracle.renderString(source.replaceAll('${{', '{{'), {}), expected);
+  assert.equal(oracleCalls, 1);
+
+  failDefault = true;
+  assert.throws(() => engine.render([
+    '{% macro render(value=privilegedDefault()) %}${{ value }}{% endmacro %}',
+    '${{ render() }}',
+  ].join('')));
+  assert.equal(defaultCalls, 2);
+  assert.equal(engine.render('clean'), 'clean');
+});
+
 test('callable identities stay sealed and regular expressions cross as inert data', () => {
   let captureCalls = 0;
   let received: unknown;

@@ -254,6 +254,12 @@
       "expected": "2|5"
     },
     {
+      "id": "compiler-macro-explicit-values-skip-default",
+      "template": "{% macro render(value=\"DEFAULT\") %}[{{ value }}]{% endmacro %}{{ render(null) }}|{{ render(value=null) }}|{{ render(missing) }}|{{ render(value=missing) }}|{{ render(false) }}|{{ render(value=false) }}|{{ render(0) }}|{{ render(value=0) }}|{{ render(\"\") }}|{{ render(value=\"\") }}|{{ render() }}",
+      "context": {},
+      "expected": "[]|[]|[]|[]|[false]|[false]|[0]|[0]|[]|[]|[DEFAULT]"
+    },
+    {
       "id": "compiler-macro-keyword-argument",
       "template": "{% macro foo(x, y, z=5) %}{{ y }}{% endmacro %}{{ foo(1, y=2) }}",
       "context": {},

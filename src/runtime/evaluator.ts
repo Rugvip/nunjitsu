@@ -823,20 +823,33 @@ class Evaluator {
             throw new Error('Invalid macro default');
           }
           const name = symbolName(pair.key);
-          const supplied = arguments_.keyword.get(name) ?? arguments_.positional[positionalIndex++];
+          let supplied: RuntimeValue = undefined;
+          let hasSupplied = false;
+          if (arguments_.keyword.has(name)) {
+            supplied = arguments_.keyword.get(name);
+            hasSupplied = true;
+          } else if (positionalIndex < arguments_.positional.length) {
+            supplied = arguments_.positional[positionalIndex];
+            positionalIndex += 1;
+            hasSupplied = true;
+          }
           local.set(
             name,
-            supplied === undefined
-              ? this.#evaluateExpression(pair.value, local, depth + 1)
-              : supplied,
+            hasSupplied
+              ? supplied
+              : this.#evaluateExpression(pair.value, local, depth + 1),
           );
         }
       } else {
         const name = symbolName(argument);
-        local.set(
-          name,
-          arguments_.keyword.get(name) ?? arguments_.positional[positionalIndex++],
-        );
+        let supplied: RuntimeValue = undefined;
+        if (arguments_.keyword.has(name)) {
+          supplied = arguments_.keyword.get(name);
+        } else if (positionalIndex < arguments_.positional.length) {
+          supplied = arguments_.positional[positionalIndex];
+          positionalIndex += 1;
+        }
+        local.set(name, supplied);
       }
     }
     for (const [name, value] of arguments_.keyword) {

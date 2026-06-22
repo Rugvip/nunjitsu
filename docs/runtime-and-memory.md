@@ -63,6 +63,12 @@ macros, interpreter built-ins, or exact registered global-function identities.
 Context functions, methods, constructors, and looked-up values are never
 callable.
 
+Macro binding tracks whether each keyword or positional argument was supplied
+separately from its runtime value. Explicit `null`, absent-value `undefined`,
+`false`, zero, and empty strings remain supplied values. A default expression
+is evaluated only when neither a keyword nor positional argument was provided,
+so defaults cannot introduce capability side effects for explicit values.
+
 ## Output
 
 Evaluation appends string slices to a render-owned array and joins it once at

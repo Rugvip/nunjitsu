@@ -52,6 +52,8 @@ implementation and documentation aligned with the architecture in
 - Resolve every call target through lexical scope and the closed value model.
   Dispatch capabilities only through evaluator-owned IDs mapped privately to
   exact registered callbacks; never derive authority from call-site spelling.
+- Bind macro arguments by keyword and positional presence, never value
+  nullishness. Evaluate defaults only for genuinely absent arguments.
 - Never retain template sources, ASTs, values, or output state between renders
   by default. Retain values only through an explicit caller-owned prepared
   context snapshot; keep snapshots immutable and engine-bound, and copy every

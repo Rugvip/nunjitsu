@@ -587,7 +587,7 @@
     {
       "upstream": {"id":"tests/compiler.js:67","file":"tests/compiler.js","test":"should compile macros with arg defaults"},
       "status": "ported",
-      "cases": ["compiler-macro-default-arguments"]
+      "cases": ["compiler-macro-default-arguments","compiler-macro-explicit-values-skip-default"]
     },
     {
       "upstream": {"id":"tests/compiler.js:68","file":"tests/compiler.js","test":"should compile macros with keyword args"},
