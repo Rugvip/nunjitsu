@@ -54,4 +54,5 @@ reason.
 Nunjucks is licensed under the
 [`BSD-2-Clause` license](https://github.com/mozilla/nunjucks/blob/v3.2.4/LICENSE).
 Copied or adapted test materials retain that license and Mozilla Nunjucks
-attribution adjacent to the corpus. Original Nunjitsu code remains Apache-2.0.
+attribution adjacent to the corpus. Original Nunjitsu code is licensed under
+the MIT License.

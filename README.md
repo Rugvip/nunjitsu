@@ -41,7 +41,7 @@ pnpm test
 
 ## License
 
-Licensed under the [Apache License 2.0](LICENSE).
+Licensed under the [MIT License](LICENSE).
 
 Copied or adapted Nunjucks test materials retain their upstream BSD-2-Clause
 license and attribution as described in
