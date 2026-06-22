@@ -1,5 +1,6 @@
-import { isReservedName } from '../runtime/value.ts';
+import { formatDiagnosticValue } from '../diagnostics.ts';
 import { NunjitsuLimitError } from '../limits.ts';
+import { isReservedName } from '../runtime/value.ts';
 import type { AstNode, AstRegexLiteral } from './ast.ts';
 
 interface Token {
@@ -328,7 +329,9 @@ export class ExpressionParser {
       const pairs = this.#nested(() => this.#parseDictionary());
       return this.#make('Dict', { children: Object.freeze(pairs) }, token);
     }
-    this.#fail(`Unexpected expression token ${token.value || 'end of input'}`);
+    this.#fail(token.value === ''
+      ? 'Unexpected expression token at end of input'
+      : `Unexpected expression token ${formatDiagnosticValue(token.value)}`);
   }
 
   #parseDictionary(): AstNode[] {
@@ -426,7 +429,7 @@ export class ExpressionParser {
     position: Pick<Token, 'line' | 'column'>,
   ): void {
     if (isReservedName(value)) {
-      this.#fail(`Template name ${value} is reserved`, position);
+      this.#fail(`Template name ${formatDiagnosticValue(value)} is reserved`, position);
     }
   }
 
@@ -465,7 +468,9 @@ export class ExpressionParser {
   #expect(kind: Token['kind']): Token {
     const token = this.#peek();
     if (token.kind !== kind) {
-      this.#fail(`Expected ${kind}, received ${token.value || 'end of input'}`, token);
+      this.#fail(token.value === ''
+        ? `Expected ${kind}, received end of input`
+        : `Expected ${kind}, received ${formatDiagnosticValue(token.value)}`, token);
     }
     this.#index += 1;
     return token;
@@ -565,7 +570,11 @@ function tokenize(source: string, initialLine: number, initialColumn: number): r
     ));
     const value = operator ?? character;
     if (!operator && !'()[]{}.,:|~+-*/%<>=.'.includes(character)) {
-      throw new ExpressionSyntaxError(`Unexpected character ${character}`, tokenLine, tokenColumn);
+      throw new ExpressionSyntaxError(
+        `Unexpected character ${formatDiagnosticValue(character)}`,
+        tokenLine,
+        tokenColumn,
+      );
     }
     emit('operator', value, tokenLine, tokenColumn);
     index += value.length;

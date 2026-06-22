@@ -1,3 +1,4 @@
+import { formatDiagnosticValue } from '../diagnostics.ts';
 import { NunjitsuLimitError } from '../limits.ts';
 import type { AstCaseNode, AstNode } from './ast.ts';
 import { ExpressionParser, ExpressionSyntaxError } from './expression.ts';
@@ -98,7 +99,10 @@ class TemplateParser {
   parse(): AstNode {
     const parsed = this.#parseBody(new Set());
     if (parsed.stop) {
-      this.#fail(`Unexpected ${tagName(parsed.stop.value)} tag`, parsed.stop);
+      this.#fail(
+        `Unexpected ${formatDiagnosticValue(tagName(parsed.stop.value))} tag`,
+        parsed.stop,
+      );
     }
     const root = parsed.body.type === 'NodeList' ? parsed.body.children : [parsed.body];
     return this.#make('Root', { children: Object.freeze(Array.from(root)) }, this.#tokens[0]);
@@ -164,9 +168,9 @@ class TemplateParser {
       case 'import':
       case 'from':
       case 'extends':
-        this.#fail(`Unsupported template-loading tag ${name}`, token);
+        this.#fail(`Unsupported template-loading tag ${formatDiagnosticValue(name)}`, token);
       default:
-        this.#fail(`Unknown template tag ${name}`, token);
+        this.#fail(`Unknown template tag ${formatDiagnosticValue(name)}`, token);
     }
   }
 
@@ -462,7 +466,11 @@ function scanTemplate(source: string, options: ParseOptions): readonly TemplateT
       if (rawName === 'raw' || rawName === 'verbatim') {
         const closing = findRawEnd(source, index, rawName);
         if (!closing) {
-          throw new NunjitsuParseError(`Missing end${rawName} tag`, startLine, startColumn);
+          throw new NunjitsuParseError(
+            `Missing ${formatDiagnosticValue(`end${rawName}`)} tag`,
+            startLine,
+            startColumn,
+          );
         }
         let raw = source.slice(index, closing.start);
         if (rightTrim) {

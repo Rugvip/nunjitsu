@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
 import { createEngine, NunjitsuRenderError } from '../../src/index.ts';
+import { NunjitsuParseError, parseTemplate } from '../../src/parser/index.ts';
 import { applyBuiltinFilter } from '../../src/runtime/builtins.ts';
 import { RuntimeScope } from '../../src/runtime/scope.ts';
 import {
@@ -581,6 +582,75 @@ test('capability exceptions halt evaluation without inspecting thrown values', (
   );
   assert.equal(laterCalls, 0);
   assert.equal(engine.render('clean'), 'clean');
+});
+
+test('parser diagnostics neutralize untrusted token content', () => {
+  const engine = createEngine();
+  const unsafeDiagnosticCharacterPattern = /[\u0000-\u001f\u007f-\u009f\u2028\u2029\u202a-\u202e\u2066-\u2069]/;
+  const values = [
+    'first-line\nsecond-line',
+    '\u0000\u001f\u007f\u0085\u009b',
+    '\u001b[31mFORGED\u001b[0m',
+    '\u001b]8;;https://example.com\u0007link\u001b]8;;\u0007',
+    'x'.repeat(1_000) + 'TRUNCATED-TAIL',
+    'ordinary printable value',
+  ];
+
+  for (const value of values) {
+    const source = '${{ target.' + JSON.stringify(value) + ' }}';
+    let parseMessage = '';
+    assert.throws(
+      () => parseTemplate(source),
+      error => {
+        if (!(error instanceof NunjitsuParseError)) {
+          return false;
+        }
+        parseMessage = error.message;
+        return true;
+      },
+    );
+    let renderMessage = '';
+    assert.throws(
+      () => engine.render(source, { target: {} }),
+      error => {
+        if (!(error instanceof NunjitsuRenderError)) {
+          return false;
+        }
+        renderMessage = error.message;
+        return true;
+      },
+    );
+    for (const message of [parseMessage, renderMessage]) {
+      assert.doesNotMatch(message, unsafeDiagnosticCharacterPattern);
+      assert.ok(message.length < 300);
+      assert.match(message, /^Expected name, received "/);
+    }
+    assert.equal(engine.render('clean'), 'clean');
+  }
+
+  const printableSource = '${{ target."ordinary printable value" }}';
+  assert.throws(
+    () => engine.render(printableSource, { target: {} }),
+    error => (
+      error instanceof NunjitsuRenderError &&
+      error.message.includes('"ordinary printable value"')
+    ),
+  );
+
+  const evaluatorSource = '${{ [1] | select("first\\nsecond\\u001b[31m") | list }}';
+  assert.throws(
+    () => engine.render(evaluatorSource),
+    error => (
+      error instanceof NunjitsuRenderError &&
+      !unsafeDiagnosticCharacterPattern.test(error.message) &&
+      error.message.includes('first\\u000asecond\\u001b[31m')
+    ),
+  );
+  const longEvaluatorSource = '${{ [1] | select(' + JSON.stringify('x'.repeat(2_000)) + ') }}';
+  assert.throws(
+    () => engine.render(longEvaluatorSource),
+    error => error instanceof NunjitsuRenderError && error.message.length <= 1_025,
+  );
 });
 
 test('parser and evaluator sources contain no dynamic execution primitive', async () => {

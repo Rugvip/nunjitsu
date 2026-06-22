@@ -145,6 +145,13 @@ is wrapped in `NunjitsuRenderError`; an attacker-controlled template cannot
 select a built-in JavaScript error class to bypass application render-error
 handling.
 
+Parser diagnostics never interpolate raw token content. Source-derived values
+use a central quoted formatter that escapes C0, C1, terminal, line-separator,
+and bidirectional formatting controls and truncates long values. The public
+render boundary independently neutralizes controls and bounds the complete
+message, so logging `NunjitsuRenderError.message` cannot create additional log
+lines or terminal control sequences.
+
 Nunjitsu accepts inline source only and imports no filesystem APIs. Applications
 perform file discovery, path confinement, symbolic-link handling, and reads
 before source crosses into the renderer.

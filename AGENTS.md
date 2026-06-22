@@ -141,6 +141,9 @@ Do not create additional packages without a documented architectural reason.
 - Complete public API validation before template evaluation. Pass through only
   `NunjitsuLimitError` from evaluation and wrap every other evaluation failure
   in `NunjitsuRenderError`, regardless of its underlying JavaScript error class.
+- Never interpolate raw template source or decoded token values into
+  diagnostics. Use the central bounded diagnostic formatter and keep the public
+  render-error message independently neutralized and single-line.
 - Ensure transient JavaScript containers passed to host operations such as
   serialization cannot observe inherited accessors, coercion hooks,
   serialization hooks, or methods.

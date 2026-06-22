@@ -1,4 +1,5 @@
 import type { TemplateCapabilities } from './capabilities.ts';
+import { neutralizeDiagnosticMessage } from './diagnostics.ts';
 import { NunjitsuLimitError, normalizeRenderLimits, type RenderLimits } from './limits.ts';
 import { evaluateRuntimeTemplate } from './runtime/evaluator.ts';
 import { createRuntimeHost } from './runtime/host.ts';
@@ -116,7 +117,9 @@ export function createEngine(options: EngineOptions = {}): Engine {
         if (error instanceof NunjitsuLimitError) {
           throw error;
         }
-        const message = error instanceof Error ? error.message : 'Template rendering failed';
+        const message = error instanceof Error
+          ? neutralizeDiagnosticMessage(error.message)
+          : 'Template rendering failed';
         throw new NunjitsuRenderError(message, error);
       }
     },
