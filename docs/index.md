@@ -1,8 +1,9 @@
 # Nunjitsu documentation
 
 This directory contains the normative design documentation for Nunjitsu. The
-root [README](../README.md) introduces the project; implementation rationale,
-constraints, and cross-cutting decisions belong here.
+root [README](../README.md) introduces the project and documents the complete
+public TypeScript API; implementation rationale, constraints, and cross-cutting
+decisions belong here.
 
 ## Architecture map
 
@@ -12,7 +13,6 @@ constraints, and cross-cutting decisions belong here.
 | Execution core | [Runtime and interpreter](runtime-and-memory.md) | Closed values, AST parsing, evaluation, output, and cooperative limits |
 | Trust boundary | [Security](security.md) | Threat model, safe values, capabilities, and resource limits |
 | Compatibility | [Nunjucks compatibility](compatibility.md) | v3.2.4 contract, intentional deviations, and attribution |
-| Host API | [TypeScript API](typescript-api.md) | Engine lifecycle, rendering, packaging, and source constraints |
 | Verification | [Testing](testing.md) | Shared upstream corpus, regression layers, CI, and benchmarks |
 | Release operations | [Releasing](releasing.md) | Package identity, trusted publishing, and release invariants |
 

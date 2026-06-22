@@ -89,6 +89,17 @@ JavaScript function or constructor.
 7. The AST, scopes, one-shot values, and output state become unreachable.
    Prepared context values remain reachable only through caller-held snapshots.
 
+## Package architecture
+
+The package is authored as one erasable TypeScript source tree targeting
+Node.js 22 or newer. The build produces equivalent tested ESM and CommonJS
+entrypoints and declarations from the same format-neutral source entrypoint.
+Runtime behavior must not vary with the consuming module format.
+
+The root README owns the complete consumer-facing TypeScript API reference.
+This documentation directory owns implementation rationale, security
+constraints, compatibility policy, and other architectural decisions.
+
 ## Architectural non-goals
 
 - Complete Nunjucks template or JavaScript API parity.

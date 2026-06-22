@@ -84,7 +84,6 @@ The rationale and detailed contracts live in:
 - [`docs/runtime-and-memory.md`](docs/runtime-and-memory.md)
 - [`docs/security.md`](docs/security.md)
 - [`docs/compatibility.md`](docs/compatibility.md)
-- [`docs/typescript-api.md`](docs/typescript-api.md)
 - [`docs/testing.md`](docs/testing.md)
 - [`docs/releasing.md`](docs/releasing.md)
 
@@ -188,8 +187,9 @@ Do not create additional packages without a documented architectural reason.
 
 ## Documentation rules
 
-- Keep `README.md` limited to the project introduction, high-level goals,
-  current status, minimal setup, and links into `docs/`.
+- Keep `README.md` focused on the project introduction, high-level goals,
+  current status, installation, complete public TypeScript API reference,
+  minimal development setup, and links into `docs/`.
 - Put design details in the page that owns the area. Add a new focused page only
   when no existing page has clear ownership, and link it from `docs/index.md`.
 - Documentation describes the current intended design, not a chronological log.
