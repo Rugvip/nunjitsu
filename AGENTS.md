@@ -131,9 +131,16 @@ Do not create additional packages without a documented architectural reason.
   Do not invoke getters while copying accepted plain records.
 - Keep parser and evaluator internals private. Do not pass AST nodes, scopes,
   internal values, or callable variants to host callbacks.
+- Revalidate template-controlled data whenever it changes semantic role, such
+  as a value becoming a key, path segment, binding, or callable identity.
+  Enforce the invariant in the owning representation as well as at external
+  boundaries.
 - Treat capability exceptions as fail-stop opaque values. Do not inspect the
   thrown value, resume template evaluation, or make any part of it visible to
   the template runtime.
+- Ensure transient JavaScript containers passed to host operations such as
+  serialization cannot observe inherited accessors, coercion hooks,
+  serialization hooks, or methods.
 - Use explicit coercion helpers. Never call `String`, `Number`, `valueOf`,
   `toString`, iterators, or methods on unvalidated objects.
 - Treat every production dependency imported by parser or runtime code as part

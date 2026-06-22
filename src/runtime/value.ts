@@ -276,15 +276,14 @@ function copyValue(
         throw new TypeError('Template arrays cannot use a custom prototype');
       }
       validateArrayKeys(value);
-      const copied = new RuntimeArray(Array.from(
-        { length: value.length },
-        (_, index) => {
-          const descriptor = Object.getOwnPropertyDescriptor(value, String(index));
-          return descriptor === undefined
-            ? undefined
-            : copyDataDescriptor(descriptor, ancestors, aliases);
-        },
-      ));
+      const items: RuntimeValue[] = [];
+      for (let index = 0; index < value.length; index += 1) {
+        const descriptor = Object.getOwnPropertyDescriptor(value, String(index));
+        items.push(descriptor === undefined
+          ? undefined
+          : copyDataDescriptor(descriptor, ancestors, aliases));
+      }
+      const copied = new RuntimeArray(items);
       aliases.set(value, copied);
       return copied;
     }

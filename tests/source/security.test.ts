@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
 import { createEngine, NunjitsuRenderError } from '../../src/index.ts';
+import { applyBuiltinFilter } from '../../src/runtime/builtins.ts';
 import { RuntimeScope } from '../../src/runtime/scope.ts';
 import {
   copyPublicValue,
@@ -12,6 +13,26 @@ import {
   RuntimeRecord,
   withRuntimeContextPath,
 } from '../../src/runtime/value.ts';
+
+const semanticNameCases = Object.freeze([
+  { name: '__proto__', reserved: true },
+  { name: 'constructor', reserved: true },
+  { name: 'prototype', reserved: true },
+  { name: 'toString', reserved: false },
+  { name: 'valueOf', reserved: false },
+  { name: 'hasOwnProperty', reserved: false },
+  { name: 'toJSON', reserved: false },
+  { name: '__defineGetter__', reserved: false },
+  { name: '__defineSetter__', reserved: false },
+  { name: '__lookupGetter__', reserved: false },
+  { name: '__lookupSetter__', reserved: false },
+  { name: '', reserved: false },
+  { name: '0', reserved: false },
+  { name: '01', reserved: false },
+  { name: '東京', reserved: false },
+  { name: 'segment.child', reserved: false },
+  { name: 'x'.repeat(4_096), reserved: false },
+]);
 
 test('copies only plain data without invoking accessors or host behavior', () => {
   let getterCalls = 0;
@@ -41,6 +62,39 @@ test('copies only plain data without invoking accessors or host behavior', () =>
     () => copyRuntimeValue({ [Symbol('secret')]: 'host' } as never),
     /cannot contain symbol keys/,
   );
+});
+
+test('copying arrays does not invoke inherited host iteration hooks', () => {
+  let getterCalls = 0;
+  let iteratorCalls = 0;
+  const previous = Object.getOwnPropertyDescriptor(Object.prototype, Symbol.iterator);
+  Object.defineProperty(Object.prototype, Symbol.iterator, {
+    configurable: true,
+    get() {
+      getterCalls += 1;
+      return function* inheritedIterator() {
+        iteratorCalls += 1;
+        yield 'ambient';
+      };
+    },
+  });
+
+  const engine = createEngine();
+  try {
+    assert.equal(
+      engine.render('${{ values | dump }}', { values: [1, 2] }),
+      '[1,2]',
+    );
+    assert.equal(getterCalls, 0);
+    assert.equal(iteratorCalls, 0);
+  } finally {
+    if (previous) {
+      Object.defineProperty(Object.prototype, Symbol.iterator, previous);
+    } else {
+      delete (Object.prototype as Record<PropertyKey, unknown>)[Symbol.iterator];
+    }
+  }
+  assert.equal(engine.render('clean'), 'clean');
 });
 
 test('reserves prototype gadget names across values, syntax, and scopes', () => {
@@ -142,6 +196,73 @@ test('scope lookup never falls through to host globals or polluted prototypes', 
   }
 });
 
+test('dump does not invoke inherited host serialization hooks', () => {
+  let getterCalls = 0;
+  let hookCalls = 0;
+  const previous = Object.getOwnPropertyDescriptor(Object.prototype, 'toJSON');
+  Object.defineProperty(Object.prototype, 'toJSON', {
+    configurable: true,
+    get() {
+      getterCalls += 1;
+      return function inheritedToJson() {
+        hookCalls += 1;
+        return 'ambient';
+      };
+    },
+  });
+
+  const engine = createEngine();
+  try {
+    assert.equal(
+      engine.render('${{ [1, {"safe": 2}] | dump }}'),
+      '[1,{"safe":2}]',
+    );
+    assert.equal(
+      engine.render('${{ {"toJSON": "data", "toString": "text"} | dump }}'),
+      '{"toJSON":"data","toString":"text"}',
+    );
+    assert.equal(getterCalls, 0);
+    assert.equal(hookCalls, 0);
+  } finally {
+    if (previous) {
+      Object.defineProperty(Object.prototype, 'toJSON', previous);
+    } else {
+      delete (Object.prototype as Record<string, unknown>).toJSON;
+    }
+  }
+  assert.equal(engine.render('clean'), 'clean');
+
+  let setterCalls = 0;
+  let dumpResult: ReturnType<typeof applyBuiltinFilter> = undefined;
+  let dumpFailure: unknown = undefined;
+  const previousIndex = Object.getOwnPropertyDescriptor(Object.prototype, '0');
+  Object.defineProperty(Object.prototype, '0', {
+    configurable: true,
+    set() {
+      setterCalls += 1;
+    },
+  });
+  try {
+    dumpResult = applyBuiltinFilter(
+      'dump',
+      new RuntimeArray([1]),
+      [],
+      new Map(),
+    );
+  } catch (error) {
+    dumpFailure = error;
+  } finally {
+    if (previousIndex) {
+      Object.defineProperty(Object.prototype, '0', previousIndex);
+    } else {
+      delete (Object.prototype as Record<string, unknown>)['0'];
+    }
+  }
+  assert.equal(dumpFailure, undefined);
+  assert.equal(dumpResult, '[1]');
+  assert.equal(setterCalls, 0);
+});
+
 test('templates cannot reach ambient authority or invoke looked-up values', () => {
   const engine = createEngine();
   for (const source of [
@@ -166,6 +287,38 @@ test('templates cannot reach ambient authority or invoke looked-up values', () =
   }
 });
 
+test('callable identities stay sealed and regular expressions cross as inert data', () => {
+  let captureCalls = 0;
+  let received: unknown;
+  let laterCalls = 0;
+  const engine = createEngine({
+    globals: {
+      capture(value) {
+        captureCalls += 1;
+        received = value;
+        return null;
+      },
+      later() {
+        laterCalls += 1;
+        return null;
+      },
+    },
+  });
+
+  assert.equal(engine.render('${{ capture(r/a+/gi) }}'), '');
+  assert.equal(captureCalls, 1);
+  assert.equal(received, '/a+/gi');
+
+  assert.throws(() => engine.render([
+    '{% macro internal() %}secret{% endmacro %}',
+    '${{ capture(internal) }}',
+    '${{ later() }}',
+  ].join('')));
+  assert.equal(captureCalls, 1);
+  assert.equal(laterCalls, 0);
+  assert.equal(engine.render('clean'), 'clean');
+});
+
 test('capability results cross the same closed value boundary', () => {
   const engine = createEngine({
     globals: {
@@ -183,32 +336,203 @@ test('capability results cross the same closed value boundary', () => {
   assert.throws(() => engine.render('${{ exposeFunction() }}'), /Unsupported template value/);
 });
 
-test('reserved names cannot be synthesized by groupby or cross into capabilities', () => {
-  for (const name of ['__proto__', 'constructor', 'prototype']) {
+test('derived record keys preserve the capability-boundary name invariant', () => {
+  for (const { name, reserved } of semanticNameCases) {
     let calls = 0;
-    const target = {};
+    let received: unknown;
+    const target = {} as Record<string, unknown>;
     const engine = createEngine({
       globals: {
-        merge(value) {
+        capture(value) {
           calls += 1;
+          received = value;
           Object.assign(target, value as object);
           return null;
         },
       },
     });
-    assert.throws(
-      () => engine.render(
-        `\${{ merge([{"key":"${name}","payload":"attacker-controlled"}] | groupby("key")) }}`,
-      ),
-      /reserved/,
-    );
-    assert.equal(calls, 0);
+    const source = `\${{ capture([{"key":${JSON.stringify(name)},"payload":"data"}] | groupby("key")) }}`;
+
+    if (reserved) {
+      assert.throws(() => engine.render(source), /reserved/);
+      assert.equal(calls, 0);
+      assert.deepEqual(Reflect.ownKeys(target), []);
+      assert.throws(() => new RuntimeRecord([[name, 'blocked']]), /reserved/);
+    } else {
+      assert.equal(engine.render(source), '');
+      assert.equal(calls, 1);
+      assert.ok(received && typeof received === 'object');
+      assert.equal(Object.getPrototypeOf(received), null);
+      assert.equal(Object.hasOwn(received, name), true);
+      assert.equal(Object.isFrozen(received), true);
+      assert.equal(Object.hasOwn(target, name), true);
+    }
     assert.equal(Object.getPrototypeOf(target), Object.prototype);
     assert.equal(engine.render('clean'), 'clean');
-    assert.throws(
-      () => new RuntimeRecord([[name, 'blocked']]),
-      /reserved/,
+  }
+});
+
+test('dynamic attribute paths traverse only explicit record entries', () => {
+  const pathCases = [
+    ...semanticNameCases,
+    { name: 'safe.__proto__.value', reserved: true },
+    { name: 'safe.constructor.value', reserved: true },
+    { name: 'safe.prototype.value', reserved: true },
+  ];
+
+  for (const { name: path, reserved } of pathCases) {
+    let calls = 0;
+    let received: unknown;
+    const engine = createEngine({
+      globals: {
+        capture(value) {
+          calls += 1;
+          received = value;
+          return null;
+        },
+      },
+    });
+    const item = Object.create(null) as Record<string, unknown>;
+    if (reserved) {
+      item.safe = 'unrelated';
+    } else {
+      const segments = path.split('.');
+      let current = item;
+      for (const [index, segment] of segments.entries()) {
+        if (index === segments.length - 1) {
+          current[segment] = 'path-value';
+        } else {
+          const child = Object.create(null) as Record<string, unknown>;
+          current[segment] = child;
+          current = child;
+        }
+      }
+    }
+
+    const render = () => engine.render(
+      '${{ capture([item] | join("", path)) }}',
+      { item: item as never, path },
     );
+    if (reserved) {
+      assert.throws(render, /reserved/);
+      assert.equal(calls, 0);
+    } else {
+      assert.equal(render(), '');
+      assert.equal(calls, 1);
+      assert.equal(received, 'path-value');
+    }
+    assert.equal(engine.render('clean'), 'clean');
+  }
+});
+
+test('scope and capability identities never fall through host object names', () => {
+  const allowedIdentifiers = [
+    'toString',
+    'valueOf',
+    'hasOwnProperty',
+    'toJSON',
+    '__defineGetter__',
+    '__defineSetter__',
+    '__lookupGetter__',
+    '__lookupSetter__',
+    `name${'x'.repeat(4_096)}`,
+  ];
+
+  for (const name of allowedIdentifiers) {
+    let globalCalls = 0;
+    let filterCalls = 0;
+    const globals = Object.create(null) as Record<string, () => string>;
+    const filters = Object.create(null) as Record<string, (value: unknown) => string>;
+    globals[name] = () => {
+      globalCalls += 1;
+      return 'global';
+    };
+    filters[name] = value => {
+      filterCalls += 1;
+      return `filter:${String(value)}`;
+    };
+    const engine = createEngine({ globals, filters: filters as never });
+    assert.equal(engine.render(`\${{ ${name}() }}|\${{ "value" | ${name} }}`), 'global|filter:value');
+    assert.equal(globalCalls, 1);
+    assert.equal(filterCalls, 1);
+    assert.equal(
+      engine.render(`{% set ${name} = "scope" %}\${{ ${name} }}`),
+      'scope',
+    );
+  }
+
+  for (const name of ['__proto__', 'constructor', 'prototype']) {
+    let calls = 0;
+    const globals = Object.create(null) as Record<string, () => null>;
+    const filters = Object.create(null) as Record<string, () => null>;
+    globals[name] = () => {
+      calls += 1;
+      return null;
+    };
+    filters[name] = () => {
+      calls += 1;
+      return null;
+    };
+    assert.throws(() => createEngine({ globals }), /reserved/);
+    assert.throws(() => createEngine({ filters: filters as never }), /reserved/);
+    assert.equal(calls, 0);
+  }
+
+  for (const name of ['__proto__', 'constructor', 'prototype', '', '0', '東京', 'segment.child']) {
+    let calls = 0;
+    const engine = createEngine({
+      globals: {
+        early() {
+          calls += 1;
+          return null;
+        },
+      },
+    });
+    assert.throws(() => engine.render(`\${{ early() }}{% set ${name} = 1 %}`));
+    assert.equal(calls, 0);
+    assert.equal(engine.render('clean'), 'clean');
+  }
+});
+
+test('capability results are recopied before reaching another capability', () => {
+  for (const { name, reserved } of semanticNameCases) {
+    let producerCalls = 0;
+    let sinkCalls = 0;
+    let received: unknown;
+    const target = {} as Record<string, unknown>;
+    const engine = createEngine({
+      globals: {
+        produce() {
+          producerCalls += 1;
+          const value = Object.create(null) as Record<string, string>;
+          value[name] = 'result';
+          return value;
+        },
+        sink(value) {
+          sinkCalls += 1;
+          received = value;
+          Object.assign(target, value as object);
+          return null;
+        },
+      },
+    });
+
+    if (reserved) {
+      assert.throws(() => engine.render('${{ sink(produce()) }}'), /reserved/);
+      assert.equal(producerCalls, 1);
+      assert.equal(sinkCalls, 0);
+      assert.deepEqual(Reflect.ownKeys(target), []);
+    } else {
+      assert.equal(engine.render('${{ sink(produce()) }}'), '');
+      assert.equal(producerCalls, 1);
+      assert.equal(sinkCalls, 1);
+      assert.ok(received && typeof received === 'object');
+      assert.equal(Object.getPrototypeOf(received), null);
+      assert.equal(Object.hasOwn(received, name), true);
+      assert.equal(Object.hasOwn(target, name), true);
+    }
+    assert.equal(Object.getPrototypeOf(target), Object.prototype);
+    assert.equal(engine.render('clean'), 'clean');
   }
 });
 

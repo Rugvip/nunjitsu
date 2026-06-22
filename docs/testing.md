@@ -45,9 +45,9 @@ development oracle so expected output cannot drift independently.
 
 The suite covers reserved prototype names, ambient Node globals, constructor
 gadgets, method calls, implicit coercion, accessors, exotic objects, cyclic
-values, capability identity confusion, malformed syntax, and state cleanup
-after failures. Static checks reject dynamic execution and host reflection in
-parser and interpreter modules.
+values, inherited iteration and serialization hooks, capability identity
+confusion, malformed syntax, and state cleanup after failures. Static checks
+reject dynamic execution and host reflection in parser and interpreter modules.
 
 ## Fuzzing policy
 

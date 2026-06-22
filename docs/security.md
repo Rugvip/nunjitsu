@@ -17,6 +17,14 @@ Trusted code outside the guarantee includes:
 - custom filters and globals; and
 - Nunjitsu and its production dependencies.
 
+The host realm's standard ECMAScript constructors and intrinsic methods are
+also trusted. Replacing globals such as `RegExp` or `JSON.stringify`, or
+replacing standard prototype methods, is outside the application-level sandbox
+contract and requires process or realm isolation. The value boundary still
+prevents template data from supplying those hooks and avoids inherited
+`Object.prototype` iteration and serialization hooks on the containers it
+inspects or materializes.
+
 The production parser and standard library are native project code with no
 runtime dependencies. The single-pass scanner and closed expression parser can
 construct only the supported frozen data-only node variants. No foreign parser
@@ -62,7 +70,9 @@ captures; callers cannot inject a safe-string wrapper through public data.
 Functions, accessors, symbols, class instances, typed arrays, dates, maps,
 sets, weak collections, promises, errors, and other exotic objects are
 rejected. Cycles are rejected. Repeated non-cyclic aliases may retain identity
-through internal graph references.
+through internal graph references. Accepted arrays are copied by inspecting own
+indexed data descriptors; the copier never consumes an inherited iteration
+protocol.
 
 Prepared contexts retain this copied graph across renders without retaining the
 host objects it came from. They are opaque, bound to one engine, and immutable.
@@ -79,6 +89,27 @@ reaches host code. Prototype pollution of `Object.prototype` cannot affect
 interpreter lookup because host objects are never used as scopes or template
 records.
 
+## Semantic role changes
+
+Template-controlled data is revalidated whenever its role changes:
+
+- dictionary syntax and record-producing built-ins pass every derived key
+  through `RuntimeRecord`, which cannot represent a reserved key;
+- attribute strings are split into explicit path segments, reject reserved
+  segments, and traverse only `RuntimeRecord` entries;
+- assignment, macro, filter, test, and global names originate from validated
+  parser symbols and resolve through private maps;
+- sealed internal callable identities cannot cross the public value boundary;
+  and
+- capability arguments and results are recursively recopied rather than
+  retaining either side's objects or prototypes.
+
+Other names that resemble inherited JavaScript properties, including
+`toString`, `valueOf`, `hasOwnProperty`, and accessor helper names, remain valid
+ordinary data. They are safe inside map-backed records and null-prototype
+public records, but capability implementations must still treat their names and
+values as untrusted input.
+
 ## Capabilities
 
 Capabilities are the only route to trusted application behavior. Engine-level
@@ -90,6 +121,11 @@ copies internal arguments to a public value graph whose records have null
 prototypes, invokes the exact registered callback through the host dispatcher,
 and copies its result back through the safe value validator. Capability results
 are not implicitly safe.
+
+Built-ins that temporarily materialize internal data as JavaScript containers
+must also prevent inherited host hooks from becoming observable. In particular,
+`dump` serializes only null-prototype records and arrays, so an inherited
+`toJSON` accessor or function cannot run during template evaluation.
 
 A capability is authority. Applications must expose narrow behavior and assume
 an untrusted template can invoke every registered capability with arbitrary

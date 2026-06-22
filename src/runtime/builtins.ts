@@ -507,9 +507,9 @@ function toJsonValue(value: RuntimeValue): unknown {
     return value.value;
   }
   if (value instanceof RuntimeArray) {
-    const output: unknown[] = [];
+    const output = Object.setPrototypeOf([], null) as unknown[];
     for (const item of value.values()) {
-      output.push(toJsonValue(item));
+      output[output.length] = toJsonValue(item);
     }
     return output;
   }
