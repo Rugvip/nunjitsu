@@ -146,6 +146,10 @@ must also prevent inherited host hooks from becoming observable. In particular,
 `dump` serializes only null-prototype records and arrays, so an inherited
 `toJSON` accessor or function cannot run during template evaluation.
 
+The built-in `random` filter uses Node's synchronous cryptographic integer
+selection. Template-controlled calls therefore neither observe nor advance the
+host application's shared `Math.random` state.
+
 A capability is authority. Applications must expose narrow behavior and assume
 an untrusted template can invoke every registered capability with arbitrary
 valid arguments up to configured limits.

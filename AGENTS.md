@@ -163,6 +163,9 @@ Do not create additional packages without a documented architectural reason.
 - Clear all host-realm legacy RegExp capture state in a public render-level
   `finally` block. Cover successful and failed renders, and do not claim that
   pre-existing legacy state can be restored.
+- Implement template-visible randomness with Node's cryptographic random
+  source. Built-ins must not read or advance the caller realm's shared
+  `Math.random` stream.
 - Treat capability exceptions as fail-stop opaque values. Preserve details only
   from primitive strings or an own string data descriptor after a trap-free
   native-error brand check, neutralize and bound the detail, discard the

@@ -14,7 +14,10 @@ test('loads the CommonJS condition from an ESM environment', () => {
   assert.equal(typeof require('nunjitsu').createEngine, 'function');
 });
 
-test('renders synchronously through the ESM package entry', () => {
+test('renders synchronously through the ESM package entry', t => {
+  t.mock.method(Math, 'random', () => {
+    throw new Error('Math.random must not be called during rendering');
+  });
   const engine = createEngine({
     filters: {
       upper(input) {
@@ -28,4 +31,5 @@ test('renders synchronously through the ESM package entry', () => {
   );
   const context = engine.prepareContext({ value: 'prepared' });
   assert.equal(engine.render('ESM ${{ value | upper }}', context), 'ESM PREPARED');
+  assert.equal(engine.render('${{ ["only"] | random }}'), 'only');
 });

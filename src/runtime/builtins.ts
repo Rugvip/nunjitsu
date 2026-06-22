@@ -1,3 +1,5 @@
+import { randomInt } from 'node:crypto';
+
 import {
   runtimeArrayIndexFromPropertyKey,
   runtimeOrder,
@@ -175,7 +177,7 @@ export function applyBuiltinFilter(
     if (!(input instanceof RuntimeArray) || input.length === 0) {
       return undefined;
     }
-    return input.at(Math.floor(Math.random() * input.length));
+    return input.at(randomInt(input.length));
   }
   if (name === 'replace') {
     return replaceRuntimeValue(input, positional);

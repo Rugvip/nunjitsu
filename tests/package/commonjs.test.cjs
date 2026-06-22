@@ -12,7 +12,10 @@ test('loads the ESM condition from a CommonJS environment', async () => {
   assert.equal(typeof module.createEngine, 'function');
 });
 
-test('renders synchronously through the CommonJS package entry', () => {
+test('renders synchronously through the CommonJS package entry', t => {
+  t.mock.method(Math, 'random', () => {
+    throw new Error('Math.random must not be called during rendering');
+  });
   const engine = createEngine({
     globals: {
       value() {
@@ -30,4 +33,5 @@ test('renders synchronously through the CommonJS package entry', () => {
   );
   const context = engine.prepareContext({ value: 'prepared' });
   assert.equal(engine.render('CommonJS ${{ value }}', context), 'CommonJS prepared');
+  assert.equal(engine.render('${{ ["only"] | random }}'), 'only');
 });

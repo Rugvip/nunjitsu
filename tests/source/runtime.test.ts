@@ -165,6 +165,24 @@ test('implements the closed Nunjucks filter and test standard library', () => {
   );
 });
 
+test('selects random values without consuming the host Math.random stream', t => {
+  let mathRandomCalls = 0;
+  t.mock.method(Math, 'random', () => {
+    mathRandomCalls += 1;
+    throw new Error('Math.random must not be called during rendering');
+  });
+
+  const engine = createEngine({ cookiecutterCompat: true });
+  assert.equal(engine.render('{{ [] | random | default("empty") }}'), 'empty');
+  assert.equal(engine.render('{{ ["only"] | random }}'), 'only');
+
+  for (let iteration = 0; iteration < 20; iteration += 1) {
+    const selected = engine.render('{{ ["a", "b", "c"] | random }}');
+    assert.ok(['a', 'b', 'c'].includes(selected));
+  }
+  assert.equal(mathRandomCalls, 0);
+});
+
 test('dispatches only registered synchronous filters and globals', () => {
   const callbackInputs: unknown[] = [];
   const engine = createEngine({

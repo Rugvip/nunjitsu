@@ -94,6 +94,10 @@ present key containing the interpreter's `undefined` value remains present.
 String loops consume one UTF-16 code unit per iteration, so loop work scales
 with code-unit count and `loop.length` stays consistent with valid indices.
 
+The `random` filter selects array indices synchronously with Node's
+cryptographic random source. It never reads or advances the caller realm's
+shared `Math.random` stream.
+
 ## Scopes and calls
 
 Lexical scopes are engine-owned frames with one private map of value and
