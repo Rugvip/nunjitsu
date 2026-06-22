@@ -218,6 +218,36 @@
       "expected": "[1,2,3,4][5,6,7,8]"
     },
     {
+      "id": "compiler-single-target-arraylike-record-loop",
+      "template": "{% for value in record %}[{{ value | dump }},{{ loop.index }},{{ loop.revindex }},{{ loop.last }},{{ loop.length | dump }}]{% else %}ELSE{% endfor %}",
+      "context": {"record":{"0":"A","1":"B","length":"2"}},
+      "expected": "[\"A\",1,2,false,\"2\"][\"B\",2,1,true,\"2\"]"
+    },
+    {
+      "id": "compiler-single-target-record-else",
+      "template": "{% for value in record %}BODY{% else %}ELSE{% endfor %}",
+      "context": {"record":{"a":1}},
+      "expected": "ELSE"
+    },
+    {
+      "id": "compiler-multi-target-string-loop",
+      "template": "{% for key, value in \"xy\" %}{{ key }}={{ value }};{% endfor %}",
+      "context": {},
+      "expected": "0=x;1=y;"
+    },
+    {
+      "id": "compiler-multi-target-safe-string-loop",
+      "template": "{% for first, second in \"xy\" | safe %}{{ first }}={{ second }};{% endfor %}",
+      "context": {},
+      "expected": "x=;y=;"
+    },
+    {
+      "id": "compiler-multi-target-record-loop",
+      "template": "{% for key, value, unused in {a:1,b:2} %}[{{ key }}={{ value }},{{ unused }},{{ loop.index }},{{ loop.revindex }},{{ loop.length }}]{% endfor %}",
+      "context": {},
+      "expected": "[a=1,,1,2,2][b=2,,2,1,2]"
+    },
+    {
       "id": "compiler-set-multiple-and-arithmetic",
       "template": "{% set username = \"foo\" %}{{ username }}|{% set x, y = \"foo\" %}{{ x }}{{ y }}|{% set sum = 1 + 2 %}{{ sum }}",
       "context": {"username":"james"},

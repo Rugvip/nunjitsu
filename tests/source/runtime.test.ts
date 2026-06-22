@@ -48,6 +48,200 @@ test('renders control flow, loops, macros, call blocks, and assignments', () => 
   );
 });
 
+test('matches Nunjucks record loop planning and multi-target destructuring', () => {
+  const engineCalls: string[] = [];
+  const oracleCalls: string[] = [];
+  const engine = createEngine({
+    globals: {
+      records() {
+        engineCalls.push('records');
+        return { a: 1 };
+      },
+      body() {
+        engineCalls.push('body');
+        return '';
+      },
+    },
+  });
+  const oracle = new nunjucks.Environment(undefined, { autoescape: false });
+  oracle.addGlobal('records', () => {
+    oracleCalls.push('records');
+    return { a: 1 };
+  });
+  oracle.addGlobal('body', () => {
+    oracleCalls.push('body');
+    return '';
+  });
+  const metadataSource = [
+    '{% for value in record %}',
+    '[${{ value | dump }}|${{ loop.index }}|${{ loop.index0 }}|',
+    '${{ loop.revindex }}|${{ loop.revindex0 }}|${{ loop.first }}|',
+    '${{ loop.last }}|${{ loop.length | dump }}]',
+    '{% else %}ELSE{% endfor %}',
+  ].join('');
+  const recordCases = [
+    { record: { a: 1 }, expected: 'ELSE' },
+    { record: { 0: 'A', length: 0 }, expected: 'ELSE' },
+    { record: { 0: 'A', length: '0' }, expected: '' },
+    { record: { 0: 'A', length: -1 }, expected: '' },
+    {
+      record: { 0: 'A', 1: 'B', length: 2 },
+      expected: '["A"|1|0|2|1|true|false|2]["B"|2|1|1|0|false|true|2]',
+    },
+    {
+      record: { 0: 'A', 1: 'B', length: '2' },
+      expected: '["A"|1|0|2|1|true|false|"2"]["B"|2|1|1|0|false|true|"2"]',
+    },
+    {
+      record: { 0: 'A', 1: 'B', length: 1.5 },
+      expected: '["A"|1|0|1.5|0.5|true|false|1.5]["B"|2|1|0.5|-0.5|false|false|1.5]',
+    },
+    {
+      record: { 0: 'A', length: 2 },
+      expected: '["A"|1|0|2|1|true|false|2][|2|1|1|0|false|true|2]',
+    },
+  ];
+  for (const { record, expected } of recordCases) {
+    assert.equal(
+      oracle.renderString(metadataSource.replaceAll('${{', '{{'), { record }),
+      expected,
+    );
+    assert.equal(engine.render(metadataSource, { record }), expected);
+  }
+
+  const standardLoopSource = [
+    '{% for value in ["a","b"] %}',
+    '[${{ value }},${{ loop.index }},${{ loop.index0 }},${{ loop.revindex }},',
+    '${{ loop.revindex0 }},${{ loop.first }},${{ loop.last }},${{ loop.length }}]',
+    '{% else %}BAD{% endfor %}|',
+    '{% for value in [] %}BAD{% else %}EMPTY{% endfor %}|',
+    '{% for value in missing %}BAD{% else %}MISSING{% endfor %}|',
+    '{% for value in holder.missing %}BAD{% else %}PROPERTY{% endfor %}|',
+    '{% for value in null %}BAD{% else %}NULL{% endfor %}|',
+    '{% for row in [[1,2],[3,4]] %}',
+    '[${{ loop.index }}:${{ loop.revindex }}:',
+    '{% for value in row %}${{ loop.index }}.${{ loop.revindex }}=${{ value }};{% endfor %}]',
+    '{% endfor %}',
+  ].join('');
+  const standardLoopContext = { holder: {} };
+  assert.equal(
+    engine.render(standardLoopSource, standardLoopContext),
+    oracle.renderString(standardLoopSource.replaceAll('${{', '{{'), standardLoopContext),
+  );
+
+  const literalSource = [
+    '{% for value in {"0":"literal", length:1} %}',
+    '${{ value }}:${{ loop.length }}',
+    '{% else %}ELSE{% endfor %}',
+  ].join('');
+  assert.equal(
+    engine.render(literalSource),
+    oracle.renderString(literalSource.replaceAll('${{', '{{'), {}),
+  );
+
+  const capabilitySource = [
+    '{% for value in records() %}${{ body() }}',
+    '{% else %}DENY{% endfor %}',
+  ].join('');
+  assert.equal(
+    engine.render(capabilitySource),
+    oracle.renderString(capabilitySource.replaceAll('${{', '{{'), {}),
+  );
+  assert.deepEqual(engineCalls, ['records']);
+  assert.deepEqual(oracleCalls, engineCalls);
+
+  const multiTargetSource = [
+    '{% for a,b,c in record %}',
+    '[R:${{ a | dump }},${{ b | dump }},${{ c | dump }},${{ loop.length | dump }}]',
+    '{% endfor %}|',
+    '{% for a,b in "😀x" %}',
+    '[P:${{ a | dump }},${{ b | dump }},${{ loop.length | dump }}]',
+    '{% endfor %}|',
+    '{% for a,b in "xy" | safe %}',
+    '[S:${{ a | dump }},${{ b | dump }},${{ loop.length | dump }}]',
+    '{% endfor %}|',
+    '{% for a,b in [["x","y"],"ab","cd" | safe,{"0":"m","1":"n"},12,true] %}',
+    '[A:${{ a | dump }},${{ b | dump }}]',
+    '{% endfor %}',
+  ].join('');
+  const multiTargetContext = { record: { x: 1, y: 2 } };
+  assert.equal(
+    engine.render(multiTargetSource, multiTargetContext),
+    oracle.renderString(multiTargetSource.replaceAll('${{', '{{'), multiTargetContext),
+  );
+
+  assert.throws(
+    () => engine.render(
+      '{% for value in record %}{% set consumed = value %}{% endfor %}',
+      { record: { length: Number.POSITIVE_INFINITY } },
+      { limits: { workUnits: 100 } },
+    ),
+    NunjitsuLimitError,
+  );
+  assert.equal(engine.render('clean'), 'clean');
+});
+
+test('rejects invalid targets and nullish destructuring before loop bodies execute', () => {
+  let engineCalls = 0;
+  let oracleCalls = 0;
+  const engine = createEngine({
+    globals: {
+      privileged() {
+        engineCalls += 1;
+        return 1;
+      },
+    },
+  });
+  const oracle = new nunjucks.Environment(undefined, { autoescape: false });
+  oracle.addGlobal('privileged', () => {
+    oracleCalls += 1;
+    return 1;
+  });
+  const invalidTargets = [
+    '{% for [a,b] in [privileged()] %}${{ privileged() }}{% endfor %}${{ privileged() }}',
+    '{% for [a,[b,c]] in [[1,[2,3]]] %}${{ privileged() }}{% endfor %}${{ privileged() }}',
+    '{% for (a) in [privileged()] %}${{ privileged() }}{% endfor %}${{ privileged() }}',
+    '{% set [a,b] = [privileged(),2] %}${{ privileged() }}',
+    '{% set [a,b] %}${{ privileged() }}{% endset %}${{ privileged() }}',
+  ];
+  for (const source of invalidTargets) {
+    assert.throws(() => engine.render(source), NunjitsuRenderError);
+    assert.throws(() => oracle.renderString(source.replaceAll('${{', '{{'), {}));
+    assert.equal(engineCalls, 0);
+    assert.equal(oracleCalls, 0);
+    assert.equal(engine.render('clean'), 'clean');
+  }
+
+  const validTargets = [
+    '{% for value in [1] %}${{ value }}{% endfor %}',
+    '{% for first,second in [[1,2]] %}${{ first }}${{ second }}{% endfor %}',
+    '{% set first,second = 3 %}${{ first }}${{ second }}',
+  ];
+  for (const source of validTargets) {
+    assert.equal(
+      engine.render(source),
+      oracle.renderString(source.replaceAll('${{', '{{'), {}),
+    );
+  }
+
+  const sparse = Array<null>(1);
+  const nullishCases = [
+    { source: '{% for first,second in [null] %}${{ privileged() }}{% endfor %}' },
+    { source: '{% for first,second in [missing] %}${{ privileged() }}{% endfor %}' },
+    {
+      source: '{% for first,second in values %}${{ privileged() }}{% endfor %}',
+      context: { values: sparse },
+    },
+  ];
+  for (const { source, context } of nullishCases) {
+    assert.throws(() => engine.render(source, context), NunjitsuRenderError);
+    assert.throws(() => oracle.renderString(source.replaceAll('${{', '{{'), context ?? {}));
+    assert.equal(engineCalls, 0);
+    assert.equal(oracleCalls, 0);
+    assert.equal(engine.render('clean'), 'clean');
+  }
+});
+
 test('matches built-in filters, tests, globals, comments, and raw regions', () => {
   const engine = createEngine();
   assert.equal(

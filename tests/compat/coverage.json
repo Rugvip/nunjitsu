@@ -37,6 +37,19 @@
       ]
     },
     {
+      "id": "loop-container-planning",
+      "file": "tests/source/runtime.test.ts",
+      "test": "matches Nunjucks record loop planning and multi-target destructuring",
+      "upstreamRange": {"file": "tests/compiler.js", "start": 17, "end": 39},
+      "statuses": ["ported", "adapted"]
+    },
+    {
+      "id": "loop-target-validation",
+      "file": "tests/source/runtime.test.ts",
+      "test": "rejects invalid targets and nullish destructuring before loop bodies execute",
+      "upstream": ["tests/parser.js:10", "tests/compiler.js:20"]
+    },
+    {
       "id": "compiler-capability-errors",
       "file": "tests/source/security.test.ts",
       "test": "capability exceptions retain only inert sanitized messages and halt evaluation",

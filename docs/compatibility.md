@@ -34,6 +34,9 @@ Nunjitsu targets:
   precedence;
 - Nunjucks parser acceptance for parenthesized nested inline conditionals and
   string or ordinary-identifier dictionary keys;
+- target-count-sensitive Nunjucks loop behavior for arrays, primitive and safe
+  strings, and array-like or key-value records, including raw loop-length
+  metadata, else selection, and flat symbol-only binding targets;
 - built-in filters, tests, and globals used by direct string templates;
 - synchronous application filters and `TemplateValue` data or callable globals;
 - `trimBlocks` and `lstripBlocks`; and

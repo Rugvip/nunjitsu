@@ -103,7 +103,7 @@ interface BlockFrame {
 
 /** One non-materializing view over values accepted by a template loop. */
 interface RuntimeIteration {
-  readonly length: number;
+  readonly length: RuntimeValue;
   readonly values: IterableIterator<RuntimeValue>;
 }
 
@@ -382,27 +382,29 @@ class Evaluator {
     depth: number,
   ): void {
     const value = this.#evaluateExpression(node.arr, scope, depth + 1);
-    const entries = iterableEntries(value);
-    if (entries.length === 0) {
-      const otherwise = node.else_;
-      if (otherwise) {
-        this.#evaluateNode(otherwise, scope.child(), output, depth + 1);
-      }
-      return;
-    }
     const binding = node.name;
+    let targets: readonly AstNode[];
+    if (binding.type === 'Symbol') {
+      targets = [binding];
+    } else if (binding.type === 'Array') {
+      targets = binding.children;
+    } else {
+      throw new Error(`Invalid loop target ${binding.type}`);
+    }
+    const entries = iterableEntries(value, targets.length);
     const loopScope = scope.child();
     let index = 0;
     for (const entry of entries.values) {
       const iteration = loopScope;
-      bindTarget(binding, entry, iteration);
+      bindLoopTargets(targets, entry, iteration);
+      const numericLength = runtimeToNumber(entries.length);
       iteration.set('loop', new RuntimeRecord([
         ['index', index + 1],
         ['index0', index],
-        ['revindex', entries.length - index],
-        ['revindex0', entries.length - index - 1],
+        ['revindex', numericLength - index],
+        ['revindex0', numericLength - index - 1],
         ['first', index === 0],
-        ['last', index === entries.length - 1],
+        ['last', index === numericLength - 1],
         ['length', entries.length],
       ]));
       this.#evaluateNode(
@@ -412,6 +414,10 @@ class Evaluator {
         depth + 1,
       );
       index += 1;
+    }
+    const otherwise = node.else_;
+    if (!runtimeTruthy(entries.length) && otherwise) {
+      this.#evaluateNode(otherwise, loopScope, output, depth + 1);
     }
   }
 
@@ -1133,45 +1139,92 @@ function isStringValue(value: RuntimeValue): boolean {
   return typeof value === 'string' || value instanceof RuntimeSafeString;
 }
 
-function bindTarget(target: AstNode, value: RuntimeValue, scope: RuntimeScope): void {
-  if (target.type === 'Symbol') {
-    scope.set(symbolName(target), value);
+function bindLoopTargets(
+  targets: readonly AstNode[],
+  value: RuntimeValue,
+  scope: RuntimeScope,
+): void {
+  if (targets.length === 1) {
+    scope.set(symbolName(targets[0]!), value);
     return;
   }
-  if (target.type === 'Array' || target.type === 'Group') {
-    for (const [index, child] of target.children.entries()) {
-      bindTarget(child, value instanceof RuntimeArray ? value.at(index) : undefined, scope);
-    }
-    return;
+  for (const [index, target] of targets.entries()) {
+    scope.set(symbolName(target), destructureRuntimeValue(value, index));
   }
-  throw new Error(`Invalid loop target ${target.type}`);
 }
 
 function bindAssignment(target: AstNode, value: RuntimeValue, scope: RuntimeScope): void {
-  if (target.type === 'Symbol') {
-    scope.assign(symbolName(target), value);
-    return;
+  if (target.type !== 'Symbol') {
+    throw new Error(`Invalid assignment target ${target.type}`);
   }
-  bindTarget(target, value, scope);
+  scope.assign(symbolName(target), value);
 }
 
-function iterableEntries(value: RuntimeValue): RuntimeIteration {
+function iterableEntries(value: RuntimeValue, targetCount: number): RuntimeIteration {
+  if (targetCount === 1) {
+    if (value instanceof RuntimeArray) {
+      return { length: value.length, values: value.values() };
+    }
+    if (value instanceof RuntimeRecord) {
+      const length = value.get('length');
+      return { length, values: recordIndexValues(value, length) };
+    }
+    if (typeof value === 'string' || value instanceof RuntimeSafeString) {
+      const text = typeof value === 'string' ? value : value.value;
+      return { length: text.length, values: stringCodeUnits(text) };
+    }
+    return { length: undefined, values: emptyRuntimeValues() };
+  }
   if (value instanceof RuntimeArray) {
     return { length: value.length, values: value.values() };
   }
   if (value instanceof RuntimeRecord) {
     return { length: value.size, values: recordIterationValues(value) };
   }
-  if (typeof value === 'string' || value instanceof RuntimeSafeString) {
-    const text = typeof value === 'string' ? value : value.value;
-    return { length: text.length, values: stringCodeUnits(text) };
+  if (typeof value === 'string') {
+    return { length: value.length, values: indexedStringIterationValues(value) };
+  }
+  if (value instanceof RuntimeSafeString) {
+    return { length: value.value.length, values: stringCodeUnits(value.value) };
   }
   return { length: 0, values: emptyRuntimeValues() };
+}
+
+function destructureRuntimeValue(value: RuntimeValue, index: number): RuntimeValue {
+  if (value === undefined || value === null) {
+    throw new TypeError('Cannot destructure a nullish loop value');
+  }
+  if (value instanceof RuntimeArray) {
+    return value.at(index);
+  }
+  if (value instanceof RuntimeRecord) {
+    return value.get(`${index}`);
+  }
+  if (typeof value === 'string') {
+    return value[index];
+  }
+  return undefined;
+}
+
+function* recordIndexValues(
+  value: RuntimeRecord,
+  length: RuntimeValue,
+): IterableIterator<RuntimeValue> {
+  const numericLength = runtimeToNumber(length);
+  for (let index = 0; index < numericLength; index += 1) {
+    yield value.get(`${index}`);
+  }
 }
 
 function* recordIterationValues(value: RuntimeRecord): IterableIterator<RuntimeValue> {
   for (const [key, item] of value.entries()) {
     yield new RuntimeArray([key, item]);
+  }
+}
+
+function* indexedStringIterationValues(value: string): IterableIterator<RuntimeValue> {
+  for (let index = 0; index < value.length; index += 1) {
+    yield new RuntimeArray([`${index}`, value[index]]);
   }
 }
 

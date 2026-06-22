@@ -105,13 +105,31 @@ Parser-validated constant attribute and index keys use a narrowed closed lookup
 operation. Computed keys continue through explicit runtime coercion. Both paths
 dispatch only over internal value kinds and reserve prototype gadget names.
 
-Loops and membership checks iterate internal collections directly. They do not
-materialize a second array containing the full collection; record loop pairs
-are created one at a time as the interpreter consumes them. Record membership
-uses the map-backed presence operation rather than the retrieved value, so a
-present key containing the interpreter's `undefined` value remains present.
-String loops consume one UTF-16 code unit per iteration, so loop work scales
-with code-unit count and `loop.length` stays consistent with valid indices.
+Loops and membership checks iterate internal collections directly. Loop
+planning uses both the container kind and the number of flat symbol targets.
+With one target, arrays and strings yield their values, while records emulate
+Nunjucks's array-like path using only the record's own raw `length` and numeric
+entries. That raw length remains visible as `loop.length`, drives the generated
+metadata arithmetic through closed numeric conversion, and independently
+controls `{% else %}` through closed truthiness. It is not normalized to the
+number of iterations, preserving string, negative, and fractional-length
+behavior.
+
+With multiple targets, arrays yield elements for closed numeric destructuring,
+records lazily yield key-value pairs, primitive strings yield index and UTF-16
+code-unit pairs, and top-level safe strings follow Nunjucks's iterator-to-array
+path. Numeric destructuring dispatches only over interpreter arrays, primitive
+strings, and record entries. Numbers and booleans produce undefined bindings;
+null and undefined fail before the loop body executes. No path invokes a host
+property, iterator, getter, coercion hook, or prototype. Potentially unbounded
+array-like record lengths remain bounded by normal evaluator work limits.
+
+Record membership uses the map-backed presence operation rather than the
+retrieved value, so a present key containing the interpreter's `undefined`
+value remains present. String loops consume one UTF-16 code unit per iteration.
+Binding syntax is restricted to one ordinary symbol or a flat comma-separated
+symbol list; bracketed, grouped, nested, literal, lookup, and callable targets
+fail during complete-source parsing before any capability can run.
 
 The `random` filter selects array indices synchronously with Node's
 cryptographic random source. It never reads or advances the caller realm's

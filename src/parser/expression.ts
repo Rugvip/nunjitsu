@@ -39,7 +39,7 @@ const numberPattern = /^(?:0[xX][0-9a-fA-F]+|(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)
 const shortHexEscapePattern = /^[0-9a-fA-F]{2}$/;
 const unicodeEscapePattern = /^[0-9a-fA-F]{4}$/;
 const regularExpressionFlagsPattern = /^[A-Za-z]*/;
-const dictionaryLiteralNames = new Set(['true', 'false', 'null', 'none']);
+const literalNames = new Set(['true', 'false', 'null', 'none']);
 
 /** Creates and freezes one parser-owned AST node. */
 export type AstNodeFactory = (node: AstNode) => AstNode;
@@ -73,7 +73,11 @@ export class ExpressionParser {
   parseTargetList(): readonly AstNode[] {
     const targets: AstNode[] = [];
     do {
-      targets.push(this.#parseTarget());
+      const token = this.#expect('name');
+      if (literalNames.has(token.value)) {
+        this.#fail('Binding targets must be ordinary names', token);
+      }
+      targets.push(this.#symbol(token));
     } while (this.#consume(','));
     this.#expect('eof');
     return Object.freeze(targets);
@@ -438,7 +442,7 @@ export class ExpressionParser {
       do {
         const keyToken = this.#peek();
         let key: AstNode;
-        if (keyToken.kind === 'name' && !dictionaryLiteralNames.has(keyToken.value)) {
+        if (keyToken.kind === 'name' && !literalNames.has(keyToken.value)) {
           this.#index += 1;
           key = this.#symbol(keyToken);
         } else if (keyToken.kind === 'string') {
@@ -500,18 +504,6 @@ export class ExpressionParser {
       positional.push(this.#make('KeywordArgs', { children: Object.freeze(keywords) }));
     }
     return Object.freeze(positional);
-  }
-
-  #parseTarget(): AstNode {
-    if (this.#consume('[')) {
-      const children: AstNode[] = [];
-      do {
-        children.push(this.#parseTarget());
-      } while (this.#consume(','));
-      this.#expectValue(']');
-      return this.#make('Array', { children: Object.freeze(children) });
-    }
-    return this.#symbol(this.#expect('name'));
   }
 
   #symbol(token: Token): AstNode {

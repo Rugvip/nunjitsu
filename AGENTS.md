@@ -172,6 +172,15 @@ Do not create additional packages without a documented architectural reason.
   conditional's else arm. Accept only strings and ordinary identifiers as
   dictionary literal keys; reject literal-looking numeric, boolean, and nullish
   key forms before evaluation.
+- Accept only one ordinary symbol or a flat comma-separated symbol list as a
+  `for` or `set` target. Reject bracketed, grouped, nested, literal, lookup, and
+  callable targets while parsing the complete source, before evaluation.
+- Plan loops from both the closed container kind and target count. Single-target
+  records use only their own raw `length` and numeric entries; multi-target
+  records yield key-value pairs, primitive strings yield index-code-unit pairs,
+  and arrays destructure through explicit closed numeric lookup. Preserve raw
+  record length for loop metadata and else truthiness, and fail before the body
+  when multi-target array destructuring encounters null or undefined.
 - Clear all host-realm legacy RegExp capture state in a public render-level
   `finally` block. Cover successful and failed renders, and do not claim that
   pre-existing legacy state can be restored.

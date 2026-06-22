@@ -167,13 +167,15 @@
     },
     {
       "upstream": {"id":"tests/parser.js:10","file":"tests/parser.js","test":"should parse for loops"},
-      "status": "not applicable",
-      "reason": "Requires automatic escaping, while the direct-string API fixes autoescape to false."
+      "status": "adapted",
+      "reason": "Flat loop targets and container-sensitive iteration are verified through rendered output rather than exposed parser nodes.",
+      "cases": ["compiler-multi-target-string-loop","compiler-multi-target-record-loop"]
     },
     {
       "upstream": {"id":"tests/parser.js:11","file":"tests/parser.js","test":"should parse for loops with else"},
-      "status": "not applicable",
-      "reason": "Requires automatic escaping, while the direct-string API fixes autoescape to false."
+      "status": "adapted",
+      "reason": "Loop else behavior is verified through rendered output with fixed autoescape false.",
+      "cases": ["compiler-single-target-record-else"]
     },
     {
       "upstream": {"id":"tests/parser.js:12","file":"tests/parser.js","test":"should parse filters"},
@@ -1007,108 +1009,115 @@
     },
     {
       "upstream": {"id":"tests/compiler.js:17","file":"tests/compiler.js","test":"should loop over simple arrays"},
-      "status": "not applicable",
-      "reason": "Requires automatic escaping, while the direct-string API fixes autoescape to false."
+      "status": "adapted",
+      "reason": "Observable loop behavior is verified through the synchronous direct-string API with fixed autoescape false."
     },
     {
       "upstream": {"id":"tests/compiler.js:18","file":"tests/compiler.js","test":"should loop normally with an {% else %} tag and non-empty array"},
-      "status": "not applicable",
-      "reason": "Requires automatic escaping, while the direct-string API fixes autoescape to false."
+      "status": "adapted",
+      "reason": "Observable loop behavior is verified through the synchronous direct-string API with fixed autoescape false."
     },
     {
       "upstream": {"id":"tests/compiler.js:19","file":"tests/compiler.js","test":"should execute the {% else %} block when looping over an empty array"},
-      "status": "not applicable",
-      "reason": "Requires automatic escaping, while the direct-string API fixes autoescape to false."
+      "status": "adapted",
+      "reason": "Loop else selection is verified for empty arrays and raw array-like record lengths with fixed autoescape false.",
+      "cases": ["compiler-single-target-record-else"]
     },
     {
       "upstream": {"id":"tests/compiler.js:21","file":"tests/compiler.js","test":"should do loop over key-values of a literal in-template Object"},
-      "status": "not applicable",
-      "reason": "Requires automatic escaping, while the direct-string API fixes autoescape to false."
+      "status": "adapted",
+      "reason": "Literal record key-value iteration is verified through closed values with fixed autoescape false.",
+      "cases": ["compiler-multi-target-record-loop"]
     },
     {
       "upstream": {"id":"tests/compiler.js:22","file":"tests/compiler.js","test":"should support loop.index"},
-      "status": "not applicable",
-      "reason": "Requires automatic escaping, while the direct-string API fixes autoescape to false."
+      "status": "adapted",
+      "reason": "Loop metadata is verified through rendered output with fixed autoescape false."
     },
     {
       "upstream": {"id":"tests/compiler.js:23","file":"tests/compiler.js","test":"should support loop.index0"},
-      "status": "not applicable",
-      "reason": "Requires automatic escaping, while the direct-string API fixes autoescape to false."
+      "status": "adapted",
+      "reason": "Loop metadata is verified through rendered output with fixed autoescape false."
     },
     {
       "upstream": {"id":"tests/compiler.js:24","file":"tests/compiler.js","test":"should support loop.revindex"},
-      "status": "not applicable",
-      "reason": "Requires automatic escaping, while the direct-string API fixes autoescape to false."
+      "status": "adapted",
+      "reason": "Loop metadata is verified through rendered output with fixed autoescape false."
     },
     {
       "upstream": {"id":"tests/compiler.js:25","file":"tests/compiler.js","test":"should support loop.revindex0"},
-      "status": "not applicable",
-      "reason": "Requires automatic escaping, while the direct-string API fixes autoescape to false."
+      "status": "adapted",
+      "reason": "Loop metadata is verified through rendered output with fixed autoescape false."
     },
     {
       "upstream": {"id":"tests/compiler.js:26","file":"tests/compiler.js","test":"should support loop.first"},
-      "status": "not applicable",
-      "reason": "Requires automatic escaping, while the direct-string API fixes autoescape to false."
+      "status": "adapted",
+      "reason": "Loop metadata is verified through rendered output with fixed autoescape false."
     },
     {
       "upstream": {"id":"tests/compiler.js:27","file":"tests/compiler.js","test":"should support loop.last"},
-      "status": "not applicable",
-      "reason": "Requires automatic escaping, while the direct-string API fixes autoescape to false."
+      "status": "adapted",
+      "reason": "Loop metadata is verified through rendered output with fixed autoescape false."
     },
     {
       "upstream": {"id":"tests/compiler.js:28","file":"tests/compiler.js","test":"should support loop.length"},
-      "status": "not applicable",
-      "reason": "Requires automatic escaping, while the direct-string API fixes autoescape to false."
+      "status": "adapted",
+      "reason": "Loop length is verified for ordinary and raw array-like record lengths with fixed autoescape false.",
+      "cases": ["compiler-single-target-arraylike-record-loop"]
     },
     {
       "upstream": {"id":"tests/compiler.js:29","file":"tests/compiler.js","test":"should fail silently when looping over an undefined variable"},
-      "status": "not applicable",
-      "reason": "Requires automatic escaping, while the direct-string API fixes autoescape to false."
+      "status": "adapted",
+      "reason": "Undefined and nullish single-target loops are verified through rendered else behavior with fixed autoescape false."
     },
     {
       "upstream": {"id":"tests/compiler.js:30","file":"tests/compiler.js","test":"should fail silently when looping over an undefined property"},
-      "status": "not applicable",
-      "reason": "Requires automatic escaping, while the direct-string API fixes autoescape to false."
+      "status": "adapted",
+      "reason": "Undefined and nullish single-target loops are verified through rendered else behavior with fixed autoescape false."
     },
     {
       "upstream": {"id":"tests/compiler.js:31","file":"tests/compiler.js","test":"should fail silently when looping over a null variable"},
-      "status": "not applicable",
-      "reason": "Requires automatic escaping, while the direct-string API fixes autoescape to false."
+      "status": "adapted",
+      "reason": "Undefined and nullish single-target loops are verified through rendered else behavior with fixed autoescape false."
     },
     {
       "upstream": {"id":"tests/compiler.js:32","file":"tests/compiler.js","test":"should loop over two-dimensional arrays"},
-      "status": "not applicable",
-      "reason": "Requires automatic escaping, while the direct-string API fixes autoescape to false."
+      "status": "adapted",
+      "reason": "Nested array loops are verified through rendered output with fixed autoescape false."
     },
     {
       "upstream": {"id":"tests/compiler.js:34","file":"tests/compiler.js","test":"should support loop.index with two-dimensional loops"},
-      "status": "not applicable",
-      "reason": "Requires automatic escaping, while the direct-string API fixes autoescape to false."
+      "status": "adapted",
+      "reason": "Nested loop metadata is verified through rendered output with fixed autoescape false."
     },
     {
       "upstream": {"id":"tests/compiler.js:35","file":"tests/compiler.js","test":"should support loop.revindex with two-dimensional loops"},
-      "status": "not applicable",
-      "reason": "Requires automatic escaping, while the direct-string API fixes autoescape to false."
+      "status": "adapted",
+      "reason": "Nested loop metadata is verified through rendered output with fixed autoescape false."
     },
     {
       "upstream": {"id":"tests/compiler.js:36","file":"tests/compiler.js","test":"should support key-value looping over an Object variable"},
-      "status": "not applicable",
-      "reason": "Requires automatic escaping, while the direct-string API fixes autoescape to false."
+      "status": "adapted",
+      "reason": "Context and literal records use the closed key-value loop path with fixed autoescape false.",
+      "cases": ["compiler-multi-target-record-loop"]
     },
     {
       "upstream": {"id":"tests/compiler.js:37","file":"tests/compiler.js","test":"should support loop.index when looping over an Object\\'s key-value pairs"},
-      "status": "not applicable",
-      "reason": "Requires automatic escaping, while the direct-string API fixes autoescape to false."
+      "status": "adapted",
+      "reason": "Record loop metadata is verified through rendered output with fixed autoescape false.",
+      "cases": ["compiler-multi-target-record-loop"]
     },
     {
       "upstream": {"id":"tests/compiler.js:38","file":"tests/compiler.js","test":"should support loop.revindex when looping over an Object\\'s key-value pairs"},
-      "status": "not applicable",
-      "reason": "Requires automatic escaping, while the direct-string API fixes autoescape to false."
+      "status": "adapted",
+      "reason": "Record loop metadata is verified through rendered output with fixed autoescape false.",
+      "cases": ["compiler-multi-target-record-loop"]
     },
     {
       "upstream": {"id":"tests/compiler.js:39","file":"tests/compiler.js","test":"should support loop.length when looping over an Object\\'s key-value pairs"},
-      "status": "not applicable",
-      "reason": "Requires automatic escaping, while the direct-string API fixes autoescape to false."
+      "status": "adapted",
+      "reason": "Record loop metadata is verified through rendered output with fixed autoescape false.",
+      "cases": ["compiler-multi-target-record-loop"]
     },
     {
       "upstream": {"id":"tests/compiler.js:40","file":"tests/compiler.js","test":"should support include tags in the body of the loop"},
