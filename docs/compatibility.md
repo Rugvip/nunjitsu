@@ -24,6 +24,8 @@ Nunjitsu targets:
 - Nunjucks-compatible UTF-16 code-unit semantics for string length, lookup,
   iteration, ordering, filters, replacement, and Jinja-compatible slicing;
 - explicit Nunjucks-compatible strict and loose equality over closed values;
+- Nunjucks-compatible closed primitive, property-key, numeric, concatenation,
+  lookup, membership, and relational coercion without host object hooks;
 - built-in filters, tests, and globals used by direct string templates;
 - synchronous application filters and `TemplateValue` data or callable globals;
 - `trimBlocks` and `lstripBlocks`; and

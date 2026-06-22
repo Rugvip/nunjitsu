@@ -1,4 +1,11 @@
 import {
+  runtimeArrayIndexFromPropertyKey,
+  runtimeOrder,
+  runtimeToNumber,
+  runtimeToPropertyKey,
+  runtimeToString,
+} from './coercion.ts';
+import {
   isReservedName,
   renderRuntimeValue,
   runtimeTruthy,
@@ -54,7 +61,7 @@ export function applyBuiltinFilter(
     return undefined;
   }
   if (name === 'abs') {
-    return Math.abs(runtimeNumber(input));
+    return Math.abs(runtimeToNumber(input));
   }
   if (name === 'batch') {
     return batchRuntimeValues(input, positional);
@@ -65,7 +72,7 @@ export function applyBuiltinFilter(
   }
   if (name === 'center') {
     const text = renderRuntimeValue(input);
-    const width = runtimeNumber(positional[0] ?? 80) || 80;
+    const width = runtimeToNumber(positional[0] ?? 80) || 80;
     if (text.length >= width) {
       return input;
     }
@@ -84,7 +91,7 @@ export function applyBuiltinFilter(
     return dictsortRuntimeValues(input, positional);
   }
   if (name === 'dump') {
-    const spacing = positional[0] === undefined ? undefined : runtimeNumber(positional[0]);
+    const spacing = positional[0] === undefined ? undefined : runtimeToNumber(positional[0]);
     return JSON.stringify(toJsonValue(input), null, spacing);
   }
   if (name === 'escape' || name === 'e') {
@@ -102,12 +109,12 @@ export function applyBuiltinFilter(
     return edgeRuntimeValue(input, name === 'last');
   }
   if (name === 'float') {
-    const parsed = Number.parseFloat(renderRuntimeValue(input));
+    const parsed = Number.parseFloat(runtimeToString(input));
     return Number.isNaN(parsed) ? positional[0] : parsed;
   }
   if (name === 'int') {
-    const base = Math.trunc(runtimeNumber(positional[1] ?? 10));
-    const parsed = Number.parseInt(renderRuntimeValue(input), base);
+    const base = Math.trunc(runtimeToNumber(positional[1] ?? 10));
+    const parsed = Number.parseInt(runtimeToString(input), base);
     return Number.isNaN(parsed) ? positional[0] : parsed;
   }
   if (name === 'reverse') {
@@ -142,7 +149,7 @@ export function applyBuiltinFilter(
     if (text === '') {
       return '';
     }
-    const width = Math.max(0, Math.trunc(runtimeNumber(positional[0] ?? 4) || 4));
+    const width = Math.max(0, Math.trunc(runtimeToNumber(positional[0] ?? 4) || 4));
     const indentFirst = runtimeTruthy(positional[1]);
     const lines = text.split('\n');
     const indentation = ' '.repeat(width);
@@ -174,11 +181,11 @@ export function applyBuiltinFilter(
     return replaceRuntimeValue(input, positional);
   }
   if (name === 'round') {
-    const precision = Math.trunc(runtimeNumber(positional[0] ?? 0));
+    const precision = Math.trunc(runtimeToNumber(positional[0] ?? 0));
     const factor = 10 ** precision;
-    const method = renderRuntimeValue(positional[1]);
+    const method = runtimeToString(positional[1]);
     const rounder = method === 'ceil' ? Math.ceil : method === 'floor' ? Math.floor : Math.round;
-    return rounder(runtimeNumber(input) * factor) / factor;
+    return rounder(runtimeToNumber(input) * factor) / factor;
   }
   if (name === 'slice') {
     return sliceRuntimeValues(input, positional);
@@ -233,7 +240,7 @@ function batchRuntimeValues(
   if (!(input instanceof RuntimeArray)) {
     return new RuntimeArray([]);
   }
-  const width = Math.trunc(runtimeNumber(positional[0]));
+  const width = Math.trunc(runtimeToNumber(positional[0]));
   if (!Number.isSafeInteger(width) || width <= 0) {
     throw new TypeError('Batch size must be a positive integer');
   }
@@ -266,7 +273,7 @@ function dictsortRuntimeValues(
     throw new TypeError('dictsort requires a record');
   }
   const caseSensitive = runtimeTruthy(positional[0]);
-  const by = renderRuntimeValue(positional[1] ?? 'key');
+  const by = runtimeToString(positional[1] ?? 'key');
   if (by !== 'key' && by !== 'value') {
     throw new TypeError('dictsort can only sort by key or value');
   }
@@ -351,8 +358,8 @@ function replaceRuntimeValue(
   positional: readonly RuntimeValue[],
 ): RuntimeValue {
   const text = renderRuntimeValue(input);
-  const replacement = renderRuntimeValue(positional[1]);
-  const maximum = positional[2] === undefined ? -1 : Math.trunc(runtimeNumber(positional[2]));
+  const replacement = runtimeToString(positional[1]);
+  const maximum = positional[2] === undefined ? -1 : Math.trunc(runtimeToNumber(positional[2]));
   const search = positional[0];
   let output: string;
   if (search instanceof RuntimeRegex) {
@@ -364,7 +371,7 @@ function replaceRuntimeValue(
   ) {
     return input;
   } else {
-    const needle = renderRuntimeValue(search);
+    const needle = runtimeToString(search);
     if (maximum === 0) {
       return input;
     }
@@ -397,7 +404,7 @@ function sliceRuntimeValues(
   if (!(input instanceof RuntimeArray)) {
     return new RuntimeArray([]);
   }
-  const count = Math.trunc(runtimeNumber(positional[0]));
+  const count = Math.trunc(runtimeToNumber(positional[0]));
   if (!Number.isSafeInteger(count) || count <= 0) {
     throw new TypeError('Slice count must be a positive integer');
   }
@@ -424,7 +431,7 @@ function truncateRuntimeValue(
   positional: readonly RuntimeValue[],
 ): RuntimeValue {
   const text = renderRuntimeValue(input);
-  const length = Math.trunc(runtimeNumber(positional[0] ?? 255)) || 255;
+  const length = Math.trunc(runtimeToNumber(positional[0] ?? 255)) || 255;
   if (text.length <= length) {
     return input;
   }
@@ -465,7 +472,7 @@ function urlizeRuntimeValue(
   input: RuntimeValue,
   positional: readonly RuntimeValue[],
 ): string {
-  const lengthValue = runtimeNumber(positional[0]);
+  const lengthValue = runtimeToNumber(positional[0]);
   const length = Number.isNaN(lengthValue) ? Number.POSITIVE_INFINITY : lengthValue;
   const nofollow = positional[1] === true ? ' rel="nofollow"' : '';
   const output: string[] = [];
@@ -547,12 +554,12 @@ function sumRuntimeValues(
   positional: readonly RuntimeValue[],
 ): RuntimeValue {
   if (!(input instanceof RuntimeArray)) {
-    return runtimeNumber(positional[1] ?? 0);
+    return runtimeToNumber(positional[1] ?? 0);
   }
   const attribute = optionalAttributePath(positional[0]);
-  let total = runtimeNumber(positional[1] ?? 0);
+  let total = runtimeToNumber(positional[1] ?? 0);
   for (const value of input.values()) {
-    total += runtimeNumber(attribute ? lookupRuntimePath(value, attribute) : value);
+    total += runtimeToNumber(attribute ? lookupRuntimePath(value, attribute) : value);
   }
   return total;
 }
@@ -612,7 +619,7 @@ function optionalAttributePath(value: RuntimeValue): readonly string[] | undefin
   if (typeof value !== 'string' && !(value instanceof RuntimeSafeString)) {
     return undefined;
   }
-  const path = renderRuntimeValue(value).split('.');
+  const path = runtimeToString(value).split('.');
   for (const segment of path) {
     if (isReservedName(segment)) {
       throw new TypeError(`Template attribute ${segment} is reserved`);
@@ -640,8 +647,8 @@ function compareRuntimeFilterValues(
   ) {
     return left - right;
   }
-  const leftText = renderRuntimeValue(left);
-  const rightText = renderRuntimeValue(right);
+  const leftText = runtimeToString(left);
+  const rightText = runtimeToString(right);
   const normalizedLeft = caseSensitive ? leftText : leftText.toLowerCase();
   const normalizedRight = caseSensitive ? rightText : rightText.toLowerCase();
   if (normalizedLeft < normalizedRight) {
@@ -667,7 +674,7 @@ function groupRuntimeValues(input: RuntimeValue, attribute: RuntimeValue): Runti
     if (path.length === 0) {
       key = undefined;
     }
-    const renderedKey = key === undefined ? 'undefined' : renderRuntimeValue(key);
+    const renderedKey = runtimeToPropertyKey(key);
     if (isReservedName(renderedKey)) {
       throw new TypeError(`Template record key ${renderedKey} is reserved`);
     }
@@ -709,7 +716,7 @@ export function applyBuiltinTest(
     case 'defined':
       return input !== undefined;
     case 'divisibleby':
-      return runtimeNumber(input) % runtimeNumber(positional[0]) === 0;
+      return runtimeToNumber(input) % runtimeToNumber(positional[0]) === 0;
     case 'escaped':
       return input instanceof RuntimeSafeString;
     case 'eq':
@@ -717,21 +724,21 @@ export function applyBuiltinTest(
     case 'sameas':
       return positional.length === 1 && input === positional[0];
     case 'even':
-      return runtimeNumber(input) % 2 === 0;
+      return runtimeToNumber(input) % 2 === 0;
     case 'falsy':
       return !runtimeTruthy(input);
     case 'ge':
-      return runtimeNumber(input) >= runtimeNumber(positional[0]);
+      return runtimeOrder(input, positional[0]) >= 0;
     case 'greaterthan':
     case 'gt':
-      return runtimeNumber(input) > runtimeNumber(positional[0]);
+      return runtimeOrder(input, positional[0]) > 0;
     case 'iterable':
       return typeof input === 'string' || input instanceof RuntimeSafeString || input instanceof RuntimeArray;
     case 'le':
-      return runtimeNumber(input) <= runtimeNumber(positional[0]);
+      return runtimeOrder(input, positional[0]) <= 0;
     case 'lessthan':
     case 'lt':
-      return runtimeNumber(input) < runtimeNumber(positional[0]);
+      return runtimeOrder(input, positional[0]) < 0;
     case 'lower': {
       const text = renderRuntimeValue(input);
       return text.toLowerCase() === text;
@@ -745,7 +752,7 @@ export function applyBuiltinTest(
     case 'number':
       return typeof input === 'number';
     case 'odd':
-      return runtimeNumber(input) % 2 === 1;
+      return runtimeToNumber(input) % 2 === 1;
     case 'string':
       return typeof input === 'string';
     case 'truthy':
@@ -761,51 +768,29 @@ export function applyBuiltinTest(
   }
 }
 
-/** Explicit numeric coercion matching template arithmetic. */
-export function runtimeNumber(value: RuntimeValue): number {
-  if (value === null) {
-    return 0;
-  }
-  if (value === true) {
-    return 1;
-  }
-  if (value === false) {
-    return 0;
-  }
-  if (typeof value === 'number') {
-    return value;
-  }
-  if (typeof value === 'string' || value instanceof RuntimeSafeString) {
-    const text = typeof value === 'string' ? value : value.value;
-    return text.trim() === '' ? 0 : Number(text);
-  }
-  return Number.NaN;
-}
-
 /** Resolves one explicit own lookup over a closed value. */
 export function lookupRuntimeValue(
   target: RuntimeValue,
   key: RuntimeValue,
 ): RuntimeValue | undefined {
+  const propertyKey = runtimeToPropertyKey(key);
   if (target instanceof RuntimeRecord) {
-    return target.get(renderRuntimeValue(key));
+    return target.get(propertyKey);
   }
   if (target instanceof RuntimeArray) {
-    const index = runtimeNumber(key);
-    if (Number.isSafeInteger(index) && index >= 0) {
-      return target.at(index);
+    if (propertyKey === 'length') {
+      return target.length;
     }
-    return undefined;
+    const index = runtimeArrayIndexFromPropertyKey(propertyKey, target.length);
+    return index === undefined ? undefined : target.at(index);
   }
   if (typeof target === 'string' || target instanceof RuntimeSafeString) {
     const text = typeof target === 'string' ? target : target.value;
-    const index = runtimeNumber(key);
-    if (Number.isSafeInteger(index) && index >= 0) {
-      return text[index];
-    }
-    if (key === 'length') {
+    if (propertyKey === 'length') {
       return text.length;
     }
+    const index = runtimeArrayIndexFromPropertyKey(propertyKey, text.length);
+    return index === undefined ? undefined : text[index];
   }
   return undefined;
 }
@@ -815,40 +800,5 @@ export function lookupRuntimeConstantKey(
   target: RuntimeValue,
   key: undefined | null | boolean | number | string,
 ): RuntimeValue | undefined {
-  if (target instanceof RuntimeRecord) {
-    return target.get(renderRuntimeValue(key));
-  }
-  const index = constantKeyIndex(key);
-  if (target instanceof RuntimeArray) {
-    return index === undefined ? undefined : target.at(index);
-  }
-  if (typeof target === 'string' || target instanceof RuntimeSafeString) {
-    const text = typeof target === 'string' ? target : target.value;
-    if (index !== undefined) {
-      return text[index];
-    }
-    if (key === 'length') {
-      return text.length;
-    }
-  }
-  return undefined;
-}
-
-function constantKeyIndex(
-  key: undefined | null | boolean | number | string,
-): number | undefined {
-  let index: number;
-  if (key === undefined) {
-    return undefined;
-  }
-  if (key === null || key === false) {
-    index = 0;
-  } else if (key === true) {
-    index = 1;
-  } else if (typeof key === 'number') {
-    index = key;
-  } else {
-    index = key.trim() === '' ? 0 : Number(key);
-  }
-  return Number.isSafeInteger(index) && index >= 0 ? index : undefined;
+  return lookupRuntimeValue(target, key);
 }

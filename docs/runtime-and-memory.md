@@ -44,14 +44,29 @@ UTF-16 lexical ordering without locale or ICU collation, so results are stable
 across supported Node.js environments. Chained comparisons retain Nunjucks's
 left-associative JavaScript semantics.
 
+Closed coercion is separate from output rendering. Output continues to render
+null and undefined as empty strings, while semantic string and property-key
+conversion produces `"null"` and `"undefined"`. Safe strings unwrap directly;
+arrays convert by recursively joining closed item strings with commas; records
+convert to the fixed string `"[object Object]"`; and regex values convert to
+their inert `/source/flags` spelling. Callable coercion fails closed. No path
+invokes a host object's iteration, `valueOf`, `toString`, or primitive-conversion
+hook.
+
+Property lookup, derived record keys, membership, unary and binary arithmetic,
+addition, concatenation, relational operators and tests, and loose equality all
+use these centralized conversions. Array and string indexing accepts only an
+in-range canonical nonnegative integer property key such as `"0"` or `"1"`;
+empty, padded, decimal, exponent, whitespace, nullish, and boolean strings are
+not indices. Numeric negative zero becomes the canonical key `"0"`. The
+`"length"` property is available through primitive and safe-string keys.
+
 Strict equality is direct primitive or interpreter-object identity. Loose
-equality implements only the supported JavaScript abstract-equality rules:
-null and undefined pair only with each other, booleans become zero or one,
-primitive strings and numbers use explicit numeric conversion, and a safe
-string unwraps only when compared with a primitive. Distinct safe strings,
-arrays, records, regex values, and callables remain unequal regardless of
-content. Equality never invokes object coercion hooks or renders objects to
-compare them.
+equality first preserves object identity, then applies closed object-to-primitive
+conversion only when one side is primitive. Distinct safe strings, arrays,
+records, regex values, and callables remain unequal regardless of content.
+Array membership is separately strict and never unwraps safe strings or other
+closed objects.
 
 Input arrays and records are recursively copied. Records are never used as
 JavaScript prototypes or accessed through `object[key]` inside the interpreter.

@@ -153,9 +153,13 @@ Do not create additional packages without a documented architectural reason.
   by numeric index rather than their host iteration protocol.
 - Compare validated primitive strings with direct UTF-16 relational operators.
   Do not use locale-aware collation or `Intl` inside template semantics.
-- Implement strict equality as direct closed-value identity and loose equality
-  through explicit supported primitive rules. Never apply generic numeric,
-  string, `valueOf`, or `toString` coercion to interpreter objects.
+- Centralize property-key, primitive, number, string, addition, relational, and
+  equality semantics in closed coercion helpers that dispatch exhaustively by
+  runtime value kind. Never reuse output rendering for semantic conversion or
+  invoke `valueOf`, `toString`, or another host object hook.
+- Accept array and string indices only after property-key conversion and only
+  when the key is the canonical in-range nonnegative integer spelling. Treat
+  array membership as strict identity rather than loose equality.
 - Clear all host-realm legacy RegExp capture state in a public render-level
   `finally` block. Cover successful and failed renders, and do not claim that
   pre-existing legacy state can be restored.

@@ -1219,6 +1219,7 @@ test('parser and evaluator sources contain no dynamic execution primitive', asyn
     '../../src/parser/expression.ts',
     '../../src/runtime/evaluator.ts',
     '../../src/runtime/builtins.ts',
+    '../../src/runtime/coercion.ts',
     '../../src/runtime/scope.ts',
   ];
   const prohibited = [

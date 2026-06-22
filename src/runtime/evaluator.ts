@@ -21,8 +21,17 @@ import {
   hasBuiltinFilter,
   lookupRuntimeConstantKey,
   lookupRuntimeValue,
-  runtimeNumber,
 } from './builtins.ts';
+import {
+  runtimeAdd,
+  runtimeConcat,
+  runtimeLooseEqual,
+  runtimeOrder,
+  runtimeStrictEqual,
+  runtimeToNumber,
+  runtimeToPropertyKey,
+  runtimeToString,
+} from './coercion.ts';
 import { RuntimeScope } from './scope.ts';
 import { stringCodeUnits } from './stringCodeUnits.ts';
 import {
@@ -477,7 +486,7 @@ class Evaluator {
           const keyNode = pair.key;
           const name = keyNode.type === 'Symbol'
             ? symbolName(keyNode)
-            : renderRuntimeValue(this.#evaluateExpression(keyNode, scope, depth + 1));
+            : runtimeToPropertyKey(this.#evaluateExpression(keyNode, scope, depth + 1));
           if (isReservedName(name)) {
             throw new Error(`Template name ${name} is reserved`);
           }
@@ -514,7 +523,7 @@ class Evaluator {
         }
         const key = this.#evaluateExpression(valueNode, scope, depth + 1);
         if (target instanceof RuntimeCallable && target.callableKind === 'builtin') {
-          return this.#lookupBuiltinCallable(target.id, renderRuntimeValue(key));
+          return this.#lookupBuiltinCallable(target.id, runtimeToPropertyKey(key));
         }
         return lookupRuntimeValue(target, key);
       }
@@ -543,9 +552,9 @@ class Evaluator {
       case 'Not':
         return !runtimeTruthy(this.#evaluateExpression(node.target, scope, depth + 1));
       case 'Neg':
-        return -runtimeNumber(this.#evaluateExpression(node.target, scope, depth + 1));
+        return -runtimeToNumber(this.#evaluateExpression(node.target, scope, depth + 1));
       case 'Pos':
-        return runtimeNumber(this.#evaluateExpression(node.target, scope, depth + 1));
+        return runtimeToNumber(this.#evaluateExpression(node.target, scope, depth + 1));
       case 'Add':
       case 'Concat':
       case 'Sub':
@@ -591,7 +600,7 @@ class Evaluator {
       : typeof target === 'string' || target instanceof RuntimeSafeString
         ? renderRuntimeValue(target).split('')
         : [];
-    const step = Math.trunc(runtimeNumber(stepValue));
+    const step = Math.trunc(runtimeToNumber(stepValue));
     if (!Number.isFinite(step) || step === 0) {
       throw new Error('Slice step must be a non-zero finite integer');
     }
@@ -618,16 +627,15 @@ class Evaluator {
   #evaluateBinary(node: AstBinaryNode, scope: RuntimeScope, depth: number): RuntimeValue {
     const left = this.#evaluateExpression(node.left, scope, depth + 1);
     const right = this.#evaluateExpression(node.right, scope, depth + 1);
-    if (
-      node.type === 'Concat' ||
-      (node.type === 'Add' && (isStringValue(left) || isStringValue(right)))
-    ) {
-      return renderRuntimeValue(left) + renderRuntimeValue(right);
+    if (node.type === 'Concat') {
+      return runtimeConcat(left, right);
     }
-    const leftNumber = runtimeNumber(left);
-    const rightNumber = runtimeNumber(right);
+    if (node.type === 'Add') {
+      return runtimeAdd(left, right);
+    }
+    const leftNumber = runtimeToNumber(left);
+    const rightNumber = runtimeToNumber(right);
     switch (node.type) {
-      case 'Add': return leftNumber + rightNumber;
       case 'Sub': return leftNumber - rightNumber;
       case 'Mul': return leftNumber * rightNumber;
       case 'Div': return leftNumber / rightNumber;
@@ -757,7 +765,7 @@ class Evaluator {
           const keyNode = pair.key;
           const name = keyNode.type === 'Symbol'
             ? symbolName(keyNode)
-            : renderRuntimeValue(this.#evaluateExpression(keyNode, scope, depth + 1));
+            : runtimeToPropertyKey(this.#evaluateExpression(keyNode, scope, depth + 1));
           if (isReservedName(name)) {
             throw new Error(`Template name ${name} is reserved`);
           }
@@ -862,7 +870,7 @@ class Evaluator {
 
   #invokeBuiltinGlobal(name: BuiltinGlobalName, arguments_: RuntimeArguments): RuntimeValue {
     if (name === 'range') {
-      const values = arguments_.positional.map(runtimeNumber);
+      const values = arguments_.positional.map(runtimeToNumber);
       const start = values.length > 1 ? values[0]! : 0;
       const stop = values.length > 1 ? values[1]! : values[0] ?? 0;
       const step = values[2] ?? 1;
@@ -1128,59 +1136,6 @@ function* recordIterationValues(value: RuntimeRecord): IterableIterator<RuntimeV
 
 function* emptyRuntimeValues(): IterableIterator<RuntimeValue> {}
 
-function runtimeStrictEqual(left: RuntimeValue, right: RuntimeValue): boolean {
-  return left === right;
-}
-
-function runtimeLooseEqual(left: RuntimeValue, right: RuntimeValue): boolean {
-  if (left === right) {
-    return true;
-  }
-  if (
-    left === undefined ||
-    left === null ||
-    right === undefined ||
-    right === null
-  ) {
-    return (left === undefined || left === null) && (right === undefined || right === null);
-  }
-  if (left instanceof RuntimeSafeString) {
-    return isRuntimePrimitive(right) ? runtimeLooseEqual(left.value, right) : false;
-  }
-  if (right instanceof RuntimeSafeString) {
-    return isRuntimePrimitive(left) ? runtimeLooseEqual(left, right.value) : false;
-  }
-  if (!isRuntimePrimitive(left) || !isRuntimePrimitive(right)) {
-    return false;
-  }
-  if (typeof left === typeof right) {
-    return false;
-  }
-  if (typeof left === 'boolean') {
-    return runtimeLooseEqual(left ? 1 : 0, right);
-  }
-  if (typeof right === 'boolean') {
-    return runtimeLooseEqual(left, right ? 1 : 0);
-  }
-  if (typeof left === 'number' && typeof right === 'string') {
-    return left === runtimeNumber(right);
-  }
-  if (typeof left === 'string' && typeof right === 'number') {
-    return runtimeNumber(left) === right;
-  }
-  return false;
-}
-
-function isRuntimePrimitive(
-  value: RuntimeValue,
-): value is undefined | null | boolean | number | string {
-  return value === undefined ||
-    value === null ||
-    typeof value === 'boolean' ||
-    typeof value === 'number' ||
-    typeof value === 'string';
-}
-
 function runtimeCompare(left: RuntimeValue, operator: string, right: RuntimeValue): boolean {
   switch (operator) {
     case '==': return runtimeLooseEqual(left, right);
@@ -1197,46 +1152,26 @@ function runtimeCompare(left: RuntimeValue, operator: string, right: RuntimeValu
   }
 }
 
-function runtimeOrder(left: RuntimeValue, right: RuntimeValue): number {
-  if (isStringValue(left) && isStringValue(right)) {
-    return compareRuntimeStrings(
-      renderRuntimeValue(left),
-      renderRuntimeValue(right),
-    );
-  }
-  return runtimeNumber(left) - runtimeNumber(right);
-}
-
-function compareRuntimeStrings(left: string, right: string): number {
-  if (left < right) {
-    return -1;
-  }
-  if (left > right) {
-    return 1;
-  }
-  return 0;
-}
-
 function runtimeContains(container: RuntimeValue, needle: RuntimeValue): boolean {
   if (isStringValue(container)) {
-    return renderRuntimeValue(container).includes(renderRuntimeValue(needle));
+    return renderRuntimeValue(container).includes(runtimeToString(needle));
   }
   if (container instanceof RuntimeArray) {
     for (const value of container.values()) {
-      if (runtimeLooseEqual(value, needle)) {
+      if (runtimeStrictEqual(value, needle)) {
         return true;
       }
     }
     return false;
   }
   if (container instanceof RuntimeRecord) {
-    return container.has(renderRuntimeValue(needle));
+    return container.has(runtimeToPropertyKey(needle));
   }
   throw new Error('Membership requires an array, record, or string');
 }
 
 function normalizeSliceIndex(value: RuntimeValue, length: number, step: number): number {
-  let index = Math.trunc(runtimeNumber(value));
+  let index = Math.trunc(runtimeToNumber(value));
   if (index < 0) {
     index += length;
   }

@@ -102,6 +102,9 @@ Template-controlled data is revalidated whenever its role changes:
   allowed key containing `undefined` distinct from a missing or reserved key;
 - equality dispatches explicitly by closed value kind; strict comparisons use
   identity and loose comparisons never invoke object coercion hooks;
+- lookup, membership, derived keys, arithmetic, concatenation, and relational
+  operations use centralized closed coercion rather than output rendering;
+  callable coercion fails closed;
 - assignment, macro, filter, test, and global names originate from validated
   parser symbols and resolve through private maps;
 - macro calls bind only declared formal names at their fixed positions and the

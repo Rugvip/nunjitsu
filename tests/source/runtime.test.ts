@@ -7,7 +7,12 @@ import {
   NunjitsuLimitError,
   NunjitsuRenderError,
 } from '../../src/index.ts';
-import { RuntimeSafeString } from '../../src/runtime/value.ts';
+import {
+  RuntimeArray,
+  RuntimeRecord,
+  RuntimeRegex,
+  RuntimeSafeString,
+} from '../../src/runtime/value.ts';
 
 test('renders control flow, loops, macros, call blocks, and assignments', () => {
   const engine = createEngine();
@@ -540,6 +545,182 @@ test('implements closed strict and loose equality without host coercion', () => 
   );
   assert.equal(privilegedCalls, 0);
   assert.equal(oraclePrivilegedCalls, 0);
+  assert.equal(engine.render('clean'), 'clean');
+});
+
+test('uses centralized closed coercion for lookup, membership, grouping, and operators', () => {
+  const engine = createEngine();
+  const oracle = new nunjucks.Environment(undefined, { autoescape: false });
+  const context = {
+    obj: {
+      undefined: 'undefined',
+      null: 'null',
+      false: 'false',
+      true: 'true',
+      0: 'zero',
+      '': 'empty',
+    },
+    arr: ['zero', 'one'],
+    text: 'ab',
+  };
+  const lookupSource = [
+    '{% set safeLength = "length" | safe %}',
+    '${{ obj[missing] }}:${{ obj[null] }}:${{ obj[false] }}:${{ obj[true] }}:',
+    '${{ obj[0] }}:${{ obj[""] }}|',
+    '${{ arr[null] is undefined }}:${{ arr[false] is undefined }}:',
+    '${{ arr[""] is undefined }}:${{ arr["01"] is undefined }}:',
+    '${{ arr["1.0"] is undefined }}:${{ arr[" 1 "] is undefined }}:',
+    '${{ arr["1e0"] is undefined }}:${{ arr[-0] }}:${{ arr["1"] }}:',
+    '${{ arr.length }}:${{ arr[safeLength] }}|',
+    '${{ text[null] is undefined }}:${{ text[false] is undefined }}:',
+    '${{ text[""] is undefined }}:${{ text["01"] is undefined }}:',
+    '${{ text["1"] }}:${{ text.length }}:${{ text[safeLength] }}',
+  ].join('');
+  assert.equal(
+    engine.render(lookupSource, context),
+    oracle.renderString(lookupSource.replaceAll('${{', '{{'), context),
+  );
+
+  const membershipSource = [
+    '{% set safeValue = "x" | safe %}',
+    '${{ false in [0] }}:${{ missing in [null] }}:${{ safeValue in ["x"] }}|',
+    '${{ missing in "" }}:${{ null in "" }}|',
+    '${{ missing in obj }}:${{ null in obj }}:${{ false in obj }}:',
+    '${{ true in obj }}:${{ 0 in obj }}',
+  ].join('');
+  assert.equal(
+    engine.render(membershipSource, context),
+    oracle.renderString(membershipSource.replaceAll('${{', '{{'), context),
+  );
+
+  const groupSource = [
+    '${{ [',
+    '{"key":null,"value":"null"},',
+    '{"value":"undefined"},',
+    '{"key":false,"value":"false"},',
+    '{"key":0,"value":"zero"},',
+    '{"key":"","value":"empty"}',
+    '] | groupby("key") | dump }}',
+  ].join('');
+  assert.equal(
+    engine.render(groupSource),
+    oracle.renderString(groupSource.replaceAll('${{', '{{'), {}),
+  );
+
+  const operatorSource = [
+    '${{ ([] + 1) | dump }}:${{ ([1] + 1) | dump }}:',
+    '${{ ([1,2] + 1) | dump }}:${{ ({} + 1) | dump }}|',
+    '${{ [] - 0 }}:${{ [1] - 0 }}:${{ +[] }}:${{ +[1] }}|',
+    '${{ [] == 0 }}:${{ [1] == 1 }}:${{ {} == "[object Object]" }}:',
+    '${{ [] < 1 }}|',
+    '${{ (null ~ false) | dump }}:${{ (missing ~ null) | dump }}|',
+    '${{ "10" is lt("2") }}:${{ "10" is le("2") }}:',
+    '${{ "10" is gt("2") }}:${{ "10" is ge("2") }}|',
+    '${{ (r/a+/gi ~ "") | dump }}:${{ r/a+/gi == "/a+/gi" }}|',
+    '${{ null }}:${{ missing }}',
+  ].join('');
+  assert.equal(
+    engine.render(operatorSource),
+    oracle.renderString(operatorSource.replaceAll('${{', '{{'), {}),
+  );
+
+  const builtinLookupSource = [
+    '{% set cycle = cycler("a", "b") %}',
+    '{% set nextKey = "next" | safe %}',
+    '${{ cycle[nextKey]() }}:${{ cycle[nextKey]() }}',
+  ].join('');
+  assert.equal(
+    engine.render(builtinLookupSource),
+    oracle.renderString(builtinLookupSource.replaceAll('${{', '{{'), {}),
+  );
+});
+
+test('closed coercion controls capability branches and rejects callables', () => {
+  const calls: string[] = [];
+  const oracleCalls: string[] = [];
+  let privilegedCalls = 0;
+  let laterCalls = 0;
+  const engine = createEngine({
+    globals: {
+      mark(name) {
+        if (typeof name === 'string') {
+          calls.push(name);
+        }
+        return null;
+      },
+      privileged() {
+        privilegedCalls += 1;
+        return 'privileged';
+      },
+      later() {
+        laterCalls += 1;
+        return 'later';
+      },
+    },
+  });
+  const oracle = new nunjucks.Environment(undefined, { autoescape: false });
+  oracle.addGlobal('mark', (name: string) => {
+    oracleCalls.push(name);
+    return null;
+  });
+  const branchSource = [
+    '{% set arr = ["present"] %}',
+    '{% if arr[null] %}${{ mark("lookup") }}{% endif %}',
+    '{% if false in [0] %}${{ mark("membership") }}{% endif %}',
+    '{% if [] == 0 %}${{ mark("equality") }}{% endif %}',
+    '{% if "10" is gt("2") %}${{ mark("relational") }}{% endif %}',
+  ].join('');
+  assert.equal(engine.render(branchSource), '');
+  assert.equal(oracle.renderString(branchSource.replaceAll('${{', '{{'), {}), '');
+  assert.deepEqual(calls, oracleCalls);
+  assert.deepEqual(calls, ['equality']);
+
+  const prototypes = [
+    RuntimeSafeString.prototype,
+    RuntimeArray.prototype,
+    RuntimeRecord.prototype,
+    RuntimeRegex.prototype,
+  ];
+  const coercionKeys = ['valueOf', 'toString', Symbol.toPrimitive] as const;
+  const descriptors: Array<readonly [object, PropertyKey, PropertyDescriptor | undefined]> = [];
+  let coercionHookCalls = 0;
+  for (const prototype of prototypes) {
+    for (const key of coercionKeys) {
+      descriptors.push([prototype, key, Object.getOwnPropertyDescriptor(prototype, key)]);
+      Object.defineProperty(prototype, key, {
+        configurable: true,
+        value() {
+          coercionHookCalls += 1;
+          throw new Error('Closed coercion must not invoke host hooks');
+        },
+      });
+    }
+  }
+  try {
+    assert.equal(
+      engine.render([
+        '{% set safeValue = "x" | safe %}',
+        '${{ (safeValue ~ [1] ~ {"value": 1} ~ r/a/) | dump }}',
+      ].join('')),
+      '"x1[object Object]/a/"',
+    );
+  } finally {
+    for (const [prototype, key, descriptor] of descriptors) {
+      if (descriptor) {
+        Object.defineProperty(prototype, key, descriptor);
+      } else {
+        Reflect.deleteProperty(prototype, key);
+      }
+    }
+  }
+  assert.equal(coercionHookCalls, 0);
+
+  assert.throws(
+    () => engine.render('${{ privileged ~ "" }}${{ later() }}'),
+    error => error instanceof NunjitsuRenderError,
+  );
+  assert.equal(privilegedCalls, 0);
+  assert.equal(laterCalls, 0);
   assert.equal(engine.render('clean'), 'clean');
 });
 
