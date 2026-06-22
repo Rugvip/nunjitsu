@@ -65,11 +65,19 @@ macros, interpreter built-ins, or exact registered global-function identities.
 Context functions, methods, constructors, and looked-up values are never
 callable.
 
-Macro binding tracks whether each keyword or positional argument was supplied
-separately from its runtime value. Explicit `null`, absent-value `undefined`,
-`false`, zero, and empty strings remain supplied values. A default expression
-is evaluated only when neither a keyword nor positional argument was provided,
-so defaults cannot introduce capability side effects for explicit values.
+Macro binding assigns each positional value only to the formal parameter at the
+same index, then consults the matching keyword only when that position is
+absent. Positional values take Nunjucks-compatible precedence when both forms
+target one parameter. Explicit `null`, absent-value `undefined`, `false`, zero,
+and empty strings remain supplied values. A default expression is evaluated
+only when neither the formal position nor its keyword was supplied, so defaults
+cannot introduce capability side effects for explicit values.
+
+Undeclared keyword arguments do not become macro locals. The sole exception is
+the `caller` keyword synthesized by call blocks, which is installed explicitly
+when the macro does not declare a `caller` parameter. This preserves call-block
+semantics without allowing arbitrary keyword names to inject closed values or
+callable identities into a macro scope.
 
 ## Output
 

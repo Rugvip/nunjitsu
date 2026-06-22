@@ -815,7 +815,8 @@ class Evaluator {
       throw new Error('Invalid macro arguments');
     }
     const argumentNodes = args.children;
-    let positionalIndex = 0;
+    let formalIndex = 0;
+    let declaresCaller = false;
     for (const argument of argumentNodes) {
       if (argument.type === 'KeywordArgs') {
         for (const pair of argument.children) {
@@ -823,14 +824,14 @@ class Evaluator {
             throw new Error('Invalid macro default');
           }
           const name = symbolName(pair.key);
+          declaresCaller ||= name === 'caller';
           let supplied: RuntimeValue = undefined;
           let hasSupplied = false;
-          if (arguments_.keyword.has(name)) {
-            supplied = arguments_.keyword.get(name);
+          if (formalIndex < arguments_.positional.length) {
+            supplied = arguments_.positional[formalIndex];
             hasSupplied = true;
-          } else if (positionalIndex < arguments_.positional.length) {
-            supplied = arguments_.positional[positionalIndex];
-            positionalIndex += 1;
+          } else if (arguments_.keyword.has(name)) {
+            supplied = arguments_.keyword.get(name);
             hasSupplied = true;
           }
           local.set(
@@ -839,23 +840,23 @@ class Evaluator {
               ? supplied
               : this.#evaluateExpression(pair.value, local, depth + 1),
           );
+          formalIndex += 1;
         }
       } else {
         const name = symbolName(argument);
+        declaresCaller ||= name === 'caller';
         let supplied: RuntimeValue = undefined;
-        if (arguments_.keyword.has(name)) {
+        if (formalIndex < arguments_.positional.length) {
+          supplied = arguments_.positional[formalIndex];
+        } else if (arguments_.keyword.has(name)) {
           supplied = arguments_.keyword.get(name);
-        } else if (positionalIndex < arguments_.positional.length) {
-          supplied = arguments_.positional[positionalIndex];
-          positionalIndex += 1;
         }
         local.set(name, supplied);
+        formalIndex += 1;
       }
     }
-    for (const [name, value] of arguments_.keyword) {
-      if (!local.has(name)) {
-        local.set(name, value);
-      }
+    if (!declaresCaller && arguments_.keyword.has('caller')) {
+      local.set('caller', arguments_.keyword.get('caller'));
     }
     return this.#capture(
       definition.node.body,

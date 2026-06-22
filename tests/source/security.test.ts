@@ -537,6 +537,114 @@ test('macro defaults execute only when an argument is genuinely absent', () => {
   assert.equal(engine.render('clean'), 'clean');
 });
 
+test('macro binding uses formal positions and admits only the special caller keyword', () => {
+  let privilegedCalls = 0;
+  let oraclePrivilegedCalls = 0;
+  let laterCalls = 0;
+  const defaultCalls: string[] = [];
+  const oracleDefaultCalls: string[] = [];
+  const engine = createEngine({
+    globals: {
+      privileged() {
+        privilegedCalls += 1;
+        return 'PRIVILEGED';
+      },
+      defaultValue(name) {
+        if (typeof name !== 'string') {
+          throw new TypeError('default name must be a string');
+        }
+        defaultCalls.push(name);
+        return name;
+      },
+      later() {
+        laterCalls += 1;
+        return 'not reached';
+      },
+    },
+  });
+  const oracle = new nunjucks.Environment(undefined, { autoescape: false });
+  oracle.addGlobal('privileged', () => {
+    oraclePrivilegedCalls += 1;
+    return 'PRIVILEGED';
+  });
+  oracle.addGlobal('defaultValue', (name: string) => {
+    oracleDefaultCalls.push(name);
+    return name;
+  });
+
+  const parityCases = [
+    {
+      source: [
+        '{% macro f(a, b="B", c="C") %}[${{ a }}|${{ b }}|${{ c }}]{% endmacro %}',
+        '${{ f("P", a="K") }}|${{ f("A", "P", b="K") }}|${{ f("A", "B", a="K") }}',
+      ].join(''),
+      expected: '[P|B|C]|[A|P|C]|[A|B|C]',
+    },
+    {
+      source: [
+        '{% macro wrapper(value) %}[${{ extra is defined }}]{% endmacro %}',
+        '${{ wrapper("x", extra="hidden") }}',
+      ].join(''),
+      expected: '[false]',
+    },
+    {
+      source: [
+        '{% macro wrapper(value) %}[${{ caller() }}]{% endmacro %}',
+        '{% call wrapper("x") %}BODY{% endcall %}',
+      ].join(''),
+      expected: '[BODY]',
+    },
+  ];
+  for (const { source, expected } of parityCases) {
+    assert.equal(engine.render(source), expected);
+    assert.equal(oracle.renderString(source.replaceAll('${{', '{{'), {}), expected);
+  }
+
+  const defaultSource = [
+    '{% macro f(a=defaultValue("a"), b=defaultValue("b"), c=defaultValue("c")) %}',
+    '[${{ a }}|${{ b }}|${{ c }}]',
+    '{% endmacro %}',
+    '${{ f("P", a="K") }}',
+  ].join('');
+  assert.equal(engine.render(defaultSource), '[P|b|c]');
+  assert.deepEqual(defaultCalls, ['b', 'c']);
+  assert.equal(
+    oracle.renderString(defaultSource.replaceAll('${{', '{{'), {}),
+    '[P|b|c]',
+  );
+  assert.deepEqual(oracleDefaultCalls, ['b', 'c']);
+
+  const explicitCallerSource = [
+    '{% macro wrapper(value) %}[${{ caller() }}]{% endmacro %}',
+    '${{ wrapper("x", caller=privileged) }}',
+  ].join('');
+  assert.equal(engine.render(explicitCallerSource), '[PRIVILEGED]');
+  assert.equal(privilegedCalls, 1);
+  assert.equal(
+    oracle.renderString(explicitCallerSource.replaceAll('${{', '{{'), {}),
+    '[PRIVILEGED]',
+  );
+  assert.equal(oraclePrivilegedCalls, 1);
+
+  const injectedCallableSource = [
+    '{% macro wrapper(value) %}[${{ dispatch() }}]{% endmacro %}',
+    '${{ wrapper("x", dispatch=privileged) }}',
+    '${{ later() }}',
+  ].join('');
+  assert.throws(
+    () => engine.render(injectedCallableSource),
+    error => error instanceof NunjitsuRenderError,
+  );
+  assert.equal(privilegedCalls, 1);
+  assert.equal(laterCalls, 0);
+  assert.throws(() => oracle.renderString(
+    injectedCallableSource.replaceAll('${{', '{{'),
+    {},
+  ));
+  assert.equal(oraclePrivilegedCalls, 1);
+  assert.equal(engine.render('clean'), 'clean');
+});
+
 test('callable identities stay sealed and regular expressions cross as inert data', () => {
   let captureCalls = 0;
   let received: unknown;

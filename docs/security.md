@@ -100,6 +100,9 @@ Template-controlled data is revalidated whenever its role changes:
   segments, and traverse only `RuntimeRecord` entries;
 - assignment, macro, filter, test, and global names originate from validated
   parser symbols and resolve through private maps;
+- macro calls bind only declared formal names at their fixed positions and the
+  explicit call-block `caller` keyword; unmatched keywords cannot introduce
+  locals or callable identities;
 - sealed internal callable identities cannot cross the public value boundary;
   and
 - capability arguments and results are recursively recopied rather than
