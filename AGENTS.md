@@ -237,6 +237,10 @@ Do not create additional packages without a documented architectural reason.
   evaluation; share complete identifier boundaries between tag and expression
   scanning so only an exact `r/` token starts a regex. Native Node.js RegExp
   support must never expand accepted syntax.
+- Coerce inert regex values through one closed canonical spelling helper. Empty
+  patterns render as `(?:)`, raw line terminators are escaped, and flags emit in
+  `gimy` order without consulting `RegExp.prototype` or another host hook. Keep
+  the original validated source and flags for approved regex matching.
 - Use the shared parser-owned balanced code scanner for structural delimiter,
   keyword, assignment, and tag-end discovery. It must skip strings and exact
   `r/` literals through the same lexical helpers as expression parsing; do not

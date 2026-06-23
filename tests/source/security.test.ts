@@ -492,6 +492,50 @@ test('dump does not invoke inherited host serialization hooks', () => {
   }
 });
 
+test('regex coercion does not invoke internal or host RegExp string hooks', () => {
+  let hookCalls = 0;
+  const runtimeDescriptor = Object.getOwnPropertyDescriptor(
+    RuntimeRegex.prototype,
+    'toString',
+  );
+  const nativeDescriptor = Object.getOwnPropertyDescriptor(RegExp.prototype, 'toString');
+  for (const prototype of [RuntimeRegex.prototype, RegExp.prototype]) {
+    Object.defineProperty(prototype, 'toString', {
+      configurable: true,
+      get() {
+        hookCalls += 1;
+        throw new Error('Regex string hooks must not run');
+      },
+    });
+  }
+
+  try {
+    const engine = createEngine({
+      globals: {
+        observe(value) {
+          return value;
+        },
+      },
+    });
+    assert.equal(
+      engine.render('${{ r// }}|${{ r/x/yimg + "" }}|${{ observe(r/a\nb/) }}'),
+      '/(?:)/|/x/gimy|/a\\nb/',
+    );
+    assert.equal(hookCalls, 0);
+  } finally {
+    for (const [prototype, descriptor] of [
+      [RuntimeRegex.prototype, runtimeDescriptor],
+      [RegExp.prototype, nativeDescriptor],
+    ] as const) {
+      if (descriptor) {
+        Object.defineProperty(prototype, 'toString', descriptor);
+      } else {
+        Reflect.deleteProperty(prototype, 'toString');
+      }
+    }
+  }
+});
+
 test('templates cannot reach ambient authority or invoke looked-up values', () => {
   const engine = createEngine();
   for (const source of [

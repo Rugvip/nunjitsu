@@ -4,6 +4,7 @@ import {
   RuntimeCallable,
   RuntimeRecord,
   RuntimeRegex,
+  runtimeRegexToString,
   RuntimeSafeString,
   type RuntimePrimitive,
   type RuntimeValue,
@@ -29,7 +30,7 @@ export function runtimeToPrimitive(value: RuntimeValue): RuntimePrimitive {
     return '[object Object]';
   }
   if (value instanceof RuntimeRegex) {
-    return `/${value.source}/${value.flags}`;
+    return runtimeRegexToString(value);
   }
   if (value instanceof RuntimeCallable) {
     throw new TypeError('Callable values cannot be coerced');

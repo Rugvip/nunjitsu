@@ -256,6 +256,13 @@ for serialization only, matching RegExp's empty enumerable JSON shape without
 creating a native RegExp, exposing pattern data, or consulting either internal
 or native regex prototypes.
 
+When another operation or a capability argument requires regex text, one
+engine-owned helper creates the inert canonical Nunjucks spelling. It escapes
+line terminators, normalizes an empty pattern to `(?:)`, and emits flags in
+`gimy` order without consulting `RuntimeRegex.prototype`,
+`RegExp.prototype.toString`, or another host conversion hook. Approved matching
+continues to use the separately retained validated pattern and flags.
+
 The built-in `random` filter uses Node's synchronous cryptographic integer
 selection. Template-controlled calls therefore neither observe nor advance the
 host application's shared `Math.random` state.

@@ -2258,6 +2258,117 @@ test('supports Cookiecutter variables, jsonify, slices, and Jinja constants', ()
   );
 });
 
+test('coerces inert regex values with Nunjucks canonical spelling', () => {
+  const permutations = (value: string): string[] => {
+    if (value.length <= 1) {
+      return [value];
+    }
+    const output: string[] = [];
+    for (let index = 0; index < value.length; index += 1) {
+      const selected = value[index]!;
+      const remaining = value.slice(0, index) + value.slice(index + 1);
+      for (const suffix of permutations(remaining)) {
+        output.push(selected + suffix);
+      }
+    }
+    return output;
+  };
+  const lineCases = [
+    { pattern: 'a\nb', expected: '/a\\nb/' },
+    { pattern: 'a\rb', expected: '/a\\rb/' },
+    { pattern: 'a\r\nb', expected: '/a\\r\\nb/' },
+    { pattern: 'a\u2028b', expected: '/a\\u2028b/' },
+    { pattern: 'a\u2029b', expected: '/a\\u2029b/' },
+  ];
+  const sources = [
+    '{{ r// }}|{{ r//yimg }}|{{ r/x/yimg }}',
+    '{{ [r//,r/x/mig] }}',
+    '{{ r// ~ ":" ~ r/x/ig }}|{{ r// + "" }}',
+    '{{ r// == "/(?:)/" }}:{{ r/x/yimg == "/x/gimy" }}',
+    '{{ {"/(?:)/":"native","//":"raw"}[r//] }}:{{ r// in {"/(?:)/":true} }}',
+    '{{ [r//,r/x/yi] | join("|") }}',
+    '{{ r// | safe }}|{{ r/x/yimg | string }}',
+    '{% set separator=joiner(r//) %}{% set ignored=separator() %}{{ separator() }}',
+    '{{ "ab" | replace(r//, "X") }}|{{ "ab" | replace(r//g, "X") }}',
+    '{{ r// | dump }}|{{ r/x/yimg | dump }}',
+  ];
+
+  for (const cookiecutterCompat of [false, true]) {
+    const engineEvents: string[] = [];
+    const oracleEvents: string[] = [];
+    const engine = createEngine({
+      cookiecutterCompat,
+      filters: {
+        observeRegex(input) {
+          const text = String(input);
+          engineEvents.push(`filter:${text}`);
+          return text;
+        },
+      },
+      globals: {
+        observeRegex(value) {
+          const text = String(value);
+          engineEvents.push(`global:${text}`);
+          return text;
+        },
+      },
+    });
+    const oracle = new nunjucks.Environment(undefined, { autoescape: false });
+    oracle.addFilter('observeRegex', (input: unknown) => {
+      const text = String(input);
+      oracleEvents.push(`filter:${text}`);
+      return text;
+    });
+    oracle.addGlobal('observeRegex', (value: unknown) => {
+      const text = String(value);
+      oracleEvents.push(`global:${text}`);
+      return text;
+    });
+    const engineSource = (source: string) => cookiecutterCompat
+      ? source
+      : source.replaceAll('{{', '${{');
+
+    for (const source of sources) {
+      assert.equal(
+        engine.render(engineSource(source)),
+        oracle.renderString(source, {}),
+        source,
+      );
+    }
+    for (const flags of [...permutations('gimy'), 'mig', 'ig', 'yi']) {
+      for (const pattern of ['x', '']) {
+        const source = `{{ r/${pattern}/${flags} }}`;
+        assert.equal(
+          engine.render(engineSource(source)),
+          oracle.renderString(source, {}),
+          source,
+        );
+      }
+    }
+    for (const { pattern, expected } of lineCases) {
+      const source = `{{ r/${pattern}/ }}|{{ observeRegex(r/${pattern}/) }}`;
+      const output = engine.render(engineSource(source));
+      assert.equal(output, oracle.renderString(source, {}), JSON.stringify(pattern));
+      assert.equal(output, `${expected}|${expected}`);
+    }
+
+    const capabilitySource = [
+      '{{ r// | observeRegex }}|',
+      '{{ observeRegex(r/x/yimg) }}',
+    ].join('');
+    assert.equal(
+      engine.render(engineSource(capabilitySource)),
+      oracle.renderString(capabilitySource, {}),
+    );
+    assert.deepEqual(engineEvents, oracleEvents);
+    assert.throws(
+      () => engine.render(engineSource('{{ r/x/gg }}')),
+      NunjitsuRenderError,
+    );
+    assert.equal(engine.render('clean'), 'clean');
+  }
+});
+
 test('serializes inert regex values with Nunjucks JSON shapes', () => {
   const oracle = new nunjucks.Environment(undefined, { autoescape: false });
   const flagNames = ['g', 'i', 'm', 'y'];
@@ -2265,6 +2376,7 @@ test('serializes inert regex values with Nunjucks JSON shapes', () => {
     flagNames.filter((unused, index) => (bits & (1 << index)) !== 0).join('')
   ));
   const sources = [
+    '{{ r// | dump }}|{{ r/x/yimg | dump }}',
     '{{ r/secretPattern/ | dump }}',
     '{{ [r/x/] | dump }}',
     '{{ {value:r/x/} | dump }}',
@@ -2324,8 +2436,8 @@ test('serializes inert regex values with Nunjucks JSON shapes', () => {
   }
 
   const cookiecutterEngine = createEngine({ cookiecutterCompat: true });
-  const jsonifySource = '{{ [r/secretPattern/gimy,{value:r/nested/}] | jsonify }}';
-  const dumpSource = '{{ [r/secretPattern/gimy,{value:r/nested/}] | dump }}';
+  const jsonifySource = '{{ [r//yimg,{value:r/nested/}] | jsonify }}';
+  const dumpSource = '{{ [r//yimg,{value:r/nested/}] | dump }}';
   const jsonifyOutput = cookiecutterEngine.render(jsonifySource);
   assert.equal(jsonifyOutput, oracle.renderString(dumpSource, {}));
   assert.equal(jsonifyOutput, '[{},{"value":{}}]');

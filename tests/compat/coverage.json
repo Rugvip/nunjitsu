@@ -67,6 +67,18 @@
       "upstream": ["tests/lexer.js:25", "tests/compiler.js:46", "tests/compiler.js:132"]
     },
     {
+      "id": "regex-canonical-string-coercion",
+      "file": "tests/source/runtime.test.ts",
+      "test": "coerces inert regex values with Nunjucks canonical spelling",
+      "upstream": ["tests/lexer.js:25", "tests/compiler.js:46"]
+    },
+    {
+      "id": "regex-string-hook-isolation",
+      "file": "tests/source/security.test.ts",
+      "test": "regex coercion does not invoke internal or host RegExp string hooks",
+      "upstream": ["tests/lexer.js:25", "tests/compiler.js:46"]
+    },
+    {
       "id": "call-block-regex-signatures",
       "file": "tests/source/runtime.test.ts",
       "test": "matches Nunjucks regex literals in call-block signatures",

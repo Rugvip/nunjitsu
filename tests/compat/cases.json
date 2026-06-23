@@ -573,9 +573,9 @@
     },
     {
       "id": "compiler-regex-flags",
-      "template": "{{ r/x/ }}|{{ r/x/g }}|{{ r/x/i }}|{{ r/x/m }}|{{ r/x/y }}|{{ r/x/gimy }}",
+      "template": "{{ r// }}|{{ r//yimg }}|{{ r/x/ }}|{{ r/x/g }}|{{ r/x/i }}|{{ r/x/m }}|{{ r/x/y }}|{{ r/x/gimy }}|{{ r/x/yimg }}|{{ r/x/mig }}|{{ r/x/ig }}|{{ r/x/yi }}",
       "context": {},
-      "expected": "/x/|/x/g|/x/i|/x/m|/x/y|/x/gimy"
+      "expected": "/(?:)/|/(?:)/gimy|/x/|/x/g|/x/i|/x/m|/x/y|/x/gimy|/x/gimy|/x/gim|/x/gi|/x/iy"
     },
     {
       "id": "filters-sort-closed-comparison",

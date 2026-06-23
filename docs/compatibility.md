@@ -61,6 +61,9 @@ Nunjitsu targets:
 - a fixed regular-expression literal grammar with only the Nunjucks v3.2.4
   `g`, `i`, `m`, and `y` flags, independent of flags added by later Node.js
   releases;
+- canonical Nunjucks regex string coercion for empty patterns, raw line
+  terminators, and flag order across output, closed operations, and capability
+  arguments, while `dump` and `jsonify` retain empty-object serialization;
 - Nunjucks parser acceptance for parenthesized nested inline conditionals and
   string or ordinary-identifier dictionary keys;
 - target-count-sensitive Nunjucks loop behavior for arrays, primitive and safe

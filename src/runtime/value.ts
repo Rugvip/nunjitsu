@@ -135,6 +135,43 @@ export class RuntimeRegex {
   }
 }
 
+const canonicalRegexFlags = 'gimy';
+
+/** Returns the canonical inert spelling of one regex without invoking host regex behavior. */
+export function runtimeRegexToString(value: RuntimeRegex): string {
+  let source = '';
+  if (value.source === '') {
+    source = '(?:)';
+  } else {
+    for (let index = 0; index < value.source.length; index += 1) {
+      const character = value.source[index]!;
+      if (character === '\n') {
+        source += '\\n';
+      } else if (character === '\r') {
+        source += '\\r';
+      } else if (character === '\u2028') {
+        source += '\\u2028';
+      } else if (character === '\u2029') {
+        source += '\\u2029';
+      } else {
+        source += character;
+      }
+    }
+  }
+
+  let flags = '';
+  for (let flagIndex = 0; flagIndex < canonicalRegexFlags.length; flagIndex += 1) {
+    const expected = canonicalRegexFlags[flagIndex]!;
+    for (let index = 0; index < value.flags.length; index += 1) {
+      if (value.flags[index] === expected) {
+        flags += expected;
+        break;
+      }
+    }
+  }
+  return `/${source}/${flags}`;
+}
+
 /** Closed categories of behavior the interpreter may invoke. */
 export type RuntimeCallableKind = 'macro' | 'caller' | 'builtin' | 'capability';
 
@@ -276,7 +313,7 @@ function renderRuntimeValueUnchecked(value: RuntimeValue): string {
     return '[object Object]';
   }
   if (value instanceof RuntimeRegex) {
-    return `/${value.source}/${value.flags}`;
+    return runtimeRegexToString(value);
   }
   throw new TypeError('Callable values cannot be rendered');
 }
@@ -473,7 +510,7 @@ function toPublicValue(
     return Object.freeze(output);
   }
   if (value instanceof RuntimeRegex) {
-    return `/${value.source}/${value.flags}`;
+    return runtimeRegexToString(value);
   }
   throw new TypeError('Callable values cannot cross the capability boundary');
 }

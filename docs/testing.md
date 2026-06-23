@@ -90,6 +90,10 @@ known-operation operand order, ignored attribute-selection arguments, no partial
 output, and clean recovery. Call-block signature regressions compare regex
 parentheses, nested expression containers, division ambiguity, malformed regex
 fail-stop behavior, and both variable-delimiter modes against the pinned oracle.
+Regex coercion regressions cover empty patterns, every `gimy` permutation, raw
+line terminators, output and closed operations, capability copies, unchanged
+matching and JSON behavior, and resistance to internal or native prototype
+hooks.
 Callable-argument tests cover direct, nested, renamed, positional, and surplus
 handles across registered capabilities, finite and disabled scratch accounting,
 stateful built-ins, ignored method arguments, and exact test arity while

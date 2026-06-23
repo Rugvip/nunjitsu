@@ -111,11 +111,15 @@ null and undefined as empty strings, while semantic string and property-key
 conversion produces `"null"` and `"undefined"`. Safe strings unwrap directly;
 arrays convert by recursively joining closed item strings with commas; records
 convert to the fixed string `"[object Object]"`; and regex values convert to
-their inert `/source/flags` spelling. Callable coercion fails closed before any
-callable nested in an array or record can be rendered, serialized, captured,
-used as a separator, transformed by the standard library, or included in
-scratch accounting. No path invokes a host object's iteration, `valueOf`,
-`toString`, or primitive-conversion hook.
+their inert Nunjucks-compatible canonical spelling. Empty regex sources display
+as `(?:)`, raw line terminators are escaped, and flags are ordered `gimy`. One
+closed helper owns this display conversion for semantic coercion, output, and
+capability copies without invoking a native or internal regex prototype hook.
+The original source and flags remain separate for approved regex replacement.
+Callable coercion fails closed before any callable nested in an array or record
+can be rendered, serialized, captured, used as a separator, transformed by the
+standard library, or included in scratch accounting. No path invokes a host
+object's iteration, `valueOf`, `toString`, or primitive-conversion hook.
 
 Numeric ordering performs explicit less-than, greater-than, and equality checks
 after this closed primitive conversion. It does not subtract operands, because
