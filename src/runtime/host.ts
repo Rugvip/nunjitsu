@@ -114,6 +114,9 @@ function copyFunctions<T extends TemplateFilter | TemplateGlobalFunction>(
     if (isReservedName(key)) {
       throw new TypeError(`Template ${kind} name ${key} is reserved`);
     }
+    if (kind === 'filter') {
+      assertValidFilterName(key);
+    }
     const descriptor = Object.getOwnPropertyDescriptor(callbacks, key);
     if (!descriptor?.enumerable) {
       continue;
@@ -124,6 +127,18 @@ function copyFunctions<T extends TemplateFilter | TemplateGlobalFunction>(
     copied.set(key, descriptor.value as T);
   }
   return copied;
+}
+
+function assertValidFilterName(name: string): void {
+  const segments = name.split('.');
+  for (const segment of segments) {
+    if (isReservedName(segment)) {
+      throw new TypeError(`Template filter name segment ${segment} is reserved`);
+    }
+    if (!templateIdentifierPattern.test(segment)) {
+      throw new TypeError('Template filter name must contain valid identifier segments');
+    }
+  }
 }
 
 function copyGlobals(

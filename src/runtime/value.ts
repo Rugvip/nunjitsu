@@ -66,14 +66,25 @@ export class RuntimeRecord {
   readonly #entries: ReadonlyMap<string, RuntimeValue>;
 
   constructor(entries: Iterable<readonly [string, RuntimeValue]>) {
-    const validatedEntries = new Map<string, RuntimeValue>();
+    const indexedEntries = new Map<string, RuntimeValue>();
+    const namedEntries = new Map<string, RuntimeValue>();
     for (const [name, value] of entries) {
       if (isReservedName(name)) {
         throw new TypeError(`Template record key ${name} is reserved`);
       }
-      validatedEntries.set(name, value);
+      const target = isCanonicalArrayIndex(name) ? indexedEntries : namedEntries;
+      target.set(name, value);
     }
-    this.#entries = validatedEntries;
+    if (indexedEntries.size === 0) {
+      this.#entries = namedEntries;
+    } else {
+      const orderedEntries = Array.from(indexedEntries.entries());
+      orderedEntries.sort(([left], [right]) => Number(left) - Number(right));
+      for (const entry of namedEntries) {
+        orderedEntries.push(entry);
+      }
+      this.#entries = new Map(orderedEntries);
+    }
     Object.freeze(this);
   }
 
@@ -95,7 +106,7 @@ export class RuntimeRecord {
     return !isReservedName(name) && this.#entries.has(name);
   }
 
-  /** Iterates immutable own entries in insertion order. */
+  /** Iterates array indices numerically, then named entries by first insertion. */
   entries(): IterableIterator<[string, RuntimeValue]> {
     return this.#entries.entries();
   }
@@ -143,6 +154,15 @@ export class RuntimeCallable {
 /** Returns whether a name is forbidden at every template boundary. */
 export function isReservedName(name: string): boolean {
   return reservedNames.has(name);
+}
+
+/** Returns whether a key is a canonical JavaScript array index. */
+export function isCanonicalArrayIndex(name: string): boolean {
+  const index = Number(name);
+  return Number.isInteger(index) &&
+    index >= 0 &&
+    index < 0xffff_ffff &&
+    `${index}` === name;
 }
 
 /** Copies one public safe value graph into interpreter-owned values. */
@@ -273,7 +293,7 @@ export function runtimeTruthy(value: RuntimeValue): boolean {
     return value.length > 0;
   }
   if (value instanceof RuntimeSafeString) {
-    return value.value.length > 0;
+    return true;
   }
   return true;
 }
@@ -389,13 +409,16 @@ function replaceRuntimeContextPath(
   if (index === path.length - 1) {
     return context.with(name, value);
   }
-  const existing = context.get(name);
-  if (existing !== undefined && !(existing instanceof RuntimeRecord)) {
-    throw new TypeError(`Prepared context path ${path.slice(0, index + 1).join('.')} is not a record`);
+  let child: RuntimeRecord;
+  if (!context.has(name)) {
+    child = new RuntimeRecord([]);
+  } else {
+    const existing = context.get(name);
+    if (!(existing instanceof RuntimeRecord)) {
+      throw new TypeError(`Prepared context path ${path.slice(0, index + 1).join('.')} is not a record`);
+    }
+    child = existing;
   }
-  const child = existing instanceof RuntimeRecord
-    ? existing
-    : new RuntimeRecord([]);
   return context.with(
     name,
     replaceRuntimeContextPath(child, path, index + 1, value),
@@ -403,8 +426,7 @@ function replaceRuntimeContextPath(
 }
 
 function isArrayIndex(value: string, length: number): boolean {
-  const index = Number(value);
-  return Number.isSafeInteger(index) && index >= 0 && index < length && String(index) === value;
+  return isCanonicalArrayIndex(value) && Number(value) < length;
 }
 
 function toPublicValue(

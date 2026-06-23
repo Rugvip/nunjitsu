@@ -131,7 +131,18 @@ export function runtimeOrder(left: RuntimeValue, right: RuntimeValue): number {
     }
     return 0;
   }
-  return runtimeToNumber(leftPrimitive) - runtimeToNumber(rightPrimitive);
+  const leftNumber = runtimeToNumber(leftPrimitive);
+  const rightNumber = runtimeToNumber(rightPrimitive);
+  if (leftNumber < rightNumber) {
+    return -1;
+  }
+  if (leftNumber > rightNumber) {
+    return 1;
+  }
+  if (leftNumber === rightNumber) {
+    return 0;
+  }
+  return Number.NaN;
 }
 
 function primitiveLooseEqual(left: RuntimePrimitive, right: RuntimePrimitive): boolean {
