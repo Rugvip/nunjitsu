@@ -4,6 +4,7 @@ import {
   runtimeAdd,
   runtimeArrayIndexFromPropertyKey,
   runtimeOrder,
+  runtimeStrictEqual,
   runtimeToNumber,
   runtimeToPropertyKey,
   runtimeToString,
@@ -37,6 +38,7 @@ const emailAddressPattern = /^[\w.!#$%&'*+\-/=?^`{|}~]+@[a-z\d-]+(?:\.[a-z\d-]+)
 const commonDomainPattern = /\.(?:org|net|com)(?::|\/|$)/;
 const htmlEscapeCharacterPattern = /[&"'<>\\]/g;
 const maximumRepeatedSpaces = 16 * 1024 * 1024;
+const randomFractionResolution = 0x1_0000_0000;
 const htmlEscapeReplacements: Readonly<Record<string, string>> = Object.freeze({
   '&': '&amp;', '"': '&quot;', "'": '&#39;', '<': '&lt;', '>': '&gt;', '\\': '&#92;',
 });
@@ -94,12 +96,36 @@ export function builtinTestArity(name: string): number | undefined {
   return builtinTestArities.get(name);
 }
 
-/** Applies one trusted built-in filter to copied public values. */
+/** Lowers filter keywords according to the pinned Nunjucks calling convention. */
+export function lowerBuiltinFilterArguments(
+  name: string,
+  positional: readonly RuntimeValue[],
+  keyword: ReadonlyMap<string, RuntimeValue>,
+): {
+  readonly positional: readonly RuntimeValue[];
+  readonly keyword: ReadonlyMap<string, RuntimeValue>;
+} {
+  for (const value of keyword.values()) {
+    assertRuntimeValueHasNoCallable(value);
+  }
+  if (name === 'int' || name === 'sort' || keyword.size === 0) {
+    return { positional, keyword };
+  }
+  const entries = Array.from(keyword.entries());
+  entries.push(['__keywords', true]);
+  return {
+    positional: Object.freeze([...positional, new RuntimeRecord(entries)]),
+    keyword: new Map(),
+  };
+}
+
+/** Applies one built-in and reserves projected indexed intermediates before allocation. */
 export function applyBuiltinFilter(
   name: string,
   input: RuntimeValue,
   positional: readonly RuntimeValue[],
   keyword: ReadonlyMap<string, RuntimeValue>,
+  reserveIndexedValues: (count: number) => void,
 ): RuntimeValue | undefined {
   if (!builtinFilters.has(name)) {
     return undefined;
@@ -115,22 +141,23 @@ export function applyBuiltinFilter(
     return Math.abs(runtimeToNumber(input));
   }
   if (name === 'batch') {
-    return batchRuntimeValues(input, positional);
+    return batchRuntimeValues(input, positional, reserveIndexedValues);
   }
   if (name === 'capitalize') {
     const text = normalizedRuntimeText(input).toLowerCase();
     return copySafeness(input, text.charAt(0).toUpperCase() + text.slice(1));
   }
   if (name === 'center') {
-    const text = normalizedRuntimeText(input);
+    const normalized = normalizeRuntimeTextInput(input);
     const widthValue = runtimeTruthy(positional[0]) ? positional[0] : 80;
-    const width = runtimeToNumber(widthValue);
-    if (text.length >= width) {
-      return copySafeness(input, text);
+    const length = runtimeDirectLength(normalized);
+    if (runtimeOrder(length, widthValue) >= 0) {
+      return normalized;
     }
-    const spaces = width - text.length;
+    const spaces = runtimeToNumber(widthValue) - runtimeToNumber(length);
+    const text = runtimeToString(normalized);
     return copySafeness(
-      input,
+      normalized,
       repeatSpaces(spaces / 2 - spaces % 2) + text + repeatSpaces(spaces / 2),
     );
   }
@@ -180,10 +207,15 @@ export function applyBuiltinFilter(
     if (input instanceof RuntimeArray) {
       return new RuntimeArray(Array.from(input.values()).reverse());
     }
+    if (input instanceof RuntimeRecord) {
+      return new RuntimeArray(
+        mapRuntimeRecordValues(input, reserveIndexedValues).reverse(),
+      );
+    }
     return new RuntimeArray([]);
   }
   if (name === 'groupby') {
-    return groupRuntimeValues(input, positional[0]);
+    return groupRuntimeValues(input, positional[0], reserveIndexedValues);
   }
   if (name === 'join') {
     return joinRuntimeValues(input, positional);
@@ -192,13 +224,18 @@ export function applyBuiltinFilter(
     return sumRuntimeValues(input, positional);
   }
   if (name === 'sort') {
-    return sortRuntimeValues(input, positional, keyword);
+    return sortRuntimeValues(input, positional, keyword, reserveIndexedValues);
   }
   if (name === 'selectattr' || name === 'rejectattr') {
     return selectRuntimeAttributes(input, positional, name === 'selectattr');
   }
   if (name === 'select' || name === 'reject') {
-    return selectRuntimeValues(input, positional, name === 'select');
+    return selectRuntimeValues(
+      input,
+      positional,
+      name === 'select',
+      reserveIndexedValues,
+    );
   }
   if (name === 'indent') {
     const text = normalizedRuntimeText(input);
@@ -238,7 +275,7 @@ export function applyBuiltinFilter(
     const precisionValue = runtimeTruthy(positional[0]) ? positional[0] : 0;
     const precision = runtimeToNumber(precisionValue);
     const factor = 10 ** precision;
-    const method = runtimeToString(positional[1]);
+    const method = positional[1];
     const rounder = method === 'ceil' ? Math.ceil : method === 'floor' ? Math.floor : Math.round;
     return rounder(runtimeToNumber(input) * factor) / factor;
   }
@@ -248,6 +285,9 @@ export function applyBuiltinFilter(
   if (name === 'string') {
     if (input === undefined || input === null) {
       throw new TypeError('string requires a value');
+    }
+    if (input instanceof RuntimeSafeString) {
+      return input;
     }
     return copySafeness(input, renderRuntimeValue(input));
   }
@@ -286,7 +326,11 @@ export function applyBuiltinFilter(
     return urlizeRuntimeValue(input, positional);
   }
   if (name === 'wordcount') {
-    return normalizedRuntimeText(input).match(wordPattern)?.length ?? null;
+    const normalized = normalizeRuntimeTextInput(input);
+    if (!runtimeTruthy(normalized)) {
+      return null;
+    }
+    return runtimeText(normalized).match(wordPattern)?.length ?? null;
   }
   return undefined;
 }
@@ -294,17 +338,20 @@ export function applyBuiltinFilter(
 function batchRuntimeValues(
   input: RuntimeValue,
   positional: readonly RuntimeValue[],
+  reserveIndexedValues: (count: number) => void,
 ): RuntimeValue {
   if (input === undefined || input === null) {
     throw new TypeError('batch requires a sequence');
   }
-  const values = runtimeSequenceValues(input);
-  if (!values) {
-    return new RuntimeArray([]);
-  }
   const width = Math.trunc(runtimeToNumber(positional[0]));
   if (!Number.isSafeInteger(width) || width <= 0) {
     throw new TypeError('Batch size must be a positive integer');
+  }
+  const values = input instanceof RuntimeRecord
+    ? indexedRuntimeRecordValues(input, reserveIndexedValues)
+    : runtimeSequenceValues(input);
+  if (!values) {
+    return new RuntimeArray([]);
   }
   const fill = positional[1];
   const output: RuntimeValue[] = [];
@@ -335,12 +382,13 @@ function dictsortRuntimeValues(
     throw new TypeError('dictsort requires a record');
   }
   const caseSensitive = runtimeTruthy(positional[0]);
-  const by = runtimeToString(positional[1] ?? 'key');
-  if (by !== 'key' && by !== 'value') {
+  const byValue = positional[1];
+  if (byValue !== undefined && byValue !== 'key' && byValue !== 'value') {
     throw new TypeError('dictsort can only sort by key or value');
   }
+  const by = byValue ?? 'key';
   const values = Array.from(input.entries());
-  values.sort((left, right) => compareRuntimeFilterValues(
+  values.sort((left, right) => compareRuntimeDictsortValues(
     by === 'key' ? left[0] : left[1],
     by === 'key' ? right[0] : right[1],
     caseSensitive,
@@ -359,12 +407,26 @@ function edgeRuntimeValue(input: RuntimeValue, last: boolean): RuntimeValue {
     const text = runtimeText(input);
     return text[last ? text.length - 1 : 0];
   }
+  if (input instanceof RuntimeRecord) {
+    if (!last) {
+      return input.get('0');
+    }
+    const index = runtimeToNumber(input.get('length')) - 1;
+    return input.get(runtimeToPropertyKey(index));
+  }
   return undefined;
 }
 
 function randomRuntimeValue(input: RuntimeValue): RuntimeValue {
   if (input === undefined || input === null) {
     throw new TypeError('random requires a sequence');
+  }
+  if (input instanceof RuntimeRecord) {
+    const length = runtimeToNumber(input.get('length'));
+    const index = Number.isSafeInteger(length) && length > 0
+      ? randomInt(length)
+      : Math.floor(randomInt(randomFractionResolution) / randomFractionResolution * length);
+    return input.get(runtimeToPropertyKey(index));
   }
   const values = runtimeSequenceValues(input);
   if (!values || values.length === 0) {
@@ -410,6 +472,7 @@ function selectRuntimeValues(
   input: RuntimeValue,
   positional: readonly RuntimeValue[],
   select: boolean,
+  reserveIndexedValues: (count: number) => void,
 ): RuntimeValue {
   const testName = positional[0] === undefined ? 'truthy' : runtimeToString(positional[0]);
   if (!hasBuiltinTest(testName)) {
@@ -418,7 +481,9 @@ function selectRuntimeValues(
   if (input === undefined || input === null) {
     throw new TypeError(`${select ? 'select' : 'reject'} requires a sequence`);
   }
-  const values = runtimeSequenceValues(input);
+  const values = input instanceof RuntimeRecord
+    ? sliceRuntimeRecordValues(input, reserveIndexedValues)
+    : runtimeSequenceValues(input);
   if (!values) {
     return new RuntimeArray([]);
   }
@@ -442,53 +507,61 @@ function replaceRuntimeValue(
   positional: readonly RuntimeValue[],
 ): RuntimeValue {
   const search = positional[0];
-  const replacement = runtimeToString(positional[1]);
+  const replacement = positional[1];
   const maximumValue = positional[2] === undefined ? -1 : positional[2];
-  let text: string;
-  if (typeof input === 'number') {
-    text = runtimeToString(input);
-  } else if (typeof input === 'string' || input instanceof RuntimeSafeString) {
-    text = runtimeText(input);
-  } else {
-    if (!(search instanceof RuntimeRegex)) {
-      return input;
-    }
-    throw new TypeError('Regular-expression replacement requires a string');
-  }
-  let output: string;
   if (search instanceof RuntimeRegex) {
-    output = text.replace(new RegExp(search.source, search.flags), replacement);
-  } else if (
-    typeof search !== 'string' &&
-    typeof search !== 'number' &&
-    !(search instanceof RuntimeSafeString)
-  ) {
-    return input;
-  } else {
-    const needle = runtimeToString(search);
-    if (needle === '') {
-      output = `${replacement}${text.split('').join(replacement)}${replacement}`;
-    } else if (maximumValue === 0) {
-      return input;
-    } else if (maximumValue === -1) {
-      output = text.split(needle).join(replacement);
-    } else {
-      const maximum = runtimeToNumber(maximumValue);
-      let remaining = text;
-      const chunks: string[] = [];
-      for (let count = 0; count < maximum; count += 1) {
-        const index = remaining.indexOf(needle);
-        if (index < 0) {
-          break;
-        }
-        chunks.push(remaining.slice(0, index), replacement);
-        remaining = remaining.slice(index + needle.length);
-      }
-      chunks.push(remaining);
-      output = chunks.join('');
+    if (typeof input !== 'string' && !(input instanceof RuntimeSafeString)) {
+      throw new TypeError('Regular-expression replacement requires a string');
     }
+    return runtimeText(input).replace(
+      new RegExp(search.source, search.flags),
+      runtimeToString(replacement),
+    );
   }
-  return copySafeness(input, output);
+  if (typeof search !== 'string' && typeof search !== 'number') {
+    return input;
+  }
+
+  let coercedInput: RuntimeValue = input;
+  if (typeof coercedInput === 'number') {
+    coercedInput = runtimeToString(coercedInput);
+  }
+  if (typeof coercedInput !== 'string' && !(coercedInput instanceof RuntimeSafeString)) {
+    return coercedInput;
+  }
+
+  const text = runtimeText(coercedInput);
+  const needle = runtimeToString(search);
+  if (needle === '') {
+    const replacementText = runtimeToString(replacement);
+    const separator = replacement === undefined ? ',' : replacementText;
+    const output = replacementText + text.split('').join(separator) + replacementText;
+    return copySafeness(coercedInput, output);
+  }
+
+  const nextIndex = text.indexOf(needle);
+  if (maximumValue === 0 || nextIndex < 0) {
+    return coercedInput;
+  }
+
+  const replacementText = runtimeToString(replacement);
+  if (maximumValue === -1) {
+    return copySafeness(input, text.split(needle).join(replacementText));
+  }
+
+  const maximum = runtimeToNumber(maximumValue);
+  let remaining = text;
+  const chunks: string[] = [];
+  for (let count = 0; count < maximum; count += 1) {
+    const index = remaining.indexOf(needle);
+    if (index < 0) {
+      break;
+    }
+    chunks.push(remaining.slice(0, index), replacementText);
+    remaining = remaining.slice(index + needle.length);
+  }
+  chunks.push(remaining);
+  return copySafeness(input, chunks.join(''));
 }
 
 function sliceRuntimeValues(
@@ -532,12 +605,14 @@ function truncateRuntimeValue(
   input: RuntimeValue,
   positional: readonly RuntimeValue[],
 ): RuntimeValue {
-  const text = normalizedRuntimeText(input);
+  const normalized = normalizeRuntimeTextInput(input);
   const lengthValue = runtimeTruthy(positional[0]) ? positional[0] : 255;
-  const length = runtimeToNumber(lengthValue);
-  if (text.length <= length) {
-    return copySafeness(input, text);
+  const inputLength = runtimeDirectLength(normalized);
+  if (runtimeOrder(inputLength, lengthValue) <= 0) {
+    return normalized;
   }
+  const text = runtimeText(normalized);
+  const length = runtimeToNumber(lengthValue);
   let truncated: string;
   if (runtimeTruthy(positional[1])) {
     truncated = text.substring(0, length);
@@ -634,10 +709,24 @@ function runtimeText(input: RuntimeValue): string {
 }
 
 function normalizedRuntimeText(input: RuntimeValue): string {
-  if (input === undefined || input === null || input === false) {
-    return '';
+  return runtimeText(normalizeRuntimeTextInput(input));
+}
+
+function normalizeRuntimeTextInput(input: RuntimeValue): RuntimeValue {
+  return input === undefined || input === null || input === false ? '' : input;
+}
+
+function runtimeDirectLength(input: RuntimeValue): RuntimeValue {
+  if (typeof input === 'string' || input instanceof RuntimeSafeString) {
+    return runtimeText(input).length;
   }
-  return runtimeText(input);
+  if (input instanceof RuntimeArray) {
+    return input.length;
+  }
+  if (input instanceof RuntimeRecord) {
+    return input.get('length');
+  }
+  return undefined;
 }
 
 function repeatSpaces(bound: number): string {
@@ -664,9 +753,6 @@ function substrLength(value: RuntimeValue): number {
 function jsonIndentation(value: RuntimeValue): number | string | undefined {
   if (typeof value === 'string') {
     return value.slice(0, 10);
-  }
-  if (value instanceof RuntimeSafeString) {
-    return value.value.slice(0, 10);
   }
   if (typeof value !== 'number') {
     return undefined;
@@ -725,7 +811,7 @@ function toJsonValue(value: RuntimeValue): unknown {
     throw new TypeError('Callable values cannot be serialized');
   }
   if (value instanceof RuntimeRegex) {
-    return undefined;
+    return Object.create(null);
   }
   return value;
 }
@@ -739,10 +825,12 @@ function joinRuntimeValues(
   }
   const separatorValue = positional[0];
   const separator = runtimeTruthy(separatorValue) ? runtimeToString(separatorValue) : '';
-  const attribute = optionalAttributePath(positional[1]);
+  const attribute = optionalDirectAttributeKey(positional[1]);
   const output: string[] = [];
   for (const value of input.values()) {
-    const item = attribute ? lookupRuntimePath(value, attribute) : value;
+    const item = attribute === undefined
+      ? value
+      : lookupRuntimeAttribute(value, attribute);
     output.push(item === undefined || item === null ? '' : runtimeToString(item));
   }
   return output.join(separator);
@@ -755,12 +843,14 @@ function sumRuntimeValues(
   if (!(input instanceof RuntimeArray)) {
     throw new TypeError('sum requires an array');
   }
-  const attribute = optionalAttributePath(positional[0]);
+  const attribute = optionalDirectAttributeKey(positional[0]);
   let reduced: RuntimeValue = 0;
   for (const value of input.values()) {
     reduced = runtimeAdd(
       reduced,
-      attribute ? lookupRuntimePath(value, attribute) : value,
+      attribute === undefined
+        ? value
+        : lookupRuntimeAttribute(value, attribute),
     );
   }
   return runtimeAdd(positional[1] === undefined ? 0 : positional[1], reduced);
@@ -770,19 +860,23 @@ function sortRuntimeValues(
   input: RuntimeValue,
   positional: readonly RuntimeValue[],
   keyword: ReadonlyMap<string, RuntimeValue>,
+  reserveIndexedValues: (count: number) => void,
 ): RuntimeValue {
-  const values = runtimeSequenceValues(input);
+  const values = input instanceof RuntimeRecord
+    ? mapRuntimeRecordValues(input, reserveIndexedValues)
+    : runtimeSequenceValues(input);
   if (!values) {
     return new RuntimeArray([]);
   }
   const reverse = runtimeTruthy(keywordArgument(keyword, 'reverse', positional, 0));
   const caseSensitive = runtimeTruthy(keywordArgument(keyword, 'case_sensitive', positional, 1));
-  const attribute = optionalAttributePath(keywordArgument(keyword, 'attribute', positional, 2));
+  const attribute = getterAttributePath(
+    keywordArgument(keyword, 'attribute', positional, 2),
+  );
   values.sort((left, right) => {
-    const leftValue = attribute ? lookupRuntimePath(left, attribute) : left;
-    const rightValue = attribute ? lookupRuntimePath(right, attribute) : right;
-    const result = compareRuntimeFilterValues(leftValue, rightValue, caseSensitive);
-    return reverse ? -result : result;
+    const leftValue = lookupRuntimeAttributePath(left, attribute);
+    const rightValue = lookupRuntimeAttributePath(right, attribute);
+    return compareRuntimeSortValues(leftValue, rightValue, caseSensitive, reverse);
   });
   return new RuntimeArray(values);
 }
@@ -792,98 +886,137 @@ function selectRuntimeAttributes(
   positional: readonly RuntimeValue[],
   select: boolean,
 ): RuntimeValue {
-  const testName = positional[1] === undefined ? 'truthy' : runtimeToString(positional[1]);
-  if (!hasBuiltinTest(testName)) {
-    throw new Error(`Unknown template test ${testName}`);
-  }
   if (!(input instanceof RuntimeArray)) {
     throw new TypeError(`${select ? 'selectattr' : 'rejectattr'} requires an array`);
   }
-  const attribute = optionalAttributePath(positional[0]);
-  if (!attribute) {
-    throw new TypeError('Attribute selection requires a string attribute path');
-  }
-  const testArguments = positional.slice(2);
-  assertBuiltinTestArity(testName, testArguments.length);
+  const attribute = directAttributeKey(positional[0]);
   const output: RuntimeValue[] = [];
   for (const value of input.values()) {
-    const result = applyBuiltinTest(testName, lookupRuntimePath(value, attribute), testArguments);
-    if (result === undefined) {
-      throw new Error(`Invalid template test ${testName}`);
-    }
-    if (result === select) {
+    const matches = runtimeTruthy(lookupRuntimeAttribute(value, attribute));
+    if (matches === select) {
       output.push(value);
     }
   }
   return new RuntimeArray(output);
 }
 
-function optionalAttributePath(value: RuntimeValue): readonly string[] | undefined {
-  if (value === undefined || value === null || value === false) {
+function optionalDirectAttributeKey(value: RuntimeValue): string | undefined {
+  if (!runtimeTruthy(value)) {
     return undefined;
   }
-  if (typeof value !== 'string' && !(value instanceof RuntimeSafeString)) {
-    return undefined;
+  return directAttributeKey(value);
+}
+
+function directAttributeKey(value: RuntimeValue): string {
+  const key = runtimeToPropertyKey(value);
+  assertAllowedAttributeKey(key);
+  return key;
+}
+
+function getterAttributePath(value: RuntimeValue): readonly string[] {
+  if (!runtimeTruthy(value)) {
+    return [];
   }
-  const path = runtimeToString(value).split('.');
+  const path = typeof value === 'string'
+    ? value.split('.')
+    : [runtimeToPropertyKey(value)];
   for (const segment of path) {
-    if (isReservedName(segment)) {
-      throw new TypeError(`Template attribute ${segment} is reserved`);
-    }
+    assertAllowedAttributeKey(segment);
   }
   return path;
 }
 
-function lookupRuntimePath(value: RuntimeValue, path: readonly string[]): RuntimeValue {
+function assertAllowedAttributeKey(key: string): void {
+  if (isReservedName(key)) {
+    throw new TypeError(`Template attribute ${key} is reserved`);
+  }
+}
+
+function lookupRuntimeAttribute(value: RuntimeValue, key: string): RuntimeValue {
+  if (value === undefined || value === null) {
+    throw new TypeError('Cannot read a template attribute from a nullish value');
+  }
+  return readRuntimeOwnValue(value, key);
+}
+
+function lookupRuntimeAttributePath(
+  value: RuntimeValue,
+  path: readonly string[],
+): RuntimeValue {
   let current = value;
   for (const segment of path) {
-    current = current instanceof RuntimeRecord ? current.get(segment) : undefined;
+    if (current === undefined || current === null) {
+      throw new TypeError('Cannot read a template attribute from a nullish value');
+    }
+    if (!hasRuntimeOwnValue(current, segment)) {
+      return undefined;
+    }
+    current = readRuntimeOwnValue(current, segment);
   }
   return current;
 }
 
-function compareRuntimeFilterValues(
+function compareRuntimeSortValues(
   left: RuntimeValue,
   right: RuntimeValue,
   caseSensitive: boolean,
+  reverse: boolean,
 ): number {
-  if (
-    typeof left === 'number' &&
-    typeof right === 'number'
-  ) {
-    return left - right;
+  let normalizedLeft = left;
+  let normalizedRight = right;
+  if (!caseSensitive && isRuntimeString(left) && isRuntimeString(right)) {
+    normalizedLeft = runtimeText(left).toLowerCase();
+    normalizedRight = runtimeText(right).toLowerCase();
   }
-  const leftText = runtimeToString(left);
-  const rightText = runtimeToString(right);
-  const normalizedLeft = caseSensitive ? leftText : leftText.toLowerCase();
-  const normalizedRight = caseSensitive ? rightText : rightText.toLowerCase();
-  if (normalizedLeft < normalizedRight) {
-    return -1;
+  const order = runtimeOrder(normalizedLeft, normalizedRight);
+  if (order < 0) {
+    return reverse ? 1 : -1;
   }
-  if (normalizedLeft > normalizedRight) {
-    return 1;
+  if (order > 0) {
+    return reverse ? -1 : 1;
   }
   return 0;
 }
 
-function groupRuntimeValues(input: RuntimeValue, attribute: RuntimeValue): RuntimeValue {
+function compareRuntimeDictsortValues(
+  left: RuntimeValue,
+  right: RuntimeValue,
+  caseSensitive: boolean,
+): number {
+  const normalizedLeft = !caseSensitive && isRuntimeString(left)
+    ? runtimeText(left).toUpperCase()
+    : left;
+  const normalizedRight = !caseSensitive && isRuntimeString(right)
+    ? runtimeText(right).toUpperCase()
+    : right;
+  if (runtimeOrder(normalizedLeft, normalizedRight) > 0) {
+    return 1;
+  }
+  return runtimeStrictEqual(normalizedLeft, normalizedRight) ? 0 : -1;
+}
+
+function isRuntimeString(value: RuntimeValue): value is string | RuntimeSafeString {
+  return typeof value === 'string' || value instanceof RuntimeSafeString;
+}
+
+function groupRuntimeValues(
+  input: RuntimeValue,
+  attribute: RuntimeValue,
+  reserveIndexedValues: (count: number) => void,
+): RuntimeValue {
   if (input === undefined || input === null) {
     throw new TypeError('groupby requires a sequence');
   }
-  const values = runtimeSequenceValues(input);
+  const values = input instanceof RuntimeRecord
+    ? indexedRuntimeRecordValues(input, reserveIndexedValues)
+    : runtimeSequenceValues(input);
   if (!values) {
     return new RuntimeRecord([]);
   }
-  const path = optionalAttributePath(attribute) ?? [];
+  const path = getterAttributePath(attribute);
   const grouped = new Map<string, RuntimeValue[]>();
   for (const value of values) {
-    let key: RuntimeValue = value;
-    for (const segment of path) {
-      key = key instanceof RuntimeRecord ? key.get(segment) : undefined;
-    }
-    if (path.length === 0) {
-      key = undefined;
-    }
+    const key = lookupRuntimeAttributePath(value, path);
     const renderedKey = runtimeToPropertyKey(key);
     if (isReservedName(renderedKey)) {
       throw new TypeError(`Template record key ${renderedKey} is reserved`);
@@ -892,26 +1025,72 @@ function groupRuntimeValues(input: RuntimeValue, attribute: RuntimeValue): Runti
     values.push(value);
     grouped.set(renderedKey, values);
   }
-  const numeric: Array<readonly [string, RuntimeValue]> = [];
-  const named: Array<readonly [string, RuntimeValue]> = [];
+  const entries: Array<readonly [string, RuntimeValue]> = [];
   for (const [key, values] of grouped) {
-    const entry = [key, new RuntimeArray(values)] as const;
-    if (isArrayIndex(key)) {
-      numeric.push(entry);
-    } else {
-      named.push(entry);
-    }
+    entries.push([key, new RuntimeArray(values)]);
   }
-  numeric.sort(([left], [right]) => Number(left) - Number(right));
-  for (const entry of named) {
-    numeric.push(entry);
-  }
-  return new RuntimeRecord(numeric);
+  return new RuntimeRecord(entries);
 }
 
-function isArrayIndex(value: string): boolean {
-  const number = Number(value);
-  return Number.isInteger(number) && number >= 0 && number < 0xffff_ffff && `${number}` === value;
+function indexedRuntimeRecordValues(
+  input: RuntimeRecord,
+  reserveIndexedValues: (count: number) => void,
+): RuntimeValue[] {
+  const count = indexedComparisonCount(input.get('length'));
+  reserveIndexedValues(count);
+  const values: RuntimeValue[] = [];
+  for (let index = 0; index < count; index += 1) {
+    values.push(input.get(`${index}`));
+  }
+  return values;
+}
+
+function mapRuntimeRecordValues(
+  input: RuntimeRecord,
+  reserveIndexedValues: (count: number) => void,
+): RuntimeValue[] {
+  const length = input.get('length');
+  if (typeof length === 'number' && !Number.isNaN(length)) {
+    if (!Number.isInteger(length) || length < 0 || length > 0xffff_ffff) {
+      throw new RangeError('Invalid array-like record length');
+    }
+  }
+  return indexedRuntimeRecordValues(input, reserveIndexedValues);
+}
+
+function sliceRuntimeRecordValues(
+  input: RuntimeRecord,
+  reserveIndexedValues: (count: number) => void,
+): RuntimeValue[] {
+  const count = arrayLikeToLength(input.get('length'));
+  reserveIndexedValues(count);
+  const values: RuntimeValue[] = [];
+  for (let index = 0; index < count; index += 1) {
+    const key = `${index}`;
+    if (input.has(key)) {
+      values.push(input.get(key));
+    }
+  }
+  return values;
+}
+
+function indexedComparisonCount(value: RuntimeValue): number {
+  const length = runtimeToNumber(value);
+  if (Number.isNaN(length) || length <= 0) {
+    return 0;
+  }
+  return Number.isFinite(length) ? Math.ceil(length) : length;
+}
+
+function arrayLikeToLength(value: RuntimeValue): number {
+  const length = runtimeToNumber(value);
+  if (Number.isNaN(length) || length <= 0) {
+    return 0;
+  }
+  if (!Number.isFinite(length)) {
+    return Number.MAX_SAFE_INTEGER;
+  }
+  return Math.min(Math.floor(length), Number.MAX_SAFE_INTEGER);
 }
 
 /** Applies one closed built-in test. */
@@ -1023,6 +1202,29 @@ export function lookupRuntimeValue(
   key: RuntimeValue,
 ): RuntimeValue | undefined {
   const propertyKey = runtimeToPropertyKey(key);
+  return readRuntimeOwnValue(target, propertyKey);
+}
+
+function hasRuntimeOwnValue(target: RuntimeValue, propertyKey: string): boolean {
+  if (target instanceof RuntimeRecord) {
+    return target.has(propertyKey);
+  }
+  if (target instanceof RuntimeArray) {
+    return propertyKey === 'length' ||
+      runtimeArrayIndexFromPropertyKey(propertyKey, target.length) !== undefined;
+  }
+  if (typeof target === 'string' || target instanceof RuntimeSafeString) {
+    const text = typeof target === 'string' ? target : target.value;
+    return propertyKey === 'length' ||
+      runtimeArrayIndexFromPropertyKey(propertyKey, text.length) !== undefined;
+  }
+  return false;
+}
+
+function readRuntimeOwnValue(
+  target: RuntimeValue,
+  propertyKey: string,
+): RuntimeValue {
   if (target instanceof RuntimeRecord) {
     return target.get(propertyKey);
   }
