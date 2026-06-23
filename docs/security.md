@@ -39,6 +39,20 @@ or trailing structural content therefore fail before evaluator construction;
 earlier output, declaration defaults, wrapper macros, raw contents, and later
 capabilities cannot execute.
 
+Both `elif` and `elseif` are expression-bearing conditional continuations.
+Missing or malformed continuation expressions and trailing content after
+`else` or `endif` fail complete-source parsing before any branch capability can
+run; `else if` is not accepted as an alias.
+
+Parser-owned whitespace classification prevents unsupported Unicode spacing
+characters from disguising code boundaries. Code accepts only space, tab, LF,
+CR, and NBSP; broader ECMAScript whitespace is recognized only by template-data
+trim controls and `lstripBlocks`. Raw and verbatim scanning requires balanced
+same-name depth before evaluation, so a missing outer closer fails complete
+source validation before any capability can run. Inner markers use their own
+full-whitespace, no-hyphen grammar, and terminal LF or CRLF closers fail safely
+before evaluation rather than reproducing the pinned tokenizer exception.
+
 It also rejects direct `Neg(Neg(...))` and `Pos(Pos(...))` expression shapes in
 every syntax position, including inactive branches and unused macro defaults.
 This preserves Nunjucks's compiler-derived syntax rejection without generating
@@ -79,6 +93,8 @@ Capability arguments use the same public shapes. A capability may additionally
 return `undefined`, which becomes the interpreter's absent value. Safe strings
 are created only inside the interpreter by approved built-ins and macro
 captures; callers cannot inject a safe-string wrapper through public data.
+Their closed boolean conversion is always true, including for empty wrapped
+text, while explicit length and iteration remain based on the text itself.
 
 Functions, accessors, symbols, class instances, typed arrays, dates, maps,
 sets, weak collections, promises, errors, and other exotic objects are
@@ -102,14 +118,24 @@ reaches host code. Prototype pollution of `Object.prototype` cannot affect
 interpreter lookup because host objects are never used as scopes or template
 records.
 
+Record enumeration is also interpreter-owned and deterministic. Numeric index
+keys follow JavaScript property order before named keys across literals, copied
+contexts, derived records, and prepared updates. Capability invocation order
+from record loops therefore cannot diverge merely because the closed record is
+map-backed, and no host object conversion is used to obtain that ordering.
+
 ## Semantic role changes
 
 Template-controlled data is revalidated whenever its role changes:
 
 - dictionary syntax and record-producing built-ins pass every derived key
   through `RuntimeRecord`, which cannot represent a reserved key;
-- attribute strings are split into explicit path segments, reject reserved
-  segments, and traverse only `RuntimeRecord` entries;
+- filter attributes are prepared according to their direct-key or getter-path
+  policy; exact direct keys and every nested path segment reject reserved names,
+  while permitted direct keys may contain dots without becoming traversal;
+- attribute traversal uses presence-aware closed own lookup over records,
+  arrays, and strings, and a non-empty lookup on null or undefined fails before
+  later template evaluation rather than becoming an absent value;
 - record membership uses the closed record's presence operation, keeping an
   allowed key containing `undefined` distinct from a missing or reserved key;
 - equality dispatches explicitly by closed value kind; strict comparisons use
@@ -123,6 +149,13 @@ Template-controlled data is revalidated whenever its role changes:
 - built-in type failures stop evaluation, while unsupported scalar results
   remain absent instead of becoming generic zero or empty-string values that
   could select a different policy branch;
+- `center` and `truncate` read only interpreter-owned direct lengths before
+  deciding whether text operations are needed, and `wordcount` checks closed
+  falsiness first; callable identities are still rejected recursively before
+  any unchanged array or record can pass through;
+- regex replacement validates closed primitive-string or safe-string input before
+  numeric or generic string conversion, returns only an ordinary string, and
+  stops evaluation before later capabilities for every other input kind;
 - `range`, `sum`, and `joiner` retain closed value types and use closed
   comparison or addition at the same observable points as pinned Nunjucks, so
   eager numeric or string conversion cannot change strict branches or switch
@@ -131,23 +164,47 @@ Template-controlled data is revalidated whenever its role changes:
   selection and use filter-specific repeat, substring, replacement, URL,
   exponent, and JSON-spacing semantics, preventing eager normalization from
   selecting a different capability-bearing branch;
+- strict `dictsort`, `round`, and `dump` options inspect original closed types
+  rather than coercing safe strings or other values into dispatch tokens;
+- ordinary built-in filter keywords become an interpreter-owned final
+  positional record with a forced `__keywords` marker, while only `int` and
+  `sort` bind declared keyword names; all values remain subject to recursive
+  callable rejection and scratch accounting before dispatch;
+- Jinja subscript slices use only closed length, ordering, addition, key
+  conversion, and own lookup; each selected value is callable-checked before
+  entering the result and each attempted result is work- and scratch-charged;
+- numeric ordering compares closed converted values directly rather than by
+  subtraction, so equal infinities cannot fail open into a different branch
+  while `NaN` remains unordered;
 - assignment, macro, direct filter, direct test, and global names originate
   from validated parser symbols and resolve through private maps; dynamic test
-  names accepted by selection filters are checked against the closed registry
-  before iteration;
+  names accepted by `select` and `reject` are checked against the closed
+  registry before iteration, while attribute selectors perform only direct
+  truthiness and safely discard surplus values;
 - macro calls bind only declared formal names at their fixed positions and the
   explicit call-block `caller` keyword; unmatched keywords cannot introduce
   locals or callable identities;
+- macro declaration visibility follows an explicit lexical macro frame rather
+  than the dynamically active value or block scope; loop, caller, and outer-
+  macro locals cannot be captured or exported accidentally, and macro
+  declarations inside output captures are rejected before execution;
 - standalone blocks carry no inheritance chain and synthesize no `super`
   authority; call blocks target only macros, and their `caller` handle cannot
   cross or be silently discarded at capability or built-in boundaries;
 - call-block targets are side-effect-free static references, and macro, filter,
   and test validity is established before any associated argument, operand,
   caller body, or selection element can execute;
+- filter blocks use the same sealed filter dispatcher as pipe expressions;
+  unknown filters and invalid registered-filter keywords fail before body
+  capture or argument evaluation, while valid bodies remain subject to normal
+  callable rejection, output limits, and fail-stop capability handling;
 - every non-macro call recursively rejects callable identities from positional
   and keyword values before capability charging, built-in storage, dispatch,
   transformation, or discard; unsupported keyword and surplus-argument syntax
   is rejected before its expressions execute;
+- parenthesized groups reject callable identities recursively from every
+  non-final child before discarding it, while preserving a final sealed callable
+  for ordinary explicit dispatch; empty groups fail during complete parsing;
 - sealed internal callable identities cannot cross the public value boundary;
   and
 - capability arguments and results are recursively recopied rather than
@@ -170,9 +227,11 @@ first resolves its target through lexical scope and closed-value lookup. Only a
 resolved capability callable can reach the host dispatcher, and its opaque ID
 maps privately to the exact registered callback independent of call-site
 spelling. Context data, local bindings, computed strings, and object paths
-cannot manufacture or redirect that identity. Global registry names must be
-single valid template identifiers; dotted names are rejected rather than
-treated as implicit namespaces. The call copies internal arguments to a public
+cannot manufacture or redirect that identity. Filter names may contain multiple
+dot-separated valid identifier segments, but the complete spelling is one
+private capability ID rather than a lookup path; every segment rejects reserved
+names. Global registry names remain single valid template identifiers, and
+dotted global names are rejected. The call copies internal arguments to a public
 value graph whose records have null prototypes and copies its result back
 through the safe value validator. Capability results are not implicitly safe.
 Callback execution and result validation share one protected failure boundary,
@@ -192,7 +251,10 @@ must also prevent inherited host hooks from becoming observable. In particular,
 `dump` serializes only null-prototype records and arrays, so an inherited
 `toJSON` accessor or function cannot run during template evaluation. It rejects
 callable identities at any nesting depth rather than converting them to JSON
-`null` or omission.
+`null` or omission. Inert regex values become fresh empty null-prototype records
+for serialization only, matching RegExp's empty enumerable JSON shape without
+creating a native RegExp, exposing pattern data, or consulting either internal
+or native regex prototypes.
 
 The built-in `random` filter uses Node's synchronous cryptographic integer
 selection. Template-controlled calls therefore neither observe nor advance the
@@ -250,6 +312,13 @@ control sequences, or bidirectional visual spoofing. Logging or recursively
 inspecting the complete error is also safe because `cause` is always
 `undefined` and no raw internal stack or error object crosses the boundary.
 
+Regular-expression grammar is parser-owned rather than inherited from the host
+Node.js version. Literals accept only `g`, `i`, `m`, and `y`; unsupported or
+duplicate flags and ambiguous even-backslash delimiter runs fail complete-source
+validation with fixed diagnostics before any capability executes. Native
+`RegExp` receives only the accepted inert pattern and flags for validation and
+approved built-in matching.
+
 Nunjitsu accepts inline source only and imports no filesystem APIs. Applications
 perform file discovery, path confinement, symbolic-link handling, and reads
 before source crosses into the renderer.
@@ -261,6 +330,18 @@ nesting, rendered output, filter-argument scratch size, and trusted capability
 calls. They reduce accidental and intentional denial of service but are
 cooperative checks rather than hard isolation or general heap limits.
 
+Indexed filters over array-like records project their numeric work and
+fixed-size result slots before visiting or allocating positions. Sparse missing
+entries count toward both projections, preventing a tiny record with a hostile
+`length` from amplifying into an unbounded intermediate array before a limit
+check. The projection remains an estimate rather than exact V8 heap accounting.
+
+Jinja slice syntax cannot always project its result count because string and
+fractional addition may change index type as it advances. It therefore charges
+one work unit and one indexed scratch slot per attempted result. Steps with
+zero or non-finite numeric coercion are rejected before iteration; remaining
+non-progressing additions terminate through the cooperative work limit.
+
 Output growth is bounded by UTF-16 code units, matching the returned JavaScript
 string and providing a cheap approximate memory guard. It is not exact V8 heap
 or encoded-output accounting.
@@ -269,10 +350,12 @@ Interpreter nesting is checked at every statement and expression evaluation
 checkpoint. This bounds recursive evaluator frames; it does not replace source
 size and parser-side AST-node limits.
 
-Regular-expression literals preserve JavaScript-compatible behavior. A hostile
-pattern can cause excessive backtracking between interpreter checkpoints;
-applications requiring strict availability isolation must execute rendering in
-their own worker, process, or container and impose external deadlines.
+Regular-expression literals use native JavaScript matching only after the
+parser has restricted flags to the fixed Nunjucks v3.2.4 `gimy` set and
+validated the pattern. A hostile pattern can still cause excessive backtracking
+between interpreter checkpoints; applications requiring strict availability
+isolation must execute rendering in their own worker, process, or container and
+impose external deadlines.
 
 Native RegExp operations also update legacy host-realm fields such as
 `RegExp.$1`, `input`, and `lastMatch`. Every registered filter and global

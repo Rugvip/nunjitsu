@@ -55,14 +55,37 @@ repeated signs separated by an explicit `Group` and repeated `not` expressions.
 The parser rejects the invalid direct-child shape while parsing the complete
 source, before any active or inactive expression can execute.
 
+Parenthesized comma-separated expressions remain explicit `Group` nodes. The
+evaluator visits each child once from left to right and returns only the final
+value, matching Nunjucks's observable comma-expression behavior. Every
+non-final value is checked recursively for callable identity before discard;
+the final value retains its ordinary closed type and may remain callable.
+Empty groups are rejected while parsing the complete source.
+
+String tokenization implements the pinned Nunjucks escape grammar directly in
+the closed parser. It decodes only `\\n`, `\\t`, and `\\r`; every other
+backslash escape retains the next source code unit without JavaScript-style
+hexadecimal or Unicode decoding. Raw source positions are advanced code unit by
+code unit so diagnostics after multiline strings retain the correct line and
+column.
+
+Numeric tokenization accepts only decimal digits with an optional decimal point
+and following digits. It rejects leading dots and identifier-like suffixes
+before emitting a numeric token, then converts only that validated token with
+native number parsing. Signs remain explicit unary AST nodes, and supported
+arithmetic remains the only route to non-finite values such as infinity.
+
 ## Closed values
 
 The interpreter owns all values:
 
 - undefined, null, booleans, numbers, and strings;
+- sealed safe-string wrappers containing engine-owned text;
 - arrays of engine values;
-- records backed by private string-keyed maps;
-- regular-expression literals represented as inert pattern/flag data; and
+- records backed by private string-keyed maps with explicit JavaScript property
+  enumeration order;
+- regular-expression literals represented as inert pattern/flag data after a
+  fixed parser-owned `gimy` flag and delimiter grammar has been validated; and
 - sealed callable variants created by the interpreter.
 
 String semantics follow Nunjucks and JavaScript UTF-16 code units consistently.
@@ -74,6 +97,13 @@ UTF-16 lexical ordering without locale or ICU collation, so results are stable
 across supported Node.js environments. Chained comparisons retain Nunjucks's
 left-associative JavaScript semantics.
 
+Closed boolean conversion treats a safe-string wrapper as an object-like value,
+so it remains truthy even when its text is empty. Explicit text operations do
+not infer non-empty content from that result: length, indexing, iteration,
+string conversion, and numeric conversion continue to inspect the wrapped text.
+Filter flags and defaults use wrapper truthiness, while top-level empty-string
+iteration still has a numeric content length of zero.
+
 Closed coercion is separate from output rendering. Output continues to render
 null and undefined as empty strings, while semantic string and property-key
 conversion produces `"null"` and `"undefined"`. Safe strings unwrap directly;
@@ -84,6 +114,20 @@ callable nested in an array or record can be rendered, serialized, captured,
 used as a separator, transformed by the standard library, or included in
 scratch accounting. No path invokes a host object's iteration, `valueOf`,
 `toString`, or primitive-conversion hook.
+
+Numeric ordering performs explicit less-than, greater-than, and equality checks
+after this closed primitive conversion. It does not subtract operands, because
+equal positive or negative infinities must produce an ordering delta of zero.
+Only genuinely unordered numeric comparisons involving `NaN` produce an
+unordered result. Relational operators, ordering tests, length short-circuits,
+sorting, ranges, and Jinja slice boundaries all share this rule.
+
+`RuntimeRecord` owns enumeration order centrally. Canonical array-index names
+from `0` through `2^32 - 2` enumerate first in ascending numeric order. Other
+strings retain first-insertion order, and replacement preserves the existing
+position. Construction and immutable `with` updates both reapply the rule;
+consumers iterate the private map directly without converting it to a host
+object or implementing their own numeric-key sort.
 
 Built-in filters and tests declare their accepted closed input kinds directly.
 Collection operations distinguish arrays, UTF-16 string sequences, nullish
@@ -98,6 +142,24 @@ input, `length` preserves absent results for unsupported scalars, and
 `urlencode` applies closed numeric pair lookup to every sequence entry rather
 than silently discarding malformed entries.
 
+Array-like records remain records with an own raw `length` and canonical
+numeric keys; they are not admitted to the shared array/string sequence helper.
+Filters reproduce their individual indexed algorithms: direct edge lookup,
+comparison-loop collection, map-style length assignment, slice-style presence
+checks, or one cryptographically selected index. Missing positions become
+closed `undefined` only on algorithms that perform a direct lookup. Native
+array-method filters continue to reject records, while record-oriented filters
+continue to enumerate record entries.
+
+Attribute resolution is prepared per filter rather than by one shared path
+normalizer. Direct-key filters apply closed property-key conversion once;
+getter-path filters split only primitive strings and preserve safe strings or
+other truthy values as one key. Closed own lookup distinguishes a missing entry
+from an entry containing `undefined`, supports array and UTF-16 string indices
+and length, and throws before further evaluation when a non-empty lookup reaches
+null or undefined. It never follows a prototype, accessor, method, or host
+object property.
+
 Stateful and reducing built-ins retain closed value types while they operate.
 `range` selects its short form when the stop value is absent, compares each
 current value and step through closed ordering, and increments through closed
@@ -105,6 +167,24 @@ addition. `sum` reduces elements from numeric zero through closed addition and
 only then adds the original start value. `joiner` retains its original truthy
 separator value and returns that exact closed value after its first call.
 Coercion therefore occurs only at a later operation that actually requires it.
+
+Collection sorting keeps operation-specific comparison rules. `sort` applies
+pairwise lowercase normalization only to string-like values and otherwise uses
+closed relational coercion, with stable input order for equal or unordered
+values. `dictsort` independently uppercases string operands, checks closed
+greater-than and strict equality, then returns its pinned `-1` fallback. Neither
+path invokes host object coercion or shares a generic text comparator.
+
+Filter short-circuits preserve the closed value produced at that exact stage.
+`replace` handles regex search before numeric input conversion, keeps the raw
+replacement until its use requires coercion, and returns the coerced input
+identity for zero limits or absent matches. Regex output is always an ordinary
+string and non-string regex input fails. `center` and `truncate` compare a
+closed direct-length value before requiring primitive or safe text, allowing
+unchanged arrays and records to retain identity. `wordcount` applies closed
+falsiness before its text requirement. Existing safe strings survive unchanged
+`center`, `truncate`, and `string` paths by identity; transformed paths create
+fresh safe-string values through explicit safeness copying.
 
 Numeric filter arguments follow the same rule without sharing one generic
 integer conversion. `center`, `indent`, and `truncate` select defaults from the
@@ -116,6 +196,38 @@ bound without pre-truncation. URL labels model `substr`, round precision flows
 directly into exponentiation, and JSON indentation accepts only closed number
 or string values with native JSON limits. The stricter positive-integer input
 contracts for `batch` and `slice` remain intentional security deviations.
+
+Built-in mode and formatting selectors do not share general string coercion.
+`dictsort` validates its original closed selector as absent, primitive `key`,
+or primitive `value`. `round` compares the original method value directly with
+primitive `ceil` and `floor`. JSON indentation admits only primitive strings or
+numbers; a safe-string wrapper is ordinary closed data rather than a native
+boxed string with a JavaScript internal string slot.
+
+JSON conversion materializes arrays and records as transient null-prototype
+containers. An inert `RuntimeRegex` becomes a fresh empty null-prototype record,
+which reproduces native RegExp's empty enumerable JSON shape without creating a
+native RegExp or exposing its source and flags. Callable identities remain
+rejected, while `undefined`, non-finite numbers, and other primitives retain
+their native JSON behavior.
+
+Filter argument evaluation retains the parser's Nunjucks aggregate order:
+positional expressions are evaluated first, followed by keyword expressions.
+Only `int` and `sort` consume declared names from the keyword map. Before every
+other built-in runs, the evaluator lowers the map into one final positional
+`RuntimeRecord`, forces its `__keywords` entry to true, and includes that closed
+record in scratch accounting. No native JavaScript keyword object, prototype,
+property lookup, or getter participates in dispatch.
+
+Jinja subscript slices retain the evaluated target and operate through closed
+direct length and own-key lookup. Bounds are not truncated or clamped. Negative
+start and stop values add the raw length once, the upper boundary rejects only
+indices greater than length, and each next index is produced by closed
+JavaScript-style addition with the original step. Missing canonical,
+fractional, padded, or concatenated string keys append `undefined`. Every
+attempted result consumes evaluator work and an indexed scratch slot before it
+is stored; selected callable values fail immediately. A step is accepted only
+when closed numeric coercion is finite and nonzero.
 
 Standalone blocks retain only the isolated scope needed to evaluate their own
 body and to bind macros with Nunjucks-compatible scope behavior. The evaluator
@@ -152,6 +264,11 @@ arm require explicit parentheses. Dictionary literal keys accept only strings
 and ordinary identifiers so invalid key forms fail during complete-source
 parsing, before evaluation or capability dispatch.
 
+Switch parsing requires at least one `case` or `default` structural arm after
+comments are removed. Arm bodies may be empty, and consecutive empty cases
+retain Nunjucks fallthrough behavior. An arm-free switch is rejected before any
+node from the complete source can execute.
+
 Input arrays and records are recursively copied. Records are never used as
 JavaScript prototypes or accessed through `object[key]` inside the interpreter.
 `constructor`, `prototype`, and `__proto__` are reserved throughout parsing,
@@ -163,8 +280,11 @@ One-shot renders discard their copied value graph after rendering. Callers that
 render several sources against the same data may explicitly prepare an opaque,
 engine-bound context snapshot. Derived path updates copy the new public value
 and the map-backed records on that path while structurally sharing unchanged
-closed values. Snapshots are immutable: evaluator scopes and template
-assignments never update them.
+closed values. Missing intermediate keys create records, while every present
+non-record value—including explicit `undefined`—rejects further traversal;
+presence is checked independently from the stored value. Replacing the final
+path entry directly remains valid. Snapshots are immutable: evaluator scopes
+and template assignments never update them.
 
 Parser-validated constant attribute and index keys use a narrowed closed lookup
 operation. Computed keys continue through explicit runtime coercion. Both paths
@@ -218,6 +338,21 @@ receiver, or exposing a host function. Callable-valued built-in members follow
 the same rule, while stateful method lookup remains fresh. These maps and
 handles belong to one evaluator and are discarded after the render.
 
+Macro binding uses a separate immutable lexical context containing a name-
+binding scope and an invocation-parent scope. Root and standalone block frames
+export names to the template scope, including nested blocks and blocks reached
+from loops. Ordinary macro bodies use the same export frame. Loop bodies and
+synthetic caller bodies bind macros locally, but ordinary macros declared there
+still invoke against the template scope and cannot capture loop, caller, or
+outer-macro locals. `if` and `switch` preserve the current macro frame.
+Synthetic callers are the sole callable bodies whose invocation parent retains
+their explicitly confined call-site scope.
+
+Block-set and filter-block captures reject nested macro declarations during
+complete parsing. Nunjucks's generated JavaScript has inconsistent failures for
+these placements, so the secure subset does not create capture-specific export
+or closure semantics.
+
 Macro binding assigns each positional value only to the formal parameter at the
 same index, then consults the matching keyword only when that position is
 absent. Positional values take Nunjucks-compatible precedence when both forms
@@ -242,10 +377,19 @@ ordinary arguments evaluated and the caller body registered, so an invalid
 target cannot trigger argument or body capabilities.
 
 Filters and tests similarly resolve their operation names before evaluating
-input and argument expressions. Selection filters validate their named test
+input and argument expressions. A dotted filter spelling is stored as one
+parser-created symbol and resolved directly against the private registry; it
+never becomes a member lookup. `select` and `reject` validate their named test
 once before inspecting the input sequence, including when that sequence is
 empty or an unsupported scalar. Known operations retain source-order operand
 evaluation.
+
+A synchronous filter block lowers to `Output(Filter(Capture(body), ...args))`.
+Resolution and registered-filter keyword validation happen before `Capture`.
+Once valid, the body is captured with normal statement semantics before the
+explicit arguments are evaluated, and the standard filter path performs the
+dispatch. Captured output and final filtered output are both charged to the
+render limits.
 
 Each non-macro callable has an explicit argument policy. Registered filters and
 globals accept only positional syntax. Stateful built-in constructors and
@@ -270,9 +414,12 @@ HTML, SQL, or shell sanitizer.
 High finite limits account for source code units, AST nodes, evaluator work,
 interpreter nesting depth, rendered output code units, filter-argument scratch
 size, and capability calls. The scratch limit estimates the UTF-8 size of the
-closed values passed into a filter; it is not a general allocation or heap
-limit. Output growth uses JavaScript string length as a cheap memory-pressure
-guard and is intentionally UTF-16 code-unit rather than exact byte accounting.
+closed values passed into a filter plus fixed-size slots projected for indexed
+array-like record materialization; it is not a general allocation or heap
+limit. Indexed positions, including missing sparse positions, are charged as
+work and reserved before iteration or allocation. Output growth uses JavaScript
+string length as a cheap memory-pressure guard and is intentionally UTF-16
+code-unit rather than exact byte accounting.
 Nesting depth is checked before evaluating each statement and expression node.
 These are cooperative availability safeguards, not a process sandbox or exact
 CPU/RSS accounting.

@@ -52,6 +52,14 @@ implementation and documentation aligned with the architecture in
 - Resolve every call target through lexical scope and the closed value model.
   Dispatch capabilities only through evaluator-owned IDs mapped privately to
   exact registered callbacks; never derive authority from call-site spelling.
+- Validate filter registry names as one or more dot-separated ordinary
+  identifier segments, rejecting reserved segments everywhere. Parse a dotted
+  filter spelling into one exact sealed capability ID, never a lookup path.
+  Keep global registry names restricted to one identifier.
+- Lower synchronous filter blocks through the ordinary `Output`, `Filter`, and
+  `Capture` AST variants. Resolve the exact filter and reject registered-filter
+  keyword syntax before evaluating the body; otherwise capture the body before
+  evaluating explicit filter arguments. `endfilter` accepts no trailing content.
 - Recursively reject callable identities from every positional and keyword
   value before non-macro dispatch, storage, transformation, or discard.
   Registered filters and globals are positional-only; reject keyword syntax
@@ -62,7 +70,7 @@ implementation and documentation aligned with the architecture in
   or static constant-key lookup as the target, resolve and require a macro
   before evaluating arguments, and register the caller body only afterwards.
   Resolve filter and test existence before evaluating their operands or
-  arguments, including tests named through selection filters.
+  arguments, including tests named through `select` and `reject`.
 - Do not represent inheritance-only block chains or synthesize a `super`
   callable. Standalone blocks have one body and isolated scope; an explicitly
   registered global named `super` remains an ordinary capability. Call blocks
@@ -72,6 +80,14 @@ implementation and documentation aligned with the architecture in
   presence second, never value nullishness or a conditional positional cursor.
   Ignore undeclared keywords except for the explicit call-block `caller`
   binding. Evaluate defaults only for genuinely absent arguments.
+- Track macro name binding separately from value lookup. Root, standalone block,
+  nested block, and ordinary macro bodies export declarations to the template
+  macro frame; `if` and `switch` inherit it. Loop and synthetic caller bodies
+  keep declarations local. Ordinary macros use the template scope as their
+  invocation parent and never capture loop, caller, or outer-macro locals;
+  synthetic callers alone retain their confined call-site value scope.
+- Reject macro declarations anywhere inside block-set or filter-block captures
+  during complete parsing rather than inventing capture-specific macro scope.
 - Validate macro and caller declarations separately from ordinary calls. Every
   positional formal must be a symbol; default keys must be parser-created
   allowed names. Store ordinary formals before defaulted formals, allow source
@@ -159,6 +175,23 @@ Do not create additional packages without a documented architectural reason.
   `endmacro`, `endcall`, `endset`, `default`, and `endswitch` accept no trailing
   content; `endblock` accepts only an optional matching opening name; and raw or
   verbatim openers accept no arguments before scanner raw-mode entry.
+- Require every switch to contain at least one `case` or `default` arm after
+  comments are discarded. Preserve empty arm bodies and empty-case fallthrough,
+  but reject an arm-free switch during complete parsing.
+- Treat `elif` and `elseif` as equivalent conditional continuation tags with a
+  required expression. Keep `else if` invalid because `else` accepts no trailing
+  content, and validate every continuation before evaluation.
+- Keep parser whitespace domains explicit. Code tokens accept only space, tab,
+  LF, CR, and NBSP; unsupported ECMAScript whitespace in code is rejected.
+  Explicit `-` controls and `lstripBlocks` use the full ECMAScript whitespace
+  set. Do not use general `trim`, `trimStart`, or `\s` for code parsing.
+- Scan raw and verbatim regions with same-name nesting depth. Preserve nested
+  markers and mixed raw/verbatim markers as literal text, require the outer
+  same-name closer, preserve content after a top-level opening `-%}`, and reject
+  hyphenated closing markers. Inside a raw region, recognize markers with the
+  full template-data whitespace set and no left or right hyphen; safely reject
+  a terminal closer containing LF or CRLF while allowing multiline non-terminal
+  nested markers.
 - Inspect input records through own property descriptors and reject accessors.
   Do not invoke getters while copying accepted plain records.
 - Reject Node-detected proxies before array detection or any reflective value
@@ -173,15 +206,47 @@ Do not create additional packages without a documented architectural reason.
 - Use presence-aware map and record operations when semantics depend on whether
   a key exists. Never infer presence from a retrieved value because
   interpreter-owned records may store `undefined`.
+- Make every `RuntimeRecord` enumerate canonical JavaScript array-index keys
+  from `0` through `4294967294` in ascending numeric order, followed by other
+  string keys in first-insertion order. Replacing a key changes only its value.
+  Apply this invariant in construction and derived updates rather than relying
+  on host-object enumeration or consumer-specific sorting.
 - Model strings consistently as UTF-16 code units for length, indexing,
   iteration, filters, slicing, and work accounting. Iterate primitive strings
   by numeric index rather than their host iteration protocol.
+- Implement Jinja subscript slices as direct closed lookup loops. Preserve raw
+  fractional and string start, stop, and step values, adjust negative bounds
+  once without clamping, include the `length` index when an explicit stop
+  reaches beyond it, and increment through closed addition. Reject steps whose
+  numeric coercion is zero or non-finite, charge every attempted result, bound
+  scratch growth, and reject selected callable identities before storage.
+- Treat every safe-string wrapper as truthy, including one containing empty
+  text. Keep that wrapper truthiness separate from content-based text length,
+  indexing, iteration, and string or numeric coercion.
+- Keep string-literal escapes fixed to Nunjucks v3.2.4: decode only `\\n`,
+  `\\t`, and `\\r`, and treat every other backslash as quoting exactly its next
+  source code unit. Do not add JavaScript hexadecimal or Unicode decoding, and
+  advance diagnostic positions over each raw string source code unit.
+- Keep numeric literals decimal-only: digits followed by an optional decimal
+  point and digits, with signs represented as unary nodes. Reject leading-dot,
+  exponent, non-decimal radix, separator, and digit-leading symbol-like forms
+  during complete parsing; native number conversion must not define syntax.
+- Keep regular-expression literal grammar fixed to the parser-owned Nunjucks
+  v3.2.4 `gimy` flag set. Reject duplicate or other ASCII-letter flags and
+  candidate delimiters preceded by nonzero even backslash runs before
+  evaluation; share complete identifier boundaries between tag and expression
+  scanning so only an exact `r/` token starts a regex. Native Node.js RegExp
+  support must never expand accepted syntax.
 - Compare validated primitive strings with direct UTF-16 relational operators.
   Do not use locale-aware collation or `Intl` inside template semantics.
 - Centralize property-key, primitive, number, string, addition, relational, and
   equality semantics in closed coercion helpers that dispatch exhaustively by
   runtime value kind. Never reuse output rendering for semantic conversion or
   invoke `valueOf`, `toString`, or another host object hook.
+- Implement numeric ordering with explicit less-than, greater-than, and equality
+  checks after closed numeric conversion. Never derive ordering by subtraction:
+  equal positive or negative infinities must compare equal while `NaN` remains
+  unordered.
 - Reject callable identities recursively before output rendering, string or
   numeric coercion, serialization, capture, separator construction, scratch
   accounting, or standard-library transformation can turn them into ordinary
@@ -192,16 +257,56 @@ Do not create additional packages without a documented architectural reason.
   a generic empty array, record, string, zero, or false fallback for invalid
   input, and resolve supported keyword arguments by presence rather than
   nullishness.
+- Lower built-in filter keywords according to Nunjucks's two calling
+  conventions. Bind declared names only for macro-wrapped `int` and `sort`;
+  append every other filter's keywords as one closed final positional record
+  with an own `__keywords: true` marker. Preserve positional-then-keyword
+  evaluation order, reject callables recursively, and never use a host object.
+- Handle array-like records per operation rather than through the generic
+  sequence path. Preserve direct `first`, raw-length `last`, indexed-loop
+  `batch` and `groupby`, map-style `reverse` and `sort`, slice-style `select`
+  and `reject`, and cryptographic `random` behavior. Keep record semantics for
+  `list`, `length`, `urlencode`, and `dictsort`, and reject record input for
+  method-dependent filters such as `join`, `slice`, `sum`, and attribute
+  selection. Reserve projected indexed work and scratch slots before iterating
+  or allocating sparse record positions.
+- Keep attribute semantics filter-specific. `join` and `sum` use one truthy
+  direct key; `selectattr` and `rejectattr` always use one direct key, including
+  the omitted `undefined` key, apply direct truthiness only, and ignore surplus
+  evaluated non-callable arguments; `sort` and `groupby` use an empty path for
+  a falsey attribute, split only primitive strings on dots, and treat every
+  other truthy value as one direct key. Reject exact reserved direct keys and
+  every reserved nested segment, but allow dots inside an otherwise permitted
+  direct key. Attribute lookup on null or undefined must fail rather than
+  silently becoming absent.
 - Preserve closed value types inside built-ins until an operation requires
   coercion. Implement `range` comparison and increments with closed ordering
   and addition, `sum` with ordered closed addition, and `joiner` separators as
   original runtime values; never normalize their state eagerly to numbers or
   strings.
+- Keep `sort` and `dictsort` comparators operation-specific. `sort` uses
+  pairwise string lowercase normalization plus closed relational ordering;
+  `dictsort` independently uppercases strings and applies closed greater-than,
+  strict equality, then its pinned `-1` fallback. Do not merge them into a
+  generic string comparator or invoke host coercion.
+- Preserve each built-in's observable coercion and short-circuit order. Regex
+  `replace` must validate string input before numeric conversion and return a
+  primitive string; non-regex replacement must preserve raw replacement state
+  and unchanged coerced-input identity. `center` and `truncate` must inspect
+  the original closed direct length before requiring text, and `wordcount`
+  must test closed falsiness before requiring text. Return unchanged values and
+  existing safe strings directly where Nunjucks short-circuits; transformed
+  output receives a fresh safe identity.
 - Preserve filter arguments through original-value defaulting and apply the
   operation-specific numeric rule only where Nunjucks performs it. Do not share
   one integer normalization across repeat-loop bounds, substring positions,
   replacement limits, URL label lengths, round precision, and JSON indentation.
-  Keep the deliberate positive-integer validation for `batch` and `slice`.
+  Keep the deliberate positive-integer validation for `batch` and `slice`,
+  including when an ordinary keyword bag reaches their count argument.
+- Keep strict built-in option dispatch type-sensitive. `dictsort` accepts only
+  absent, primitive `key`, or primitive `value`; `round` selects special methods
+  only from primitive strings; and `dump` indentation accepts only primitive
+  numbers and strings. Safe strings must not gain authority through coercion.
 - Give each directly resolved registered or built-in global one canonical
   sealed callable handle per render. Ordinary array, record, and callable-valued
   built-in member lookup must return a fresh sealed alias carrying only the same
@@ -226,6 +331,10 @@ Do not create additional packages without a documented architectural reason.
   conditional's else arm. Accept only strings and ordinary identifiers as
   dictionary literal keys; reject literal-looking numeric, boolean, and nullish
   key forms before evaluation.
+- Treat parenthesized comma-separated expressions as ordered groups, not arrays.
+  Evaluate every child once from left to right, reject callable identities in
+  every non-final result before discard, and return only the final value. Reject
+  empty groups during complete parsing.
 - Accept only one ordinary symbol or a flat comma-separated symbol list as a
   `for` or `set` target. Reject bracketed, grouped, nested, literal, lookup, and
   callable targets while parsing the complete source, before evaluation.
@@ -263,6 +372,10 @@ Do not create additional packages without a documented architectural reason.
 - Ensure transient JavaScript containers passed to host operations such as
   serialization cannot observe inherited accessors, coercion hooks,
   serialization hooks, or methods.
+- Serialize inert regex values through fresh empty null-prototype transient
+  records so `dump` and Cookiecutter `jsonify` match native RegExp JSON shape
+  without exposing patterns, flags, prototypes, or hooks. Keep `undefined`
+  omission and array-null behavior distinct from regex serialization.
 - Use explicit coercion helpers. Never call `String`, `Number`, `valueOf`,
   `toString`, iterators, or methods on unvalidated objects.
 - Treat every production dependency imported by parser or runtime code as part

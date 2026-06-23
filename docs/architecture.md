@@ -40,6 +40,11 @@ engine-bound snapshot; immutable path updates derive new snapshots with
 structural sharing. Nunjitsu has no loaders, filesystem access, streams,
 workers, Wasm modules, or resources requiring disposal.
 
+Filter registry keys contain one or more dot-separated identifier segments.
+The complete string is one capability ID: parser dots do not create property
+lookups or namespaces, and every segment is checked against reserved names.
+Global registry keys remain single identifiers.
+
 Applications supply strings directly and perform any file discovery, path
 policy, and reads before invoking the renderer. Path traversal, symbolic links,
 archive extraction, and filesystem races are therefore outside the template
@@ -54,9 +59,26 @@ JavaScript, or host behavior. It constructs frozen discriminated-union object
 nodes with stable direct properties and child references. There is no generic
 foreign-node conversion boundary or packed numeric arena.
 
+The scanner keeps template-data and code whitespace separate. Explicit trim
+controls and `lstripBlocks` recognize the full ECMAScript whitespace set, while
+code tokens accept only space, tab, LF, CR, and NBSP. Raw and verbatim scanning
+tracks same-name nesting depth; mixed marker names remain literal content and
+only an ordinary, non-hyphenated matching closing marker ends the outer region.
+Once inside raw content, marker recognition uses the full template-data
+whitespace set and treats either whitespace-control hyphen as literal text.
+
 Default variables use `${{` and `}}` delimiters. Cookiecutter mode
 uses `{{` and `}}` with the supported Jinja compatibility behavior. Block and
 comment delimiters remain `{% ... %}` and `{# ... #}`.
+
+Conditional blocks accept both `elif` and `elseif` as equivalent expression-
+bearing continuations. `else if` remains invalid structural syntax, and every
+branch is parsed before evaluator construction even when it cannot execute.
+
+Synchronous filter blocks reuse the ordinary expression-filter path. The
+parser represents their body as an immutable `Capture` passed as the first
+argument to a `Filter` inside `Output`; it does not introduce a callback or a
+second dispatch mechanism. `endfilter` is an empty structural tag.
 
 The complete inline source is parsed before execution. The parser charges the
 AST-node resource limit as it creates each node, rejects template-loading tags
@@ -80,13 +102,29 @@ normal scope and closed-value lookup before dispatch. Registered capabilities
 carry an evaluator-owned identity mapped privately to one exact host callback;
 call-site syntax never selects host authority.
 
+Macro declaration frames are lexical and separate from ordinary value scopes.
+Root, standalone block, nested block, and ordinary macro bodies export macro
+names to the render's template frame. Loops and synthetic caller bodies keep
+declarations local, while `if` and `switch` inherit their surrounding macro
+frame. Ordinary macro invocations use the template frame as their parent and
+therefore do not close over loop variables, caller arguments, or outer-macro
+parameters. Synthetic callers retain only their explicit call-site value scope.
+
 Operation validation precedes attacker-controlled operands. Call blocks resolve
 and require a macro before evaluating arguments or registering their caller
-body. Filter and test names, including tests named through selection filters,
-must resolve before the corresponding input or argument expressions can run.
-Non-macro targets also establish their positional and keyword policy before
-evaluating unsupported arguments, then recursively reject callable authority
-from every accepted value before dispatch.
+body. Filter and test names, including tests named through `select` and
+`reject`, must resolve before the corresponding input or argument expressions
+can run. `selectattr` and `rejectattr` do not dispatch tests; they evaluate and
+safe-check surplus arguments before ignoring them. Non-macro targets also
+establish their positional and keyword policy before evaluating unsupported
+arguments, then recursively reject callable authority from every accepted value
+before dispatch.
+
+Filter blocks resolve the exact built-in or registered filter and establish its
+keyword policy before capturing their body. For a valid invocation, body
+statements execute into the capture first, explicit filter arguments execute
+afterwards in source order, and the ordinary filter dispatcher receives the
+captured string as its input.
 
 ## Render lifecycle
 

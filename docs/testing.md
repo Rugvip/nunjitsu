@@ -56,11 +56,20 @@ truncation, inert capability exception handling, legacy RegExp state isolation
 at capability and nested-render boundaries, render-exit cleanup, mixed-operator
 grouping and operand order, comparison, membership, test, and prefix-`not`
 grouping, nested inline-conditional and dictionary-key parser acceptance,
+parenthesized comma-expression value selection, side-effect order, empty-group
+rejection, and callable-discard prevention,
+`elif`/`elseif` block chains and malformed continuation rejection,
 container- and target-sensitive loop planning, raw record-length metadata,
 flat-target validation, nullish destructuring failures before capability
 dispatch, canonical and fresh-member callable identities, strict switch
-matching and case evaluation order, callable-boundary rejection, structured
+matching and case evaluation order, arm-free switch rejection, empty-arm and
+fallthrough preservation, callable-boundary rejection, structured
 cause-free public diagnostics, declaration-specific formal validation,
+lexical macro export and invocation frames across root, blocks, loops, macros,
+callers, conditionals, and switches, plus capture-declaration rejection,
+exact dotted-filter capability dispatch and registry-name rejection,
+filter-block AST lowering, body-before-argument ordering, fail-before-capture
+validation, nested capture, and package-entrypoint dispatch,
 post-default and post-keyword positional ordering, structural-tag remainder and
 named-block checks, raw-mode entry validation, and render state cleanup after
 failures. Repeated-unary regressions cover active and inactive expressions,
@@ -77,7 +86,8 @@ unresolved `super`, alias/container and capture paths, configured-name
 behavior, macro-only call-block targets, and caller-handle confinement.
 Validation-order tests cover effectful call-block
 targets, non-macro targets, unknown filters and tests, empty selection inputs,
-known-operation operand order, no partial output, and clean recovery.
+known-operation operand order, ignored attribute-selection arguments, no partial
+output, and clean recovery.
 Callable-argument tests cover direct, nested, renamed, positional, and surplus
 handles across registered capabilities, finite and disabled scratch accounting,
 stateful built-ins, ignored method arguments, and exact test arity while
@@ -101,7 +111,9 @@ comment-heavy templates, computed expressions, many distinct tiny templates,
 deep constant and computed lookups, macro and scope churn, built-in filter
 pipelines, and repeated rendering while a prepared context evolves. Context
 preparation is reported as setup rather than repeated rendering work; the
-evolving case measures each immutable path update and following render.
+evolving case measures each immutable path update and following render. Public
+and internal prepared-context tests distinguish a missing path segment from a
+present `undefined` value and verify failed updates leave snapshots unchanged.
 By default, the harness runs 10 loops over the complete case list. Each
 case/engine pair starts in fresh isolated workers during every loop and performs
 20 warmup operations followed by 100 individually timed operations. Median,

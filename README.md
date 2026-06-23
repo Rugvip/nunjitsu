@@ -22,8 +22,9 @@ runtime target is Node.js only.
 
 The compatibility baseline is a secure direct-string subset of Nunjucks 3.2.4:
 inline rendering, `${{ ... }}` variables, Cookiecutter compatibility,
-synchronous filters, and JSON-valued or synchronous function globals. The
-normative design and testing strategy are documented in [`docs/`](docs/index.md).
+synchronous filters and filter blocks, and JSON-valued or synchronous function
+globals. The normative design and testing strategy are documented in
+[`docs/`](docs/index.md).
 Contributors should also read [`AGENTS.md`](AGENTS.md).
 
 ## Installation
@@ -79,7 +80,7 @@ behavior, and rendering mode cannot be changed after creation.
 
 | Option | Type | Default | Description |
 | --- | --- | --- | --- |
-| `filters` | `Readonly<Record<string, TemplateFilter>>` | `{}` | Trusted synchronous filters available through `value \| name(...)`. |
+| `filters` | `Readonly<Record<string, TemplateFilter>>` | `{}` | Trusted synchronous filters addressed by exact identifier or dotted-identifier names. |
 | `globals` | `Readonly<Record<string, TemplateGlobal>>` | `{}` | Trusted values and synchronous functions available by one valid template identifier. |
 | `cookiecutterCompat` | `boolean` | `false` | Uses `{{` and `}}`, supported Jinja behavior, and the `jsonify` alias. |
 | `trimBlocks` | `boolean` | `false` | Removes one LF or CRLF immediately after each block tag. |
@@ -145,8 +146,9 @@ that created it.
 
 `withPath` returns a new snapshot with one copied replacement. It structurally
 shares unchanged engine-owned values, creates missing record segments, and
-rejects traversal through an existing non-record value. The original snapshot
-is unchanged.
+rejects traversal through an existing non-record value, including an explicit
+`undefined` entry. Directly replacing that final entry remains valid. The
+original snapshot is unchanged.
 
 ```ts
 const initial = engine.prepareContext({
@@ -219,11 +221,15 @@ Internal macro, caller, built-in, and capability handles are recursively
 rejected from capability inputs and arguments rather than converted or
 silently discarded. Returning `undefined` creates an absent template value.
 
-Global names must be single template identifiers; dotted registry names are
-rejected. A call first resolves its target through lexical scope and the closed
-runtime value model. Context and local bindings therefore shadow configured
-globals normally. Capability aliases retain a sealed identity for the exact
-registered callback rather than deriving authority from call-site spelling.
+Filter names contain one or more dot-separated template identifier segments;
+each full spelling is one exact capability ID rather than a namespace or
+property path. Reserved segments (`constructor`, `prototype`, and `__proto__`)
+are rejected. Global names remain single template identifiers, and dotted
+global registry names are rejected. A call first resolves its target through
+lexical scope and the closed runtime value model. Context and local bindings
+therefore shadow configured globals normally. Capability aliases retain a
+sealed identity for the exact registered callback rather than deriving
+authority from call-site spelling.
 
 ```ts
 const configured = createEngine({
@@ -233,6 +239,9 @@ const configured = createEngine({
         throw new TypeError('slugify requires a string');
       }
       return input.toLowerCase().replaceAll(' ', '-');
+    },
+    'tools.identity'(input) {
+      return input;
     },
   },
   globals: {
