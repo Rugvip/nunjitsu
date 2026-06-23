@@ -1,6 +1,7 @@
 import { randomInt } from 'node:crypto';
 
 import {
+  runtimeAdd,
   runtimeArrayIndexFromPropertyKey,
   runtimeOrder,
   runtimeToNumber,
@@ -672,11 +673,14 @@ function sumRuntimeValues(
     throw new TypeError('sum requires an array');
   }
   const attribute = optionalAttributePath(positional[0]);
-  let total = runtimeToNumber(positional[1] ?? 0);
+  let reduced: RuntimeValue = 0;
   for (const value of input.values()) {
-    total += runtimeToNumber(attribute ? lookupRuntimePath(value, attribute) : value);
+    reduced = runtimeAdd(
+      reduced,
+      attribute ? lookupRuntimePath(value, attribute) : value,
+    );
   }
-  return total;
+  return runtimeAdd(positional[1] === undefined ? 0 : positional[1], reduced);
 }
 
 function sortRuntimeValues(

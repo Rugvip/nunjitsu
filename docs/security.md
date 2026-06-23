@@ -118,6 +118,10 @@ Template-controlled data is revalidated whenever its role changes:
 - built-in type failures stop evaluation, while unsupported scalar results
   remain absent instead of becoming generic zero or empty-string values that
   could select a different policy branch;
+- `range`, `sum`, and `joiner` retain closed value types and use closed
+  comparison or addition at the same observable points as pinned Nunjucks, so
+  eager numeric or string conversion cannot change strict branches or switch
+  selection;
 - assignment, macro, filter, test, and global names originate from validated
   parser symbols and resolve through private maps;
 - macro calls bind only declared formal names at their fixed positions and the

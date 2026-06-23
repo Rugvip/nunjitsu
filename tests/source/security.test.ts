@@ -1009,6 +1009,85 @@ test('standard-library failures and scalar results cannot select fail-open branc
   assert.equal(engine.render('clean'), 'clean');
 });
 
+test('built-in value types cannot desynchronize capability branches', () => {
+  let engineCalls = 0;
+  let oracleCalls = 0;
+  const engineCaptured: unknown[] = [];
+  const oracleCaptured: unknown[] = [];
+  const engine = createEngine({
+    globals: {
+      capture(value) {
+        engineCaptured.push(value);
+        return '';
+      },
+      handle() {
+        throw new Error('handle must not be called');
+      },
+      privileged() {
+        engineCalls += 1;
+        return 'privileged';
+      },
+    },
+  });
+  const oracle = new nunjucks.Environment(undefined, { autoescape: false });
+  oracle.addGlobal('capture', (value: unknown) => {
+    oracleCaptured.push(value);
+    return '';
+  });
+  oracle.addGlobal('handle', () => {
+    throw new Error('handle must not be called');
+  });
+  oracle.addGlobal('privileged', () => {
+    oracleCalls += 1;
+    return 'privileged';
+  });
+
+  const branchSource = [
+    '{% if range(1, missing) | length == 0 %}${{ privileged() }}{% endif %}',
+    '{% switch range(false, 1)[0] %}{% case 0 %}${{ privileged() }}{% endswitch %}',
+    '{% if [1,2] | sum(null, "1") === 4 %}${{ privileged() }}{% endif %}',
+    '{% if [1,"2"] | sum === 3 %}${{ privileged() }}{% endif %}',
+    '{% set separator = joiner(1) %}{% set ignored = separator() %}{% set value = separator() %}',
+    '{% if value is string %}${{ privileged() }}{% endif %}',
+  ].join('');
+  assert.equal(
+    engine.render(branchSource),
+    oracle.renderString(branchSource.replaceAll('${{', '{{'), {}),
+  );
+  assert.equal(engineCalls, 0);
+  assert.equal(oracleCalls, 0);
+
+  const argumentSource = [
+    '${{ capture(range(false, 1)[0]) }}',
+    '${{ capture([1,2] | sum(null, "1")) }}',
+    '{% set separator = joiner(1) %}{% set ignored = separator() %}',
+    '${{ capture(separator()) }}',
+    '{% set separator = joiner(true) %}{% set ignored = separator() %}',
+    '${{ capture(separator()) }}',
+    '{% set separator = joiner([1,2]) %}{% set ignored = separator() %}',
+    '${{ capture(separator()) }}',
+    '{% set separator = joiner({"x":1}) %}{% set ignored = separator() %}',
+    '${{ capture(separator()) }}',
+  ].join('');
+  assert.equal(
+    engine.render(argumentSource),
+    oracle.renderString(argumentSource.replaceAll('${{', '{{'), {}),
+  );
+  assert.equal(JSON.stringify(engineCaptured), '[false,"13",1,true,[1,2],{"x":1}]');
+  assert.equal(JSON.stringify(oracleCaptured), JSON.stringify(engineCaptured));
+
+  for (const source of [
+    '${{ range(handle, 1) | dump }}${{ privileged() }}',
+    '${{ [handle] | sum }}${{ privileged() }}',
+    '{% set separator = joiner([handle]) %}${{ separator() }}${{ privileged() }}',
+    '{% set separator = joiner({"value":handle}) %}${{ separator() }}${{ privileged() }}',
+  ]) {
+    assert.throws(() => engine.render(source), NunjitsuRenderError);
+    assert.equal(engineCalls, 0);
+    assert.equal(engine.render('clean'), 'clean');
+  }
+});
+
 test('capability results cross the same closed value boundary', () => {
   const engine = createEngine({
     globals: {

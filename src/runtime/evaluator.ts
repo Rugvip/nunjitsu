@@ -36,6 +36,7 @@ import { RuntimeEvaluationError } from './RuntimeEvaluationError.ts';
 import { RuntimeScope } from './scope.ts';
 import { stringCodeUnits } from './stringCodeUnits.ts';
 import {
+  assertRuntimeValueHasNoCallable,
   copyRuntimeContext,
   isReservedName,
   renderRuntimeValue,
@@ -126,7 +127,7 @@ type BuiltinCallableDefinition =
   }
   | {
     readonly type: 'joiner';
-    readonly separator: string;
+    readonly separator: RuntimeValue;
     used: boolean;
   };
 
@@ -928,22 +929,27 @@ class Evaluator {
 
   #invokeBuiltinGlobal(name: BuiltinGlobalName, arguments_: RuntimeArguments): RuntimeValue {
     if (name === 'range') {
-      const values = arguments_.positional.map(runtimeToNumber);
-      const start = values.length > 1 ? values[0]! : 0;
-      const stop = values.length > 1 ? values[1]! : values[0] ?? 0;
-      const stepValue = arguments_.positional[2];
-      const step = runtimeTruthy(stepValue) ? values[2]! : 1;
-      if (!Number.isFinite(start) || !Number.isFinite(stop) || !Number.isFinite(step) || step === 0) {
-        return new RuntimeArray([]);
+      for (const value of arguments_.positional) {
+        assertRuntimeValueHasNoCallable(value);
       }
-      const output: number[] = [];
-      if (step > 0) {
-        for (let value = start; value < stop; value += step) {
+      let start = arguments_.positional[0];
+      let stop = arguments_.positional[1];
+      let step = arguments_.positional[2];
+      if (stop === undefined) {
+        stop = start;
+        start = 0;
+        step = 1;
+      } else if (!runtimeTruthy(step)) {
+        step = 1;
+      }
+      const output: RuntimeValue[] = [];
+      if (runtimeOrder(step, 0) > 0) {
+        for (let value = start; runtimeOrder(value, stop) < 0; value = runtimeAdd(value, step)) {
           output.push(value);
           this.#charge(0);
         }
       } else {
-        for (let value = start; value > stop; value += step) {
+        for (let value = start; runtimeOrder(value, stop) > 0; value = runtimeAdd(value, step)) {
           output.push(value);
           this.#charge(0);
         }
@@ -961,9 +967,12 @@ class Evaluator {
     }
     const id = this.#nextCallableId++;
     const separatorValue = arguments_.positional[0];
+    if (runtimeTruthy(separatorValue)) {
+      assertRuntimeValueHasNoCallable(separatorValue);
+    }
     this.#builtinCallables.set(id, {
       type: 'joiner',
-      separator: runtimeTruthy(separatorValue) ? renderRuntimeValue(separatorValue) : ',',
+      separator: runtimeTruthy(separatorValue) ? separatorValue : ',',
       used: false,
     });
     return new RuntimeCallable('builtin', id);

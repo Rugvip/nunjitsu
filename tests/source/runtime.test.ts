@@ -584,6 +584,34 @@ test('matches stateful range, cycler, and joiner globals', () => {
   );
 });
 
+test('preserves closed value types through range, sum, and joiner', () => {
+  const engine = createEngine({ cookiecutterCompat: true });
+  const oracle = new nunjucks.Environment(undefined, { autoescape: false });
+  const sources = [
+    '{{ range(1, missing) | dump }}|{{ range(2, missing, -1) | dump }}|',
+    '{{ range(false, 1) | dump }}|{{ range(null, 2) | dump }}|{{ range("1", 4) | dump }}|',
+    '{{ range(0, 3, false) | dump }}|{{ range(1, 4, 1) | dump }}|{{ range(1, 4, "1") | dump }}|',
+    '{{ [1,2] | sum(null, "1") | dump }}|{{ [1,"2"] | sum | dump }}|',
+    '{{ [[1],[2]] | sum | dump }}|{{ [{"x":1}] | sum | dump }}|',
+    '{{ [null] | sum | dump }}|{{ [true,false] | sum | dump }}|{{ [missing] | sum | dump }}|',
+    '{% set separator = joiner(1) %}{% set ignored = separator() %}{% set value = separator() %}',
+    '{{ value | dump }}:{{ value is number }}:{{ value === 1 }}|',
+    '{% set separator = joiner(true) %}{% set ignored = separator() %}{% set value = separator() %}',
+    '{{ value | dump }}:{{ value is number }}|',
+    '{% set separator = joiner([1,2]) %}{% set ignored = separator() %}{% set value = separator() %}',
+    '{{ value | dump }}:{{ value is iterable }}|',
+    '{% set separator = joiner({"x":1}) %}{% set ignored = separator() %}{% set value = separator() %}',
+    '{{ value | dump }}:{{ value is mapping }}|',
+    '{% set separator = joiner(r/x/) %}{% set ignored = separator() %}{% set value = separator() %}',
+    '{{ value is mapping }}|',
+    '{% set separator = joiner("x" | safe) %}{% set ignored = separator() %}{% set value = separator() %}',
+    '{{ value is string }}:{{ value is escaped }}',
+  ];
+  const source = sources.join('');
+  assert.equal(engine.render(source), oracle.renderString(source, {}));
+  assert.equal(engine.render('clean'), 'clean');
+});
+
 test('implements the closed Nunjucks filter and test standard library', () => {
   const engine = createEngine({ cookiecutterCompat: true });
   const filterCases: Array<readonly [string, string]> = [

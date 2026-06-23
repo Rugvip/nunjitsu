@@ -500,6 +500,24 @@
       "expected": "barfoo"
     },
     {
+      "id": "globals-range-preserves-value-types",
+      "template": "{{ range(1, missing) | dump }}|{{ range(2, missing, -1) | dump }}|{{ range(false, 1) | dump }}|{{ range(null, 2) | dump }}|{{ range(\"1\", 4) | dump }}|{{ range(1, 4, \"1\") | dump }}",
+      "context": {},
+      "expected": "[0]|[0,1]|[false]|[null,1]|[\"1\"]|[1]"
+    },
+    {
+      "id": "filters-sum-preserves-addition-types",
+      "template": "{{ [1,2] | sum(null, \"1\") | dump }}|{{ [1,\"2\"] | sum | dump }}|{{ [[1],[2]] | sum | dump }}|{{ [{\"x\":1}] | sum | dump }}|{{ [null] | sum | dump }}|{{ [true,false] | sum | dump }}|{{ [missing] | sum | dump }}",
+      "context": {},
+      "expected": "\"13\"|\"012\"|\"0012\"|\"00[object Object]\"|0|1|null"
+    },
+    {
+      "id": "globals-joiner-preserves-separator-types",
+      "template": "{% set separator = joiner(1) %}{% set ignored = separator() %}{% set value = separator() %}{{ value | dump }}:{{ value is number }}|{% set separator = joiner([1,2]) %}{% set ignored = separator() %}{% set value = separator() %}{{ value | dump }}:{{ value is iterable }}|{% set separator = joiner({\"x\":1}) %}{% set ignored = separator() %}{% set value = separator() %}{{ value | dump }}:{{ value is mapping }}|{% set separator = joiner(\"x\" | safe) %}{% set ignored = separator() %}{% set value = separator() %}{{ value is string }}:{{ value is escaped }}",
+      "context": {},
+      "expected": "1:true|[1,2]:true|{\"x\":1}:true|false:true"
+    },
+    {
       "id": "compiler-regex-literal",
       "template": "{{ r/name [0-9] \\// }}",
       "context": {},

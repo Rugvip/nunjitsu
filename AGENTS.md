@@ -176,6 +176,11 @@ Do not create additional packages without a documented architectural reason.
   a generic empty array, record, string, zero, or false fallback for invalid
   input, and resolve supported keyword arguments by presence rather than
   nullishness.
+- Preserve closed value types inside built-ins until an operation requires
+  coercion. Implement `range` comparison and increments with closed ordering
+  and addition, `sum` with ordered closed addition, and `joiner` separators as
+  original runtime values; never normalize their state eagerly to numbers or
+  strings.
 - Give each directly resolved registered or built-in global one canonical
   sealed callable handle per render. Ordinary array, record, and callable-valued
   built-in member lookup must return a fresh sealed alias carrying only the same

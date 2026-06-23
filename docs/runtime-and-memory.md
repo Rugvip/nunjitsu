@@ -86,6 +86,14 @@ input, `length` preserves absent results for unsupported scalars, and
 `urlencode` applies closed numeric pair lookup to every sequence entry rather
 than silently discarding malformed entries.
 
+Stateful and reducing built-ins retain closed value types while they operate.
+`range` selects its short form when the stop value is absent, compares each
+current value and step through closed ordering, and increments through closed
+addition. `sum` reduces elements from numeric zero through closed addition and
+only then adds the original start value. `joiner` retains its original truthy
+separator value and returns that exact closed value after its first call.
+Coercion therefore occurs only at a later operation that actually requires it.
+
 Property lookup, derived record keys, membership, unary and binary arithmetic,
 addition, concatenation, relational operators and tests, and loose equality all
 use these centralized conversions. Array and string indexing accepts only an

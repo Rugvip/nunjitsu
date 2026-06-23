@@ -1371,7 +1371,8 @@
     },
     {
       "upstream": {"id":"tests/filters.js:53","file":"tests/filters.js","test":"sum"},
-      "status": "ported"
+      "status": "ported",
+      "cases": ["filters-sum-preserves-addition-types"]
     },
     {
       "upstream": {"id":"tests/filters.js:55","file":"tests/filters.js","test":"string"},
@@ -1655,7 +1656,8 @@
     },
     {
       "upstream": {"id":"tests/globals.js:1","file":"tests/globals.js","test":"should have range"},
-      "status": "ported"
+      "status": "ported",
+      "cases": ["globals-range-preserves-value-types"]
     },
     {
       "upstream": {"id":"tests/globals.js:2","file":"tests/globals.js","test":"should have cycler"},
@@ -1663,7 +1665,8 @@
     },
     {
       "upstream": {"id":"tests/globals.js:3","file":"tests/globals.js","test":"should have joiner"},
-      "status": "ported"
+      "status": "ported",
+      "cases": ["globals-joiner-preserves-separator-types"]
     },
     {
       "upstream": {"id":"tests/globals.js:4","file":"tests/globals.js","test":"should allow addition of globals"},

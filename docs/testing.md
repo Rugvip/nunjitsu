@@ -66,8 +66,9 @@ named-block checks, raw-mode entry validation, and render state cleanup after
 failures. Standard-library regressions compare collection and text input domains,
 nullish failure behavior, scalar length results, URL-encoding pair lookup,
 safe-string adaptations, keyword arguments, stateful globals, capability order,
-and callable-laundering attempts. Static checks reject dynamic execution and
-host reflection in parser and interpreter modules.
+callable-laundering attempts, and type preservation across `range`, `sum`, and
+`joiner`. Static checks reject dynamic execution and host reflection in parser
+and interpreter modules.
 
 ## Fuzzing policy
 

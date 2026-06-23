@@ -179,6 +179,16 @@
       ]
     },
     {
+      "id": "native-builtin-type-preservation",
+      "file": "tests/source/runtime.test.ts",
+      "test": "preserves closed value types through range, sum, and joiner",
+      "upstream": [
+        "tests/filters.js:53",
+        "tests/globals.js:1",
+        "tests/globals.js:3"
+      ]
+    },
+    {
       "id": "configured-globals",
       "file": "tests/source/runtime.test.ts",
       "test": "dispatches only registered synchronous filters and globals",

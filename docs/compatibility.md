@@ -46,6 +46,8 @@ Nunjitsu targets:
 - built-in filters, tests, and globals used by direct string templates;
 - pinned built-in input domains, nullish normalization, keyword arguments, and
   fail-before-later-capability behavior over the closed value model;
+- type-preserving `range`, `sum`, and `joiner` behavior, including JavaScript-
+  style ordered comparison and addition without eager normalization;
 - synchronous application filters and `TemplateValue` data or callable globals;
 - `trimBlocks` and `lstripBlocks`; and
 - fixed `autoescape: false` behavior.
