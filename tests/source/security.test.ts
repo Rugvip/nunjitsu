@@ -909,6 +909,123 @@ test('call blocks target only macros and cannot discard caller authority', () =>
   }
 });
 
+test('validates operations before evaluating attacker-controlled operands', () => {
+  const events: string[] = [];
+  const engine = createEngine({
+    filters: {
+      known(input, argument) {
+        events.push(`filter:${input}:${argument}`);
+        return `${input}:${argument}`;
+      },
+    },
+    globals: {
+      capability() {
+        events.push('capability');
+        return '';
+      },
+      factory() {
+        events.push('factory');
+        return '';
+      },
+      key() {
+        events.push('key');
+        return 'macro';
+      },
+      later() {
+        events.push('later');
+        return '';
+      },
+      mark(value) {
+        events.push(`mark:${value}`);
+        return value;
+      },
+    },
+  });
+
+  const rejectedSources = [
+    '{% call capability(mark("argument")) %}${{ mark("body") }}{% endcall %}${{ later() }}',
+    '{% call range(mark("argument")) %}${{ mark("body") }}{% endcall %}${{ later() }}',
+    '{% call missing(mark("argument")) %}${{ mark("body") }}{% endcall %}${{ later() }}',
+    '${{ mark("before") }}{% call factory()() %}${{ mark("body") }}{% endcall %}${{ later() }}',
+    '${{ mark("before") }}{% call holder[key()]() %}${{ mark("body") }}{% endcall %}${{ later() }}',
+    '${{ mark("input") | missing(mark("argument")) }}${{ later() }}',
+    '${{ mark("input") | missing }}${{ later() }}',
+    '${{ mark("input") is missing(mark("argument")) }}${{ later() }}',
+    '${{ mark("input") is not missing }}${{ later() }}',
+    '${{ [] | select("missing") | dump }}${{ later() }}',
+    '${{ [] | reject("missing") | dump }}${{ later() }}',
+    '${{ "" | select("missing") | dump }}${{ later() }}',
+    '${{ true | select("missing") | dump }}${{ later() }}',
+    '${{ [] | selectattr("value", "missing") | dump }}${{ later() }}',
+    '${{ [] | rejectattr("value", "missing") | dump }}${{ later() }}',
+  ];
+  for (const source of rejectedSources) {
+    events.length = 0;
+    let caught: NunjitsuRenderError | undefined;
+    assert.throws(
+      () => engine.render(source),
+      error => {
+        if (!(error instanceof NunjitsuRenderError)) {
+          return false;
+        }
+        caught = error;
+        return true;
+      },
+      source,
+    );
+    assert.equal(caught?.cause, undefined, source);
+    assert.deepEqual(events, [], source);
+    assert.equal(engine.render('clean'), 'clean', source);
+  }
+
+  const oracleSources = rejectedSources.slice(5, 13);
+  for (const source of oracleSources) {
+    const oracleEvents: string[] = [];
+    const oracle = new nunjucks.Environment(undefined, { autoescape: false });
+    oracle.addGlobal('later', () => {
+      oracleEvents.push('later');
+      return '';
+    });
+    oracle.addGlobal('mark', (value: unknown) => {
+      oracleEvents.push(`mark:${value}`);
+      return value;
+    });
+    assert.throws(
+      () => oracle.renderString(source.replaceAll('${{', '{{'), {}),
+      source,
+    );
+    assert.deepEqual(oracleEvents, [], source);
+  }
+
+  events.length = 0;
+  assert.equal(
+    engine.render('${{ mark("input") | known(mark("argument")) }}'),
+    'input:argument',
+  );
+  assert.deepEqual(events, [
+    'mark:input',
+    'mark:argument',
+    'filter:input:argument',
+  ]);
+
+  events.length = 0;
+  assert.equal(
+    engine.render('${{ mark("input") is equalto(mark("input")) }}'),
+    'true',
+  );
+  assert.deepEqual(events, ['mark:input', 'mark:input']);
+
+  events.length = 0;
+  assert.equal(
+    engine.render([
+      '{% macro wrapper(value) %}[${{ value }}:${{ caller() }}]{% endmacro %}',
+      '{% call wrapper(mark("argument")) %}${{ mark("body") }}{% endcall %}',
+    ].join('')),
+    '[argument:body]',
+  );
+  assert.deepEqual(events, ['mark:argument', 'mark:body']);
+});
+
 test('record membership tracks key presence independently of its value', () => {
   let policyCalls = 0;
   let privilegedCalls = 0;

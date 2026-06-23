@@ -15,6 +15,38 @@ test('parses complete templates into deeply immutable data-only nodes', () => {
   assertDataOnly(ast);
 });
 
+test('represents call blocks explicitly and rejects effectful targets during parsing', () => {
+  for (const source of [
+    '{% call wrapper() %}body{% endcall %}',
+    '{% call holder.wrapper() %}body{% endcall %}',
+    '{% call holder["wrapper"]() %}body{% endcall %}',
+  ]) {
+    const ast = parseTemplate(source);
+    const callBlock = findField(ast, value => (
+      Boolean(value && typeof value === 'object' && !Array.isArray(value)) &&
+      (value as { type?: unknown }).type === 'CallBlock'
+    )) as { readonly type?: unknown; readonly call?: unknown; readonly caller?: unknown };
+    assert.equal(callBlock.type, 'CallBlock');
+    assert.ok(callBlock.call);
+    assert.ok(callBlock.caller);
+  }
+
+  for (const source of [
+    '{% call factory()() %}body{% endcall %}',
+    '{% call holder[key()]() %}body{% endcall %}',
+    '{% call (wrapper | default(fallback))() %}body{% endcall %}',
+  ]) {
+    assert.throws(
+      () => parseTemplate(source),
+      error => (
+        error instanceof NunjitsuParseError &&
+        /Call block/.test(error.message)
+      ),
+      source,
+    );
+  }
+});
+
 test('rejects reserved names in every expression form', () => {
   for (const source of [
     '${{ constructor }}',

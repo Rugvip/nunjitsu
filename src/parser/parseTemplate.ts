@@ -278,6 +278,9 @@ class TemplateParser {
     if (call.type !== 'FunCall' || call.args.type !== 'NodeList') {
       this.#fail('Call block requires a function call', token);
     }
+    if (!isStaticCallBlockTarget(call.name)) {
+      this.#fail('Call block target must be a static macro reference', token);
+    }
     const parsed = this.#parseBody(new Set(['endcall']));
     if (!parsed.stop) {
       this.#fail('Missing endcall tag', token);
@@ -288,13 +291,7 @@ class TemplateParser {
       args: this.#signature(callerArguments, token),
       body: parsed.body,
     }, token);
-    const pair = this.#make('Pair', { key: callerName, value: caller }, token);
-    const keyword = this.#make('KeywordArgs', { children: Object.freeze([pair]) }, token);
-    const args = this.#make('NodeList', {
-      children: Object.freeze([...call.args.children, keyword]),
-    }, token);
-    const invocation = this.#make('FunCall', { name: call.name, args }, token);
-    return this.#make('Output', { children: Object.freeze([invocation]) }, token);
+    return this.#make('CallBlock', { call, caller }, token);
   }
 
   #parseBlock(header: string, token: TemplateToken): AstNode {
@@ -408,6 +405,21 @@ class TemplateParser {
   #fail(message: string, token: TemplateToken): never {
     throw new NunjitsuParseError(message, token.line, token.column);
   }
+}
+
+function isStaticCallBlockTarget(node: AstNode): boolean {
+  if (node.type === 'Symbol') {
+    return true;
+  }
+  if (node.type !== 'LookupVal' || !isStaticCallBlockTarget(node.target)) {
+    return false;
+  }
+  const key = node.val;
+  return key.type === 'Literal' && (
+    key.value === undefined ||
+    key.value === null ||
+    typeof key.value !== 'object'
+  );
 }
 
 function scanTemplate(source: string, options: ParseOptions): readonly TemplateToken[] {

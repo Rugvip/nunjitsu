@@ -49,9 +49,21 @@ const builtinFilters = new Set([
   'urlize', 'wordcount',
 ]);
 
+const builtinTests = new Set([
+  'callable', 'defined', 'divisibleby', 'escaped', 'eq', 'equalto', 'even',
+  'falsy', 'ge', 'greaterthan', 'gt', 'iterable', 'le', 'lessthan', 'lower',
+  'lt', 'mapping', 'ne', 'null', 'number', 'odd', 'sameas', 'string', 'truthy',
+  'undefined', 'upper',
+]);
+
 /** Returns whether the pinned standard library exposes one filter name. */
 export function hasBuiltinFilter(name: string): boolean {
   return builtinFilters.has(name);
+}
+
+/** Returns whether the pinned standard library exposes one test name. */
+export function hasBuiltinTest(name: string): boolean {
+  return builtinTests.has(name);
 }
 
 /** Applies one trusted built-in filter to copied public values. */
@@ -369,6 +381,10 @@ function selectRuntimeValues(
   positional: readonly RuntimeValue[],
   select: boolean,
 ): RuntimeValue {
+  const testName = positional[0] === undefined ? 'truthy' : runtimeToString(positional[0]);
+  if (!hasBuiltinTest(testName)) {
+    throw new Error(`Unknown template test ${testName}`);
+  }
   if (input === undefined || input === null) {
     throw new TypeError(`${select ? 'select' : 'reject'} requires a sequence`);
   }
@@ -376,13 +392,12 @@ function selectRuntimeValues(
   if (!values) {
     return new RuntimeArray([]);
   }
-  const testName = positional[0] === undefined ? 'truthy' : runtimeToString(positional[0]);
   const testArguments = positional.slice(1);
   const output: RuntimeValue[] = [];
   for (const value of values) {
     const result = applyBuiltinTest(testName, value, testArguments);
     if (result === undefined) {
-      throw new Error(`Unknown template test ${testName}`);
+      throw new Error(`Invalid template test ${testName}`);
     }
     if (result === select) {
       output.push(value);
@@ -709,6 +724,10 @@ function selectRuntimeAttributes(
   positional: readonly RuntimeValue[],
   select: boolean,
 ): RuntimeValue {
+  const testName = positional[1] === undefined ? 'truthy' : runtimeToString(positional[1]);
+  if (!hasBuiltinTest(testName)) {
+    throw new Error(`Unknown template test ${testName}`);
+  }
   if (!(input instanceof RuntimeArray)) {
     throw new TypeError(`${select ? 'selectattr' : 'rejectattr'} requires an array`);
   }
@@ -716,13 +735,12 @@ function selectRuntimeAttributes(
   if (!attribute) {
     throw new TypeError('Attribute selection requires a string attribute path');
   }
-  const testName = positional[1] === undefined ? 'truthy' : runtimeToString(positional[1]);
   const testArguments = positional.slice(2);
   const output: RuntimeValue[] = [];
   for (const value of input.values()) {
     const result = applyBuiltinTest(testName, lookupRuntimePath(value, attribute), testArguments);
     if (result === undefined) {
-      throw new Error(`Unknown template test ${testName}`);
+      throw new Error(`Invalid template test ${testName}`);
     }
     if (result === select) {
       output.push(value);

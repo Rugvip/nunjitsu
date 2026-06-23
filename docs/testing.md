@@ -69,8 +69,11 @@ safe-string adaptations, keyword arguments, stateful globals, capability order,
 callable-laundering attempts, and type preservation across `range`, `sum`, and
 `joiner`. Standalone-block tests cover unresolved `super`, alias/container and
 capture paths, configured-name behavior, macro-only call-block targets, and
-caller-handle confinement. Static checks reject dynamic execution and host
-reflection in parser and interpreter modules.
+caller-handle confinement. Validation-order tests cover effectful call-block
+targets, non-macro targets, unknown filters and tests, empty selection inputs,
+known-operation operand order, no partial output, and clean recovery. Static
+checks reject dynamic execution and host reflection in parser and interpreter
+modules.
 
 ## Fuzzing policy
 

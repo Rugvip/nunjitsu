@@ -104,6 +104,13 @@ export interface AstCallNode extends AstNodeBase {
   readonly args: AstNode;
 }
 
+/** A macro-only call block whose body becomes the synthetic caller binding. */
+export interface AstCallBlockNode extends AstNodeBase {
+  readonly type: 'CallBlock';
+  readonly call: AstCallNode;
+  readonly caller: AstCallableBodyNode;
+}
+
 /** One standalone named block. */
 export interface AstBlockNode extends AstNodeBase {
   readonly type: 'Block';
@@ -193,6 +200,7 @@ export type AstNode =
   | AstForNode
   | AstCallableBodyNode
   | AstCallNode
+  | AstCallBlockNode
   | AstBlockNode
   | AstSetNode
   | AstSwitchNode

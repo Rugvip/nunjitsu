@@ -71,6 +71,14 @@ Nunjitsu does not support:
 Unsupported syntax is rejected explicitly. Security deviations are part of the
 contract, not hidden compatibility failures.
 
+Call blocks accept only direct or static constant-key macro references. They
+reject effectful target expressions during parsing and reject non-macro targets
+before evaluating call arguments or registering the caller body. Unknown
+filters and tests are likewise rejected before their operands and arguments,
+and selection filters validate a named test even for empty inputs. These
+fail-closed ordering rules intentionally take precedence over Nunjucks behavior
+where its generated JavaScript would evaluate otherwise-unused expressions.
+
 Safe strings are internal text values rather than emulations of Nunjucks's
 prototype-bearing JavaScript `String` wrapper. Collection filters therefore
 treat them consistently as primitive UTF-16 text instead of reproducing wrapper

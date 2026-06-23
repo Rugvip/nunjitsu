@@ -32,7 +32,11 @@ formal map, matching Nunjucks even when a positional formal follows a default
 in source. Ordinary calls similarly collect positionals separately and permit
 them after keywords. Structural stop tags are validated in full rather than by
 their first word; named block closers must match, and raw or verbatim openers
-must be argument-free before the scanner enters raw mode.
+must be argument-free before the scanner enters raw mode. A call block remains
+a dedicated statement node rather than being lowered to an ordinary call with
+a hidden argument. Its target must be a direct symbol or a static constant-key
+lookup rooted at one, so target validation cannot execute another call, filter,
+or computed lookup.
 
 Expression nodes encode the observable result of Nunjucks's parser and
 generated-JavaScript grouping without generating or executing JavaScript.
@@ -213,7 +217,16 @@ Undeclared keyword arguments do not become macro locals. The sole exception is
 the `caller` keyword synthesized by call blocks, which is installed explicitly
 when the macro does not declare a `caller` parameter. This preserves call-block
 semantics without allowing arbitrary keyword names to inject closed values or
-callable identities into a macro scope.
+callable identities into a macro scope. Evaluation first resolves the static
+call-block target and requires its sealed value to be a macro. Only then are
+ordinary arguments evaluated and the caller body registered, so an invalid
+target cannot trigger argument or body capabilities.
+
+Filters and tests similarly resolve their operation names before evaluating
+input and argument expressions. Selection filters validate their named test
+once before inspecting the input sequence, including when that sequence is
+empty or an unsupported scalar. Known operations retain source-order operand
+evaluation.
 
 ## Output
 

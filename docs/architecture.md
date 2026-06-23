@@ -62,7 +62,9 @@ The complete inline source is parsed before execution. The parser charges the
 AST-node resource limit as it creates each node, rejects template-loading tags
 (`include`, `import`, `from`, and `extends`) and extensions, and freezes every
 node and child collection. The AST is owned by one render and discarded when
-that render ends.
+that render ends. Call blocks have a dedicated node and accept only direct
+symbols or static constant-key lookup chains as targets; effectful target
+expressions are rejected during this complete parse.
 
 ### Interpreter
 
@@ -77,6 +79,11 @@ JavaScript function or constructor. Calls always evaluate their target through
 normal scope and closed-value lookup before dispatch. Registered capabilities
 carry an evaluator-owned identity mapped privately to one exact host callback;
 call-site syntax never selects host authority.
+
+Operation validation precedes attacker-controlled operands. Call blocks resolve
+and require a macro before evaluating arguments or registering their caller
+body. Filter and test names, including tests named through selection filters,
+must resolve before the corresponding input or argument expressions can run.
 
 ## Render lifecycle
 

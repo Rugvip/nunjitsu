@@ -52,6 +52,11 @@ implementation and documentation aligned with the architecture in
 - Resolve every call target through lexical scope and the closed value model.
   Dispatch capabilities only through evaluator-owned IDs mapped privately to
   exact registered callbacks; never derive authority from call-site spelling.
+- Represent call blocks with their own AST variant. Accept only a direct symbol
+  or static constant-key lookup as the target, resolve and require a macro
+  before evaluating arguments, and register the caller body only afterwards.
+  Resolve filter and test existence before evaluating their operands or
+  arguments, including tests named through selection filters.
 - Do not represent inheritance-only block chains or synthesize a `super`
   callable. Standalone blocks have one body and isolated scope; an explicitly
   registered global named `super` remains an ordinary capability. Call blocks

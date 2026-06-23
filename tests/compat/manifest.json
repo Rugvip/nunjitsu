@@ -192,7 +192,7 @@
     {
       "upstream": {"id":"tests/parser.js:14","file":"tests/parser.js","test":"should parse call blocks"},
       "status": "adapted",
-      "reason": "Caller-body behavior is verified through rendered call blocks instead of FunCall and Caller AST nodes.",
+      "reason": "Caller-body behavior is verified through rendered call blocks and the dedicated closed CallBlock AST node rather than upstream AST shapes.",
       "cases": ["compiler-call-block"]
     },
     {

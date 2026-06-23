@@ -1,6 +1,7 @@
 import type {
   AstBinaryNode,
   AstBlockNode,
+  AstCallBlockNode,
   AstCallNode,
   AstCallableBodyNode,
   AstCompareNode,
@@ -19,6 +20,7 @@ import {
   applyBuiltinFilter,
   applyBuiltinTest,
   hasBuiltinFilter,
+  hasBuiltinTest,
   lookupRuntimeConstantKey,
   lookupRuntimeValue,
 } from './builtins.ts';
@@ -265,6 +267,9 @@ class Evaluator {
         definitionScope.set(name, new RuntimeCallable('macro', id));
         return;
       }
+      case 'CallBlock':
+        this.#evaluateCallBlock(node, scope, output, depth + 1);
+        return;
       case 'Block':
         this.#evaluateBlock(node, scope, output, depth + 1);
         return;
@@ -663,10 +668,15 @@ class Evaluator {
 
   #evaluateFilter(node: AstCallNode, scope: RuntimeScope, depth: number): RuntimeValue {
     const name = symbolName(node.name);
+    const builtinName = this.#options.cookiecutterCompat && name === 'jsonify' ? 'dump' : name;
+    const hasHostFilter = this.#options.host?.hasFilter?.(name) === true;
+    if (!hasHostFilter && !hasBuiltinFilter(builtinName)) {
+      throw new Error(`Unknown template filter ${name}`);
+    }
     const arguments_ = this.#evaluateArguments(node.args, scope, depth + 1);
     const [input, ...positional] = arguments_.positional;
     this.#assertScratch([input, ...positional, ...arguments_.keyword.values()]);
-    if (this.#options.host?.hasFilter?.(name)) {
+    if (hasHostFilter) {
       this.#chargeCapability();
       const hostResult = this.#options.host.filter?.(
         name,
@@ -676,37 +686,64 @@ class Evaluator {
       if (hostResult?.found) {
         return hostResult.value;
       }
+      throw new Error(`Unknown configured template filter ${name}`);
     }
-    const builtinName = this.#options.cookiecutterCompat && name === 'jsonify' ? 'dump' : name;
-    const builtin = applyBuiltinFilter(builtinName, input, positional, arguments_.keyword);
-    if (builtin === undefined && !hasBuiltinFilter(builtinName)) {
-      throw new Error(`Unknown template filter ${name}`);
-    }
-    return builtin;
+    return applyBuiltinFilter(builtinName, input, positional, arguments_.keyword);
   }
 
   #evaluateTest(node: AstBinaryNode, scope: RuntimeScope, depth: number): boolean {
-    const input = this.#evaluateExpression(node.left, scope, depth + 1);
     const test = node.right;
     let name: string;
-    let arguments_: RuntimeArguments;
+    let argumentsNode: AstNode | undefined;
     if (test.type === 'FunCall') {
       name = symbolName(test.name);
-      arguments_ = this.#evaluateArguments(test.args, scope, depth + 1);
+      argumentsNode = test.args;
     } else if (test.type === 'Symbol') {
       name = symbolName(test);
-      arguments_ = Object.freeze({ positional: Object.freeze([]), keyword: new Map() });
     } else if (test.type === 'Literal') {
+      const input = this.#evaluateExpression(node.left, scope, depth + 1);
       const expected = this.#evaluateExpression(test, scope, depth + 1);
       return runtimeStrictEqual(input, expected);
     } else {
       throw new Error(`Invalid template test ${test.type}`);
     }
-    const builtin = applyBuiltinTest(name, input, arguments_.positional);
-    if (builtin === undefined) {
+    if (!hasBuiltinTest(name)) {
       throw new Error(`Unknown template test ${name}`);
     }
+    const input = this.#evaluateExpression(node.left, scope, depth + 1);
+    const arguments_ = argumentsNode
+      ? this.#evaluateArguments(argumentsNode, scope, depth + 1)
+      : Object.freeze({ positional: Object.freeze([]), keyword: new Map() });
+    const builtin = applyBuiltinTest(name, input, arguments_.positional);
+    if (builtin === undefined) {
+      throw new Error(`Invalid template test ${name}`);
+    }
     return builtin;
+  }
+
+  #evaluateCallBlock(
+    node: AstCallBlockNode,
+    scope: RuntimeScope,
+    output: OutputTarget,
+    depth: number,
+  ): void {
+    const call = node.call;
+    if (call.type !== 'FunCall') {
+      throw new Error('Invalid call block');
+    }
+    const target = this.#evaluateExpression(call.name, scope, depth + 1);
+    if (!(target instanceof RuntimeCallable) || target.callableKind !== 'macro') {
+      throw new Error('Call blocks can target only template macros');
+    }
+    const ordinaryArguments = this.#evaluateArguments(call.args, scope, depth + 1);
+    const keyword = new Map(ordinaryArguments.keyword);
+    keyword.set('caller', this.#registerCaller(node.caller, scope));
+    const arguments_ = Object.freeze({
+      positional: ordinaryArguments.positional,
+      keyword,
+    });
+    const value = this.#invokeMacro(target.id, arguments_, depth + 1);
+    this.#append(output, renderRuntimeValue(value));
   }
 
   #evaluateCall(node: AstCallNode, scope: RuntimeScope, depth: number): RuntimeValue {
@@ -721,7 +758,7 @@ class Evaluator {
         caller.callableKind === 'caller' &&
         target.callableKind !== 'macro'
       ) {
-        throw new Error('Call blocks can target only template macros');
+        throw new Error('Caller handles can be passed only to template macros');
       }
       if (target.callableKind === 'macro' || target.callableKind === 'caller') {
         return this.#invokeMacro(target.id, arguments_, depth + 1);
@@ -1327,6 +1364,8 @@ function astChildren(node: AstNode): readonly AstNode[] {
     case 'FunCall':
     case 'Filter':
       return [node.name, node.args];
+    case 'CallBlock':
+      return [node.call, node.caller];
     case 'Block':
       return [node.name, node.body];
     case 'Set': {
