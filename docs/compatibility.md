@@ -79,6 +79,15 @@ and selection filters validate a named test even for empty inputs. These
 fail-closed ordering rules intentionally take precedence over Nunjucks behavior
 where its generated JavaScript would evaluate otherwise-unused expressions.
 
+Nunjucks also permits callable values in ignored keyword and surplus arguments,
+and its stateful globals can retain JavaScript functions. Nunjitsu intentionally
+rejects those forms: registered filters and globals are positional-only,
+stateful built-ins cannot retain sealed callables, ignored method arguments are
+invalid, and built-in tests enforce exact arity. Macro-to-macro caller
+forwarding, the `callable` test, and closed callable identity comparisons remain
+supported because they preserve authority inside explicit interpreter-owned
+semantics rather than discarding or transforming it.
+
 Safe strings are internal text values rather than emulations of Nunjucks's
 prototype-bearing JavaScript `String` wrapper. Collection filters therefore
 treat them consistently as primitive UTF-16 text instead of reproducing wrapper

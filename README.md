@@ -214,7 +214,10 @@ interface TemplateCapabilities {
 Capabilities are trusted host code and are the only way templates invoke
 JavaScript behavior. They must execute synchronously. Filters receive their
 input followed by positional arguments; global functions receive positional
-arguments. Returning `undefined` creates an absent template value.
+arguments. Keyword syntax is rejected before its value expressions execute.
+Internal macro, caller, built-in, and capability handles are recursively
+rejected from capability inputs and arguments rather than converted or
+silently discarded. Returning `undefined` creates an absent template value.
 
 Global names must be single template identifiers; dotted registry names are
 rejected. A call first resolves its target through lexical scope and the closed

@@ -49,11 +49,33 @@ const builtinFilters = new Set([
   'urlize', 'wordcount',
 ]);
 
-const builtinTests = new Set([
-  'callable', 'defined', 'divisibleby', 'escaped', 'eq', 'equalto', 'even',
-  'falsy', 'ge', 'greaterthan', 'gt', 'iterable', 'le', 'lessthan', 'lower',
-  'lt', 'mapping', 'ne', 'null', 'number', 'odd', 'sameas', 'string', 'truthy',
-  'undefined', 'upper',
+const builtinTestArities = new Map<string, number>([
+  ['callable', 0],
+  ['defined', 0],
+  ['divisibleby', 1],
+  ['escaped', 0],
+  ['eq', 1],
+  ['equalto', 1],
+  ['even', 0],
+  ['falsy', 0],
+  ['ge', 1],
+  ['greaterthan', 1],
+  ['gt', 1],
+  ['iterable', 0],
+  ['le', 1],
+  ['lessthan', 1],
+  ['lower', 0],
+  ['lt', 1],
+  ['mapping', 0],
+  ['ne', 1],
+  ['null', 0],
+  ['number', 0],
+  ['odd', 0],
+  ['sameas', 1],
+  ['string', 0],
+  ['truthy', 0],
+  ['undefined', 0],
+  ['upper', 0],
 ]);
 
 /** Returns whether the pinned standard library exposes one filter name. */
@@ -63,7 +85,12 @@ export function hasBuiltinFilter(name: string): boolean {
 
 /** Returns whether the pinned standard library exposes one test name. */
 export function hasBuiltinTest(name: string): boolean {
-  return builtinTests.has(name);
+  return builtinTestArities.has(name);
+}
+
+/** Returns the exact positional arity for one closed built-in test. */
+export function builtinTestArity(name: string): number | undefined {
+  return builtinTestArities.get(name);
 }
 
 /** Applies one trusted built-in filter to copied public values. */
@@ -393,6 +420,7 @@ function selectRuntimeValues(
     return new RuntimeArray([]);
   }
   const testArguments = positional.slice(1);
+  assertBuiltinTestArity(testName, testArguments.length);
   const output: RuntimeValue[] = [];
   for (const value of values) {
     const result = applyBuiltinTest(testName, value, testArguments);
@@ -736,6 +764,7 @@ function selectRuntimeAttributes(
     throw new TypeError('Attribute selection requires a string attribute path');
   }
   const testArguments = positional.slice(2);
+  assertBuiltinTestArity(testName, testArguments.length);
   const output: RuntimeValue[] = [];
   for (const value of input.values()) {
     const result = applyBuiltinTest(testName, lookupRuntimePath(value, attribute), testArguments);
@@ -851,6 +880,22 @@ export function applyBuiltinTest(
   input: RuntimeValue,
   positional: readonly RuntimeValue[],
 ): boolean | undefined {
+  if (!hasBuiltinTest(name)) {
+    return undefined;
+  }
+  assertBuiltinTestArity(name, positional.length);
+  if (
+    name !== 'callable' &&
+    name !== 'eq' &&
+    name !== 'equalto' &&
+    name !== 'sameas' &&
+    name !== 'ne'
+  ) {
+    assertRuntimeValueHasNoCallable(input);
+    for (const value of positional) {
+      assertRuntimeValueHasNoCallable(value);
+    }
+  }
   switch (name) {
     case 'callable':
       return input instanceof RuntimeCallable;
@@ -917,6 +962,18 @@ export function applyBuiltinTest(
     }
     default:
       return undefined;
+  }
+}
+
+function assertBuiltinTestArity(name: string, actual: number): void {
+  const expected = builtinTestArity(name);
+  if (expected === undefined) {
+    throw new Error(`Unknown template test ${name}`);
+  }
+  if (actual !== expected) {
+    throw new TypeError(
+      `Template test ${name} requires ${expected} positional argument${expected === 1 ? '' : 's'}`,
+    );
   }
 }
 

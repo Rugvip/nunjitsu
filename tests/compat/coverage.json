@@ -64,7 +64,7 @@
     {
       "id": "declaration-ordering",
       "file": "tests/source/runtime.test.ts",
-      "test": "matches Nunjucks declaration ordering and post-keyword positional calls",
+      "test": "matches Nunjucks declaration ordering and post-keyword positional macro calls",
       "upstream": [
         "tests/parser.js:13",
         "tests/parser.js:15",

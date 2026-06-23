@@ -84,6 +84,9 @@ Operation validation precedes attacker-controlled operands. Call blocks resolve
 and require a macro before evaluating arguments or registering their caller
 body. Filter and test names, including tests named through selection filters,
 must resolve before the corresponding input or argument expressions can run.
+Non-macro targets also establish their positional and keyword policy before
+evaluating unsupported arguments, then recursively reject callable authority
+from every accepted value before dispatch.
 
 ## Render lifecycle
 

@@ -52,6 +52,12 @@ implementation and documentation aligned with the architecture in
 - Resolve every call target through lexical scope and the closed value model.
   Dispatch capabilities only through evaluator-owned IDs mapped privately to
   exact registered callbacks; never derive authority from call-site spelling.
+- Recursively reject callable identities from every positional and keyword
+  value before non-macro dispatch, storage, transformation, or discard.
+  Registered filters and globals are positional-only; reject keyword syntax
+  before evaluating its values. Validate built-in and test arity before
+  evaluating unsupported arguments. Only macro/caller forwarding, the
+  `callable` test, and closed identity tests may intentionally carry callables.
 - Represent call blocks with their own AST variant. Accept only a direct symbol
   or static constant-key lookup as the target, resolve and require a macro
   before evaluating arguments, and register the caller body only afterwards.

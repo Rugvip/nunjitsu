@@ -72,8 +72,11 @@ capture paths, configured-name behavior, macro-only call-block targets, and
 caller-handle confinement. Validation-order tests cover effectful call-block
 targets, non-macro targets, unknown filters and tests, empty selection inputs,
 known-operation operand order, no partial output, and clean recovery. Static
-checks reject dynamic execution and host reflection in parser and interpreter
-modules.
+Callable-argument tests cover direct, nested, renamed, positional, and surplus
+handles across registered capabilities, finite and disabled scratch accounting,
+stateful built-ins, ignored method arguments, and exact test arity while
+retaining valid macro forwarding and identity checks. Static checks reject
+dynamic execution and host reflection in parser and interpreter modules.
 
 ## Fuzzing policy
 

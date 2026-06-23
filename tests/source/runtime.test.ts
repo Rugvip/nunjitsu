@@ -296,19 +296,16 @@ test('matches Nunjucks canonical global and fresh member callable identities', (
     '{% set cycle = cycler("a","b") %}',
     '${{ cycle.next !== cycle.next }}|${{ cycle.reset !== cycle.reset }}|',
     '{% set next = cycle.next %}${{ next === next }}|${{ next !== cycle.next }}|',
-    '{% set callableCycle = cycler(p) %}{% set ignored = callableCycle.next() %}',
-    '${{ callableCycle.current !== callableCycle.current }}|',
-    '${{ callableCycle.current !== p }}|${{ callableCycle.current() }}|',
     '{% if p !== p %}${{ p() }}{% endif %}',
     '{% if p not in [p] %}${{ p() }}{% endif %}',
   ].join('');
   const expected = oracle.renderString(source.replaceAll('${{', '{{'), {});
   assert.equal(engine.render(source), expected);
-  assert.equal(engineCalls, 5);
+  assert.equal(engineCalls, 4);
   assert.equal(oracleCalls, engineCalls);
   assert.equal(engine.render(source), expected);
-  assert.equal(engineCalls, 10);
-  assert.equal(oracleCalls, 5);
+  assert.equal(engineCalls, 8);
+  assert.equal(oracleCalls, 4);
 });
 
 test('uses strict closed identity for switch matching and preserves evaluation order', () => {
@@ -440,57 +437,21 @@ test('uses strict closed identity for switch matching and preserves evaluation o
   assert.equal(engine.render('clean'), 'clean');
 });
 
-test('matches Nunjucks declaration ordering and post-keyword positional calls', () => {
-  const engineOrder: string[] = [];
-  const oracleOrder: string[] = [];
-  const engineGlobalArguments: unknown[][] = [];
-  const oracleGlobalArguments: unknown[][] = [];
-  const engineFilterArguments: unknown[][] = [];
-  const oracleFilterArguments: unknown[][] = [];
+test('matches Nunjucks declaration ordering and post-keyword positional macro calls', () => {
   let engineDefaultCalls = 0;
   let oracleDefaultCalls = 0;
   const engine = createEngine({
-    filters: {
-      inspectFilter(input, ...arguments_) {
-        engineFilterArguments.push([input, ...arguments_]);
-        return `${input}:${arguments_[0]}`;
-      },
-    },
     globals: {
       defaultValue() {
         engineDefaultCalls += 1;
         return 'DEFAULT';
       },
-      inspect(...arguments_) {
-        engineGlobalArguments.push(Array.from(arguments_));
-        return arguments_[0];
-      },
-      mark(value) {
-        if (typeof value === 'string') {
-          engineOrder.push(value);
-        }
-        return value;
-      },
     },
   });
   const oracle = new nunjucks.Environment(undefined, { autoescape: false });
-  oracle.addFilter('inspectFilter', (input: unknown, ...arguments_: unknown[]) => {
-    oracleFilterArguments.push([input, ...arguments_]);
-    return `${input}:${arguments_[0]}`;
-  });
   oracle.addGlobal('defaultValue', () => {
     oracleDefaultCalls += 1;
     return 'DEFAULT';
-  });
-  oracle.addGlobal('inspect', (...arguments_: unknown[]) => {
-    oracleGlobalArguments.push(Array.from(arguments_));
-    return arguments_[0];
-  });
-  oracle.addGlobal('mark', (value: unknown) => {
-    if (typeof value === 'string') {
-      oracleOrder.push(value);
-    }
-    return value;
   });
 
   const declarationSource = [
@@ -519,21 +480,6 @@ test('matches Nunjucks declaration ordering and post-keyword positional calls', 
   );
   assert.equal(engineDefaultCalls, 2);
   assert.equal(oracleDefaultCalls, engineDefaultCalls);
-
-  const capabilitySource = [
-    '${{ inspect(option=mark("option"),mark("value")) }}|',
-    '${{ "input" | inspectFilter(option=mark("filter-option"),mark("filter-value")) }}',
-  ].join('');
-  assert.equal(
-    engine.render(capabilitySource),
-    oracle.renderString(capabilitySource.replaceAll('${{', '{{'), {}),
-  );
-  assert.deepEqual(engineOrder, ['value', 'option', 'filter-value', 'filter-option']);
-  assert.deepEqual(oracleOrder, engineOrder);
-  assert.deepEqual(engineGlobalArguments, [['value']]);
-  assert.equal(oracleGlobalArguments[0]?.[0], 'value');
-  assert.deepEqual(engineFilterArguments, [['input', 'filter-value']]);
-  assert.deepEqual(oracleFilterArguments[0]?.slice(0, 2), ['input', 'filter-value']);
 
   assert.throws(
     () => engine.render(

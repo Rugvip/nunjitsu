@@ -1,12 +1,22 @@
 import type { TemplateValue } from './values.ts';
 
-/** Trusted synchronous filter invoked with a copied input and arguments. */
+/**
+ * Trusted synchronous filter invoked with a copied input and positional arguments.
+ *
+ * Template keyword syntax and internal callable identities are rejected before
+ * this callback can execute.
+ */
 export type TemplateFilter = (
   input: TemplateValue | undefined,
   ...arguments_: readonly (TemplateValue | undefined)[]
 ) => TemplateValue | undefined;
 
-/** Trusted synchronous global function invoked with copied arguments. */
+/**
+ * Trusted synchronous global function invoked with copied positional arguments.
+ *
+ * Template keyword syntax and internal callable identities are rejected before
+ * this callback can execute.
+ */
 export type TemplateGlobalFunction = (
   ...arguments_: readonly (TemplateValue | undefined)[]
 ) => TemplateValue | undefined;

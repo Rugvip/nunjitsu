@@ -290,7 +290,7 @@
     {
       "upstream": {"id":"tests/parser.js:33","file":"tests/parser.js","test":"should parse keyword and non-keyword arguments"},
       "status": "adapted",
-      "reason": "Positional and keyword argument binding, including positional arguments after keywords, is verified through macro rendering rather than argument AST nodes.",
+      "reason": "Positional and keyword binding, including positionals after keywords, is verified for macros; registered capabilities intentionally reject keyword syntax before evaluation.",
       "cases": ["compiler-macro-keyword-argument","compiler-post-keyword-positional-call"]
     },
     {
@@ -1539,7 +1539,7 @@
     {
       "upstream": {"id":"tests/tests.js:1","file":"tests/tests.js","test":"callable should detect callability"},
       "status": "adapted",
-      "reason": "Callable detection is ported for template macros, while arbitrary live functions in render context are rejected by the copied-value contract."
+      "reason": "Callable detection is ported for sealed template callables, while live context functions and callable use by non-identity tests are rejected by the closed authority contract."
     },
     {
       "upstream": {"id":"tests/tests.js:2","file":"tests/tests.js","test":"defined should detect definedness"},
@@ -1661,17 +1661,19 @@
     },
     {
       "upstream": {"id":"tests/globals.js:2","file":"tests/globals.js","test":"should have cycler"},
-      "status": "ported"
+      "status": "ported",
+      "reason": "Primitive cycler behavior is ported; retaining sealed callable authority is an intentional security deviation outside the upstream assertions."
     },
     {
       "upstream": {"id":"tests/globals.js:3","file":"tests/globals.js","test":"should have joiner"},
       "status": "ported",
+      "reason": "Primitive joiner behavior is ported; retaining sealed callable authority or discarding method arguments is intentionally rejected outside the upstream assertions.",
       "cases": ["globals-joiner-preserves-separator-types"]
     },
     {
       "upstream": {"id":"tests/globals.js:4","file":"tests/globals.js","test":"should allow addition of globals"},
       "status": "adapted",
-      "reason": "Callable globals are configured immutably when creating a Nunjitsu engine and the equivalent rendering behavior is ported."
+      "reason": "Callable globals are configured immutably and invoked positionally; keyword syntax and sealed callable arguments are intentional security deviations."
     },
     {
       "upstream": {"id":"tests/globals.js:5","file":"tests/globals.js","test":"should allow chaining of globals"},

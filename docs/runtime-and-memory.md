@@ -228,6 +228,16 @@ once before inspecting the input sequence, including when that sequence is
 empty or an unsupported scalar. Known operations retain source-order operand
 evaluation.
 
+Each non-macro callable has an explicit argument policy. Registered filters and
+globals accept only positional syntax. Stateful built-in constructors and
+methods validate their maximum or exact arity, while built-in tests validate
+exact positional arity and reject keywords before evaluating them. After
+accepted expressions are evaluated, one recursive validator rejects callable
+identities at any nesting depth before capability charging, built-in storage,
+transformation, or dispatch. Macros and callers remain the only general route
+for forwarding caller authority; `callable` and closed identity tests are the
+only standard operations that may intentionally inspect it.
+
 ## Output
 
 Evaluation appends string slices to a render-owned array and joins it once at

@@ -135,6 +135,10 @@ Template-controlled data is revalidated whenever its role changes:
 - call-block targets are side-effect-free static references, and macro, filter,
   and test validity is established before any associated argument, operand,
   caller body, or selection element can execute;
+- every non-macro call recursively rejects callable identities from positional
+  and keyword values before capability charging, built-in storage, dispatch,
+  transformation, or discard; unsupported keyword and surplus-argument syntax
+  is rejected before its expressions execute;
 - sealed internal callable identities cannot cross the public value boundary;
   and
 - capability arguments and results are recursively recopied rather than
@@ -188,6 +192,15 @@ host application's shared `Math.random` state.
 A capability is authority. Applications must expose narrow behavior and assume
 an untrusted template can invoke every registered capability with arbitrary
 valid arguments up to configured limits.
+
+Registered filters and globals expose a positional-only public API. Keyword
+syntax is rejected before any keyword value expression executes. Their input
+and positional values are recursively checked for sealed callable identities
+independently of scratch accounting, so disabling that resource estimate cannot
+weaken the authority boundary. Stateful built-ins apply the same recursive
+check before retaining values, and their methods reject ignored arguments
+before evaluating them. Built-in tests define exact arity; only `callable` and
+closed identity comparisons may inspect callable values.
 
 Capability exceptions are fail-stop. The host boundary preserves diagnostic
 text only from a primitive string or a native error with an own string-valued

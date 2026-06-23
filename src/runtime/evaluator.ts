@@ -19,6 +19,7 @@ import type { TemplateContext } from '../values.ts';
 import {
   applyBuiltinFilter,
   applyBuiltinTest,
+  builtinTestArity,
   hasBuiltinFilter,
   hasBuiltinTest,
   lookupRuntimeConstantKey,
@@ -673,8 +674,14 @@ class Evaluator {
     if (!hasHostFilter && !hasBuiltinFilter(builtinName)) {
       throw new Error(`Unknown template filter ${name}`);
     }
+    if (hasHostFilter) {
+      assertPositionalOnlySyntax(node.args, `Registered filter ${name}`);
+    }
     const arguments_ = this.#evaluateArguments(node.args, scope, depth + 1);
     const [input, ...positional] = arguments_.positional;
+    if (hasHostFilter) {
+      assertRuntimeArgumentsHaveNoCallable(arguments_);
+    }
     this.#assertScratch([input, ...positional, ...arguments_.keyword.values()]);
     if (hasHostFilter) {
       this.#chargeCapability();
@@ -709,6 +716,15 @@ class Evaluator {
     }
     if (!hasBuiltinTest(name)) {
       throw new Error(`Unknown template test ${name}`);
+    }
+    const expectedArity = builtinTestArity(name);
+    if (expectedArity === undefined) {
+      throw new Error(`Unknown template test ${name}`);
+    }
+    if (argumentsNode) {
+      assertExactPositionalSyntax(argumentsNode, `Template test ${name}`, expectedArity);
+    } else if (expectedArity !== 0) {
+      throw new TypeError(`Template test ${name} requires ${expectedArity} positional argument`);
     }
     const input = this.#evaluateExpression(node.left, scope, depth + 1);
     const arguments_ = argumentsNode
@@ -750,20 +766,15 @@ class Evaluator {
     const targetNode = node.name;
     const target = this.#evaluateExpression(targetNode, scope, depth + 1);
     const name = diagnosticCallablePath(targetNode);
-    const arguments_ = this.#evaluateArguments(node.args, scope, depth + 1);
     if (target instanceof RuntimeCallable) {
-      const caller = arguments_.keyword.get('caller');
-      if (
-        caller instanceof RuntimeCallable &&
-        caller.callableKind === 'caller' &&
-        target.callableKind !== 'macro'
-      ) {
-        throw new Error('Caller handles can be passed only to template macros');
-      }
       if (target.callableKind === 'macro' || target.callableKind === 'caller') {
+        const arguments_ = this.#evaluateArguments(node.args, scope, depth + 1);
         return this.#invokeMacro(target.id, arguments_, depth + 1);
       }
       if (target.callableKind === 'builtin') {
+        this.#assertBuiltinArgumentSyntax(target.id, node.args);
+        const arguments_ = this.#evaluateArguments(node.args, scope, depth + 1);
+        assertRuntimeArgumentsHaveNoCallable(arguments_);
         return this.#invokeBuiltinCallable(target.id, arguments_);
       }
       if (target.callableKind === 'capability') {
@@ -771,6 +782,9 @@ class Evaluator {
         if (!capabilityName || !this.#options.host?.global) {
           throw new Error('Unknown template capability');
         }
+        assertPositionalOnlySyntax(node.args, `Registered global ${capabilityName}`);
+        const arguments_ = this.#evaluateArguments(node.args, scope, depth + 1);
+        assertRuntimeArgumentsHaveNoCallable(arguments_);
         this.#chargeCapability();
         const result = this.#options.host.global(capabilityName, arguments_);
         if (result.found) {
@@ -922,13 +936,8 @@ class Evaluator {
   }
 
   #invokeBuiltinGlobal(name: BuiltinGlobalName, arguments_: RuntimeArguments): RuntimeValue {
-    for (const value of arguments_.keyword.values()) {
-      assertRuntimeValueHasNoCallable(value);
-    }
+    assertRuntimeArgumentsHaveNoCallable(arguments_);
     if (name === 'range') {
-      for (const value of arguments_.positional) {
-        assertRuntimeValueHasNoCallable(value);
-      }
       let start = arguments_.positional[0];
       let stop = arguments_.positional[1];
       let step = arguments_.positional[2];
@@ -994,6 +1003,7 @@ class Evaluator {
   }
 
   #invokeBuiltinCallable(id: number, arguments_: RuntimeArguments): RuntimeValue {
+    assertRuntimeArgumentsHaveNoCallable(arguments_);
     const definition = this.#builtinCallables.get(id);
     if (!definition) {
       throw new Error('Unknown interpreter builtin callable');
@@ -1022,6 +1032,31 @@ class Evaluator {
       }
       owner.index = (owner.index + 1) % owner.values.length;
       return owner.values[owner.index];
+    }
+    throw new Error('Interpreter builtin object is not directly callable');
+  }
+
+  #assertBuiltinArgumentSyntax(id: number, node: AstNode): void {
+    const definition = this.#builtinCallables.get(id);
+    if (!definition) {
+      throw new Error('Unknown interpreter builtin callable');
+    }
+    if (definition.type === 'global') {
+      assertPositionalOnlySyntax(node, `Built-in global ${definition.name}`);
+      if (definition.name === 'range') {
+        assertMaximumPositionalSyntax(node, 'Built-in global range', 3);
+      } else if (definition.name === 'joiner') {
+        assertMaximumPositionalSyntax(node, 'Built-in global joiner', 1);
+      }
+      return;
+    }
+    if (definition.type === 'joiner') {
+      assertExactPositionalSyntax(node, 'Joiner instance', 0);
+      return;
+    }
+    if (definition.type === 'cycler-method') {
+      assertExactPositionalSyntax(node, `Cycler ${definition.method}`, 0);
+      return;
     }
     throw new Error('Interpreter builtin object is not directly callable');
   }
@@ -1269,6 +1304,67 @@ function runtimeCompare(left: RuntimeValue, operator: string, right: RuntimeValu
     case '>=': return runtimeOrder(left, right) >= 0;
     default: throw new Error(`Unsupported comparison operator ${operator}`);
   }
+}
+
+function assertRuntimeArgumentsHaveNoCallable(arguments_: RuntimeArguments): void {
+  for (const value of arguments_.positional) {
+    assertRuntimeValueHasNoCallable(value);
+  }
+  for (const value of arguments_.keyword.values()) {
+    assertRuntimeValueHasNoCallable(value);
+  }
+}
+
+function assertPositionalOnlySyntax(node: AstNode, operation: string): void {
+  const syntax = argumentSyntax(node);
+  if (syntax.keywordCount > 0) {
+    throw new TypeError(`${operation} does not accept keyword arguments`);
+  }
+}
+
+function assertExactPositionalSyntax(
+  node: AstNode,
+  operation: string,
+  expected: number,
+): void {
+  assertPositionalOnlySyntax(node, operation);
+  const actual = argumentSyntax(node).positionalCount;
+  if (actual !== expected) {
+    throw new TypeError(
+      `${operation} requires ${expected} positional argument${expected === 1 ? '' : 's'}`,
+    );
+  }
+}
+
+function assertMaximumPositionalSyntax(
+  node: AstNode,
+  operation: string,
+  maximum: number,
+): void {
+  const actual = argumentSyntax(node).positionalCount;
+  if (actual > maximum) {
+    throw new TypeError(
+      `${operation} accepts at most ${maximum} positional argument${maximum === 1 ? '' : 's'}`,
+    );
+  }
+}
+
+function argumentSyntax(
+  node: AstNode,
+): { readonly positionalCount: number; readonly keywordCount: number } {
+  if (node.type !== 'NodeList') {
+    throw new Error('Invalid argument list');
+  }
+  let positionalCount = 0;
+  let keywordCount = 0;
+  for (const child of node.children) {
+    if (child.type === 'KeywordArgs') {
+      keywordCount += child.children.length;
+    } else {
+      positionalCount += 1;
+    }
+  }
+  return { positionalCount, keywordCount };
 }
 
 function runtimeContains(container: RuntimeValue, needle: RuntimeValue): boolean {

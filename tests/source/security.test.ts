@@ -1141,6 +1141,133 @@ test('callable identities stay sealed and regular expressions cross as inert dat
   assert.equal(engine.render('clean'), 'clean');
 });
 
+test('callable authority cannot enter or be discarded by non-macro arguments', () => {
+  let capabilityCalls = 0;
+  let filterCalls = 0;
+  let laterCalls = 0;
+  let markCalls = 0;
+  let privilegedCalls = 0;
+  const engine = createEngine({
+    filters: {
+      capture(input, ...arguments_) {
+        filterCalls += 1;
+        return arguments_[0] ?? input;
+      },
+    },
+    globals: {
+      capability(...arguments_) {
+        capabilityCalls += 1;
+        return arguments_[0];
+      },
+      later() {
+        laterCalls += 1;
+        return '';
+      },
+      mark(value) {
+        markCalls += 1;
+        return value;
+      },
+      privileged() {
+        privilegedCalls += 1;
+        return 'privileged';
+      },
+    },
+  });
+  const inCallBlock = (body: string): string => [
+    `{% macro wrapper() %}${body}{% endmacro %}`,
+    '{% call wrapper() %}BODY{% endcall %}',
+    '${{ later() }}',
+  ].join('');
+  const assertRejected = (
+    source: string,
+    scratchBytes?: number,
+  ): void => {
+    let caught: NunjitsuRenderError | undefined;
+    assert.throws(
+      () => engine.render(
+        source,
+        {},
+        scratchBytes === undefined ? {} : { limits: { scratchBytes } },
+      ),
+      error => {
+        if (!(error instanceof NunjitsuRenderError)) {
+          return false;
+        }
+        caught = error;
+        return true;
+      },
+      source,
+    );
+    assert.equal(caught?.cause, undefined, source);
+    assert.equal(capabilityCalls, 0, source);
+    assert.equal(filterCalls, 0, source);
+    assert.equal(laterCalls, 0, source);
+    assert.equal(markCalls, 0, source);
+    assert.equal(privilegedCalls, 0, source);
+    assert.equal(engine.render('clean'), 'clean', source);
+  };
+
+  for (const source of [
+    inCallBlock('${{ capability(caller) }}'),
+    inCallBlock('${{ capability(hidden=mark(caller)) }}'),
+    inCallBlock('${{ capability({"nested":[caller]}) }}'),
+    '${{ capability(privileged) }}${{ later() }}',
+    '${{ capability({"nested":[privileged]}) }}${{ later() }}',
+  ]) {
+    assertRejected(source);
+  }
+
+  const filterSources = [
+    inCallBlock('${{ caller | capture }}'),
+    inCallBlock('${{ "value" | capture(caller) }}'),
+    inCallBlock('${{ "value" | capture(hidden=mark(caller)) }}'),
+    inCallBlock('${{ "value" | capture({"nested":[caller]}) }}'),
+    '${{ privileged | capture }}${{ later() }}',
+    '${{ "value" | capture({"nested":[privileged]}) }}${{ later() }}',
+  ];
+  for (const source of filterSources) {
+    assertRejected(source, 1_000_000);
+    assertRejected(source, Number.POSITIVE_INFINITY);
+  }
+
+  for (const source of [
+    inCallBlock('${{ cycler(caller).next()() }}'),
+    '${{ cycler(privileged) }}${{ later() }}',
+    inCallBlock('{% set separator = joiner() %}${{ separator(mark(caller)) }}'),
+    inCallBlock('{% set cycle = cycler("value") %}${{ cycle.next(mark(caller)) }}'),
+    inCallBlock('{% set cycle = cycler("value") %}${{ cycle.reset(mark(caller)) }}'),
+    inCallBlock('${{ range(1, 2, 1, mark(caller)) | dump }}'),
+    inCallBlock('${{ joiner(",", mark(caller)) }}'),
+    inCallBlock('${{ caller is defined }}'),
+    '${{ privileged is defined }}${{ later() }}',
+    inCallBlock('${{ "value" is defined(hidden=mark(caller)) }}'),
+    inCallBlock('${{ "value" is defined(mark(caller)) }}'),
+  ]) {
+    assertRejected(source);
+  }
+
+  assert.equal(engine.render([
+    '{% macro inner(value) %}[${{ value() }}]{% endmacro %}',
+    '{% macro outer() %}${{ inner(caller) }}{% endmacro %}',
+    '{% call outer() %}BODY{% endcall %}',
+  ].join('')), '[BODY]');
+  assert.equal(engine.render([
+    '{% macro wrapper() %}',
+    '${{ caller is callable }}:${{ caller is sameas(caller) }}',
+    '{% endmacro %}',
+    '{% call wrapper() %}BODY{% endcall %}',
+  ].join('')), 'true:true');
+  assert.equal(engine.render([
+    '{% set cycle = cycler("a", "b") %}',
+    '${{ cycle.next() }}${{ cycle.next() }}${{ cycle.reset() }}${{ cycle.next() }}',
+  ].join('')), 'aba');
+  assert.equal(capabilityCalls, 0);
+  assert.equal(filterCalls, 0);
+  assert.equal(laterCalls, 0);
+  assert.equal(markCalls, 0);
+  assert.equal(privilegedCalls, 0);
+});
+
 test('callable identities cannot be laundered through rendering or built-ins', () => {
   let handleCalls = 0;
   let inspectCalls = 0;
