@@ -92,16 +92,6 @@ interface MacroDefinition {
   readonly scope: RuntimeScope;
 }
 
-interface BlockDefinition {
-  readonly node: AstBlockNode;
-}
-
-interface BlockFrame {
-  readonly chain: readonly BlockDefinition[];
-  readonly index: number;
-  readonly scope: RuntimeScope;
-}
-
 /** One non-materializing view over values accepted by a template loop. */
 interface RuntimeIteration {
   readonly length: RuntimeValue;
@@ -169,8 +159,7 @@ class Evaluator {
   readonly #capabilityNames = new Map<number, string>();
   readonly #capabilityHandles = new Map<string, RuntimeCallable>();
   readonly #builtinGlobalHandles = new Map<BuiltinGlobalName, RuntimeCallable>();
-  #activeBlocks = new Map<string, readonly BlockDefinition[]>();
-  readonly #blockStack: BlockFrame[] = [];
+  readonly #blockScopes: RuntimeScope[] = [];
   #nextCallableId = 1;
   #workUnits = 0;
   #outputCodeUnits = 0;
@@ -206,16 +195,9 @@ class Evaluator {
     scope: RuntimeScope,
     output: OutputTarget,
     depth: number,
-    inheritedBlocks: ReadonlyMap<string, readonly BlockDefinition[]> = new Map(),
   ): void {
-    const previousBlocks = this.#activeBlocks;
-    const activeBlocks = mergeBlocks(inheritedBlocks, collectBlocks(ast));
-    this.#activeBlocks = activeBlocks;
-    try {
-      this.#evaluateNode(ast, scope, output, depth + 1);
-    } finally {
-      this.#activeBlocks = previousBlocks;
-    }
+    validateUniqueBlocks(ast);
+    this.#evaluateNode(ast, scope, output, depth + 1);
   }
 
   #evaluateNode(
@@ -278,7 +260,7 @@ class Evaluator {
       case 'Macro': {
         const name = symbolName(node.name);
         const id = this.#nextCallableId++;
-        const definitionScope = this.#blockStack.at(-1)?.scope ?? scope;
+        const definitionScope = this.#blockScopes.at(-1) ?? scope;
         this.#macros.set(id, { node, scope: definitionScope });
         definitionScope.set(name, new RuntimeCallable('macro', id));
         return;
@@ -320,42 +302,21 @@ class Evaluator {
   }
 
   #evaluateBlock(
-    node: AstNode,
+    node: AstBlockNode,
     scope: RuntimeScope,
     output: OutputTarget,
     depth: number,
   ): void {
-    if (node.type !== 'Block') {
-      throw new Error('Invalid block node');
-    }
-    const name = symbolName(node.name);
-    const chain: readonly BlockDefinition[] = this.#activeBlocks.get(name) ?? [
-      { node },
-    ];
-    this.#renderBlock(chain, 0, scope, output, depth + 1);
-  }
-
-  #renderBlock(
-    chain: readonly BlockDefinition[],
-    index: number,
-    scope: RuntimeScope,
-    output: OutputTarget,
-    depth: number,
-  ): void {
-    const definition = chain[index];
-    if (!definition) {
-      return;
-    }
-    this.#blockStack.push({ chain, index, scope });
+    this.#blockScopes.push(scope);
     try {
       this.#evaluateNode(
-        definition.node.body,
+        node.body,
         scope.child(true),
         output,
         depth + 1,
       );
     } finally {
-      this.#blockStack.pop();
+      this.#blockScopes.pop();
     }
   }
 
@@ -500,9 +461,6 @@ class Evaluator {
         }
         if (this.#options.host?.hasGlobal?.(name)) {
           return this.#registerGlobal(name);
-        }
-        if (name === 'super' && this.#blockStack.length > 0) {
-          return new RuntimeCallable('super', 0);
         }
         return this.#registerBuiltinGlobal(name);
       }
@@ -757,20 +715,19 @@ class Evaluator {
     const name = diagnosticCallablePath(targetNode);
     const arguments_ = this.#evaluateArguments(node.args, scope, depth + 1);
     if (target instanceof RuntimeCallable) {
+      const caller = arguments_.keyword.get('caller');
+      if (
+        caller instanceof RuntimeCallable &&
+        caller.callableKind === 'caller' &&
+        target.callableKind !== 'macro'
+      ) {
+        throw new Error('Call blocks can target only template macros');
+      }
       if (target.callableKind === 'macro' || target.callableKind === 'caller') {
         return this.#invokeMacro(target.id, arguments_, depth + 1);
       }
       if (target.callableKind === 'builtin') {
         return this.#invokeBuiltinCallable(target.id, arguments_);
-      }
-      if (target.callableKind === 'super') {
-        const frame = this.#blockStack.at(-1);
-        if (!frame) {
-          throw new Error('Unknown super callable');
-        }
-        const chunks: string[] = [];
-        this.#renderBlock(frame.chain, frame.index + 1, frame.scope, chunks, depth + 1);
-        return new RuntimeSafeString(chunks.join(''));
       }
       if (target.callableKind === 'capability') {
         const capabilityName = this.#capabilityNames.get(target.id);
@@ -928,6 +885,9 @@ class Evaluator {
   }
 
   #invokeBuiltinGlobal(name: BuiltinGlobalName, arguments_: RuntimeArguments): RuntimeValue {
+    for (const value of arguments_.keyword.values()) {
+      assertRuntimeValueHasNoCallable(value);
+    }
     if (name === 'range') {
       for (const value of arguments_.positional) {
         assertRuntimeValueHasNoCallable(value);
@@ -1320,29 +1280,17 @@ function runtimeValueBytes(value: RuntimeValue): number {
   return Buffer.byteLength(renderRuntimeValue(value));
 }
 
-function collectBlocks(ast: AstNode): ReadonlyMap<string, readonly BlockDefinition[]> {
-  const blocks = new Map<string, readonly BlockDefinition[]>();
+function validateUniqueBlocks(ast: AstNode): void {
+  const blocks = new Set<string>();
   visitAst(ast, node => {
     if (node.type === 'Block') {
       const name = symbolName(node.name);
       if (blocks.has(name)) {
         throw new Error(`Template defines block ${name} more than once`);
       }
-      blocks.set(name, Object.freeze([{ node }]));
+      blocks.add(name);
     }
   });
-  return blocks;
-}
-
-function mergeBlocks(
-  inherited: ReadonlyMap<string, readonly BlockDefinition[]>,
-  local: ReadonlyMap<string, readonly BlockDefinition[]>,
-): Map<string, readonly BlockDefinition[]> {
-  const merged = new Map<string, readonly BlockDefinition[]>(inherited);
-  for (const [name, definitions] of local) {
-    merged.set(name, Object.freeze([...(merged.get(name) ?? []), ...definitions]));
-  }
-  return merged;
 }
 
 function visitAst(node: AstNode, visitor: (node: AstNode) => void): void {
@@ -1421,7 +1369,6 @@ function astChildren(node: AstNode): readonly AstNode[] {
     case 'TemplateData':
     case 'Literal':
     case 'Symbol':
-    case 'Super':
       return [];
   }
 }

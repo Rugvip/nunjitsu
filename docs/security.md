@@ -127,6 +127,9 @@ Template-controlled data is revalidated whenever its role changes:
 - macro calls bind only declared formal names at their fixed positions and the
   explicit call-block `caller` keyword; unmatched keywords cannot introduce
   locals or callable identities;
+- standalone blocks carry no inheritance chain and synthesize no `super`
+  authority; call blocks target only macros, and their `caller` handle cannot
+  cross or be silently discarded at capability or built-in boundaries;
 - sealed internal callable identities cannot cross the public value boundary;
   and
 - capability arguments and results are recursively recopied rather than

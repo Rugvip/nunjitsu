@@ -178,13 +178,6 @@ export interface AstCompareOperandNode extends AstNodeBase {
   readonly operator: string;
 }
 
-/** A legacy super marker retained for exhaustive evaluator handling. */
-export interface AstSuperNode extends AstNodeBase {
-  readonly type: 'Super';
-  readonly blockName?: string;
-  readonly symbol?: string;
-}
-
 /** Every immutable data-only syntax node emitted by the native parser. */
 export type AstNode =
   | AstSequenceNode
@@ -208,8 +201,7 @@ export type AstNode =
   | AstBinaryNode
   | AstUnaryNode
   | AstCompareNode
-  | AstCompareOperandNode
-  | AstSuperNode;
+  | AstCompareOperandNode;
 
 /** Data permitted inside the immutable AST. */
 export type AstData = AstLiteralValue | AstNode | readonly AstData[];

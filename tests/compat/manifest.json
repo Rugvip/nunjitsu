@@ -727,17 +727,17 @@
     {
       "upstream": {"id":"tests/compiler.js:94","file":"tests/compiler.js","test":"should render parent blocks with super()"},
       "status": "not applicable",
-      "reason": "Requires named-template loading, includes, imports, or inheritance, which the secure direct-string API does not support."
+      "reason": "Requires inheritance, which the secure direct-string API does not represent; standalone blocks synthesize no super callable."
     },
     {
       "upstream": {"id":"tests/compiler.js:95","file":"tests/compiler.js","test":"should let super() see global vars from child template"},
       "status": "not applicable",
-      "reason": "Requires named-template loading, includes, imports, or inheritance, which the secure direct-string API does not support."
+      "reason": "Requires inheritance and parent-block scope, which the secure direct-string API does not represent."
     },
     {
       "upstream": {"id":"tests/compiler.js:96","file":"tests/compiler.js","test":"should not let super() see vars from child block"},
       "status": "not applicable",
-      "reason": "Requires named-template loading, includes, imports, or inheritance, which the secure direct-string API does not support."
+      "reason": "Requires inheritance and parent-block scope, which the secure direct-string API does not represent."
     },
     {
       "upstream": {"id":"tests/compiler.js:97","file":"tests/compiler.js","test":"should let child templates access parent global scope"},
@@ -747,7 +747,7 @@
     {
       "upstream": {"id":"tests/compiler.js:98","file":"tests/compiler.js","test":"should not let super() modify calling scope"},
       "status": "not applicable",
-      "reason": "Requires named-template loading, includes, imports, or inheritance, which the secure direct-string API does not support."
+      "reason": "Requires inheritance and parent-block scope, which the secure direct-string API does not represent."
     },
     {
       "upstream": {"id":"tests/compiler.js:99","file":"tests/compiler.js","test":"should not let child templates set vars in parent scope"},
@@ -847,7 +847,7 @@
     {
       "upstream": {"id":"tests/compiler.js:128","file":"tests/compiler.js","test":"should not autoescape super()"},
       "status": "not applicable",
-      "reason": "Requires named-template loading, includes, imports, or inheritance, which the secure direct-string API does not support."
+      "reason": "Requires inheritance-defined super and automatic escaping, neither of which the secure direct-string API supports."
     },
     {
       "upstream": {"id":"tests/compiler.js:129","file":"tests/compiler.js","test":"should autoescape backslashes"},

@@ -125,7 +125,7 @@ export class RuntimeRegex {
 }
 
 /** Closed categories of behavior the interpreter may invoke. */
-export type RuntimeCallableKind = 'macro' | 'caller' | 'builtin' | 'capability' | 'super';
+export type RuntimeCallableKind = 'macro' | 'caller' | 'builtin' | 'capability';
 
 /** An unforgeable interpreter-owned callable identity containing no function. */
 export class RuntimeCallable {

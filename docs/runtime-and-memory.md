@@ -94,6 +94,14 @@ only then adds the original start value. `joiner` retains its original truthy
 separator value and returns that exact closed value after its first call.
 Coercion therefore occurs only at a later operation that actually requires it.
 
+Standalone blocks retain only the isolated scope needed to evaluate their own
+body and to bind macros with Nunjucks-compatible scope behavior. The evaluator
+has no parent-definition chains, block indices, inheritance merging, or sealed
+`super` callable. An unresolved `super()` therefore fails like any unknown call
+target. Applications may explicitly register a global named `super`; it then
+resolves only as that ordinary capability. Call-block syntax targets template
+macros exclusively, and the synthesized `caller` handle remains macro-local.
+
 Property lookup, derived record keys, membership, unary and binary arithmetic,
 addition, concatenation, relational operators and tests, and loose equality all
 use these centralized conversions. Array and string indexing accepts only an

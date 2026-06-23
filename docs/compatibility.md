@@ -57,6 +57,8 @@ Nunjitsu targets:
 Nunjitsu does not support:
 
 - named templates, includes, imports, inheritance, or loaders;
+- inheritance-defined `super`; standalone `super()` is unresolved unless the
+  application explicitly registers an ordinary capability with that name;
 - the Nunjucks JavaScript API, object model, CLI, or Express integration;
 - precompilation, persistent caches, browser execution, or streaming;
 - asynchronous filters, globals, or rendering;

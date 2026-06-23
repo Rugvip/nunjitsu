@@ -804,6 +804,111 @@ test('rejects malformed structural tags before any template capability executes'
   }
 });
 
+test('standalone blocks never synthesize unsupported super authority', () => {
+  let engineCalls = 0;
+  let oracleCalls = 0;
+  const engine = createEngine({
+    globals: {
+      privileged() {
+        engineCalls += 1;
+        return 'privileged';
+      },
+    },
+  });
+  const oracle = new nunjucks.Environment(undefined, { autoescape: false });
+  oracle.addGlobal('privileged', () => {
+    oracleCalls += 1;
+    return 'privileged';
+  });
+  const sources = [
+    '{% block content %}${{ super() }}${{ privileged() }}{% endblock %}',
+    '{% block content %}{% set parent = super %}${{ parent() }}${{ privileged() }}{% endblock %}',
+    '{% block content %}{% set values = [super] %}${{ values[0]() }}${{ privileged() }}{% endblock %}',
+    '{% block content %}{% set values = {parent:super} %}${{ values.parent() }}${{ privileged() }}{% endblock %}',
+    '{% block content %}{% macro invokeParent() %}${{ super() }}{% endmacro %}${{ invokeParent() }}${{ privileged() }}{% endblock %}',
+    '{% block outer %}{% block inner %}${{ super() }}${{ privileged() }}{% endblock %}{% endblock %}',
+    '{% block content %}{% set parent %}${{ super() }}{% endset %}${{ parent }}${{ privileged() }}{% endblock %}',
+    '{% macro wrapper() %}${{ caller() }}{% endmacro %}{% block content %}{% call wrapper() %}${{ super() }}{% endcall %}${{ privileged() }}{% endblock %}',
+    '{% block content %}{% set parent = super() %}{% if parent == "" %}${{ privileged() }}{% endif %}{% endblock %}',
+  ];
+  for (const source of sources) {
+    let caught: NunjitsuRenderError | undefined;
+    assert.throws(
+      () => engine.render(source),
+      error => {
+        if (!(error instanceof NunjitsuRenderError)) {
+          return false;
+        }
+        caught = error;
+        return true;
+      },
+      source,
+    );
+    assert.throws(() => oracle.renderString(source.replaceAll('${{', '{{'), {}), source);
+    assert.equal(caught?.cause, undefined);
+    assert.equal(caught?.phase, 'evaluate');
+    assert.equal(engineCalls, 0);
+    assert.equal(oracleCalls, 0);
+    assert.equal(engine.render('clean'), 'clean');
+  }
+
+  let configuredCalls = 0;
+  const configured = createEngine({
+    globals: {
+      super() {
+        configuredCalls += 1;
+        return 'configured';
+      },
+    },
+  });
+  assert.equal(
+    configured.render('{% block content %}${{ super() }}{% endblock %}'),
+    'configured',
+  );
+  assert.equal(configuredCalls, 1);
+  assert.throws(
+    () => engine.render('{% block content %}${{ super() }}{% endblock %}', { super: 'data' }),
+    NunjitsuRenderError,
+  );
+  assert.equal(engine.render('clean'), 'clean');
+});
+
+test('call blocks target only macros and cannot discard caller authority', () => {
+  let capabilityCalls = 0;
+  let laterCalls = 0;
+  const engine = createEngine({
+    globals: {
+      capability() {
+        capabilityCalls += 1;
+        return '';
+      },
+      later() {
+        laterCalls += 1;
+        return '';
+      },
+    },
+  });
+  const validSource = [
+    '{% macro wrapper() %}[${{ caller() }}]{% endmacro %}',
+    '{% call wrapper() %}body{% endcall %}',
+  ].join('');
+  assert.equal(engine.render(validSource), '[body]');
+
+  for (const source of [
+    '{% call capability() %}body{% endcall %}${{ later() }}',
+    '{% call range(3) %}body{% endcall %}${{ later() }}',
+    '{% call cycler(1,2) %}body{% endcall %}${{ later() }}',
+    '{% call joiner() %}body{% endcall %}${{ later() }}',
+    '{% macro wrapper() %}${{ capability(caller) }}{% endmacro %}{% call wrapper() %}body{% endcall %}${{ later() }}',
+    '{% macro wrapper() %}${{ range(1, caller=caller) | dump }}{% endmacro %}{% call wrapper() %}body{% endcall %}${{ later() }}',
+  ]) {
+    assert.throws(() => engine.render(source), NunjitsuRenderError, source);
+    assert.equal(capabilityCalls, 0, source);
+    assert.equal(laterCalls, 0, source);
+    assert.equal(engine.render('clean'), 'clean');
+  }
+});
+
 test('record membership tracks key presence independently of its value', () => {
   let policyCalls = 0;
   let privilegedCalls = 0;

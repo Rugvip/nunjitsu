@@ -52,6 +52,11 @@ implementation and documentation aligned with the architecture in
 - Resolve every call target through lexical scope and the closed value model.
   Dispatch capabilities only through evaluator-owned IDs mapped privately to
   exact registered callbacks; never derive authority from call-site spelling.
+- Do not represent inheritance-only block chains or synthesize a `super`
+  callable. Standalone blocks have one body and isolated scope; an explicitly
+  registered global named `super` remains an ordinary capability. Call blocks
+  may target only template macros, and their internal `caller` handle must not
+  be forwarded to or discarded by capabilities or built-ins.
 - Bind macro arguments by fixed formal position first and matching keyword
   presence second, never value nullishness or a conditional positional cursor.
   Ignore undeclared keywords except for the explicit call-block `caller`

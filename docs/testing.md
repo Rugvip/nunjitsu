@@ -67,8 +67,10 @@ failures. Standard-library regressions compare collection and text input domains
 nullish failure behavior, scalar length results, URL-encoding pair lookup,
 safe-string adaptations, keyword arguments, stateful globals, capability order,
 callable-laundering attempts, and type preservation across `range`, `sum`, and
-`joiner`. Static checks reject dynamic execution and host reflection in parser
-and interpreter modules.
+`joiner`. Standalone-block tests cover unresolved `super`, alias/container and
+capture paths, configured-name behavior, macro-only call-block targets, and
+caller-handle confinement. Static checks reject dynamic execution and host
+reflection in parser and interpreter modules.
 
 ## Fuzzing policy
 
