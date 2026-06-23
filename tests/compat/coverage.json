@@ -114,6 +114,13 @@
       "statuses": ["ported", "adapted"]
     },
     {
+      "id": "native-standard-library-input-domains",
+      "file": "tests/source/runtime.test.ts",
+      "test": "matches closed standard-library coercion and input domains",
+      "upstreamRange": {"file": "tests/filters.js", "start": 1, "end": 64},
+      "statuses": ["ported", "adapted"]
+    },
+    {
       "id": "parser-filter-syntax",
       "file": "tests/source/runtime.test.ts",
       "test": "implements the closed Nunjucks filter and test standard library",
@@ -145,9 +152,26 @@
       "statuses": ["ported", "adapted"]
     },
     {
+      "id": "native-test-input-domains",
+      "file": "tests/source/runtime.test.ts",
+      "test": "matches closed standard-library coercion and input domains",
+      "upstreamRange": {"file": "tests/tests.js", "start": 1, "end": 28},
+      "statuses": ["ported", "adapted"]
+    },
+    {
       "id": "native-stateful-globals",
       "file": "tests/source/runtime.test.ts",
       "test": "matches stateful range, cycler, and joiner globals",
+      "upstream": [
+        "tests/globals.js:1",
+        "tests/globals.js:2",
+        "tests/globals.js:3"
+      ]
+    },
+    {
+      "id": "native-global-edge-coercion",
+      "file": "tests/source/runtime.test.ts",
+      "test": "matches closed standard-library coercion and input domains",
       "upstream": [
         "tests/globals.js:1",
         "tests/globals.js:2",

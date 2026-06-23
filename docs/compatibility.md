@@ -44,6 +44,8 @@ Nunjitsu targets:
   ordering, positional call arguments after keywords, and complete structural
   tag validation including named blocks and raw regions;
 - built-in filters, tests, and globals used by direct string templates;
+- pinned built-in input domains, nullish normalization, keyword arguments, and
+  fail-before-later-capability behavior over the closed value model;
 - synchronous application filters and `TemplateValue` data or callable globals;
 - `trimBlocks` and `lstripBlocks`; and
 - fixed `autoescape: false` behavior.
@@ -64,6 +66,13 @@ Nunjitsu does not support:
 
 Unsupported syntax is rejected explicitly. Security deviations are part of the
 contract, not hidden compatibility failures.
+
+Safe strings are internal text values rather than emulations of Nunjucks's
+prototype-bearing JavaScript `String` wrapper. Collection filters therefore
+treat them consistently as primitive UTF-16 text instead of reproducing wrapper
+indexing gaps that can yield `undefined`. Callable identities are also rejected
+where Nunjucks might stringify, serialize, or silently discard a JavaScript
+function; this preserves the closed capability boundary.
 
 ## Upstream test corpus
 

@@ -67,9 +67,24 @@ null and undefined as empty strings, while semantic string and property-key
 conversion produces `"null"` and `"undefined"`. Safe strings unwrap directly;
 arrays convert by recursively joining closed item strings with commas; records
 convert to the fixed string `"[object Object]"`; and regex values convert to
-their inert `/source/flags` spelling. Callable coercion fails closed. No path
-invokes a host object's iteration, `valueOf`, `toString`, or primitive-conversion
-hook.
+their inert `/source/flags` spelling. Callable coercion fails closed before any
+callable nested in an array or record can be rendered, serialized, captured,
+used as a separator, transformed by the standard library, or included in
+scratch accounting. No path invokes a host object's iteration, `valueOf`,
+`toString`, or primitive-conversion hook.
+
+Built-in filters and tests declare their accepted closed input kinds directly.
+Collection operations distinguish arrays, UTF-16 string sequences, nullish
+errors, and the few pinned scalar-empty cases rather than treating every invalid
+input as an empty collection. Text filters separately model Nunjucks's
+false/nullish-to-empty normalization and its strict string-only operations.
+Supported keyword arguments are resolved by map presence, preserving explicit
+nullish values. Safe strings remain engine-owned text for these operations;
+Nunjitsu does not reproduce accidental indexed-property gaps from Nunjucks's
+JavaScript `String` wrapper implementation. The `string` filter rejects nullish
+input, `length` preserves absent results for unsupported scalars, and
+`urlencode` applies closed numeric pair lookup to every sequence entry rather
+than silently discarding malformed entries.
 
 Property lookup, derived record keys, membership, unary and binary arithmetic,
 addition, concatenation, relational operators and tests, and loose equality all

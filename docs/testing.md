@@ -63,8 +63,11 @@ matching and case evaluation order, callable-boundary rejection, structured
 cause-free public diagnostics, declaration-specific formal validation,
 post-default and post-keyword positional ordering, structural-tag remainder and
 named-block checks, raw-mode entry validation, and render state cleanup after
-failures. Static checks reject dynamic execution and host reflection in parser
-and interpreter modules.
+failures. Standard-library regressions compare collection and text input domains,
+nullish failure behavior, scalar length results, URL-encoding pair lookup,
+safe-string adaptations, keyword arguments, stateful globals, capability order,
+and callable-laundering attempts. Static checks reject dynamic execution and
+host reflection in parser and interpreter modules.
 
 ## Fuzzing policy
 

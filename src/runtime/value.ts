@@ -189,6 +189,38 @@ export function copyPublicValue(value: RuntimeValue): TemplateValue | undefined 
 
 /** Explicit string coercion over closed value variants. */
 export function renderRuntimeValue(value: RuntimeValue): string {
+  assertRuntimeValueHasNoCallable(value);
+  return renderRuntimeValueUnchecked(value);
+}
+
+/** Rejects callable identities anywhere inside a closed value graph. */
+export function assertRuntimeValueHasNoCallable(value: RuntimeValue): void {
+  const pending = Object.setPrototypeOf([value], null) as RuntimeValue[];
+  const visited = new Set<RuntimeArray | RuntimeRecord>();
+  while (pending.length > 0) {
+    const index = pending.length - 1;
+    const current = pending[index]!;
+    pending.length = index;
+    if (current instanceof RuntimeCallable) {
+      throw new TypeError('Callable values cannot be coerced');
+    }
+    if (current instanceof RuntimeArray) {
+      if (!visited.has(current)) {
+        visited.add(current);
+        for (const item of current.values()) {
+          pending[pending.length] = item;
+        }
+      }
+    } else if (current instanceof RuntimeRecord && !visited.has(current)) {
+      visited.add(current);
+      for (const [, item] of current.entries()) {
+        pending[pending.length] = item;
+      }
+    }
+  }
+}
+
+function renderRuntimeValueUnchecked(value: RuntimeValue): string {
   if (value === undefined || value === null) {
     return '';
   }
@@ -216,7 +248,7 @@ export function renderRuntimeValue(value: RuntimeValue): string {
   if (value instanceof RuntimeArray) {
     const output: string[] = [];
     for (const item of value.values()) {
-      output.push(renderRuntimeValue(item));
+      output.push(renderRuntimeValueUnchecked(item));
     }
     return output.join(',');
   }
@@ -226,7 +258,7 @@ export function renderRuntimeValue(value: RuntimeValue): string {
   if (value instanceof RuntimeRegex) {
     return `/${value.source}/${value.flags}`;
   }
-  return '';
+  throw new TypeError('Callable values cannot be rendered');
 }
 
 /** Explicit truthiness over closed value variants. */

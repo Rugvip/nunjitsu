@@ -1,4 +1,5 @@
 import {
+  assertRuntimeValueHasNoCallable,
   RuntimeArray,
   RuntimeCallable,
   RuntimeRecord,
@@ -10,6 +11,7 @@ import {
 
 /** Converts one closed value to a primitive without invoking host behavior. */
 export function runtimeToPrimitive(value: RuntimeValue): RuntimePrimitive {
+  assertRuntimeValueHasNoCallable(value);
   if (isRuntimePrimitive(value)) {
     return value;
   }

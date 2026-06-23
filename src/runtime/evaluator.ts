@@ -931,7 +931,8 @@ class Evaluator {
       const values = arguments_.positional.map(runtimeToNumber);
       const start = values.length > 1 ? values[0]! : 0;
       const stop = values.length > 1 ? values[1]! : values[0] ?? 0;
-      const step = values[2] ?? 1;
+      const stepValue = arguments_.positional[2];
+      const step = runtimeTruthy(stepValue) ? values[2]! : 1;
       if (!Number.isFinite(start) || !Number.isFinite(stop) || !Number.isFinite(step) || step === 0) {
         return new RuntimeArray([]);
       }
@@ -959,9 +960,10 @@ class Evaluator {
       return new RuntimeCallable('builtin', id);
     }
     const id = this.#nextCallableId++;
+    const separatorValue = arguments_.positional[0];
     this.#builtinCallables.set(id, {
       type: 'joiner',
-      separator: renderRuntimeValue(arguments_.positional[0] ?? ','),
+      separator: runtimeTruthy(separatorValue) ? renderRuntimeValue(separatorValue) : ',',
       used: false,
     });
     return new RuntimeCallable('builtin', id);
@@ -1007,7 +1009,7 @@ class Evaluator {
       }
       if (definition.method === 'reset') {
         owner.index = -1;
-        return null;
+        return undefined;
       }
       if (owner.values.length === 0) {
         return undefined;

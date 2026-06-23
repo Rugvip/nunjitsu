@@ -166,6 +166,16 @@ Do not create additional packages without a documented architectural reason.
   equality semantics in closed coercion helpers that dispatch exhaustively by
   runtime value kind. Never reuse output rendering for semantic conversion or
   invoke `valueOf`, `toString`, or another host object hook.
+- Reject callable identities recursively before output rendering, string or
+  numeric coercion, serialization, capture, separator construction, scratch
+  accounting, or standard-library transformation can turn them into ordinary
+  data. Callable predicates and evaluator-owned dispatch are the only standard
+  operations that may inspect callable identities.
+- Define accepted input kinds and nullish normalization per built-in filter,
+  test, and global. Preserve pinned Nunjucks failure behavior instead of using
+  a generic empty array, record, string, zero, or false fallback for invalid
+  input, and resolve supported keyword arguments by presence rather than
+  nullishness.
 - Give each directly resolved registered or built-in global one canonical
   sealed callable handle per render. Ordinary array, record, and callable-valued
   built-in member lookup must return a fresh sealed alias carrying only the same

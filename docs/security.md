@@ -113,7 +113,11 @@ Template-controlled data is revalidated whenever its role changes:
   never invokes the registered host callback;
 - lookup, membership, derived keys, arithmetic, concatenation, and relational
   operations use centralized closed coercion rather than output rendering;
-  callable coercion fails closed;
+  callable coercion fails closed recursively before rendering, capture,
+  serialization, standard-library transformation, or separator construction;
+- built-in type failures stop evaluation, while unsupported scalar results
+  remain absent instead of becoming generic zero or empty-string values that
+  could select a different policy branch;
 - assignment, macro, filter, test, and global names originate from validated
   parser symbols and resolve through private maps;
 - macro calls bind only declared formal names at their fixed positions and the
@@ -161,7 +165,9 @@ forged by public template data, or survive the evaluator that owns them.
 Built-ins that temporarily materialize internal data as JavaScript containers
 must also prevent inherited host hooks from becoming observable. In particular,
 `dump` serializes only null-prototype records and arrays, so an inherited
-`toJSON` accessor or function cannot run during template evaluation.
+`toJSON` accessor or function cannot run during template evaluation. It rejects
+callable identities at any nesting depth rather than converting them to JSON
+`null` or omission.
 
 The built-in `random` filter uses Node's synchronous cryptographic integer
 selection. Template-controlled calls therefore neither observe nor advance the

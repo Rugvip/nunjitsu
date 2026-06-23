@@ -919,6 +919,96 @@ test('callable identities stay sealed and regular expressions cross as inert dat
   assert.equal(engine.render('clean'), 'clean');
 });
 
+test('callable identities cannot be laundered through rendering or built-ins', () => {
+  let handleCalls = 0;
+  let inspectCalls = 0;
+  let laterCalls = 0;
+  const engine = createEngine({
+    filters: {
+      inspect(value) {
+        inspectCalls += 1;
+        return value;
+      },
+    },
+    globals: {
+      handle() {
+        handleCalls += 1;
+        return 'called';
+      },
+      later() {
+        laterCalls += 1;
+        return 'later';
+      },
+    },
+  });
+  const sources = [
+    '${{ handle | string | inspect }}${{ later() }}',
+    '${{ handle | safe | inspect }}${{ later() }}',
+    '${{ [handle] | join | inspect }}${{ later() }}',
+    '${{ [[handle]] | urlencode | inspect }}${{ later() }}',
+    '${{ [handle] | dump | inspect }}${{ later() }}',
+    '${{ {"value":handle} | string | inspect }}${{ later() }}',
+    '{% macro stringify(value) %}${{ value }}{% endmacro %}${{ stringify(handle) | inspect }}${{ later() }}',
+    '{% set captured %}${{ handle }}{% endset %}${{ captured | inspect }}${{ later() }}',
+    '{% macro wrapper() %}${{ caller() }}{% endmacro %}{% call wrapper() %}${{ handle }}{% endcall %}${{ later() }}',
+    '{% set separator = joiner(handle) %}${{ separator() }}${{ separator() | inspect }}${{ later() }}',
+    '${{ handle is lower }}${{ later() }}',
+    '${{ handle is upper }}${{ later() }}',
+  ];
+  for (const source of sources) {
+    assert.throws(
+      () => engine.render(source, {}, { limits: { scratchBytes: Number.POSITIVE_INFINITY } }),
+      NunjitsuRenderError,
+      source,
+    );
+    assert.equal(handleCalls, 0, source);
+    assert.equal(inspectCalls, 0, source);
+    assert.equal(laterCalls, 0, source);
+    assert.equal(engine.render('clean'), 'clean');
+  }
+});
+
+test('standard-library failures and scalar results cannot select fail-open branches', () => {
+  let engineCalls = 0;
+  let oracleCalls = 0;
+  const engine = createEngine({
+    globals: {
+      privileged() {
+        engineCalls += 1;
+        return 'privileged';
+      },
+    },
+  });
+  const oracle = new nunjucks.Environment(undefined, { autoescape: false });
+  oracle.addGlobal('privileged', () => {
+    oracleCalls += 1;
+    return 'privileged';
+  });
+
+  for (const source of [
+    '${{ missing | string }}${{ privileged() }}',
+    '${{ null | string }}${{ privileged() }}',
+  ]) {
+    assert.throws(() => engine.render(source), NunjitsuRenderError);
+    assert.throws(() => oracle.renderString(source.replaceAll('${{', '{{'), {}));
+    assert.equal(engineCalls, 0);
+    assert.equal(oracleCalls, 0);
+    assert.equal(engine.render('clean'), 'clean');
+  }
+
+  const branchSource = [
+    '{% if true | length == 0 %}${{ privileged() }}{% endif %}',
+    '{% if [1] | urlencode == "" %}${{ privileged() }}{% endif %}',
+  ].join('');
+  assert.equal(
+    engine.render(branchSource),
+    oracle.renderString(branchSource.replaceAll('${{', '{{'), {}),
+  );
+  assert.equal(engineCalls, 0);
+  assert.equal(oracleCalls, 0);
+  assert.equal(engine.render('clean'), 'clean');
+});
+
 test('capability results cross the same closed value boundary', () => {
   const engine = createEngine({
     globals: {

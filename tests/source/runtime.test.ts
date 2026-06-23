@@ -663,6 +663,180 @@ test('implements the closed Nunjucks filter and test standard library', () => {
   );
 });
 
+test('matches closed standard-library coercion and input domains', () => {
+  const engine = createEngine({ cookiecutterCompat: true });
+  const oracle = new nunjucks.Environment(undefined, { autoescape: false });
+  const outcome = (render: () => string): readonly ['output', string] | readonly ['error'] => {
+    try {
+      return ['output', render()];
+    } catch {
+      return ['error'];
+    }
+  };
+  const inputs = [
+    'missing',
+    'null',
+    'false',
+    'true',
+    '1',
+    '"x"',
+    '[1]',
+    '{"x":1}',
+    'r/x/',
+  ];
+  const collectionFilters = [
+    'batch(2)',
+    'first',
+    'last',
+    'join',
+    'random',
+    'reverse',
+    'slice(2)',
+    'sort',
+    'sum',
+    'groupby("x")',
+    'select',
+    'reject',
+    'selectattr("x")',
+    'rejectattr("x")',
+  ];
+  for (const filter of collectionFilters) {
+    for (const input of inputs) {
+      const source = `{{ (${input}) | ${filter} | dump }}`;
+      assert.deepEqual(
+        outcome(() => engine.render(source)),
+        outcome(() => oracle.renderString(source, {})),
+        `${input} | ${filter}`,
+      );
+    }
+  }
+
+  for (const input of [...inputs, '"x" | safe']) {
+    const source = `{{ (${input}) | length | dump }}`;
+    assert.deepEqual(
+      outcome(() => engine.render(source)),
+      outcome(() => oracle.renderString(source, {})),
+      `${input} | length`,
+    );
+  }
+
+  const urlencodeInputs = [
+    '"a b"',
+    '[["a", "b"]]',
+    '[1]',
+    '["ab"]',
+    '[[1]]',
+    '[{"0":"a", "1":"b"}]',
+    '{"a":1}',
+    'missing',
+    'null',
+    'false',
+    'true',
+    '1',
+    'r/x/',
+  ];
+  for (const input of urlencodeInputs) {
+    const source = `{{ (${input}) | urlencode | dump }}`;
+    assert.deepEqual(
+      outcome(() => engine.render(source)),
+      outcome(() => oracle.renderString(source, {})),
+      `${input} | urlencode`,
+    );
+  }
+
+  const textSources = [
+    '{{ missing | string }}',
+    '{{ null | string }}',
+    '{{ false | capitalize | dump }}',
+    '{{ false | center(4) | dump }}',
+    '{{ false | indent(2) | dump }}',
+    '{{ false | lower | dump }}',
+    '{{ false | striptags | dump }}',
+    '{{ false | title | dump }}',
+    '{{ false | truncate(2) | dump }}',
+    '{{ false | upper | dump }}',
+    '{{ false | wordcount | dump }}',
+    '{{ false | replace("a", "b") | dump }}',
+    '{{ null | nl2br | dump }}',
+    '{{ true | trim }}',
+    '{{ {} | lower }}',
+    '{{ true | urlize }}',
+  ];
+  for (const source of textSources) {
+    assert.deepEqual(
+      outcome(() => engine.render(source)),
+      outcome(() => oracle.renderString(source, {})),
+      source,
+    );
+  }
+
+  const testInputs = [
+    'missing', 'null', 'false', 'true', '1', '"x"', '[1]', '{"x":1}', 'r/x/',
+  ];
+  for (const testName of ['lower', 'upper', 'iterable', 'mapping']) {
+    for (const input of testInputs) {
+      const source = `{{ (${input}) is ${testName} }}`;
+      assert.deepEqual(
+        outcome(() => engine.render(source)),
+        outcome(() => oracle.renderString(source, {})),
+        `${input} is ${testName}`,
+      );
+    }
+  }
+
+  const safeStringSource = [
+    '{{ "x" | safe | batch(2) | dump }}|',
+    '{{ "x" | safe | first | dump }}|',
+    '{{ "x" | safe | last | dump }}|',
+    '{{ "x" | safe | random | dump }}|',
+    '{{ "x" | safe | reverse | dump }}|',
+    '{{ "x" | safe | slice(2) | dump }}|',
+    '{{ "x" | safe | sort | dump }}|',
+    '{{ "x" | safe | select | dump }}|',
+    '{{ "x" | safe | reject | dump }}|',
+    '{{ "x" | safe is lower }}:{{ "x" | safe is upper }}:',
+    '{{ "x" | safe is iterable }}:{{ "x" | safe is mapping }}',
+  ].join('');
+  assert.equal(
+    engine.render(safeStringSource),
+    '[["x"]]|"x"|"x"|"x"|"x"|["x",""]|["x"]|["x"]|[]|false:false:true:true',
+  );
+
+  const keywordAndGlobalSource = [
+    '[{{ "x" | center(4) }}]|',
+    '{{ "ff" | int(base=16) }}:',
+    '{{ "bad" | int(default=7, base=10) }}|',
+    '{{ "" | default("fallback", boolean=true) }}|',
+    '{% set separator = joiner(false) %}{{ separator() }}{{ separator() }}|',
+    '{{ range(0, 3, 0) | join }}',
+  ].join('');
+  assert.equal(
+    engine.render(keywordAndGlobalSource),
+    oracle.renderString(keywordAndGlobalSource, {}),
+  );
+
+  const resetValues: unknown[] = [];
+  const oracleResetValues: unknown[] = [];
+  const resetEngine = createEngine({
+    cookiecutterCompat: true,
+    filters: {
+      inspect(value) {
+        resetValues.push(value);
+        return value === undefined ? 'undefined' : 'other';
+      },
+    },
+  });
+  oracle.addFilter('inspect', (value: unknown) => {
+    oracleResetValues.push(value);
+    return value === undefined ? 'undefined' : 'other';
+  });
+  const resetSource = '{% set values = cycler(1) %}{{ values.reset() | inspect }}';
+  assert.equal(resetEngine.render(resetSource), oracle.renderString(resetSource, {}));
+  assert.deepEqual(resetValues, [undefined]);
+  assert.deepEqual(oracleResetValues, resetValues);
+  assert.equal(engine.render('clean'), 'clean');
+});
+
 test('selects random values without consuming the host Math.random stream', t => {
   let mathRandomCalls = 0;
   t.mock.method(Math, 'random', () => {
