@@ -1358,6 +1358,41 @@ test('standard-library failures and scalar results cannot select fail-open branc
   assert.equal(engine.render('clean'), 'clean');
 });
 
+test('numeric filter arguments cannot desynchronize capability branches', () => {
+  let engineCalls = 0;
+  let oracleCalls = 0;
+  const engine = createEngine({
+    globals: {
+      privileged() {
+        engineCalls += 1;
+        return 'privileged';
+      },
+    },
+  });
+  const oracle = new nunjucks.Environment(undefined, { autoescape: false });
+  oracle.addGlobal('privileged', () => {
+    oracleCalls += 1;
+    return 'privileged';
+  });
+  const sources = [
+    '{% if missing | center("invalid") %}${{ privileged() }}{% endif %}',
+    '{% if "aaaa" | replace("a", "x", -1.5) == "xxxx" %}${{ privileged() }}{% endif %}',
+    '{% if "one two three" | truncate(-1) == "one two thre..." %}${{ privileged() }}{% endif %}',
+    '{% if "http://example.com/path" | urlize(-1) == "<a href=\\"http://example.com/path\\">http://example.com/pat</a>" %}${{ privileged() }}{% endif %}',
+  ];
+  for (const source of sources) {
+    assert.equal(engine.render(source), '', source);
+    assert.equal(
+      oracle.renderString(source.replaceAll('${{', '{{'), {}),
+      '',
+      source,
+    );
+    assert.equal(engineCalls, 0, source);
+    assert.equal(oracleCalls, 0, source);
+    assert.equal(engine.render('clean'), 'clean', source);
+  }
+});
+
 test('built-in value types cannot desynchronize capability branches', () => {
   let engineCalls = 0;
   let oracleCalls = 0;

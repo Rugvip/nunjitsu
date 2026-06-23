@@ -122,6 +122,10 @@ Template-controlled data is revalidated whenever its role changes:
   comparison or addition at the same observable points as pinned Nunjucks, so
   eager numeric or string conversion cannot change strict branches or switch
   selection;
+- numeric filter arguments retain their closed values through default
+  selection and use filter-specific repeat, substring, replacement, URL,
+  exponent, and JSON-spacing semantics, preventing eager normalization from
+  selecting a different capability-bearing branch;
 - assignment, macro, direct filter, direct test, and global names originate
   from validated parser symbols and resolve through private maps; dynamic test
   names accepted by selection filters are checked against the closed registry

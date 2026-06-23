@@ -36,6 +36,7 @@ const wwwUrlPattern = /^www\./;
 const emailAddressPattern = /^[\w.!#$%&'*+\-/=?^`{|}~]+@[a-z\d-]+(?:\.[a-z\d-]+)+$/i;
 const commonDomainPattern = /\.(?:org|net|com)(?::|\/|$)/;
 const htmlEscapeCharacterPattern = /[&"'<>\\]/g;
+const maximumRepeatedSpaces = 16 * 1024 * 1024;
 const htmlEscapeReplacements: Readonly<Record<string, string>> = Object.freeze({
   '&': '&amp;', '"': '&quot;', "'": '&#39;', '<': '&lt;', '>': '&gt;', '\\': '&#92;',
 });
@@ -122,14 +123,15 @@ export function applyBuiltinFilter(
   }
   if (name === 'center') {
     const text = normalizedRuntimeText(input);
-    const width = runtimeToNumber(positional[0] ?? 80) || 80;
+    const widthValue = runtimeTruthy(positional[0]) ? positional[0] : 80;
+    const width = runtimeToNumber(widthValue);
     if (text.length >= width) {
       return copySafeness(input, text);
     }
     const spaces = width - text.length;
     return copySafeness(
       input,
-      ' '.repeat(Math.floor(spaces / 2)) + text + ' '.repeat(Math.ceil(spaces / 2)),
+      repeatSpaces(spaces / 2 - spaces % 2) + text + repeatSpaces(spaces / 2),
     );
   }
   if (name === 'default' || name === 'd') {
@@ -142,7 +144,7 @@ export function applyBuiltinFilter(
     return dictsortRuntimeValues(input, positional);
   }
   if (name === 'dump') {
-    const spacing = positional[0] === undefined ? undefined : runtimeToNumber(positional[0]);
+    const spacing = jsonIndentation(positional[0]);
     return JSON.stringify(toJsonValue(input), null, spacing);
   }
   if (name === 'escape' || name === 'e') {
@@ -203,10 +205,10 @@ export function applyBuiltinFilter(
     if (text === '') {
       return '';
     }
-    const width = Math.max(0, Math.trunc(runtimeToNumber(positional[0] ?? 4) || 4));
+    const widthValue = runtimeTruthy(positional[0]) ? positional[0] : 4;
     const indentFirst = runtimeTruthy(positional[1]);
     const lines = text.split('\n');
-    const indentation = ' '.repeat(width);
+    const indentation = repeatSpaces(runtimeToNumber(widthValue));
     for (let index = indentFirst ? 0 : 1; index < lines.length; index += 1) {
       lines[index] = `${indentation}${lines[index]}`;
     }
@@ -233,7 +235,8 @@ export function applyBuiltinFilter(
     return replaceRuntimeValue(input, positional);
   }
   if (name === 'round') {
-    const precision = Math.trunc(runtimeToNumber(positional[0] ?? 0));
+    const precisionValue = runtimeTruthy(positional[0]) ? positional[0] : 0;
+    const precision = runtimeToNumber(precisionValue);
     const factor = 10 ** precision;
     const method = runtimeToString(positional[1]);
     const rounder = method === 'ceil' ? Math.ceil : method === 'floor' ? Math.floor : Math.round;
@@ -440,7 +443,7 @@ function replaceRuntimeValue(
 ): RuntimeValue {
   const search = positional[0];
   const replacement = runtimeToString(positional[1]);
-  const maximum = positional[2] === undefined ? -1 : Math.trunc(runtimeToNumber(positional[2]));
+  const maximumValue = positional[2] === undefined ? -1 : positional[2];
   let text: string;
   if (typeof input === 'number') {
     text = runtimeToString(input);
@@ -463,14 +466,14 @@ function replaceRuntimeValue(
     return input;
   } else {
     const needle = runtimeToString(search);
-    if (maximum === 0) {
-      return input;
-    }
     if (needle === '') {
       output = `${replacement}${text.split('').join(replacement)}${replacement}`;
-    } else if (maximum < 0) {
+    } else if (maximumValue === 0) {
+      return input;
+    } else if (maximumValue === -1) {
       output = text.split(needle).join(replacement);
     } else {
+      const maximum = runtimeToNumber(maximumValue);
       let remaining = text;
       const chunks: string[] = [];
       for (let count = 0; count < maximum; count += 1) {
@@ -530,16 +533,17 @@ function truncateRuntimeValue(
   positional: readonly RuntimeValue[],
 ): RuntimeValue {
   const text = normalizedRuntimeText(input);
-  const length = Math.trunc(runtimeToNumber(positional[0] ?? 255)) || 255;
+  const lengthValue = runtimeTruthy(positional[0]) ? positional[0] : 255;
+  const length = runtimeToNumber(lengthValue);
   if (text.length <= length) {
     return copySafeness(input, text);
   }
   let truncated: string;
   if (runtimeTruthy(positional[1])) {
-    truncated = text.slice(0, length);
+    truncated = text.substring(0, length);
   } else {
     const index = text.lastIndexOf(' ', length);
-    truncated = text.slice(0, index < 0 ? length : index);
+    truncated = text.substring(0, index < 0 ? length : index);
   }
   const end = positional[2] === undefined || positional[2] === null
     ? '...'
@@ -590,8 +594,7 @@ function urlizeRuntimeValue(
   input: RuntimeValue,
   positional: readonly RuntimeValue[],
 ): string {
-  const lengthValue = runtimeToNumber(positional[0]);
-  const length = Number.isNaN(lengthValue) ? Number.POSITIVE_INFINITY : lengthValue;
+  const length = substrLength(positional[0]);
   const nofollow = positional[1] === true ? ' rel="nofollow"' : '';
   const output: string[] = [];
   for (const word of runtimeText(input).split(urlizeSeparatorPattern)) {
@@ -635,6 +638,43 @@ function normalizedRuntimeText(input: RuntimeValue): string {
     return '';
   }
   return runtimeText(input);
+}
+
+function repeatSpaces(bound: number): string {
+  if (Number.isNaN(bound) || bound <= 0) {
+    return '';
+  }
+  if (!Number.isFinite(bound) || bound > maximumRepeatedSpaces) {
+    throw new RangeError('Filter spacing exceeds the supported bound');
+  }
+  return ' '.repeat(Math.ceil(bound));
+}
+
+function substrLength(value: RuntimeValue): number {
+  if (value === undefined || (typeof value === 'number' && Number.isNaN(value))) {
+    return Number.POSITIVE_INFINITY;
+  }
+  const number = runtimeToNumber(value);
+  if (Number.isNaN(number) || number <= 0) {
+    return 0;
+  }
+  return Number.isFinite(number) ? Math.trunc(number) : number;
+}
+
+function jsonIndentation(value: RuntimeValue): number | string | undefined {
+  if (typeof value === 'string') {
+    return value.slice(0, 10);
+  }
+  if (value instanceof RuntimeSafeString) {
+    return value.value.slice(0, 10);
+  }
+  if (typeof value !== 'number') {
+    return undefined;
+  }
+  if (Number.isNaN(value) || value <= 0) {
+    return undefined;
+  }
+  return Math.min(10, Math.trunc(value));
 }
 
 function runtimeSequenceValues(input: RuntimeValue): RuntimeValue[] | undefined {

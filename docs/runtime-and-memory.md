@@ -98,6 +98,17 @@ only then adds the original start value. `joiner` retains its original truthy
 separator value and returns that exact closed value after its first call.
 Coercion therefore occurs only at a later operation that actually requires it.
 
+Numeric filter arguments follow the same rule without sharing one generic
+integer conversion. `center`, `indent`, and `truncate` select defaults from the
+original closed value before numeric use. Spacing reproduces Nunjucks's finite
+repeat-loop rounding with a hard bound; truncation uses closed numeric values at
+the `substring` and `lastIndexOf` operations. Replacement preserves exact `-1`
+as its unlimited sentinel and compares an integer counter against every other
+bound without pre-truncation. URL labels model `substr`, round precision flows
+directly into exponentiation, and JSON indentation accepts only closed number
+or string values with native JSON limits. The stricter positive-integer input
+contracts for `batch` and `slice` remain intentional security deviations.
+
 Standalone blocks retain only the isolated scope needed to evaluate their own
 body and to bind macros with Nunjucks-compatible scope behavior. The evaluator
 has no parent-definition chains, block indices, inheritance merging, or sealed

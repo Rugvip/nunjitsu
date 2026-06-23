@@ -518,6 +518,24 @@
       "expected": "1:true|[1,2]:true|{\"x\":1}:true|false:true"
     },
     {
+      "id": "filters-numeric-center-indent",
+      "template": "{{ \"x\" | center(\"0\") | dump }}|{{ \"\" | center(\"invalid\") | dump }}|{{ \"\" | center([]) | dump }}|{{ \"\" | center({}) | dump }}|{{ false | center(\"invalid\") | dump }}:{{ null | center(\"invalid\") | dump }}:{{ missing | center(\"invalid\") | dump }}|{{ \"x\" | center(3.5) | dump }}|{{ \"a\\nb\" | indent(\"0\", true) | dump }}|{{ \"a\\nb\" | indent(1.5, true) | dump }}|{{ \"a\\nb\" | indent(\"invalid\", true) | dump }}",
+      "context": {},
+      "expected": "\"x\"|\"\"|\"\"|\"\"|\"\":\"\":\"\"|\" x  \"|\"a\\nb\"|\"  a\\n  b\"|\"a\\nb\""
+    },
+    {
+      "id": "filters-numeric-truncate-replace",
+      "template": "{{ \"one two three\" | truncate(-1) | dump }}|{{ \"one two three\" | truncate(1.5, true) | dump }}|{{ \"one two three\" | truncate(\"0\", true) | dump }}|{{ \"one two three\" | truncate(\"invalid\", true) | dump }}|{{ \"one two three\" | truncate(\"invalid\", false) | dump }}|{{ \"one two three\" | truncate([], true) | dump }}|{{ \"one two three\" | truncate({}, true) | dump }}|{{ \"a-a-a\" | replace(\"a\", \"x\", -1) }}:{{ \"a-a-a\" | replace(\"a\", \"x\", -1.5) }}:{{ \"a-a-a\" | replace(\"a\", \"x\", 0) }}:{{ \"a-a-a\" | replace(\"a\", \"x\", 0.5) }}:{{ \"a-a-a\" | replace(\"a\", \"x\", 1.5) }}:{{ \"a-a-a\" | replace(\"a\", \"x\", \"1.5\") }}:{{ \"ab\" | replace(\"\", \"-\", 0) }}",
+      "context": {},
+      "expected": "\"...\"|\"o...\"|\"...\"|\"...\"|\"one two...\"|\"...\"|\"...\"|x-x-x:a-a-a:a-a-a:x-a-a:x-x-a:x-x-a:-a-b-"
+    },
+    {
+      "id": "filters-numeric-urlize-round-dump",
+      "template": "{{ \"http://example.com/path\" | urlize(-1) }}|{{ \"http://example.com/path\" | urlize(\"invalid\") }}|{{ \"http://example.com/path\" | urlize(missing) }}|{{ \"http://example.com/path\" | urlize(1.5) }}|{{ \"http://example.com/path\" | urlize(0 / 0) }}|{{ 1.2345 | round(1.5) }}|N{{ [1,2] | dump(2.5) }}|S{{ [1,2] | dump(\"a\") }}|L{{ [1,2] | dump(\"abcdefghijk\") }}",
+      "context": {},
+      "expected": "<a href=\"http://example.com/path\"></a>|<a href=\"http://example.com/path\"></a>|<a href=\"http://example.com/path\">http://example.com/path</a>|<a href=\"http://example.com/path\">h</a>|<a href=\"http://example.com/path\">http://example.com/path</a>|1.2332882874656679|N[\n  1,\n  2\n]|S[\na1,\na2\n]|L[\nabcdefghij1,\nabcdefghij2\n]"
+    },
+    {
       "id": "compiler-regex-literal",
       "template": "{{ r/name [0-9] \\// }}",
       "context": {},

@@ -67,8 +67,11 @@ failures. Standard-library regressions compare collection and text input domains
 nullish failure behavior, scalar length results, URL-encoding pair lookup,
 safe-string adaptations, keyword arguments, stateful globals, capability order,
 callable-laundering attempts, and type preservation across `range`, `sum`, and
-`joiner`. Standalone-block tests cover unresolved `super`, alias/container and
-capture paths, configured-name behavior, macro-only call-block targets, and
+`joiner`. Shared numeric-filter cases cover original-value defaults, fractional
+repeat bounds, substring and replacement limits, URL label lengths, fractional
+precision, and number/string JSON indentation. Standalone-block tests cover
+unresolved `super`, alias/container and capture paths, configured-name
+behavior, macro-only call-block targets, and
 caller-handle confinement. Validation-order tests cover effectful call-block
 targets, non-macro targets, unknown filters and tests, empty selection inputs,
 known-operation operand order, no partial output, and clean recovery. Static

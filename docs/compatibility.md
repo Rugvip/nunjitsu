@@ -48,6 +48,8 @@ Nunjitsu targets:
   fail-before-later-capability behavior over the closed value model;
 - type-preserving `range`, `sum`, and `joiner` behavior, including JavaScript-
   style ordered comparison and addition without eager normalization;
+- Nunjucks-specific numeric argument behavior for spacing, truncation,
+  replacement limits, URL labels, round precision, and JSON indentation;
 - synchronous application filters and `TemplateValue` data or callable globals;
 - `trimBlocks` and `lstripBlocks`; and
 - fixed `autoescape: false` behavior.
@@ -87,6 +89,15 @@ invalid, and built-in tests enforce exact arity. Macro-to-macro caller
 forwarding, the `callable` test, and closed callable identity comparisons remain
 supported because they preserve authority inside explicit interpreter-owned
 semantics rather than discarding or transforming it.
+
+Numeric filter arguments are not normalized through one integer helper.
+Nunjitsu preserves the original closed value until each filter reaches the
+specific JavaScript operation represented by pinned Nunjucks: repeat-loop
+bounds for `center` and `indent`, `substring` positions for `truncate`, direct
+counter comparison for `replace`, `substr` length for `urlize`, exponent
+precision for `round`, and JSON number/string indentation for `dump`. Infinite
+spacing fails closed instead of reproducing an unbounded upstream loop. The
+documented positive-integer restrictions for `batch` and `slice` are unchanged.
 
 Safe strings are internal text values rather than emulations of Nunjucks's
 prototype-bearing JavaScript `String` wrapper. Collection filters therefore

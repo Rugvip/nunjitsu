@@ -197,6 +197,11 @@ Do not create additional packages without a documented architectural reason.
   and addition, `sum` with ordered closed addition, and `joiner` separators as
   original runtime values; never normalize their state eagerly to numbers or
   strings.
+- Preserve filter arguments through original-value defaulting and apply the
+  operation-specific numeric rule only where Nunjucks performs it. Do not share
+  one integer normalization across repeat-loop bounds, substring positions,
+  replacement limits, URL label lengths, round precision, and JSON indentation.
+  Keep the deliberate positive-integer validation for `batch` and `slice`.
 - Give each directly resolved registered or built-in global one canonical
   sealed callable handle per render. Ordinary array, record, and callable-valued
   built-in member lookup must return a fresh sealed alias carrying only the same

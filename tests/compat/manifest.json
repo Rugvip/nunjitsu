@@ -1282,7 +1282,8 @@
     },
     {
       "upstream": {"id":"tests/filters.js:4","file":"tests/filters.js","test":"center"},
-      "status": "ported"
+      "status": "ported",
+      "cases": ["filters-numeric-center-indent"]
     },
     {
       "upstream": {"id":"tests/filters.js:5","file":"tests/filters.js","test":"default"},
@@ -1343,7 +1344,8 @@
     },
     {
       "upstream": {"id":"tests/filters.js:22","file":"tests/filters.js","test":"indent"},
-      "status": "ported"
+      "status": "ported",
+      "cases": ["filters-numeric-center-indent"]
     },
     {
       "upstream": {"id":"tests/filters.js:23","file":"tests/filters.js","test":"join"},
@@ -1367,7 +1369,8 @@
     },
     {
       "upstream": {"id":"tests/filters.js:51","file":"tests/filters.js","test":"round"},
-      "status": "ported"
+      "status": "ported",
+      "cases": ["filters-numeric-urlize-round-dump"]
     },
     {
       "upstream": {"id":"tests/filters.js:53","file":"tests/filters.js","test":"sum"},
@@ -1506,7 +1509,8 @@
     },
     {
       "upstream": {"id":"tests/filters.js:6","file":"tests/filters.js","test":"dump"},
-      "status": "ported"
+      "status": "ported",
+      "cases": ["filters-numeric-urlize-round-dump"]
     },
     {
       "upstream": {"id":"tests/filters.js:56","file":"tests/filters.js","test":"striptags"},
@@ -1514,7 +1518,8 @@
     },
     {
       "upstream": {"id":"tests/filters.js:59","file":"tests/filters.js","test":"truncate"},
-      "status": "ported"
+      "status": "ported",
+      "cases": ["filters-numeric-truncate-replace"]
     },
     {
       "upstream": {"id":"tests/filters.js:61","file":"tests/filters.js","test":"urlencode"},
@@ -1530,11 +1535,13 @@
     },
     {
       "upstream": {"id":"tests/filters.js:49","file":"tests/filters.js","test":"replace"},
-      "status": "ported"
+      "status": "ported",
+      "cases": ["filters-numeric-truncate-replace"]
     },
     {
       "upstream": {"id":"tests/filters.js:63","file":"tests/filters.js","test":"urlize"},
-      "status": "ported"
+      "status": "ported",
+      "cases": ["filters-numeric-urlize-round-dump"]
     },
     {
       "upstream": {"id":"tests/tests.js:1","file":"tests/tests.js","test":"callable should detect callability"},
