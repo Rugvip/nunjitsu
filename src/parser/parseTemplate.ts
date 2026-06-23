@@ -1,24 +1,29 @@
 import { formatDiagnosticValue } from '../diagnostics.ts';
 import { NunjitsuLimitError } from '../limits.ts';
-import type { AstCaseNode, AstNode } from './ast.ts';
+import { isAstNode, type AstCaseNode, type AstNode } from './ast.ts';
 import { ExpressionParser, ExpressionSyntaxError } from './expression.ts';
+import { scanIdentifier } from './scanIdentifier.ts';
+import { RegexLiteralSyntaxError, scanRegexLiteral } from './scanRegexLiteral.ts';
+import {
+  isCodeWhitespace,
+  isTemplateWhitespace,
+  trimCodeWhitespace,
+  trimCodeWhitespaceStart,
+} from './whitespace.ts';
 
-const macroSignaturePattern = /^([A-Za-z_][A-Za-z0-9_]*)\s*\(([\s\S]*)\)$/;
-const trailingWhitespacePattern = /[\t\n\r ]+$/;
-const leadingWhitespacePattern = /^[\t\n\r ]+/;
-const optionalLeadingWhitespacePattern = /^[\t\n\r ]*/;
+const macroSignaturePattern = /^([A-Za-z_][A-Za-z0-9_]*)[ \t\n\r\u00a0]*\(([^]*)\)$/;
+const trailingWhitespacePattern = /\s+$/;
+const optionalLeadingWhitespacePattern = /^\s*/;
 const leadingNewlinePattern = /^(?:\r?\n)/;
-const rawEndPattern = /{%-?\s*endraw\s*(-?)%}/g;
-const verbatimEndPattern = /{%-?\s*endverbatim\s*(-?)%}/g;
-const indentationPattern = /^[\t ]*$/;
+const indentationPattern = /^\s*$/;
 const tagNamePattern = /^[A-Za-z_][A-Za-z0-9_]*/;
-const whitespacePattern = /\s/;
 const emptyStructuralTags = new Set([
   'else',
   'endif',
   'endfor',
   'endmacro',
   'endcall',
+  'endfilter',
   'endset',
   'default',
   'endswitch',
@@ -83,6 +88,10 @@ export function parseTemplate(
     }
     if (error instanceof ExpressionSyntaxError) {
       throw new NunjitsuParseError(error.message, error.line, error.column);
+    }
+    if (error instanceof RegexLiteralSyntaxError) {
+      const position = sourcePosition(source, error.offset);
+      throw new NunjitsuParseError(error.message, position.line, position.column);
     }
     throw new NunjitsuParseError('Invalid template syntax');
   }
@@ -171,6 +180,8 @@ class TemplateParser {
         return this.#parseMacro(remainder, token);
       case 'call':
         return this.#parseCall(remainder, token);
+      case 'filter':
+        return this.#parseFilterBlock(remainder, token);
       case 'block':
         return this.#parseBlock(remainder, token);
       case 'switch':
@@ -187,13 +198,13 @@ class TemplateParser {
 
   #parseIf(conditionSource: string, token: TemplateToken): AstNode {
     const condition = this.#expression(conditionSource, token);
-    const parsed = this.#parseBody(new Set(['elif', 'else', 'endif']));
+    const parsed = this.#parseBody(new Set(['elif', 'elseif', 'else', 'endif']));
     if (!parsed.stop) {
       this.#fail('Missing endif tag', token);
     }
     const stopName = tagName(parsed.stop.value);
     let otherwise: AstNode | undefined;
-    if (stopName === 'elif') {
+    if (stopName === 'elif' || stopName === 'elseif') {
       otherwise = this.#parseIf(tagRemainder(parsed.stop.value), parsed.stop);
     } else if (stopName === 'else') {
       const alternate = this.#parseBody(new Set(['endif']));
@@ -242,12 +253,15 @@ class TemplateParser {
     if (!parsed.stop) {
       this.#fail('Missing endset tag', token);
     }
+    if (containsMacroDeclaration(parsed.body)) {
+      this.#fail('Macro declarations are not supported inside set captures', token);
+    }
     const capture = this.#make('Capture', { body: parsed.body }, token);
     return this.#make('Set', { targets, body: capture }, token);
   }
 
   #parseMacro(header: string, token: TemplateToken): AstNode {
-    const signature = macroSignaturePattern.exec(header.trim());
+    const signature = macroSignaturePattern.exec(trimCodeWhitespace(header));
     if (!signature) {
       this.#fail('Invalid macro signature', token);
     }
@@ -265,14 +279,14 @@ class TemplateParser {
 
   #parseCall(header: string, token: TemplateToken): AstNode {
     let callerArguments = '';
-    let callSource = header.trim();
+    let callSource = trimCodeWhitespace(header);
     if (callSource.startsWith('(')) {
       const closing = findMatchingParenthesis(callSource, 0);
       if (closing < 0) {
         this.#fail('Invalid call-block arguments', token);
       }
       callerArguments = callSource.slice(1, closing);
-      callSource = callSource.slice(closing + 1).trim();
+      callSource = trimCodeWhitespace(callSource.slice(closing + 1));
     }
     const call = this.#expression(callSource, token);
     if (call.type !== 'FunCall' || call.args.type !== 'NodeList') {
@@ -294,8 +308,27 @@ class TemplateParser {
     return this.#make('CallBlock', { call, caller }, token);
   }
 
+  #parseFilterBlock(header: string, token: TemplateToken): AstNode {
+    const parsed = this.#parseBody(new Set(['endfilter']));
+    if (!parsed.stop) {
+      this.#fail('Missing endfilter tag', token);
+    }
+    if (containsMacroDeclaration(parsed.body)) {
+      this.#fail('Macro declarations are not supported inside filter captures', token);
+    }
+    const capture = this.#make('Capture', { body: parsed.body }, token);
+    const filter = new ExpressionParser(
+      header,
+      token.line,
+      token.column,
+      node => this.#freezeNode(node),
+      this.#maximumDepth,
+    ).parseFilterInvocation(capture);
+    return this.#make('Output', { children: Object.freeze([filter]) }, token);
+  }
+
   #parseBlock(header: string, token: TemplateToken): AstNode {
-    const name = this.#expression(header.trim(), token);
+    const name = this.#expression(trimCodeWhitespace(header), token);
     if (name.type !== 'Symbol') {
       this.#fail('Block name must be an identifier', token);
     }
@@ -332,6 +365,9 @@ class TemplateParser {
     if (!next.stop || tagName(next.stop.value) !== 'endswitch') {
       this.#fail('Missing endswitch tag', token);
     }
+    if (cases.length === 0 && fallback === undefined) {
+      this.#fail('Switch requires at least one case or default', token);
+    }
     return this.#make('Switch', {
       expr: expression,
       cases: Object.freeze(cases),
@@ -360,7 +396,7 @@ class TemplateParser {
   }
 
   #signature(source: string, token: TemplateToken): AstNode {
-    if (source.trim() === '') {
+    if (trimCodeWhitespace(source) === '') {
       return this.#make('NodeList', { children: Object.freeze([]) }, token);
     }
     return new ExpressionParser(
@@ -483,7 +519,7 @@ function scanTemplate(source: string, options: ParseOptions): readonly TemplateT
       advance('-');
     }
     const close = opening.kind === 'block' ? '%}' : opening.kind === 'comment' ? '#}' : '}}';
-    const end = findTagEnd(source, index, close);
+    const end = findTagEnd(source, index, close, opening.kind !== 'comment');
     if (end < 0) {
       throw new NunjitsuParseError(`Unterminated ${opening.kind} tag`, startLine, startColumn);
     }
@@ -495,7 +531,9 @@ function scanTemplate(source: string, options: ParseOptions): readonly TemplateT
     if (opening.kind !== 'comment') {
       const token = Object.freeze({
         kind: opening.kind,
-        value: content.trim(),
+        value: opening.kind === 'variable'
+          ? trimCodeWhitespaceStart(content)
+          : trimCodeWhitespace(content),
         line: startLine,
         column: startColumn,
       } as TemplateToken);
@@ -516,19 +554,17 @@ function scanTemplate(source: string, options: ParseOptions): readonly TemplateT
             startColumn,
           );
         }
-        let raw = source.slice(index, closing.start);
-        if (rightTrim) {
-          raw = raw.replace(leadingWhitespacePattern, '');
+        if (closing.terminalLineBreak) {
+          const position = sourcePosition(source, closing.start);
+          throw new NunjitsuParseError(
+            `${rawName} closing tag cannot contain a line break`,
+            position.line,
+            position.column,
+          );
         }
-        appendText(raw);
-        if (closing.leftTrim) {
-          pendingText = pendingText.replace(trailingWhitespacePattern, '');
-        }
+        appendText(source.slice(index, closing.start));
         advance(source.slice(index, closing.end));
-        if (closing.rightTrim) {
-          const whitespace = optionalLeadingWhitespacePattern.exec(source.slice(index))![0];
-          advance(whitespace);
-        } else if (options.trimBlocks) {
+        if (options.trimBlocks) {
           const newline = leadingNewlinePattern.exec(source.slice(index))?.[0];
           if (newline) {
             advance(newline);
@@ -567,17 +603,21 @@ function nextOpening(
   return candidates[0];
 }
 
-function findTagEnd(source: string, start: number, close: string): number {
+function findTagEnd(
+  source: string,
+  start: number,
+  close: string,
+  scanRegex: boolean,
+): number {
   let quote: string | undefined;
   let escaped = false;
-  let regex = false;
   for (let index = start; index <= source.length - close.length; index += 1) {
     const character = source[index]!;
     if (escaped) {
       escaped = false;
       continue;
     }
-    if ((quote || regex) && character === '\\') {
+    if (quote && character === '\\') {
       escaped = true;
       continue;
     }
@@ -587,20 +627,21 @@ function findTagEnd(source: string, start: number, close: string): number {
       }
       continue;
     }
-    if (regex) {
-      if (character === '/') {
-        regex = false;
-      }
-      continue;
-    }
     if (character === '"' || character === "'") {
       quote = character;
       continue;
     }
-    if (character === 'r' && source[index + 1] === '/') {
-      regex = true;
-      index += 1;
-      continue;
+    if (scanRegex) {
+      const identifier = scanIdentifier(source, index);
+      if (identifier) {
+        if (identifier.value === 'r' && source[identifier.end] === '/') {
+          const regex = scanRegexLiteral(source, index);
+          index = regex.end - 1;
+        } else {
+          index = identifier.end - 1;
+        }
+        continue;
+      }
     }
     if (source.startsWith(close, index)) {
       return index;
@@ -609,23 +650,101 @@ function findTagEnd(source: string, start: number, close: string): number {
   return -1;
 }
 
+function sourcePosition(
+  source: string,
+  offset: number,
+): { readonly line: number; readonly column: number } {
+  let line = 0;
+  let column = 0;
+  for (let index = 0; index < offset; index += 1) {
+    if (source[index] === '\n') {
+      line += 1;
+      column = 0;
+    } else {
+      column += 1;
+    }
+  }
+  return { line, column };
+}
+
 function findRawEnd(
   source: string,
   start: number,
   name: 'raw' | 'verbatim',
-): { readonly start: number; readonly end: number; readonly leftTrim: boolean; readonly rightTrim: boolean } | undefined {
-  const pattern = name === 'raw' ? rawEndPattern : verbatimEndPattern;
-  pattern.lastIndex = start;
-  const match = pattern.exec(source);
-  if (!match) {
+): {
+  readonly start: number;
+  readonly end: number;
+  readonly terminalLineBreak: boolean;
+} | undefined {
+  let depth = 1;
+  let index = start;
+  while (index < source.length) {
+    const markerStart = source.indexOf('{%', index);
+    if (markerStart < 0) {
+      return undefined;
+    }
+    const marker = scanRawMarker(source, markerStart, name);
+    if (!marker) {
+      index = markerStart + 2;
+      continue;
+    }
+    if (marker.kind === 'open') {
+      depth += 1;
+    } else {
+      depth -= 1;
+      if (depth === 0) {
+        return {
+          start: markerStart,
+          end: marker.end,
+          terminalLineBreak: marker.hasLineBreak,
+        };
+      }
+    }
+    index = marker.end;
+  }
+  return undefined;
+}
+
+function scanRawMarker(
+  source: string,
+  start: number,
+  name: 'raw' | 'verbatim',
+): {
+  readonly kind: 'open' | 'close';
+  readonly end: number;
+  readonly hasLineBreak: boolean;
+} | undefined {
+  let index = start + 2;
+  if (source[index] === '-') {
     return undefined;
   }
-  return {
-    start: match.index,
-    end: pattern.lastIndex,
-    leftTrim: source.startsWith('{%-', match.index),
-    rightTrim: match[1] === '-',
-  };
+  while (isTemplateWhitespace(source[index])) {
+    index += 1;
+  }
+  const closingName = `end${name}`;
+  let kind: 'open' | 'close';
+  if (source.startsWith(closingName, index)) {
+    kind = 'close';
+    index += closingName.length;
+  } else if (source.startsWith(name, index)) {
+    kind = 'open';
+    index += name.length;
+  } else {
+    return undefined;
+  }
+  while (isTemplateWhitespace(source[index])) {
+    index += 1;
+  }
+  if (source.startsWith('%}', index)) {
+    const end = index + 2;
+    const marker = source.slice(start, end);
+    return {
+      kind,
+      end,
+      hasLineBreak: marker.includes('\n'),
+    };
+  }
+  return undefined;
 }
 
 function stripBlockIndent(value: string): string {
@@ -635,11 +754,11 @@ function stripBlockIndent(value: string): string {
 }
 
 function tagName(value: string): string {
-  return tagNamePattern.exec(value.trim())?.[0] ?? '';
+  return tagNamePattern.exec(trimCodeWhitespace(value))?.[0] ?? '';
 }
 
 function tagRemainder(value: string): string {
-  return value.trim().slice(tagName(value).length).trim();
+  return trimCodeWhitespace(trimCodeWhitespace(value).slice(tagName(value).length));
 }
 
 function splitKeyword(
@@ -667,12 +786,12 @@ function splitKeyword(
     } else if (
       depth === 0 &&
       source.slice(index, index + keyword.length) === keyword &&
-      whitespacePattern.test(source[index - 1] ?? ' ') &&
-      whitespacePattern.test(source[index + keyword.length] ?? ' ')
+      isCodeWhitespace(source[index - 1] ?? ' ') &&
+      isCodeWhitespace(source[index + keyword.length] ?? ' ')
     ) {
       return {
-        left: source.slice(0, index).trim(),
-        right: source.slice(index + keyword.length).trim(),
+        left: trimCodeWhitespace(source.slice(0, index)),
+        right: trimCodeWhitespace(source.slice(index + keyword.length)),
       };
     }
   }
@@ -723,4 +842,23 @@ function findMatchingParenthesis(source: string, start: number): number {
     }
   }
   return -1;
+}
+
+function containsMacroDeclaration(node: AstNode): boolean {
+  if (node.type === 'Macro') {
+    return true;
+  }
+  for (const value of Object.values(node)) {
+    if (isAstNode(value) && containsMacroDeclaration(value)) {
+      return true;
+    }
+    if (Array.isArray(value)) {
+      for (const child of value) {
+        if (isAstNode(child) && containsMacroDeclaration(child)) {
+          return true;
+        }
+      }
+    }
+  }
+  return false;
 }

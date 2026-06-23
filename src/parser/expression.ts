@@ -2,6 +2,9 @@ import { formatDiagnosticValue } from '../diagnostics.ts';
 import { NunjitsuLimitError } from '../limits.ts';
 import { isReservedName } from '../runtime/value.ts';
 import type { AstNode, AstRegexLiteral } from './ast.ts';
+import { scanIdentifier } from './scanIdentifier.ts';
+import { RegexLiteralSyntaxError, scanRegexLiteral } from './scanRegexLiteral.ts';
+import { isCodeWhitespace } from './whitespace.ts';
 
 interface Token {
   readonly kind: 'eof' | 'name' | 'number' | 'string' | 'regex' | 'operator';
@@ -26,19 +29,9 @@ const simpleStringEscapes: Readonly<Record<string, string>> = Object.freeze({
   n: '\n',
   r: '\r',
   t: '\t',
-  b: '\b',
-  f: '\f',
-  v: '\v',
-  '\\': '\\',
-  "'": "'",
-  '"': '"',
 });
-const whitespacePattern = /\s/;
-const namePattern = /^[A-Za-z_][A-Za-z0-9_]*/;
-const numberPattern = /^(?:0[xX][0-9a-fA-F]+|(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?)/;
-const shortHexEscapePattern = /^[0-9a-fA-F]{2}$/;
-const unicodeEscapePattern = /^[0-9a-fA-F]{4}$/;
-const regularExpressionFlagsPattern = /^[A-Za-z]*/;
+const decimalNumberPattern = /^\d+(?:\.\d*)?/;
+const invalidNumericSuffixPattern = /^[A-Za-z_]$/;
 const literalNames = new Set(['true', 'false', 'null', 'none']);
 
 /** Creates and freezes one parser-owned AST node. */
@@ -98,6 +91,13 @@ export class ExpressionParser {
       }
     }
     return this.#make('NodeList', { children });
+  }
+
+  /** Parses one filter-block header around an already parsed capture node. */
+  parseFilterInvocation(input: AstNode): AstNode {
+    const filter = this.#parseFilterInvocation(input);
+    this.#expect('eof');
+    return filter;
   }
 
   #parseInlineIf(): AstNode {
@@ -314,18 +314,34 @@ export class ExpressionParser {
   #parseFilter(): AstNode {
     let expression = this.#parseUnary();
     while (this.#consume('|')) {
-      const name = this.#symbol(this.#expect('name'));
-      const supplied = this.#consume('(')
-        ? this.#nested(() => this.#parseArguments(')'))
-        : Object.freeze([]);
-      expression = this.#make('Filter', {
-        name,
-        args: this.#make('NodeList', {
-          children: Object.freeze([expression, ...supplied]),
-        }, expression),
-      }, expression);
+      expression = this.#parseFilterInvocation(expression);
     }
     return expression;
+  }
+
+  #parseFilterInvocation(input: AstNode): AstNode {
+    const name = this.#parseFilterName();
+    const supplied = this.#consume('(')
+      ? this.#nested(() => this.#parseArguments(')'))
+      : Object.freeze([]);
+    return this.#make('Filter', {
+      name,
+      args: this.#make('NodeList', {
+        children: Object.freeze([input, ...supplied]),
+      }, input),
+    }, input);
+  }
+
+  #parseFilterName(): AstNode {
+    const first = this.#expect('name');
+    const segments = [first.value];
+    this.#assertAllowedName(first.value, first);
+    while (this.#consume('.')) {
+      const segment = this.#expect('name');
+      this.#assertAllowedName(segment.value, segment);
+      segments.push(segment.value);
+    }
+    return this.#make('Symbol', { value: segments.join('.') }, first);
   }
 
   #parseUnary(): AstNode {
@@ -437,8 +453,8 @@ export class ExpressionParser {
     }
     if (this.#consume('(')) {
       const children = this.#nested(() => this.#parseDelimited(')'));
-      if (children.length === 1) {
-        return this.#make('Group', { children }, token);
+      if (children.length === 0) {
+        this.#fail('Parenthesized expression cannot be empty', token);
       }
       return this.#make('Group', { children }, token);
     }
@@ -628,35 +644,46 @@ function tokenize(source: string, initialLine: number, initialColumn: number): r
   };
   while (index < source.length) {
     const character = source[index]!;
-    if (whitespacePattern.test(character)) {
-      if (character === '\n') {
-        line += 1;
-        column = 0;
-      } else {
-        column += 1;
-      }
+    if (isCodeWhitespace(character)) {
+      ({ line, column } = advanceSourcePosition(source, index, index + 1, line, column));
       index += 1;
       continue;
     }
     const tokenLine = line;
     const tokenColumn = column;
-    const name = namePattern.exec(source.slice(index));
+    const name = scanIdentifier(source, index);
     if (name) {
-      if (name[0] === 'r' && source[index + 1] === '/') {
-        const regex = readRegex(source, index + 2, tokenLine, tokenColumn);
+      if (name.value === 'r' && source[name.end] === '/') {
+        let regex;
+        try {
+          regex = scanRegexLiteral(source, index);
+        } catch (error) {
+          if (error instanceof RegexLiteralSyntaxError) {
+            throw new ExpressionSyntaxError(error.message, tokenLine, tokenColumn);
+          }
+          throw error;
+        }
         emit('regex', `${regex.source}/${regex.flags}`, tokenLine, tokenColumn);
         const consumed = regex.end - index;
         index = regex.end;
         column += consumed;
       } else {
-        emit('name', name[0], tokenLine, tokenColumn);
-        index += name[0].length;
-        column += name[0].length;
+        emit('name', name.value, tokenLine, tokenColumn);
+        const consumed = name.end - index;
+        index = name.end;
+        column += consumed;
       }
       continue;
     }
-    const number = numberPattern.exec(source.slice(index));
+    if (character === '.' && isAsciiDigit(source[index + 1])) {
+      throw new ExpressionSyntaxError('Invalid numeric literal', tokenLine, tokenColumn);
+    }
+    const number = decimalNumberPattern.exec(source.slice(index));
     if (number) {
+      const suffix = source[index + number[0].length];
+      if (suffix !== undefined && invalidNumericSuffixPattern.test(suffix)) {
+        throw new ExpressionSyntaxError('Invalid numeric literal', tokenLine, tokenColumn);
+      }
       emit('number', number[0], tokenLine, tokenColumn);
       index += number[0].length;
       column += number[0].length;
@@ -665,7 +692,7 @@ function tokenize(source: string, initialLine: number, initialColumn: number): r
     if (character === '"' || character === "'") {
       const string = readString(source, index, character, tokenLine, tokenColumn);
       emit('string', string.value, tokenLine, tokenColumn);
-      column += string.end - index;
+      ({ line, column } = advanceSourcePosition(source, index, string.end, line, column));
       index = string.end;
       continue;
     }
@@ -686,6 +713,10 @@ function tokenize(source: string, initialLine: number, initialColumn: number): r
   }
   emit('eof', '', line, column);
   return Object.freeze(tokens);
+}
+
+function isAsciiDigit(value: string | undefined): boolean {
+  return value !== undefined && value >= '0' && value <= '9';
 }
 
 function readString(
@@ -712,15 +743,6 @@ function readString(
     const escaped = source[index]!;
     if (Object.hasOwn(simpleStringEscapes, escaped)) {
       value += simpleStringEscapes[escaped];
-    } else if (escaped === 'u' || escaped === 'x') {
-      const length = escaped === 'u' ? 4 : 2;
-      const digits = source.slice(index + 1, index + 1 + length);
-      const pattern = escaped === 'u' ? unicodeEscapePattern : shortHexEscapePattern;
-      if (!pattern.test(digits)) {
-        throw new ExpressionSyntaxError('Invalid string escape', line, column);
-      }
-      value += String.fromCodePoint(Number.parseInt(digits, 16));
-      index += length;
     } else {
       value += escaped;
     }
@@ -728,30 +750,22 @@ function readString(
   throw new ExpressionSyntaxError('Unterminated string literal', line, column);
 }
 
-function readRegex(
+function advanceSourcePosition(
   source: string,
   start: number,
-  line: number,
-  column: number,
-): { readonly source: string; readonly flags: string; readonly end: number } {
-  let pattern = '';
-  let escaped = false;
-  for (let index = start; index < source.length; index += 1) {
-    const character = source[index]!;
-    if (!escaped && character === '/') {
-      const flags = regularExpressionFlagsPattern.exec(source.slice(index + 1))![0];
-      try {
-        void new RegExp(pattern, flags);
-      } catch {
-        throw new ExpressionSyntaxError('Invalid regular expression', line, column);
-      }
-      return { source: pattern, flags, end: index + 1 + flags.length };
-    }
-    pattern += character;
-    escaped = !escaped && character === '\\';
-    if (character !== '\\') {
-      escaped = false;
+  end: number,
+  initialLine: number,
+  initialColumn: number,
+): { readonly line: number; readonly column: number } {
+  let line = initialLine;
+  let column = initialColumn;
+  for (let index = start; index < end; index += 1) {
+    if (source[index] === '\n') {
+      line += 1;
+      column = 0;
+    } else {
+      column += 1;
     }
   }
-  throw new ExpressionSyntaxError('Unterminated regular expression', line, column);
+  return { line, column };
 }

@@ -26,7 +26,7 @@ export type TemplateGlobal = TemplateValue | TemplateGlobalFunction;
 
 /** Immutable filters and globals configured for an engine. */
 export interface TemplateCapabilities {
-  /** Filters addressable through `value | name(...)`. */
+  /** Filters addressed by one or more dot-separated valid identifier segments. */
   filters?: Readonly<Record<string, TemplateFilter>>;
   /** Values and functions addressable by one valid template identifier. */
   globals?: Readonly<Record<string, TemplateGlobal>>;
