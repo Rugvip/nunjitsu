@@ -68,6 +68,30 @@
       "expected": "4"
     },
     {
+      "id": "compiler-division-r-identifiers",
+      "template": "{{ bar/2 }}|{{ order/2 }}|{{ longerIdentifier/2 }}|{{ obj.bar/2 }}|{{ bar /2 }}|{{ bar//5 }}|{{ bar/2/3 }}|{{ bar/2/s }}|{{ bar/2/g }}|{{ bar/2/a }}|{{ bar/2/gg }}|{{ bar/(1 + 1) }}",
+      "context": {"bar":12,"order":8,"longerIdentifier":18,"obj":{"bar":10},"s":2,"g":3,"a":4,"gg":6},
+      "expected": "6|4|9|5|6|2|2|3|2|1.5|1|6"
+    },
+    {
+      "id": "compiler-string-escape-grammar",
+      "template": "{{ \"\\n\" | dump }}|{{ \"\\t\" | dump }}|{{ \"\\r\" | dump }}|{{ \"\\b\" | dump }}|{{ \"\\f\" | dump }}|{{ \"\\v\" | dump }}|{{ \"\\x41\" | dump }}|{{ \"\\xZZ\" | dump }}|{{ \"\\u0041\" | dump }}|{{ \"\\uZZZZ\" | dump }}|{{ \"\\u{1F600}\" | dump }}|{{ \"\\q\" | dump }}|{{ \"\\0\" | dump }}|{{ \"\\\\\" | dump }}|{{ \"\\\"\" | dump }}|{{ '\\'' | dump }}|{{ \"\\\\x41\" | dump }}|{{ \"\\\\u0041\" | dump }}",
+      "context": {},
+      "expected": "\"\\n\"|\"\\t\"|\"\\r\"|\"b\"|\"f\"|\"v\"|\"x41\"|\"xZZ\"|\"u0041\"|\"uZZZZ\"|\"u{1F600}\"|\"q\"|\"0\"|\"\\\\\"|\"\\\"\"|\"'\"|\"\\\\x41\"|\"\\\\u0041\""
+    },
+    {
+      "id": "compiler-string-escape-keys",
+      "template": "{{ {\"\\u0063onstructor\": 1} | dump }}|{{ record[\"\\u0063onstructor\"] }}",
+      "context": {"record":{"u0063onstructor":2}},
+      "expected": "{\"u0063onstructor\":1}|2"
+    },
+    {
+      "id": "compiler-decimal-literal-grammar",
+      "template": "{{ 0 }}|{{ 00 }}|{{ 01 }}|{{ 1. }}|{{ 1.0 }}|{{ 00.5 }}|{{ 01.50 }}|{{ +1.5 }}|{{ -1.5 }}",
+      "context": {},
+      "expected": "0|0|1|1|1|0.5|1.5|1.5|-1.5"
+    },
+    {
       "id": "compiler-exponentiation",
       "template": "{{ 4**5 }}",
       "context": {},
@@ -207,9 +231,9 @@
     },
     {
       "id": "compiler-switch-strict-primitives",
-      "template": "{% switch 1 %}{% case \"1\" %}A{% default %}D{% endswitch %}|{% switch 0 %}{% case false %}A{% default %}D{% endswitch %}|{% switch null %}{% case missing %}A{% default %}D{% endswitch %}|{% switch \"x\" | safe %}{% case \"x\" %}A{% default %}D{% endswitch %}|{% switch 0 %}{% case -0 %}M{% default %}D{% endswitch %}",
+      "template": "{% switch 1 %}{% case \"1\" %}A{% default %}D{% endswitch %}|{% switch 0 %}{% case false %}A{% default %}D{% endswitch %}|{% switch null %}{% case missing %}A{% default %}D{% endswitch %}|{% switch \"x\" | safe %}{% case \"x\" %}A{% default %}D{% endswitch %}|{% switch 0 %}{% case -0 %}M{% default %}D{% endswitch %}|{% switch 1 %}{% case 1 %}{% endswitch %}|{% switch 1 %}{% default %}{% endswitch %}|{% switch 1 %}{% case 1 %}{% case 2 %}F{% endswitch %}",
       "context": {},
-      "expected": "D|D|D|D|M"
+      "expected": "D|D|D|D|M|||F"
     },
     {
       "id": "compiler-switch-reference-identity",
@@ -540,6 +564,293 @@
       "template": "{{ r/name [0-9] \\// }}",
       "context": {},
       "expected": "/name [0-9] \\//"
+    },
+    {
+      "id": "compiler-regex-flags",
+      "template": "{{ r/x/ }}|{{ r/x/g }}|{{ r/x/i }}|{{ r/x/m }}|{{ r/x/y }}|{{ r/x/gimy }}",
+      "context": {},
+      "expected": "/x/|/x/g|/x/i|/x/m|/x/y|/x/gimy"
+    },
+    {
+      "id": "filters-sort-closed-comparison",
+      "template": "{{ [2,\"10\"] | sort | dump }}|{{ [2,\"10\"] | sort(true) | dump }}|{{ [{v:2},{v:\"10\"}] | sort(false, false, \"v\") | dump }}|{{ [null,false,0,\"\",[]] | sort | dump }}",
+      "context": {},
+      "expected": "[2,\"10\"]|[\"10\",2]|[{\"v\":2},{\"v\":\"10\"}]|[null,false,0,\"\",[]]"
+    },
+    {
+      "id": "filters-dictsort-closed-comparison",
+      "template": "{{ {\"ß\":1,\"ss\":2} | dictsort | dump }}|{{ {\"σ\":1,\"ς\":2,\"Σ\":3} | dictsort | dump }}|{{ {a:2,b:\"10\"} | dictsort(false, \"value\") | dump }}",
+      "context": {},
+      "expected": "[[\"ß\",1],[\"ss\",2]]|[[\"σ\",1],[\"ς\",2],[\"Σ\",3]]|[[\"a\",2],[\"b\",\"10\"]]"
+    },
+    {
+      "id": "filters-replace-value-semantics",
+      "template": "{{ 123 | replace(\"x\", \"y\", 0) | dump }}|{{ 123 | replace(\"1\", \"y\", -0) | dump }}|{{ \"abc\" | replace(\"a\" | safe, \"x\") }}|{{ \"ab\" | replace(\"\") | dump }}|{{ \"ab\" | replace(\"\", null) | dump }}|{{ \"ab\" | replace(\"\", false) | dump }}|{{ \"ab\" | replace(\"\", [1,2]) | dump }}",
+      "context": {},
+      "expected": "\"123\"|\"123\"|abc|\"undefineda,bundefined\"|\"nullanullbnull\"|\"falseafalsebfalse\"|\"1,2a1,2b1,2\""
+    },
+    {
+      "id": "filters-safe-identity-short-circuits",
+      "template": "{% set x=\"abc\" | safe %}{{ (x | replace(\"z\",\"y\")) is sameas(x) }}|{{ (x | replace(\"z\",\"y\",0)) is sameas(x) }}|{{ (x | replace(\"a\",\"y\")) is sameas(x) }}|{{ x | replace(r/a/,\"y\") is escaped }}|{{ x | replace(r/z/,\"y\") is escaped }}|{{ (x | center(3)) is sameas(x) }}|{{ (x | center(5)) is sameas(x) }}|{{ (x | truncate(255)) is sameas(x) }}|{{ (x | truncate(1,true)) is sameas(x) }}|{{ (x | string) is sameas(x) }}",
+      "context": {},
+      "expected": "true|true|false|false|false|true|false|true|false|true"
+    },
+    {
+      "id": "runtime-empty-safe-string-truthiness",
+      "template": "{% set safeEmpty = \"\" | safe %}{{ safeEmpty is truthy }}|{{ safeEmpty is falsy }}|{% if safeEmpty %}T{% else %}F{% endif %}|{{ \"T\" if safeEmpty else \"F\" }}|{{ not safeEmpty }}|{{ safeEmpty or \"O\" }}X|{{ safeEmpty and \"A\" }}|{{ (\"\" | escape) is truthy }}|{{ (\"\" | forceescape) is truthy }}",
+      "context": {},
+      "expected": "true|false|T|T|false|X|A|true|true"
+    },
+    {
+      "id": "filters-empty-safe-string-truthiness",
+      "template": "[{{ (\"\" | safe) | default(\"fallback\", true) }}]|{{ false | default(\"fallback\", \"\" | safe) }}|{{ \"x\" | center(\"\" | safe) | dump }}|{{ \"a\\nb\" | indent(\"\" | safe, \"\" | safe) | dump }}|{{ \"abc\" | truncate(\"\" | safe, true, \"!\") | dump }}|{{ \"abcdef\" | truncate(2, \"\" | safe, \"!\") | dump }}|{{ \"a  \\n  b\" | striptags(\"\" | safe) | dump }}|{{ [1,2] | sort(\"\" | safe) | dump }}|{{ [\"a\",\"B\"] | sort(false, \"\" | safe) | dump }}|{{ {\"b\":1,\"A\":2} | dictsort(\"\" | safe) | dump }}|{% for row in [1,2,3] | batch(2, \"\" | safe) %}{{ row | length }}{% endfor %}|{% for row in [1,2,3] | slice(2, \"\" | safe) %}{{ row | length }}{% endfor %}|{{ [\"\" | safe,\"x\"] | select | length }}|{{ [\"\" | safe,\"x\"] | reject | length }}|{{ [{v:\"\" | safe},{v:\"x\"}] | selectattr(\"v\") | length }}|{{ [{v:\"\" | safe},{v:\"x\"}] | rejectattr(\"v\") | length }}",
+      "context": {},
+      "expected": "[]|fallback|\"x\"|\"a\\nb\"|\"!\"|\"ab!\"|\"a\\nb\"|[2,1]|[\"B\",\"a\"]|[[\"A\",2],[\"b\",1]]|22|22|2|0|2|0"
+    },
+    {
+      "id": "globals-empty-safe-string-truthiness",
+      "template": "{% set separator = joiner(\"\" | safe) %}{{ separator() }}{{ separator() }}X|{{ range(0, 2, \"\" | safe) | dump }}|{% for value in {\"0\":\"A\",length:\"\" | safe} %}B{% else %}E{% endfor %}|{% for value in \"\" | safe %}B{% else %}E{% endfor %}",
+      "context": {},
+      "expected": "X|[]||E"
+    },
+    {
+      "id": "filters-array-like-record-sequences",
+      "template": "{{ {\"0\":\"a\",\"1\":\"b\",length:2} | batch(2) | dump }}|{{ {\"0\":\"a\",\"1\":\"b\",length:\"2\"} | batch(2) | dump }}|{{ {\"0\":\"a\",\"1\":\"b\",length:2} | first | dump }}|{{ {\"0\":\"a\",length:0} | first | dump }}|{{ {\"0\":\"a\",\"1\":\"b\",length:2} | last | dump }}|{{ {\"0\":\"a\",length:1} | random | dump }}|{{ {\"0\":\"a\",\"1\":\"b\",length:2} | reverse | dump }}|{{ {\"1\":\"b\",length:2} | reverse | dump }}|{{ {\"0\":\"b\",\"1\":\"a\",length:2} | sort | dump }}",
+      "context": {},
+      "expected": "[[\"a\",\"b\"]]|[[\"a\",\"b\"]]|\"a\"|\"a\"|\"b\"|\"a\"|[\"b\",\"a\"]|[\"b\",null]|[\"a\",\"b\"]"
+    },
+    {
+      "id": "filters-array-like-record-group-selection",
+      "template": "{{ {\"0\":{x:\"a\"},\"1\":{x:\"a\"},length:2} | groupby(\"x\") | dump }}|{{ {\"0\":true,\"1\":false,length:2} | select | dump }}|{{ {\"0\":true,\"1\":false,length:2} | reject | dump }}|{{ {\"0\":{x:\"b\"},\"1\":{x:\"a\"},length:2} | sort(false, false, \"x\") | dump }}",
+      "context": {},
+      "expected": "{\"a\":[{\"x\":\"a\"},{\"x\":\"a\"}]}|[true]|[false]|[{\"x\":\"a\"},{\"x\":\"b\"}]"
+    },
+    {
+      "id": "filters-array-like-record-length-semantics",
+      "template": "{{ {\"0\":\"a\",\"1\":\"b\",length:0} | batch(2) | dump }}|{{ {\"0\":\"a\",\"1\":\"b\",length:-1} | batch(2) | dump }}|{{ {\"0\":\"a\",\"1\":\"b\",length:1.5} | batch(2) | dump }}|{{ {\"0\":\"a\",\"1\":\"b\",length:null} | batch(2) | dump }}|{{ {\"0\":\"a\",\"1\":\"b\",length:\"bad\"} | batch(2) | dump }}|{{ {\"0\":\"a\",\"1\":\"b\"} | batch(2) | dump }}|{{ {length:2} | reverse | dump }}|{{ {length:2} | select | dump }}|{{ {\"-1\":\"negative\",length:0} | last | dump }}",
+      "context": {},
+      "expected": "[]|[]|[[\"a\",\"b\"]]|[]|[]|[]|[null,null]|[]|\"negative\""
+    },
+    {
+      "id": "filters-array-like-record-distinct-record-operations",
+      "template": "{{ {\"0\":\"a\",length:1} | list | dump }}|{{ {\"0\":\"a\",length:1} | length }}|{{ {\"0\":\"a\",length:1} | urlencode }}|{{ {\"0\":\"a\",length:1} | dictsort | dump }}",
+      "context": {},
+      "expected": "[{\"key\":\"0\",\"value\":\"a\"},{\"key\":\"length\",\"value\":1}]|2|0=a&length=1|[[\"0\",\"a\"],[\"length\",1]]"
+    },
+    {
+      "id": "filters-direct-attribute-keys",
+      "template": "{{ [row] | join(\",\", \"a.b\") }}|{{ [row] | join(\",\", \"a.b\" | safe) }}|{{ [row] | join(\",\", \"\") }}|{{ [row] | join(\",\", \"\" | safe) }}|{{ [row] | join(\",\", true) }}|{{ [sumRow] | sum(\"a.b\") }}|{{ [sumRow] | sum(1) }}|{{ selectRows | selectattr(\"a.b\") | length }}|{{ selectRows | rejectattr(\"a.b\") | length }}|{{ selectRows | selectattr() | length }}",
+      "context": {"row":{"a.b":"direct","a":{"b":"nested"},"":"empty","true":"truth","1":"one"},"sumRow":{"a.b":2,"a":{"b":3},"1":2,"":2},"selectRows":[{"a.b":false,"a":{"b":true},"undefined":true,"true":true},{"a.b":true,"a":{"b":false}}]},
+      "expected": "direct|direct|[object Object]|empty|truth|2|2|1|1|1"
+    },
+    {
+      "id": "filters-getter-attribute-paths",
+      "template": "{{ sortRows | sort(attribute=\"a.b\") | join(\",\", \"name\") }}|{{ sortRows | sort(attribute=\"a.b\" | safe) | join(\",\", \"name\") }}|{{ sortRows | sort(attribute=\"\") | join(\",\", \"name\") }}|{{ sortRows | sort(attribute=\"\" | safe) | join(\",\", \"name\") }}|{{ sortRows | sort(attribute=true) | join(\",\", \"name\") }}|{{ [1,2,1] | groupby() | dump }}|{{ [{\"\":2}] | groupby(\"\") | dictsort | first | first }}|{{ [{\"\":2}] | groupby(\"\" | safe) | dictsort | first | first }}|{{ sortRows | groupby(\"a.b\") | dictsort | first | last | join(\",\", \"name\") }}|{{ sortRows | groupby(\"a.b\" | safe) | dictsort | first | last | join(\",\", \"name\") }}",
+      "context": {"sortRows":[{"name":"A","a.b":1,"a":{"b":2},"":2,"true":2},{"name":"B","a.b":2,"a":{"b":1},"":1,"true":1}]},
+      "expected": "B,A|A,B|A,B|B,A|B,A|{\"1\":[1,1],\"2\":[2]}|[object Object]|2|B|A"
+    },
+    {
+      "id": "filters-attribute-array-string-lookup",
+      "template": "{{ [[\"x\"],[\"y\"]] | join(\",\", 0) }}|{{ [\"ab\",\"cd\"] | join(\",\", 0) }}|{{ [[2],[3]] | sum(0) }}|{{ [\"ba\",\"ab\"] | sort(attribute=0) | join(\",\") }}|{{ [[\"x\"],[\"y\"]] | selectattr(0) | length }}|{{ [\"x\",\"\"] | selectattr(0) | length }}|{{ [missing,missing] | sort(attribute=\"x\") | dump }}",
+      "context": {},
+      "expected": "x,y|ab,cd|0023|ab,ba|2|1|[null,null]"
+    },
+    {
+      "id": "runtime-record-property-order",
+      "template": "{% set record = {x:\"c\",\"01\":\"p\",\"4294967295\":\"max\",\"4294967294\":\"idx\",\"0\":\"zero\",\"10\":\"ten\",\"2\":\"two\",\"-1\":\"neg\"} %}{% for key,value in record %}[{{ key }}={{ value }}]{% endfor %}|{% for entry in record | list %}[{{ entry.key }}={{ entry.value }}]{% endfor %}|{{ record | urlencode }}|{{ record | dump }}",
+      "context": {},
+      "expected": "[0=zero][2=two][10=ten][4294967294=idx][x=c][01=p][4294967295=max][-1=neg]|[0=zero][2=two][10=ten][4294967294=idx][x=c][01=p][4294967295=max][-1=neg]|0=zero&2=two&10=ten&4294967294=idx&x=c&01=p&4294967295=max&-1=neg|{\"0\":\"zero\",\"2\":\"two\",\"10\":\"ten\",\"4294967294\":\"idx\",\"x\":\"c\",\"01\":\"p\",\"4294967295\":\"max\",\"-1\":\"neg\"}"
+    },
+    {
+      "id": "runtime-record-duplicate-and-derived-order",
+      "template": "{% set record = {\"2\":\"old-two\",x:\"old-x\",\"1\":\"one\",\"2\":\"two\",x:\"new-x\",y:\"why\"} %}{% for key,value in record %}[{{ key }}={{ value }}]{% endfor %}|{% for key,value in [2,1,2] | groupby() %}[{{ key }}={{ value | join(\",\") }}]{% endfor %}",
+      "context": {},
+      "expected": "[1=one][2=two][x=new-x][y=why]|[1=1][2=2,2]"
+    },
+    {
+      "id": "filters-center-length-short-circuit",
+      "template": "{% set array=[1,2] %}{% set record={length:2,a:1} %}{{ true|center|dump }}|{{ 1|center|dump }}|{{ (0/0)|center|dump }}|{{ r/x/|center|dump }}|{{ (array|center(2)) is sameas(array) }}|{{ array|center(4)|dump }}|{{ (record|center(2)) is sameas(record) }}|{{ {length:\"2\",a:1}|center(\"10\")|dump }}|{{ {length:\"10\",a:1}|center(\"2\")|dump }}",
+      "context": {},
+      "expected": "\"true\"|\"1\"|\"NaN\"|\"/x/\"|true|\" 1,2 \"|true|{\"length\":\"2\",\"a\":1}|\"[object Object]\""
+    },
+    {
+      "id": "filters-truncate-wordcount-short-circuits",
+      "template": "{% set array=[1,2] %}{% set record={length:2,a:1} %}{{ []|truncate|dump }}|{{ (array|truncate(2)) is sameas(array) }}|{{ (record|truncate(2)) is sameas(record) }}|{{ {length:0,a:1}|truncate|dump }}|{{ {length:\"10\",a:1}|truncate(\"2\")|dump }}|{{ 0|wordcount|dump }}|{{ -0|wordcount|dump }}|{{ (0/0)|wordcount|dump }}|{{ \"\"|wordcount|dump }}|{{ \"\"|safe|wordcount|dump }}",
+      "context": {},
+      "expected": "[]|true|true|{\"length\":0,\"a\":1}|{\"length\":\"10\",\"a\":1}|null|null|null|null|null"
+    },
+    {
+      "id": "filters-dictsort-strict-by-option",
+      "template": "{{ {b:1,a:2}|dictsort|dump }}|{{ {b:1,a:2}|dictsort(false,\"key\")|dump }}|{{ {b:1,a:2}|dictsort(false,\"value\")|dump }}",
+      "context": {},
+      "expected": "[[\"a\",2],[\"b\",1]]|[[\"a\",2],[\"b\",1]]|[[\"b\",1],[\"a\",2]]"
+    },
+    {
+      "id": "filters-round-strict-method-option",
+      "template": "{{ 1.21|round(1,\"ceil\") }}|{{ 1.29|round(1,\"floor\") }}|{{ 1.21|round(1,\"ceil\"|safe) }}|{{ 1.29|round(1,\"floor\"|safe) }}|{{ 1.25|round(1,null) }}|{{ 1.25|round(1,true) }}|{{ 1.25|round(1,1) }}|{{ 1.25|round(1,[]) }}|{{ 1.25|round(1,{}) }}|{{ 1.25|round(1,r/x/) }}",
+      "context": {},
+      "expected": "1.3|1.2|1.2|1.3|1.3|1.3|1.3|1.3|1.3|1.3"
+    },
+    {
+      "id": "filters-dump-strict-indentation-option",
+      "template": "{{ {a:1}|dump(\"--\")|dump }}|{{ {a:1}|dump(2)|dump }}|{{ {a:1}|dump(0)|dump }}|{{ {a:1}|dump(-1)|dump }}|{{ {a:1}|dump(0/0)|dump }}|{{ {a:1}|dump(1/0)|dump }}|{{ {a:1}|dump(\"--\"|safe)|dump }}|{{ {a:1}|dump(\"2\"|safe)|dump }}|{{ {a:1}|dump(true)|dump }}|{{ {a:1}|dump([])|dump }}|{{ {a:1}|dump({})|dump }}|{{ {a:1}|dump(r/x/)|dump }}",
+      "context": {},
+      "expected": "\"{\\n--\\\"a\\\": 1\\n}\"|\"{\\n  \\\"a\\\": 1\\n}\"|\"{\\\"a\\\":1}\"|\"{\\\"a\\\":1}\"|\"{\\\"a\\\":1}\"|\"{\\n          \\\"a\\\": 1\\n}\"|\"{\\\"a\\\":1}\"|\"{\\\"a\\\":1}\"|\"{\\\"a\\\":1}\"|\"{\\\"a\\\":1}\"|\"{\\\"a\\\":1}\"|\"{\\\"a\\\":1}\""
+    },
+    {
+      "id": "filters-macro-keyword-binding",
+      "template": "{{ \"10\"|int(base=2,ignored=7) }}|{{ [\"b\",\"a\"]|sort(reverse=true,ignored=7)|join }}",
+      "context": {},
+      "expected": "2|ba"
+    },
+    {
+      "id": "filters-ordinary-keyword-bags-a",
+      "template": "{{ \"\"|default(\"fallback\",boolean=false)|dump }}|{{ missing|default(def=\"x\",boolean=true)|dump }}|{{ missing|d(def=\"x\",boolean=true)|dump }}|{{ missing|default(__keywords=false)|dump }}|{{ \"x\"|center(width=4)|dump }}|{{ {a:1,B:2}|dictsort(by=\"value\")|dump }}|{{ \"bad\"|float(default=7)|dump }}|{{ [{x:\"a\"},{x:\"b\"}]|groupby(attribute=\"x\")|dump }}|{{ \"a\\nb\"|indent(width=2)|dump }}|{{ [\"a\",\"b\"]|join(del=\",\")|dump }}",
+      "context": {},
+      "expected": "\"fallback\"|{\"def\":\"x\",\"boolean\":true,\"__keywords\":true}|{\"def\":\"x\",\"boolean\":true,\"__keywords\":true}|{\"__keywords\":true}|\"x\"|[[\"B\",2],[\"a\",1]]|{\"default\":7,\"__keywords\":true}|{\"undefined\":[{\"x\":\"a\"},{\"x\":\"b\"}]}|\"a\\nb\"|\"a[object Object]b\""
+    },
+    {
+      "id": "filters-ordinary-keyword-bags-b",
+      "template": "{{ [{x:true},{x:false}]|selectattr(attribute=\"x\")|dump }}|{{ [{x:true},{x:false}]|rejectattr(attribute=\"x\")|dump }}|{{ \"a  \\n  b\"|striptags(preserveLinebreaks=true)|dump }}|{{ [{x:1},{x:2}]|sum(attribute=null,start=3)|dump }}|{{ \"abcdef\"|truncate(length=2)|dump }}|{{ 1.21|round(method=\"ceil\")|dump }}",
+      "context": {},
+      "expected": "[]|[{\"x\":true},{\"x\":false}]|\"a\\nb\"|null|\"...\"|null"
+    },
+    {
+      "id": "runtime-jinja-slice-boundaries",
+      "template": "{{ [\"a\",\"b\"][0:2]|dump }}|{{ [\"a\",\"b\"][0:3]|dump }}|{{ [\"a\",\"b\"][0:4]|dump }}|{{ [\"a\",\"b\"][2:3]|dump }}|{{ [\"a\",\"b\"][-5:]|dump }}|{{ [\"a\",\"b\"][:-5]|dump }}",
+      "context": {},
+      "expected": "[\"a\",\"b\"]|[\"a\",\"b\",null]|[\"a\",\"b\",null]|[null]|[]|[]"
+    },
+    {
+      "id": "runtime-jinja-slice-fractional-and-string",
+      "template": "{{ [\"a\",\"b\"][0:3:1.5]|dump }}|{{ [\"a\",\"b\"][0:3:0.5]|dump }}|{{ [\"a\",\"b\"][1.5:3]|dump }}|{{ [\"a\",\"b\",\"c\"][::\"2\"]|dump }}|{{ [\"a\",\"b\",\"c\"][\"1\":]|dump }}|{{ [\"a\",\"b\",\"c\"][::(\"2\"|safe)]|dump }}",
+      "context": {},
+      "expected": "[\"a\",null]|[\"a\",null,\"b\",null,null]|[null]|[\"a\",null]|[\"b\"]|[\"a\",null]"
+    },
+    {
+      "id": "runtime-jinja-slice-closed-targets",
+      "template": "{{ {\"0\":\"a\",\"1\":\"b\",length:2}[0:3]|dump }}|{{ {\"0\":\"a\",\"1\":\"b\",length:\"2\"}[0:3]|dump }}|{{ true[0:3]|dump }}|{{ 1[0:3]|dump }}|{{ \"😀x\"[0:4]|dump }}|{{ [\"a\",\"b\",\"c\",\"d\"][-2:-5:-1]|dump }}",
+      "context": {},
+      "expected": "[\"a\",\"b\",null]|[\"a\",\"b\",null]|[null,null,null]|[null,null,null]|[\"\\ud83d\",\"\\ude00\",\"x\",null]|[\"c\",\"b\",\"a\"]"
+    },
+    {
+      "id": "runtime-equal-infinity-ordering",
+      "template": "{{ (1/0)<(1/0) }}:{{ (1/0)<=(1/0) }}:{{ (1/0)>(1/0) }}:{{ (1/0)>=(1/0) }}|{{ (-1/0)<(-1/0) }}:{{ (-1/0)<=(-1/0) }}:{{ (-1/0)>(-1/0) }}:{{ (-1/0)>=(-1/0) }}|{{ (-1/0)<(1/0) }}:{{ (1/0)>(-1/0) }}|{{ \"Infinity\"<=(1/0) }}:{{ (\"Infinity\"|safe)>=(1/0) }}:{{ [1/0]<=(1/0) }}|{{ (0/0)<=(0/0) }}:{{ (0/0)>=(0/0) }}|{{ (1/0) is lt(1/0) }}:{{ (1/0) is le(1/0) }}:{{ (1/0) is gt(1/0) }}:{{ (1/0) is ge(1/0) }}",
+      "context": {},
+      "expected": "false:true:false:true|false:true:false:true|true:true|true:true:true|false:false|false:true:false:true"
+    },
+    {
+      "id": "runtime-infinity-ordering-consumers",
+      "template": "{% set record={length:1/0,value:1} %}{{ (record|center(1/0)) is sameas(record) }}:{{ (record|truncate(1/0)) is sameas(record) }}|{{ [{name:\"a\",v:1/0},{name:\"b\",v:1/0},{name:\"c\",v:-1/0}]|sort(false,false,\"v\")|join(\",\",\"name\") }}|{% for pair in {a:1/0,b:1/0,c:-1/0}|dictsort(false,\"value\") %}{{ pair[0] }}{% endfor %}|{{ range(1/0,1/0)|length }}:{{ range(-1/0,-1/0)|length }}",
+      "context": {},
+      "expected": "true:true|c,a,b|cab|0:0"
+    },
+    {
+      "id": "runtime-jinja-infinite-slice-boundary",
+      "template": "{{ {length:1/0}[(1/0):(1/0)]|dump }}",
+      "context": {},
+      "expected": "[]"
+    },
+    {
+      "id": "filters-regex-dump-shapes",
+      "template": "{{ r/secret/gimy|dump }}|{{ [r/x/]|dump }}|{{ {value:r/x/}|dump }}|{{ [r/x/,{value:r/y/g},[{nested:r/z/im}]]|dump }}|{{ missing|default(value=r/x/)|dump }}|{{ {\"2\":r/two/,x:1,\"0\":r/zero/,value:r/value/,z:2}|dump }}|{{ missing|dump }}",
+      "context": {},
+      "expected": "{}|[{}]|{\"value\":{}}|[{},{\"value\":{}},[{\"nested\":{}}]]|{\"value\":{},\"__keywords\":true}|{\"0\":{},\"2\":{},\"x\":1,\"value\":{},\"z\":2}|"
+    },
+    {
+      "id": "parser-whitespace-domains",
+      "template": "A {{- \"X\" }}|A {#- hidden #}B|{% if true %}Y{% endif %}",
+      "context": {},
+      "expected": "AX|AB|Y"
+    },
+    {
+      "id": "parser-raw-regions",
+      "template": "{% raw %}{{ broken{% if %}{# comment #}{% endraw %}|{% raw %}A{% endraw %}{% raw %}B{% endraw %}",
+      "context": {},
+      "expected": "{{ broken{% if %}{# comment #}|AB"
+    },
+    {
+      "id": "parser-verbatim-regions",
+      "template": "{% verbatim %}{{ broken{% if %}{# comment #}{% endverbatim %}|{% verbatim %}A{% endverbatim %}{% verbatim %}B{% endverbatim %}",
+      "context": {},
+      "expected": "{{ broken{% if %}{# comment #}|AB"
+    },
+    {
+      "id": "parser-nested-raw",
+      "template": "{% raw %}A{% raw %}B{% raw %}C{% endraw %}D{% endraw %}E{% endraw %}",
+      "context": {},
+      "expected": "A{% raw %}B{% raw %}C{% endraw %}D{% endraw %}E"
+    },
+    {
+      "id": "parser-nested-verbatim",
+      "template": "{% verbatim %}A{% verbatim %}B{% endverbatim %}C{% endverbatim %}",
+      "context": {},
+      "expected": "A{% verbatim %}B{% endverbatim %}C"
+    },
+    {
+      "id": "parser-mixed-raw-verbatim",
+      "template": "{% raw %}A{% verbatim %}B{% endverbatim %}C{% endraw %}|{% verbatim %}A{% raw %}B{% endraw %}C{% endverbatim %}",
+      "context": {},
+      "expected": "A{% verbatim %}B{% endverbatim %}C|A{% raw %}B{% endraw %}C"
+    },
+    {
+      "id": "parser-raw-whitespace-control",
+      "template": "A \t\n {%- raw %}X{% endraw %}|{% raw -%} \t\n X{% endraw %}",
+      "context": {},
+      "expected": "AX| \t\n X"
+    },
+    {
+      "id": "parser-inner-raw-marker-grammar",
+      "template": "{% raw %}A{% raw %}B{% endraw %}C{% endraw %}|{% verbatim %}A{%\nverbatim\n%}B{%\nendverbatim\n%}C{% endverbatim %}|{% raw %}A{%- raw -%}B{% endraw %}",
+      "context": {},
+      "expected": "A{% raw %}B{% endraw %}C|A{%\nverbatim\n%}B{%\nendverbatim\n%}C|A{%- raw -%}B"
+    },
+    {
+      "id": "filters-selectattr-ignored-arguments",
+      "template": "{{ rows|selectattr(\"allowed\",\"equalto\",false)|join(\",\",\"name\") }}|{{ rows|rejectattr(\"allowed\",\"equalto\",false)|join(\",\",\"name\") }}|{{ rows|selectattr()|join(\",\",\"name\") }}|{{ rows|rejectattr()|join(\",\",\"name\") }}|{{ rows|selectattr(0)|join(\",\",\"name\") }}|{{ rows|selectattr(\"a.b\"|safe)|join(\",\",\"name\") }}|{{ []|selectattr(\"allowed\",\"missing\")|dump }}|{{ []|rejectattr(\"allowed\",ignored=1)|dump }}",
+      "context": {
+        "rows": [
+          {"name":"denied","allowed":false,"0":false,"a.b":false,"undefined":false},
+          {"name":"allowed","allowed":true,"0":true,"a.b":true,"undefined":true}
+        ]
+      },
+      "expected": "allowed|denied|allowed|denied|allowed|allowed|[]|[]"
+    },
+    {
+      "id": "compiler-if-elif-elseif-chains",
+      "template": "{% if true %}if{% endif %}|{% if false %}if{% elif true %}elif{% else %}else{% endif %}|{% if false %}if{% elseif true %}elseif{% else %}else{% endif %}|{% if false %}if{% elif false %}elif{% elseif true %}mixed{% endif %}|{% if false %}outer{% elseif true %}{% if false %}inner-if{% elseif true %}inner-elseif{% else %}inner-else{% endif %}{% else %}outer-else{% endif %}|{% if false %}if{% else %}else{% endif %}",
+      "context": {},
+      "expected": "if|elif|elseif|mixed|inner-elseif|else"
+    },
+    {
+      "id": "compiler-filter-block-title",
+      "template": "{% filter title %}hello world{% endfilter %}",
+      "context": {},
+      "expected": "Hello World"
+    },
+    {
+      "id": "compiler-filter-block-replace",
+      "template": "{% filter replace(\"o\", \"0\") %}foo{% endfilter %}",
+      "context": {},
+      "expected": "f00"
+    },
+    {
+      "id": "compiler-filter-block-variables",
+      "template": "{% filter title %}{% set prefix = \"hello\" %}{{ prefix }} {{ name }}{% endfilter %}",
+      "context": {"name":"world"},
+      "expected": "Hello World"
+    },
+    {
+      "id": "parser-parenthesized-comma-groups",
+      "template": "{{ (1) | dump }}|{{ (1,2) | dump }}|{{ (1,2,3) | dump }}|{{ (1,(2,3)) | dump }}|{% if (true,false) %}bad{% else %}safe{% endif %}|{% for value in (1,2) %}{{ value }}{% else %}empty{% endfor %}|{% set value=(1,2) %}{{ value | dump }}|{% switch (1,2) %}{% case 2 %}matched{% default %}default{% endswitch %}|{{ (1,2) is number }}|{{ 1+(2,3) }}|{{ (1,2)==2 }}",
+      "context": {},
+      "expected": "1|2|3|3|safe|empty|2|matched|true|4|true"
+    },
+    {
+      "id": "compiler-macro-lexical-frames",
+      "template": "{% macro root() %}R{% endmacro %}{{ root() }}|{{ root is callable }}||{% block outerA %}{% macro blockMacro() %}B{% endmacro %}{{ blockMacro() }}{% endblock %}|{{ blockMacro is callable }}|{{ blockMacro() }}||{% block outerB %}{% block innerB %}{% macro nestedBlockMacro() %}N{% endmacro %}{{ nestedBlockMacro() }}{% endblock %}{% endblock %}|{{ nestedBlockMacro is callable }}|{{ nestedBlockMacro() }}||{% for item in [7] %}{% macro loopMacro() %}[{{ item }}]{% endmacro %}{{ loopMacro() }}{% endfor %}|{{ loopMacro is callable }}||{% macro outer(value) %}{% macro nestedMacro() %}[{{ value }}]{% endmacro %}{{ nestedMacro() }}{% endmacro %}{{ outer(7) }}|{{ nestedMacro is callable }}|{{ nestedMacro() }}||{% for item in [7] %}{% block innerC %}{% macro blockInLoop() %}[{{ item }}]{% endmacro %}{{ blockInLoop() }}{% endblock %}{% endfor %}|{{ blockInLoop is callable }}|{{ blockInLoop() }}||{% block outerD %}{% for item in [7] %}{% macro loopInBlock() %}[{{ item }}]{% endmacro %}{{ loopInBlock() }}{% endfor %}{% endblock %}|{{ loopInBlock is callable }}||{% macro wrapper() %}{{ caller() }}{% endmacro %}{% call wrapper() %}{% macro callerMacro() %}C{% endmacro %}{{ callerMacro() }}{% endcall %}|{{ callerMacro is callable }}||{% set shared=\"root\" %}{% macro showValue() %}[{{ shared }}]{% endmacro %}{% block outerE %}{% set shared=\"block\" %}{{ showValue() }}{% endblock %}|{{ showValue() }}||{% if true %}{% macro ifMacro() %}I{% endmacro %}{% endif %}{{ ifMacro is callable }}|{{ ifMacro() }}||{% switch 1 %}{% case 1 %}{% macro switchMacro() %}S{% endmacro %}{% endswitch %}{{ switchMacro is callable }}|{{ switchMacro() }}",
+      "context": {},
+      "expected": "R|true||B|true|B||N|true|N||[]|false||[]|true|[]||[]|true|[]||[]|false||C|false||[root]|[root]||true|I||true|S"
     }
   ]
 }

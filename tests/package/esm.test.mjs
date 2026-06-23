@@ -23,6 +23,9 @@ test('renders synchronously through the ESM package entry', t => {
       upper(input) {
         return String(input).toUpperCase();
       },
+      'tools.identity'(input) {
+        return input;
+      },
     },
   });
   assert.equal(
@@ -32,6 +35,11 @@ test('renders synchronously through the ESM package entry', t => {
   const context = engine.prepareContext({ value: 'prepared' });
   assert.equal(engine.render('ESM ${{ value | upper }}', context), 'ESM PREPARED');
   assert.equal(engine.render('${{ ["only"] | random }}'), 'only');
+  assert.equal(engine.render('${{ "dotted" | tools.identity }}'), 'dotted');
+  assert.equal(
+    engine.render('{% filter upper %}filter block{% endfilter %}'),
+    'FILTER BLOCK',
+  );
   assert.throws(
     () => engine.render('${{ value["LEFT\\u061cARABIC\\u200eLTR\\u200fRTL"]() }}', {
       value: {},

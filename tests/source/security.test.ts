@@ -4,7 +4,7 @@ import test from 'node:test';
 import { inspect } from 'node:util';
 import nunjucks from 'nunjucks';
 
-import { createEngine, NunjitsuRenderError } from '../../src/index.ts';
+import { createEngine, NunjitsuLimitError, NunjitsuRenderError } from '../../src/index.ts';
 import { NunjitsuParseError, parseTemplate } from '../../src/parser/index.ts';
 import { applyBuiltinFilter } from '../../src/runtime/builtins.ts';
 import { RuntimeScope } from '../../src/runtime/scope.ts';
@@ -14,6 +14,7 @@ import {
   copyRuntimeValue,
   RuntimeArray,
   RuntimeRecord,
+  RuntimeRegex,
   withRuntimeContextPath,
 } from '../../src/runtime/value.ts';
 
@@ -287,6 +288,50 @@ test('prepared context updates copy data without invoking accessors', () => {
   );
   assert.equal(updated.get('parameters'), original.get('parameters'));
   assert.notEqual(updated.get('steps'), original.get('steps'));
+
+  const withUndefined = copyRuntimeContext({
+    root: undefined as never,
+    nested: { child: undefined as never },
+    record: {},
+  });
+  for (const path of [
+    ['root', 'leaf'],
+    ['nested', 'child', 'leaf'],
+  ]) {
+    assert.throws(
+      () => withRuntimeContextPath(withUndefined, path, copyRuntimeValue(1)),
+      /is not a record/,
+      path.join('.'),
+    );
+  }
+  assert.equal(withUndefined.has('root'), true);
+  assert.equal(withUndefined.get('root'), undefined);
+
+  const withCreatedSegment = withRuntimeContextPath(
+    withUndefined,
+    ['missing', 'leaf'],
+    copyRuntimeValue('created'),
+  );
+  const missing = withCreatedSegment.get('missing');
+  assert.ok(missing instanceof RuntimeRecord);
+  assert.equal(missing.get('leaf'), 'created');
+
+  const withTraversedRecord = withRuntimeContextPath(
+    withUndefined,
+    ['record', 'leaf'],
+    copyRuntimeValue('record'),
+  );
+  const record = withTraversedRecord.get('record');
+  assert.ok(record instanceof RuntimeRecord);
+  assert.equal(record.get('leaf'), 'record');
+
+  const withReplacedUndefined = withRuntimeContextPath(
+    withUndefined,
+    ['root'],
+    copyRuntimeValue('replacement'),
+  );
+  assert.equal(withReplacedUndefined.get('root'), 'replacement');
+  assert.equal(withUndefined.get('root'), undefined);
 });
 
 test('owns aliases and exposes only frozen null-prototype callback copies', () => {
@@ -359,6 +404,11 @@ test('dump does not invoke inherited host serialization hooks', () => {
       engine.render('${{ {"toJSON": "data", "toString": "text"} | dump }}'),
       '{"toJSON":"data","toString":"text"}',
     );
+    assert.equal(engine.render('${{ r/secret/gimy | dump }}'), '{}');
+    assert.equal(
+      engine.render('${{ [r/secret/, {value:r/nested/}] | dump }}'),
+      '[{},{"value":{}}]',
+    );
     assert.equal(getterCalls, 0);
     assert.equal(hookCalls, 0);
   } finally {
@@ -386,6 +436,7 @@ test('dump does not invoke inherited host serialization hooks', () => {
       new RuntimeArray([1]),
       [],
       new Map(),
+      () => {},
     );
   } catch (error) {
     dumpFailure = error;
@@ -399,6 +450,46 @@ test('dump does not invoke inherited host serialization hooks', () => {
   assert.equal(dumpFailure, undefined);
   assert.equal(dumpResult, '[1]');
   assert.equal(setterCalls, 0);
+
+  let regexHookCalls = 0;
+  const runtimeRegexToJson = Object.getOwnPropertyDescriptor(
+    RuntimeRegex.prototype,
+    'toJSON',
+  );
+  const nativeRegexToJson = Object.getOwnPropertyDescriptor(RegExp.prototype, 'toJSON');
+  for (const prototype of [RuntimeRegex.prototype, RegExp.prototype]) {
+    Object.defineProperty(prototype, 'toJSON', {
+      configurable: true,
+      get() {
+        regexHookCalls += 1;
+        throw new Error('Regex serialization hooks must not run');
+      },
+    });
+  }
+  try {
+    assert.equal(
+      applyBuiltinFilter(
+        'dump',
+        new RuntimeRegex('secret', 'gimy'),
+        [],
+        new Map(),
+        () => {},
+      ),
+      '{}',
+    );
+    assert.equal(regexHookCalls, 0);
+  } finally {
+    for (const [prototype, descriptor] of [
+      [RuntimeRegex.prototype, runtimeRegexToJson],
+      [RegExp.prototype, nativeRegexToJson],
+    ] as const) {
+      if (descriptor) {
+        Object.defineProperty(prototype, 'toJSON', descriptor);
+      } else {
+        Reflect.deleteProperty(prototype, 'toJSON');
+      }
+    }
+  }
 });
 
 test('templates cannot reach ambient authority or invoke looked-up values', () => {
@@ -771,6 +862,8 @@ test('rejects malformed structural tags before any template capability executes'
     '${{ before() }}{% block content %}${{ inside() }}{% endblock "literal" %}${{ after() }}',
     '${{ before() }}{% raw junk %}${{ ignored() }}{% endraw %}${{ after() }}',
     '${{ before() }}{% verbatim junk %}${{ ignored() }}{% endverbatim %}${{ after() }}',
+    '${{ before() }}{% raw %}X{%- endraw %}${{ after() }}',
+    '${{ before() }}{% raw %}X{% endraw -%}${{ after() }}',
   ];
   for (const source of malformedSources) {
     assert.throws(() => engine.render(source), NunjitsuRenderError);
@@ -778,6 +871,126 @@ test('rejects malformed structural tags before any template capability executes'
     assert.deepEqual(engineCalls, []);
     assert.deepEqual(oracleCalls, []);
     assert.equal(engine.render('clean'), 'clean');
+  }
+
+  for (const cookiecutterCompat of [false, true]) {
+    const invalidSwitchCalls: string[] = [];
+    const invalidSwitchEngine = createEngine({
+      cookiecutterCompat,
+      globals: {
+        before() {
+          invalidSwitchCalls.push('before');
+          return '';
+        },
+        after() {
+          invalidSwitchCalls.push('after');
+          return '';
+        },
+      },
+    });
+    const invalidSwitchOracleCalls: string[] = [];
+    const invalidSwitchOracle = new nunjucks.Environment(undefined, {
+      autoescape: false,
+    });
+    for (const name of ['before', 'after']) {
+      invalidSwitchOracle.addGlobal(name, () => {
+        invalidSwitchOracleCalls.push(name);
+        return '';
+      });
+    }
+    for (const source of [
+      '{{ before() }}{% switch 1 %}{% endswitch %}{{ after() }}',
+      '{{ before() }}{% switch 1 %}{# no arms #}{% endswitch %}{{ after() }}',
+      '{{ before() }}{% if false %}{% switch 1 %}{% endswitch %}{% endif %}{{ after() }}',
+    ]) {
+      const engineSource = cookiecutterCompat
+        ? source
+        : source.replaceAll('{{', '${{');
+      assert.throws(
+        () => invalidSwitchEngine.render(engineSource),
+        NunjitsuRenderError,
+        source,
+      );
+      assert.throws(() => invalidSwitchOracle.renderString(source, {}), source);
+      assert.deepEqual(invalidSwitchCalls, [], source);
+      assert.deepEqual(invalidSwitchOracleCalls, [], source);
+      assert.equal(invalidSwitchEngine.render('clean'), 'clean');
+    }
+  }
+
+  for (const cookiecutterCompat of [false, true]) {
+    const missingCloserCalls: string[] = [];
+    const missingCloserEngine = createEngine({
+      cookiecutterCompat,
+      globals: {
+        before() {
+          missingCloserCalls.push('before');
+          return '';
+        },
+        after() {
+          missingCloserCalls.push('after');
+          return '';
+        },
+      },
+    });
+    for (const source of [
+      '{{ before() }}{% raw %}A{% raw %}B{% endraw %}{{ after() }}',
+      '{{ before() }}{% verbatim %}A{% verbatim %}B{% endverbatim %}{{ after() }}',
+      '{{ before() }}{% raw %}A{%\nendraw\n%}{{ after() }}',
+      '{{ before() }}{% verbatim %}A{%\r\nendverbatim\r\n%}{{ after() }}',
+      '{{ before() }}{% raw %}A{%- raw %}B{% endraw %}{% endraw %}{{ after() }}',
+      '{{ before() }}{% verbatim %}A{% verbatim -%}B{% endverbatim %}{% endverbatim %}{{ after() }}',
+    ]) {
+      const engineSource = cookiecutterCompat
+        ? source
+        : source.replaceAll('{{', '${{');
+      assert.throws(() => missingCloserEngine.render(engineSource), NunjitsuRenderError);
+      assert.deepEqual(missingCloserCalls, []);
+      assert.equal(missingCloserEngine.render('clean'), 'clean');
+    }
+  }
+
+  for (const cookiecutterCompat of [false, true]) {
+    const conditionalCalls: string[] = [];
+    const conditionalEngine = createEngine({
+      cookiecutterCompat,
+      globals: {
+        before() {
+          conditionalCalls.push('before');
+          return '';
+        },
+        inside() {
+          conditionalCalls.push('inside');
+          return '';
+        },
+        after() {
+          conditionalCalls.push('after');
+          return '';
+        },
+      },
+    });
+    const conditionalOracleCalls: string[] = [];
+    const conditionalOracle = new nunjucks.Environment(undefined, { autoescape: false });
+    for (const name of ['before', 'inside', 'after']) {
+      conditionalOracle.addGlobal(name, () => {
+        conditionalOracleCalls.push(name);
+        return '';
+      });
+    }
+    for (const source of [
+      '{{ before() }}{% if false %}{{ inside() }}{% elseif %}{{ inside() }}{% endif %}{{ after() }}',
+      '{{ before() }}{% if false %}{{ inside() }}{% elseif true junk %}{{ inside() }}{% endif %}{{ after() }}',
+      '{{ before() }}{% if false %}{{ inside() }}{% else if true %}{{ inside() }}{% endif %}{{ after() }}',
+    ]) {
+      const engineSource = cookiecutterCompat
+        ? source
+        : source.replaceAll('{{', '${{');
+      assert.throws(() => conditionalEngine.render(engineSource), NunjitsuRenderError);
+      assert.throws(() => conditionalOracle.renderString(source, {}));
+      assert.deepEqual(conditionalCalls, []);
+      assert.deepEqual(conditionalOracleCalls, []);
+      assert.equal(conditionalEngine.render('clean'), 'clean');
+    }
   }
 
   const validBlockSources = [
@@ -801,6 +1014,43 @@ test('rejects malformed structural tags before any template capability executes'
     assert.equal(rawEngine.render(source), oracle.renderString(source, {}));
     assert.deepEqual(engineCalls, ['after']);
     assert.deepEqual(oracleCalls, engineCalls);
+  }
+});
+
+test('rejects macro declarations inside captured output before execution', () => {
+  for (const cookiecutterCompat of [false, true]) {
+    const events: string[] = [];
+    const engine = createEngine({
+      cookiecutterCompat,
+      globals: {
+        before() {
+          events.push('before');
+          return '';
+        },
+        after() {
+          events.push('after');
+          return '';
+        },
+      },
+    });
+    const sources = [
+      '${{ before() }}{% set captured %}{% macro value() %}M{% endmacro %}${{ value() }}{% endset %}${{ after() }}',
+      '${{ before() }}{% filter upper %}{% macro value() %}M{% endmacro %}${{ value() }}{% endfilter %}${{ after() }}',
+      '${{ before() }}{% set captured %}{% if true %}{% macro value() %}M{% endmacro %}{% endif %}{% endset %}${{ after() }}',
+      '${{ before() }}{% filter upper %}{% block nested %}{% macro value() %}M{% endmacro %}{% endblock %}{% endfilter %}${{ after() }}',
+    ];
+    for (const source of sources) {
+      const engineSource = cookiecutterCompat
+        ? source.replaceAll('${{', '{{')
+        : source;
+      assert.throws(
+        () => engine.render(engineSource),
+        error => error instanceof NunjitsuRenderError && error.phase === 'parse',
+        source,
+      );
+      assert.deepEqual(events, [], source);
+      assert.equal(engine.render('clean'), 'clean');
+    }
   }
 });
 
@@ -908,6 +1158,705 @@ test('rejects Nunjucks-invalid repeated unary signs before capability dispatch',
     );
     assert.deepEqual(engineCalls, ['mark', 'mark', 'mark', 'mark']);
     assert.deepEqual(oracleCalls, engineCalls);
+  }
+});
+
+test('restricts regex literals before capability dispatch', () => {
+  const invalidSources = [
+    '${{ before() }}${{ r/x/s }}${{ later() }}',
+    '${{ before() }}${{ r/x/u }}${{ later() }}',
+    '${{ before() }}${{ r/x/d }}${{ later() }}',
+    '${{ before() }}${{ r/x/v }}${{ later() }}',
+    '{% if "a\\nb" | replace(r/./gs, "x") == "xxx" %}${{ mark() }}{% endif %}',
+    '{% if "😀" | replace(r/./gu, "x") == "x" %}${{ mark() }}{% endif %}',
+    '{% if false %}${{ r/[a&&b]/v }}{% endif %}${{ later() }}',
+    '{% macro f(value=r/x/s) %}${{ value }}{% endmacro %}${{ later() }}',
+    '${{ consume(r/x/u) }}${{ later() }}',
+    '${{ "x" | identity(r/x/d) }}${{ later() }}',
+    '${{ [r/x/v] | first }}${{ later() }}',
+    '${{ {value: r/x/a} | dump }}${{ later() }}',
+    '${{ r/x/G }}${{ later() }}',
+    '${{ r/x/gg }}${{ later() }}',
+    '${{ r/x/uv }}${{ later() }}',
+    '${{ before() }}${{ r/2 }}${{ later() }}',
+    '${{ r/' + '\\'.repeat(2) + '/ }}${{ later() }}',
+  ];
+
+  for (const cookiecutterCompat of [false, true]) {
+    const engineCalls: string[] = [];
+    const oracleCalls: string[] = [];
+    const engine = createEngine({
+      cookiecutterCompat,
+      filters: {
+        identity(input) {
+          engineCalls.push('identity');
+          return input;
+        },
+      },
+      globals: {
+        before() {
+          engineCalls.push('before');
+          return '';
+        },
+        consume(value) {
+          engineCalls.push('consume');
+          return value;
+        },
+        later() {
+          engineCalls.push('later');
+          return '';
+        },
+        mark() {
+          engineCalls.push('mark');
+          return '';
+        },
+      },
+    });
+    const oracle = new nunjucks.Environment(undefined, { autoescape: false });
+    oracle.addFilter('identity', (input: unknown) => {
+      oracleCalls.push('identity');
+      return input;
+    });
+    for (const name of ['before', 'consume', 'later', 'mark']) {
+      oracle.addGlobal(name, (value?: unknown) => {
+        oracleCalls.push(name);
+        return value ?? '';
+      });
+    }
+
+    for (const originalSource of invalidSources) {
+      engineCalls.length = 0;
+      oracleCalls.length = 0;
+      const engineSource = cookiecutterCompat
+        ? originalSource.replaceAll('${{', '{{')
+        : originalSource;
+      const oracleSource = originalSource.replaceAll('${{', '{{');
+      let caught: NunjitsuRenderError | undefined;
+      assert.throws(
+        () => engine.render(engineSource),
+        error => {
+          if (!(error instanceof NunjitsuRenderError)) {
+            return false;
+          }
+          caught = error;
+          return true;
+        },
+        engineSource,
+      );
+      assert.throws(() => oracle.renderString(oracleSource, {}), oracleSource);
+      assert.equal(caught?.phase, 'parse', engineSource);
+      assert.equal(caught?.code, 'syntax_error', engineSource);
+      assert.equal(caught?.cause, undefined, engineSource);
+      assert.deepEqual(engineCalls, [], engineSource);
+      assert.deepEqual(oracleCalls, [], oracleSource);
+      assert.equal(engine.render('clean'), 'clean', engineSource);
+    }
+
+    const validSources = [
+      '${{ r/x/ }}|${{ r/x/g }}|${{ r/x/i }}|${{ r/x/m }}|${{ r/x/y }}|${{ r/x/gimy }}',
+      '${{ "aba" | replace(r/a/g, "x") }}',
+      '${{ "A" | replace(r/a/i, "x") }}',
+      '${{ "a\\nb" | replace(r/^b/m, "x") }}',
+      '${{ "ab" | replace(r/a/y, "x") }}',
+      '${{ r/' + '\\/' + '/ }}|${{ r/' + 'a\\/b' + '/ }}|${{ r/' +
+        'a' + '\\'.repeat(3) + '/b' + '/ }}',
+    ];
+    for (const originalSource of validSources) {
+      const engineSource = cookiecutterCompat
+        ? originalSource.replaceAll('${{', '{{')
+        : originalSource;
+      const oracleSource = originalSource.replaceAll('${{', '{{');
+      const expected = oracle.renderString(oracleSource, {});
+      assert.equal(engine.render(engineSource), expected, engineSource);
+      assert.equal(RegExp.$1, '', engineSource);
+      assert.equal(RegExp.input, '', engineSource);
+    }
+
+    const divisionContext = {
+      bar: 12,
+      order: 8,
+      longerIdentifier: 18,
+      obj: { bar: 10 },
+      s: 2,
+      g: 3,
+      a: 4,
+      gg: 6,
+      values: [1, 2, 3, 4],
+    };
+    const divisionSources = [
+      [
+        '${{ bar/2 }}|${{ order/2 }}|${{ longerIdentifier/2 }}|',
+        '${{ obj.bar/2 }}|${{ bar /2 }}|${{ bar//5 }}|',
+        '${{ bar/2/3 }}|${{ bar/2/s }}|${{ bar/2/g }}|',
+        '${{ bar/2/a }}|${{ bar/2/gg }}|${{ bar/(1 + 1) }}',
+      ].join(''),
+      [
+        '{% if bar/2 == 6 %}${{ mark() }}{% endif %}',
+        '{% set value = order/2 %}${{ value }}',
+      ].join(''),
+      '{% macro render(value=bar/2) %}${{ value }}{% endmacro %}${{ render() }}',
+      '${{ consume(bar/2) }}|${{ "x" | identity(bar/2) }}',
+      '${{ [bar/2] | first }}|${{ {value: bar/2}.value }}',
+      '{% for item in values | slice(bar/6) %}[${{ item | join(",") }}]{% endfor %}',
+    ];
+    for (const originalSource of divisionSources) {
+      engineCalls.length = 0;
+      oracleCalls.length = 0;
+      const engineSource = cookiecutterCompat
+        ? originalSource.replaceAll('${{', '{{')
+        : originalSource;
+      const oracleSource = originalSource.replaceAll('${{', '{{');
+      assert.equal(
+        engine.render(engineSource, divisionContext),
+        oracle.renderString(oracleSource, divisionContext),
+        engineSource,
+      );
+      assert.deepEqual(engineCalls, oracleCalls, engineSource);
+    }
+  }
+});
+
+test('matches Nunjucks string escapes before capability dispatch', () => {
+  const stringSources = [
+    String.raw`{{ "\n" | dump }}|{{ "\t" | dump }}|{{ "\r" | dump }}`,
+    String.raw`{{ "\b" | dump }}|{{ "\f" | dump }}|{{ "\v" | dump }}`,
+    String.raw`{{ "\x41" | dump }}|{{ "\x0a" | dump }}|{{ "\xZZ" | dump }}`,
+    String.raw`{{ "\u0041" | dump }}|{{ "\u2028" | dump }}|{{ "\uD800" | dump }}`,
+    String.raw`{{ "\uZZZZ" | dump }}|{{ "\u{1F600}" | dump }}`,
+    String.raw`{{ "\q" | dump }}|{{ "\0" | dump }}|{{ "\\" | dump }}`,
+    String.raw`{{ "\"" | dump }}|{{ '\'' | dump }}`,
+    String.raw`{{ "\\x41" | dump }}|{{ "\\u0041" | dump }}`,
+    ['{{ "raw', 'newline" | dump }}'].join('\n'),
+    ['{{ "escaped\\', 'newline" | dump }}'].join('\n'),
+  ];
+  const semanticSources = [
+    [
+      String.raw`{% set assigned="\x41" %}`,
+      String.raw`{% macro show(value="\u0041") %}{{ value }}{% endmacro %}`,
+      String.raw`{{ assigned }}|{{ show() }}`,
+    ].join(''),
+    String.raw`{{ capture("\x41") }}|{{ "input" | observe("\u0041") }}`,
+    String.raw`{{ ["\x41"] | dump }}|{{ {value: "\u0041"} | dump }}`,
+    [
+      String.raw`{% if "\x41" == "A" %}{{ privileged() }}{% endif %}`,
+      String.raw`{% if "\u0041" == "A" %}{{ privileged() }}{% endif %}`,
+      String.raw`{% if "\b" == "b" %}ok{% else %}{{ privileged() }}{% endif %}`,
+    ].join(''),
+    String.raw`{{ {"\u0063onstructor": 1} | dump }}|{{ record["\u0063onstructor"] }}`,
+  ];
+
+  for (const cookiecutterCompat of [false, true]) {
+    const engineEvents: unknown[] = [];
+    const oracleEvents: unknown[] = [];
+    const engine = createEngine({
+      cookiecutterCompat,
+      filters: {
+        observe(input, value) {
+          engineEvents.push(['observe', value]);
+          return input;
+        },
+      },
+      globals: {
+        capture(value) {
+          engineEvents.push(['capture', value]);
+          return value;
+        },
+        privileged() {
+          engineEvents.push(['privileged']);
+          return '';
+        },
+      },
+    });
+    const oracle = new nunjucks.Environment(undefined, { autoescape: false });
+    oracle.addFilter('observe', (input: unknown, value: unknown) => {
+      oracleEvents.push(['observe', value]);
+      return input;
+    });
+    oracle.addGlobal('capture', (value: unknown) => {
+      oracleEvents.push(['capture', value]);
+      return value;
+    });
+    oracle.addGlobal('privileged', () => {
+      oracleEvents.push(['privileged']);
+      return '';
+    });
+
+    for (const source of [...stringSources, ...semanticSources]) {
+      engineEvents.length = 0;
+      oracleEvents.length = 0;
+      const engineSource = cookiecutterCompat ? source : source.replaceAll('{{', '${{');
+      const context = { record: { u0063onstructor: 2 } };
+      assert.equal(
+        engine.render(engineSource, context),
+        oracle.renderString(source, context),
+        source,
+      );
+      assert.deepEqual(engineEvents, oracleEvents, source);
+    }
+
+    const reservedSource = cookiecutterCompat
+      ? '{{ {"constructor": 1} }}'
+      : '${{ {"constructor": 1} }}';
+    assert.throws(
+      () => engine.render(reservedSource),
+      error => error instanceof NunjitsuRenderError && error.phase === 'parse',
+    );
+    assert.equal(engine.render('clean'), 'clean');
+
+    for (const source of [
+      ['{{ "a', 'b" + broken( }}'].join('\n'),
+      ['first line', '{{ "a', 'b" + broken( }}'].join('\n'),
+      ['{{ "a\\', 'b" + broken( }}'].join('\n'),
+    ]) {
+      const engineSource = cookiecutterCompat ? source : source.replaceAll('{{', '${{');
+      let caught: NunjitsuRenderError | undefined;
+      assert.throws(
+        () => engine.render(engineSource),
+        error => {
+          if (!(error instanceof NunjitsuRenderError)) {
+            return false;
+          }
+          caught = error;
+          return true;
+        },
+      );
+      assert.throws(() => oracle.renderString(source, {}));
+      assert.equal(caught?.line, source.startsWith('first line') ? 3 : 2, source);
+      assert.equal(caught?.column, 14, source);
+      assert.equal(engine.render('clean'), 'clean');
+    }
+  }
+});
+
+test('restricts numeric literals before capability dispatch', () => {
+  const invalidForms = [
+    '.5',
+    '1e3',
+    '1E3',
+    '1e+3',
+    '1e-3',
+    '1.e3',
+    '1.0e3',
+    '0x10',
+    '0Xff',
+    '0b10',
+    '0B10',
+    '0o10',
+    '0O10',
+    '1_000',
+    '123abc',
+  ];
+  const positionSources = [
+    '{{ before() }}{{ .5 }}{{ later() }}',
+    '{% if false %}{{ .5 }}{% endif %}{{ later() }}',
+    '{% set value = 1e3 %}{{ later() }}',
+    '{% macro render(value=0x10) %}{{ value }}{% endmacro %}{{ later() }}',
+    '{{ consume(.5) }}{{ later() }}',
+    '{{ "x" | observe(1e3) }}{{ later() }}',
+    '{{ [.5, 1e3, 0x10] | dump }}{{ later() }}',
+    '{{ {fraction: .5, exponent: 1e3, hex: 0x10} | dump }}{{ later() }}',
+    '{{ values[.5] }}{{ later() }}',
+    '{% for item in 1e3 %}{{ body() }}{% endfor %}{{ later() }}',
+    '{% switch 0x10 %}{% case 16 %}{{ body() }}{% endswitch %}{{ later() }}',
+  ];
+  const branchSources = [
+    '{% if 1e3 == 1000 %}{{ privileged() }}{% endif %}',
+    '{% if 0x10 == 16 %}{{ privileged() }}{% endif %}',
+    '{% if .5 == 0.5 %}{{ privileged() }}{% endif %}',
+    '{% if 1e309 %}{{ privileged() }}{% endif %}',
+    '{% if false %}{{ .5 }}{% endif %}{{ later() }}',
+  ];
+
+  for (const cookiecutterCompat of [false, true]) {
+    const engineCalls: string[] = [];
+    const oracleCalls: string[] = [];
+    const engine = createEngine({
+      cookiecutterCompat,
+      filters: {
+        observe(input) {
+          engineCalls.push('observe');
+          return input;
+        },
+      },
+      globals: {
+        before() {
+          engineCalls.push('before');
+          return '';
+        },
+        body() {
+          engineCalls.push('body');
+          return '';
+        },
+        consume(value) {
+          engineCalls.push('consume');
+          return value;
+        },
+        later() {
+          engineCalls.push('later');
+          return '';
+        },
+        privileged() {
+          engineCalls.push('privileged');
+          return '';
+        },
+      },
+    });
+    const oracle = new nunjucks.Environment(undefined, { autoescape: false });
+    for (const name of ['before', 'body', 'consume', 'later', 'privileged']) {
+      oracle.addGlobal(name, (value?: unknown) => {
+        oracleCalls.push(name);
+        return value ?? '';
+      });
+    }
+
+    const assertRejected = (source: string): NunjitsuRenderError => {
+      engineCalls.length = 0;
+      const engineSource = cookiecutterCompat ? source : source.replaceAll('{{', '${{');
+      let caught: NunjitsuRenderError | undefined;
+      assert.throws(
+        () => engine.render(engineSource, { values: [1, 2] }),
+        error => {
+          if (!(error instanceof NunjitsuRenderError)) {
+            return false;
+          }
+          caught = error;
+          return true;
+        },
+        source,
+      );
+      assert.equal(caught?.phase, 'parse', source);
+      assert.equal(caught?.code, 'syntax_error', source);
+      assert.deepEqual(engineCalls, [], source);
+      assert.equal(engine.render('clean'), 'clean', source);
+      return caught!;
+    };
+
+    for (const form of invalidForms) {
+      assertRejected(`{{ before() }}{{ ${form} }}{{ later() }}`);
+      assertRejected(`{{ before() }}{{ -${form} }}{{ later() }}`);
+      assertRejected(`{{ before() }}{{ +${form} }}{{ later() }}`);
+    }
+    for (const source of positionSources) {
+      assertRejected(source);
+    }
+
+    for (const source of branchSources) {
+      assertRejected(source);
+      oracleCalls.length = 0;
+      try {
+        oracle.renderString(source, {});
+      } catch {
+        // Leading-dot syntax is rejected by the pinned oracle.
+      }
+      assert.deepEqual(oracleCalls, [], source);
+    }
+
+    const validSource = [
+      '{{ 0 }}|{{ 00 }}|{{ 01 }}|{{ 1. }}|{{ 1.0 }}|',
+      '{{ 00.5 }}|{{ 01.50 }}|{{ +1.5 }}|{{ -1.5 }}',
+    ].join('');
+    const engineSource = cookiecutterCompat
+      ? validSource
+      : validSource.replaceAll('{{', '${{');
+    assert.equal(engine.render(engineSource), oracle.renderString(validSource, {}));
+
+    const largeDecimal = '9'.repeat(400);
+    const overflowSource = `{{ ${largeDecimal} }}|{{ 1 / 0 }}`;
+    assert.equal(
+      engine.render(
+        cookiecutterCompat ? overflowSource : overflowSource.replaceAll('{{', '${{'),
+      ),
+      oracle.renderString(overflowSource, {}),
+    );
+
+    assert.equal(
+      oracle.renderString('{{ 1e3 }}|{{ 0x10 }}|{{ 123abc }}', {
+        '1e3': 7,
+        '0x10': 8,
+        '123abc': 9,
+      }),
+      '7|8|9',
+    );
+
+    const positioned = assertRejected(['first line', '{{ 1e3 }}'].join('\n'));
+    assert.equal(positioned.line, 2);
+    assert.equal(positioned.column, 1);
+  }
+});
+
+test('halts after invalid regex replacement inputs and preserves value branches', () => {
+  for (const cookiecutterCompat of [false, true]) {
+    const engineEvents: string[] = [];
+    const oracleEvents: string[] = [];
+    const engine = createEngine({
+      cookiecutterCompat,
+      globals: {
+        before() {
+          engineEvents.push('before');
+          return '';
+        },
+        later() {
+          engineEvents.push('later');
+          return '';
+        },
+        privileged() {
+          engineEvents.push('privileged');
+          return '';
+        },
+      },
+    });
+    const oracle = new nunjucks.Environment(undefined, { autoescape: false });
+    for (const name of ['before', 'later', 'privileged']) {
+      oracle.addGlobal(name, () => {
+        oracleEvents.push(name);
+        return '';
+      });
+    }
+
+    for (const input of ['123', 'missing', 'null', 'false', '[1]', '{value:1}']) {
+      engineEvents.length = 0;
+      oracleEvents.length = 0;
+      const source = `{{ before() }}{{ ${input} | replace(r/1/, "x") }}{{ later() }}`;
+      const engineSource = cookiecutterCompat ? source : source.replaceAll('{{', '${{');
+      assert.throws(
+        () => engine.render(engineSource),
+        error => error instanceof NunjitsuRenderError && error.phase === 'evaluate',
+        input,
+      );
+      assert.throws(() => oracle.renderString(source, {}), input);
+      assert.deepEqual(engineEvents, ['before'], input);
+      assert.deepEqual(oracleEvents, ['before'], input);
+      assert.equal(engine.render('clean'), 'clean', input);
+    }
+
+    const branchSource = [
+      '{% if 123 | replace("x", "y", 0) is number %}{{ privileged() }}{% endif %}',
+      '{% set x="a"|safe %}',
+      '{% if x | replace(r/a/, "y") is escaped %}{{ privileged() }}{% endif %}',
+    ].join('');
+    const engineBranchSource = cookiecutterCompat
+      ? branchSource
+      : branchSource.replaceAll('{{', '${{');
+    engineEvents.length = 0;
+    oracleEvents.length = 0;
+    assert.equal(engine.render(engineBranchSource), oracle.renderString(branchSource, {}));
+    assert.deepEqual(engineEvents, []);
+    assert.deepEqual(oracleEvents, []);
+    assert.equal(engine.render('clean'), 'clean');
+  }
+});
+
+test('empty safe-string slice fills fail before later capabilities', () => {
+  for (const cookiecutterCompat of [false, true]) {
+    const engineEvents: string[] = [];
+    const oracleEvents: string[] = [];
+    const engine = createEngine({
+      cookiecutterCompat,
+      globals: {
+        before() {
+          engineEvents.push('before');
+          return '';
+        },
+        later() {
+          engineEvents.push('later');
+          return '';
+        },
+      },
+    });
+    const oracle = new nunjucks.Environment(undefined, { autoescape: false });
+    for (const name of ['before', 'later']) {
+      oracle.addGlobal(name, () => {
+        oracleEvents.push(name);
+        return '';
+      });
+    }
+    const source = [
+      '{{ before() }}',
+      '{{ "abc" | slice(2, "" | safe) | dump }}',
+      '{{ later() }}',
+    ].join('');
+    const engineSource = cookiecutterCompat
+      ? source
+      : source.replaceAll('{{', '${{');
+
+    assert.throws(
+      () => engine.render(engineSource),
+      error => error instanceof NunjitsuRenderError && error.phase === 'evaluate',
+    );
+    assert.throws(() => oracle.renderString(source, {}));
+    assert.deepEqual(engineEvents, ['before']);
+    assert.deepEqual(oracleEvents, engineEvents);
+    assert.equal(engine.render('clean'), 'clean');
+  }
+});
+
+test('array-like record filters fail closed and enforce projected limits', () => {
+  for (const cookiecutterCompat of [false, true]) {
+    const engineEvents: string[] = [];
+    const oracleEvents: string[] = [];
+    const engine = createEngine({
+      cookiecutterCompat,
+      globals: {
+        before() {
+          engineEvents.push('before');
+          return '';
+        },
+        later() {
+          engineEvents.push('later');
+          return '';
+        },
+      },
+    });
+    const oracle = new nunjucks.Environment(undefined, { autoescape: false });
+    for (const name of ['before', 'later']) {
+      oracle.addGlobal(name, () => {
+        oracleEvents.push(name);
+        return '';
+      });
+    }
+    const failureExpressions = [
+      '{length:-1} | reverse | dump',
+      '{"0":"a","1":"b",length:1.5} | reverse | dump',
+      '{length:-1} | sort | dump',
+      '{"0":"a","1":"b",length:1.5} | sort | dump',
+      '{length:2} | groupby("x") | dump',
+      '{"0":"a",length:1} | join',
+      '{"0":"a",length:1} | slice(1) | dump',
+      '{"0":"a",length:1} | sum',
+      '{"0":{x:true},length:1} | selectattr("x") | dump',
+      '{"0":{x:true},length:1} | rejectattr("x") | dump',
+    ];
+    for (const expression of failureExpressions) {
+      engineEvents.length = 0;
+      oracleEvents.length = 0;
+      const source = `{{ before() }}{{ ${expression} }}{{ later() }}`;
+      const engineSource = cookiecutterCompat
+        ? source
+        : source.replaceAll('{{', '${{');
+      assert.throws(
+        () => engine.render(engineSource),
+        error => error instanceof NunjitsuRenderError && error.phase === 'evaluate',
+        expression,
+      );
+      assert.throws(() => oracle.renderString(source, {}), expression);
+      assert.deepEqual(engineEvents, ['before'], expression);
+      assert.deepEqual(oracleEvents, engineEvents, expression);
+      assert.equal(engine.render('clean'), 'clean', expression);
+    }
+
+    const largeSource = [
+      '{{ before() }}',
+      '{{ {length:1000000000} | reverse | dump }}',
+      '{{ later() }}',
+    ].join('');
+    const engineLargeSource = cookiecutterCompat
+      ? largeSource
+      : largeSource.replaceAll('{{', '${{');
+    for (const limits of [
+      { workUnits: 100 },
+      { workUnits: Number.POSITIVE_INFINITY, scratchBytes: 100 },
+    ]) {
+      engineEvents.length = 0;
+      assert.throws(
+        () => engine.render(engineLargeSource, {}, { limits }),
+        NunjitsuLimitError,
+      );
+      assert.deepEqual(engineEvents, ['before']);
+      assert.equal(engine.render('clean'), 'clean');
+    }
+  }
+});
+
+test('attribute lookup policies reject reserved paths and fail on nullish values', () => {
+  for (const cookiecutterCompat of [false, true]) {
+    const engineEvents: string[] = [];
+    const oracleEvents: string[] = [];
+    const engine = createEngine({
+      cookiecutterCompat,
+      globals: {
+        before() {
+          engineEvents.push('before');
+          return '';
+        },
+        later() {
+          engineEvents.push('later');
+          return '';
+        },
+      },
+    });
+    const oracle = new nunjucks.Environment(undefined, { autoescape: false });
+    for (const name of ['before', 'later']) {
+      oracle.addGlobal(name, () => {
+        oracleEvents.push(name);
+        return '';
+      });
+    }
+    const nullishExpressions = [
+      '[null,null] | join(",", "x")',
+      '[missing,missing] | join(",", "x")',
+      '[null,null] | sum("x")',
+      '[missing,missing] | sum("x")',
+      '[null,null] | sort(attribute="x") | dump',
+      '[null,null] | selectattr("x") | dump',
+      '[missing,missing] | selectattr("x") | dump',
+      '[null,null] | rejectattr("x") | dump',
+      '[missing,missing] | rejectattr("x") | dump',
+      '[null,null] | groupby("x") | dump',
+      '[missing,missing] | groupby("x") | dump',
+    ];
+    for (const expression of nullishExpressions) {
+      engineEvents.length = 0;
+      oracleEvents.length = 0;
+      const source = `{{ before() }}{{ ${expression} }}{{ later() }}`;
+      const engineSource = cookiecutterCompat
+        ? source
+        : source.replaceAll('{{', '${{');
+      assert.throws(
+        () => engine.render(engineSource),
+        error => error instanceof NunjitsuRenderError && error.phase === 'evaluate',
+        expression,
+      );
+      assert.throws(() => oracle.renderString(source, {}), expression);
+      assert.deepEqual(engineEvents, ['before'], expression);
+      assert.deepEqual(oracleEvents, engineEvents, expression);
+      assert.equal(engine.render('clean'), 'clean', expression);
+    }
+
+    const reservedExpressions = [
+      '[{}] | join(",", "constructor")',
+      '[{}] | sum("prototype")',
+      '[{}] | selectattr("__proto__") | dump',
+      '[{}] | sort(attribute="a.constructor") | dump',
+      '[{}] | groupby("a.prototype") | dump',
+    ];
+    for (const expression of reservedExpressions) {
+      engineEvents.length = 0;
+      const source = `{{ before() }}{{ ${expression} }}{{ later() }}`;
+      const engineSource = cookiecutterCompat
+        ? source
+        : source.replaceAll('{{', '${{');
+      assert.throws(
+        () => engine.render(engineSource),
+        error => error instanceof NunjitsuRenderError && error.phase === 'evaluate',
+        expression,
+      );
+      assert.deepEqual(engineEvents, ['before'], expression);
+      assert.equal(engine.render('clean'), 'clean', expression);
+    }
+
+    const allowedSource = [
+      '{{ [{"a.constructor":"direct"}] | join(",", "a.constructor") }}|',
+      '{{ [{"a.constructor":1},{"a.constructor":2}]',
+      ' | sort(attribute="a.constructor" | safe)',
+      ' | join(",", "a.constructor") }}|',
+      '{{ [{"a.constructor":"direct"}]',
+      ' | groupby("a.constructor" | safe) | dictsort | first | first }}',
+    ].join('');
+    const engineAllowedSource = cookiecutterCompat
+      ? allowedSource
+      : allowedSource.replaceAll('{{', '${{');
+    assert.equal(engine.render(engineAllowedSource), 'direct|1,2|direct');
+    assert.equal(engine.render('clean'), 'clean');
   }
 });
 
@@ -1063,8 +2012,6 @@ test('validates operations before evaluating attacker-controlled operands', () =
     '${{ [] | reject("missing") | dump }}${{ later() }}',
     '${{ "" | select("missing") | dump }}${{ later() }}',
     '${{ true | select("missing") | dump }}${{ later() }}',
-    '${{ [] | selectattr("value", "missing") | dump }}${{ later() }}',
-    '${{ [] | rejectattr("value", "missing") | dump }}${{ later() }}',
   ];
   for (const source of rejectedSources) {
     events.length = 0;
@@ -1424,6 +2371,78 @@ test('callable identities cannot be laundered through rendering or built-ins', (
   }
 });
 
+test('expression groups reject empty syntax and cannot discard callable authority', () => {
+  for (const cookiecutterCompat of [false, true]) {
+    const events: string[] = [];
+    const engine = createEngine({
+      cookiecutterCompat,
+      globals: {
+        before() {
+          events.push('before');
+          return '';
+        },
+        after() {
+          events.push('after');
+          return '';
+        },
+        authority() {
+          events.push('authority');
+          return 'authority';
+        },
+        consume(value) {
+          events.push(`consume:${String(value)}`);
+          return value;
+        },
+      },
+    });
+    const renderSource = (source: string): string => (
+      cookiecutterCompat ? source.replaceAll('${{', '{{') : source
+    );
+
+    for (const source of [
+      '${{ before() }}${{ () }}${{ after() }}',
+      '${{ before() }}{% if false %}${{ () }}{% endif %}${{ after() }}',
+      '${{ before() }}${{ [()] }}${{ after() }}',
+      '${{ before() }}${{ {value: ()} }}${{ after() }}',
+      '${{ before() }}${{ consume(()) }}${{ after() }}',
+      '${{ before() }}${{ "value" | default(()) }}${{ after() }}',
+      '${{ before() }}${{ (()) }}${{ after() }}',
+    ]) {
+      events.length = 0;
+      assert.throws(
+        () => engine.render(renderSource(source)),
+        NunjitsuRenderError,
+        source,
+      );
+      assert.deepEqual(events, [], source);
+      assert.equal(engine.render('clean'), 'clean');
+    }
+
+    for (const source of [
+      '${{ (authority, false) }}${{ after() }}',
+      '${{ ([authority], false) }}${{ after() }}',
+      '{% macro allowedMacro() %}ok{% endmacro %}${{ (allowedMacro, false) }}${{ after() }}',
+    ]) {
+      events.length = 0;
+      assert.throws(
+        () => engine.render(renderSource(source)),
+        NunjitsuRenderError,
+        source,
+      );
+      assert.deepEqual(events, [], source);
+      assert.equal(engine.render('clean'), 'clean');
+    }
+
+    assert.equal(
+      engine.render(renderSource('{% macro allowedMacro() %}ok{% endmacro %}${{ (0, allowedMacro)() }}')),
+      'ok',
+    );
+    events.length = 0;
+    assert.equal(engine.render(renderSource('${{ (0, authority)() }}')), 'authority');
+    assert.deepEqual(events, ['authority']);
+  }
+});
+
 test('standard-library failures and scalar results cannot select fail-open branches', () => {
   let engineCalls = 0;
   let oracleCalls = 0;
@@ -1632,12 +2651,12 @@ test('derived record keys preserve the capability-boundary name invariant', () =
   }
 });
 
-test('dynamic attribute paths traverse only explicit record entries', () => {
+test('direct filter attributes use only explicit record keys', () => {
   const pathCases = [
-    ...semanticNameCases,
-    { name: 'safe.__proto__.value', reserved: true },
-    { name: 'safe.constructor.value', reserved: true },
-    { name: 'safe.prototype.value', reserved: true },
+    ...semanticNameCases.filter(({ name }) => name !== ''),
+    { name: 'safe.__proto__.value', reserved: false },
+    { name: 'safe.constructor.value', reserved: false },
+    { name: 'safe.prototype.value', reserved: false },
   ];
 
   for (const { name: path, reserved } of pathCases) {
@@ -1656,17 +2675,7 @@ test('dynamic attribute paths traverse only explicit record entries', () => {
     if (reserved) {
       item.safe = 'unrelated';
     } else {
-      const segments = path.split('.');
-      let current = item;
-      for (const [index, segment] of segments.entries()) {
-        if (index === segments.length - 1) {
-          current[segment] = 'path-value';
-        } else {
-          const child = Object.create(null) as Record<string, unknown>;
-          current[segment] = child;
-          current = child;
-        }
-      }
+      item[path] = 'path-value';
     }
 
     const render = () => engine.render(
@@ -1750,6 +2759,254 @@ test('scope and capability identities never fall through host object names', () 
     });
     assert.throws(() => engine.render(`\${{ early() }}{% set ${name} = 1 %}`));
     assert.equal(calls, 0);
+    assert.equal(engine.render('clean'), 'clean');
+  }
+});
+
+test('dotted filters dispatch exact validated capability names', () => {
+  for (const cookiecutterCompat of [false, true]) {
+    const engineEvents: string[] = [];
+    const oracleEvents: string[] = [];
+    const filters = {
+      plain(value: unknown) {
+        engineEvents.push('plain');
+        return `plain:${String(value)}`;
+      },
+      'tools.identity'(value: unknown) {
+        engineEvents.push('tools.identity');
+        return `tools.identity:${String(value)}`;
+      },
+      'tools.text.identity'(value: unknown) {
+        engineEvents.push('tools.text.identity');
+        return `tools.text.identity:${String(value)}`;
+      },
+    };
+    const engine = createEngine({
+      cookiecutterCompat,
+      filters,
+      globals: {
+        input() {
+          engineEvents.push('input');
+          return 'input';
+        },
+        argument() {
+          engineEvents.push('argument');
+          return 'argument';
+        },
+        later() {
+          engineEvents.push('later');
+          return '';
+        },
+      },
+    });
+    const oracle = new nunjucks.Environment(undefined, { autoescape: false });
+    for (const name of ['plain', 'tools.identity', 'tools.text.identity']) {
+      oracle.addFilter(name, (value: unknown) => {
+        oracleEvents.push(name);
+        return `${name}:${String(value)}`;
+      });
+    }
+    const source = [
+      '{{ "x" | plain }}|',
+      '{{ "x" | tools.identity }}|',
+      '{{ "x" | tools.text.identity }}|',
+      '{{ "x" | tools . identity }}|',
+      '{{ "x" | tools. identity }}|',
+      '{{ "x" | tools .identity }}|',
+      '{{ "x" | tools . identity }}',
+    ].join('');
+    const engineSource = cookiecutterCompat
+      ? source
+      : source.replaceAll('{{', '${{');
+    assert.equal(
+      engine.render(engineSource, {
+        tools: { identity: 'context-value', text: { identity: 'context-value' } },
+      }),
+      oracle.renderString(source, {}),
+    );
+    assert.deepEqual(engineEvents, [
+      'plain',
+      'tools.identity',
+      'tools.text.identity',
+      'tools.identity',
+      'tools.identity',
+      'tools.identity',
+      'tools.identity',
+    ]);
+    assert.deepEqual(oracleEvents, engineEvents);
+
+    for (const source_ of [
+      '{{ input() | tools.missing(argument()) }}{{ later() }}',
+      '{{ input() | tools.missing(value=argument()) }}{{ later() }}',
+      '{{ input() | tools.identity(value=argument()) }}{{ later() }}',
+      '{{ input() | .leading }}{{ later() }}',
+      '{{ input() | trailing. }}{{ later() }}',
+      '{{ input() | repeated..dot }}{{ later() }}',
+      '{{ input() | a-b }}{{ later() }}',
+      '{{ input() | a b }}{{ later() }}',
+      '{{ input() | tools .identity }}{{ later() }}',
+      '{{ input() | constructor.safe }}{{ later() }}',
+      '{{ input() | safe.constructor }}{{ later() }}',
+      '{{ input() | safe.constructor.name }}{{ later() }}',
+      '{{ input() | safe.prototype }}{{ later() }}',
+      '{{ input() | safe.name.prototype }}{{ later() }}',
+      '{{ input() | safe.__proto__ }}{{ later() }}',
+    ]) {
+      engineEvents.length = 0;
+      const rejectedSource = cookiecutterCompat
+        ? source_
+        : source_.replaceAll('{{', '${{');
+      assert.throws(() => engine.render(rejectedSource), NunjitsuRenderError, source_);
+      assert.deepEqual(engineEvents, [], source_);
+      assert.equal(engine.render('clean'), 'clean');
+    }
+  }
+
+  for (const name of [
+    '',
+    'a-b',
+    'a b',
+    'a\nb',
+    'a\u0000b',
+    'a/b',
+    '0start',
+    '東京',
+    '.leading',
+    'trailing.',
+    'a..b',
+    'safe.constructor',
+    'safe.constructor.name',
+    'safe.prototype',
+    'safe.name.prototype',
+    'safe.__proto__',
+    'constructor.safe',
+    'prototype.safe',
+    '__proto__.safe',
+  ]) {
+    const filters = Object.create(null) as Record<string, (value: unknown) => unknown>;
+    filters[name] = value => value;
+    assert.throws(() => createEngine({ filters: filters as never }), name);
+  }
+
+  let accessorCalls = 0;
+  const accessorRegistry = Object.create(null);
+  Object.defineProperty(accessorRegistry, 'tools.identity', {
+    enumerable: true,
+    get() {
+      accessorCalls += 1;
+      return (value: unknown) => value;
+    },
+  });
+  assert.throws(() => createEngine({ filters: accessorRegistry }));
+  assert.equal(accessorCalls, 0);
+
+  const symbolRegistry = Object.create(null);
+  symbolRegistry[Symbol('filter')] = (value: unknown) => value;
+  assert.throws(() => createEngine({ filters: symbolRegistry }));
+
+  let proxyTrapCalls = 0;
+  const proxyRegistry = new Proxy({}, {
+    getPrototypeOf() {
+      proxyTrapCalls += 1;
+      return Object.prototype;
+    },
+    ownKeys() {
+      proxyTrapCalls += 1;
+      return [];
+    },
+  });
+  assert.throws(() => createEngine({ filters: proxyRegistry }));
+  assert.equal(proxyTrapCalls, 0);
+});
+
+test('filter blocks validate authority before capturing and fail closed', () => {
+  for (const cookiecutterCompat of [false, true]) {
+    const events: string[] = [];
+    const engine = createEngine({
+      cookiecutterCompat,
+      filters: {
+        observe(value, argument) {
+          events.push(`observe:${String(value)}:${String(argument)}`);
+          return value;
+        },
+        invalidResult() {
+          events.push('invalidResult');
+          return new Date() as never;
+        },
+        throws() {
+          events.push('throws');
+          throw new Error('capability failure');
+        },
+      },
+      globals: {
+        body() {
+          events.push('body');
+          return 'body';
+        },
+        argument() {
+          events.push('argument');
+          return 'argument';
+        },
+        later() {
+          events.push('later');
+          return 'later';
+        },
+        authority() {
+          events.push('authority');
+          return 'authority';
+        },
+      },
+    });
+    const renderSource = (source: string): string => (
+      cookiecutterCompat ? source.replaceAll('${{', '{{') : source
+    );
+
+    for (const source of [
+      '{% filter missing(argument()) %}${{ body() }}{% endfilter %}${{ later() }}',
+      '{% filter observe(value=argument()) %}${{ body() }}{% endfilter %}${{ later() }}',
+      '{% filter observe %}${{ authority }}{% endfilter %}${{ later() }}',
+      '{% filter observe(authority) %}body{% endfilter %}${{ later() }}',
+      '{% filter invalidResult %}body{% endfilter %}${{ later() }}',
+      '{% filter throws %}body{% endfilter %}${{ later() }}',
+    ]) {
+      events.length = 0;
+      assert.throws(
+        () => engine.render(renderSource(source)),
+        NunjitsuRenderError,
+        source,
+      );
+      assert.equal(events.includes('later'), false, source);
+      if (source.includes('missing') || source.includes('value=')) {
+        assert.deepEqual(events, [], source);
+      }
+      assert.equal(engine.render('clean'), 'clean');
+    }
+
+    for (const source of [
+      '${{ body() }}{% filter %}body{% endfilter %}${{ later() }}',
+      '${{ body() }}{% filter observe %}body{% endfilter trailing %}${{ later() }}',
+      '${{ body() }}{% filter observe %}body${{ later() }}',
+      '${{ body() }}{% filter tools. %}body{% endfilter %}${{ later() }}',
+      '${{ body() }}{% filter safe.constructor %}body{% endfilter %}${{ later() }}',
+    ]) {
+      events.length = 0;
+      assert.throws(
+        () => engine.render(renderSource(source)),
+        NunjitsuRenderError,
+        source,
+      );
+      assert.deepEqual(events, [], source);
+      assert.equal(engine.render('clean'), 'clean');
+    }
+
+    assert.throws(
+      () => engine.render(
+        renderSource('{% filter observe %}captured output{% endfilter %}'),
+        {},
+        { limits: { outputCodeUnits: 4 } },
+      ),
+      NunjitsuLimitError,
+    );
     assert.equal(engine.render('clean'), 'clean');
   }
 });
@@ -1944,7 +3201,7 @@ test('parser diagnostics neutralize untrusted token content', () => {
   ];
 
   for (const value of values) {
-    const source = '${{ target.' + JSON.stringify(value) + ' }}';
+    const source = '${{ target."' + value + '" }}';
     let parseMessage = '';
     assert.throws(
       () => parseTemplate(source),
@@ -1984,7 +3241,7 @@ test('parser diagnostics neutralize untrusted token content', () => {
     ),
   );
 
-  const evaluatorSource = '${{ [1] | select("first\\nsecond\\u001b[31m") | list }}';
+  const evaluatorSource = '${{ [1] | select("first\\nsecond' + '\u001b' + '[31m") | list }}';
   assert.throws(
     () => engine.render(evaluatorSource),
     error => (
@@ -2000,7 +3257,7 @@ test('parser diagnostics neutralize untrusted token content', () => {
   );
 
   for (const character of bidiControlCharacters) {
-    const source = '${{ value[' + JSON.stringify(`LEFT${character}RIGHT`) + ']() }}';
+    const source = '${{ value["LEFT' + character + 'RIGHT"]() }}';
     let caught: NunjitsuRenderError | undefined;
     assert.throws(
       () => engine.render(source, { value: {} }),
@@ -2021,7 +3278,8 @@ test('parser diagnostics neutralize untrusted token content', () => {
 
 test('public render diagnostics expose safe structure without internal causes', () => {
   const unsafeControlPattern = /[\u0000-\u0008\u000b-\u001f\u007f-\u009f\u061c\u200e\u200f\u2028\u2029\u202a-\u202e\u2066-\u2069]/;
-  const source = '${{ value["FORGED\\n\\x1b]52;c;YXR0YWNrZXI=\\x07\\u202eTXT"]() }}';
+  const source = '${{ value["FORGED\\n' + '\u001b' + ']52;c;YXR0YWNrZXI=' +
+    '\u0007' + '\u202e' + 'TXT"]() }}';
   let evaluationError: NunjitsuRenderError | undefined;
   assert.throws(
     () => createEngine().render(source, { value: {} }),
@@ -2057,7 +3315,7 @@ test('public render diagnostics expose safe structure without internal causes', 
   assert.equal(parseError?.phase, 'parse');
   assert.equal(parseError?.code, 'syntax_error');
   assert.equal(parseError?.line, 2);
-  assert.equal(parseError?.column, 8);
+  assert.equal(parseError?.column, 9);
   assert.equal(parseError?.cause, undefined);
 
   const capabilityEngine = createEngine({

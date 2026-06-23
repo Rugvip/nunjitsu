@@ -52,6 +52,17 @@ test('reuses immutable prepared contexts and derives structurally shared updates
   const input = {
     parameters: { name: 'initial' },
     steps: { first: { output: { value: 1 } } },
+    blocked: {
+      undefined: undefined as never,
+      nested: { undefined: undefined as never },
+      null: null,
+      false: false,
+      zero: 0,
+      string: '',
+      array: [],
+      record: {},
+    },
+    stable: 'clean',
   };
   const engine = createEngine();
   const prepared = engine.prepareContext(input);
@@ -79,6 +90,44 @@ test('reuses immutable prepared contexts and derives structurally shared updates
   assert.equal(engine.render('${{ parameters.name }}', prepared), 'initial');
   assert.ok(Object.isFrozen(prepared));
   assert.ok(Object.isFrozen(updated));
+
+  const created = prepared
+    .withPath(['created', 'leaf'], 'created')
+    .withPath(['blocked', 'record', 'leaf'], 'record');
+  assert.equal(
+    engine.render('${{ created.leaf }}:${{ blocked.record.leaf }}', created),
+    'created:record',
+  );
+
+  for (const path of [
+    ['blocked', 'undefined', 'leaf'],
+    ['blocked', 'nested', 'undefined', 'leaf'],
+    ['blocked', 'null', 'leaf'],
+    ['blocked', 'false', 'leaf'],
+    ['blocked', 'zero', 'leaf'],
+    ['blocked', 'string', 'leaf'],
+    ['blocked', 'array', 'leaf'],
+  ]) {
+    assert.throws(() => prepared.withPath(path, 'blocked'), /is not a record/, path.join('.'));
+    assert.equal(
+      engine.render('${{ stable }}:${{ blocked.undefined is undefined }}', prepared),
+      'clean:true',
+      path.join('.'),
+    );
+  }
+
+  const replacedUndefined = prepared.withPath(
+    ['blocked', 'undefined'],
+    { leaf: 'replacement' },
+  );
+  assert.equal(
+    engine.render('${{ blocked.undefined.leaf }}', replacedUndefined),
+    'replacement',
+  );
+  assert.equal(
+    engine.render('${{ stable }}:${{ blocked.undefined is undefined }}', prepared),
+    'clean:true',
+  );
 
   assert.throws(
     () => prepared.withPath(['parameters', 'name', 'nested'], 'blocked'),

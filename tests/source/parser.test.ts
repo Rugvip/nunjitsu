@@ -40,7 +40,57 @@ test('represents call blocks explicitly and rejects effectful targets during par
       () => parseTemplate(source),
       error => (
         error instanceof NunjitsuParseError &&
-        /Call block/.test(error.message)
+        /Call block|Parenthesized expression cannot be empty/.test(error.message)
+      ),
+      source,
+    );
+  }
+});
+
+test('lowers filter blocks through immutable filter and capture nodes', () => {
+  const ast = parseTemplate(
+    '{% filter tools.identity("suffix") %}body{% endfilter %}',
+  );
+  const filter = findField(ast, value => (
+    Boolean(value && typeof value === 'object' && !Array.isArray(value)) &&
+    (value as { type?: unknown }).type === 'Filter'
+  )) as {
+    readonly type?: unknown;
+    readonly name?: { readonly value?: unknown };
+    readonly args?: { readonly children?: readonly AstNode[] };
+  };
+
+  assert.equal(filter.type, 'Filter');
+  assert.equal(filter.name?.value, 'tools.identity');
+  assert.equal(filter.args?.children?.[0]?.type, 'Capture');
+  assert.equal(filter.args?.children?.[1]?.type, 'Literal');
+  assertDataOnly(ast);
+});
+
+test('preserves non-empty expression groups and rejects empty groups', () => {
+  const ast = parseTemplate('${{ (1, 2, 3) }}');
+  const group = findField(ast, value => (
+    Boolean(value && typeof value === 'object' && !Array.isArray(value)) &&
+    (value as { type?: unknown }).type === 'Group'
+  )) as { readonly type?: unknown; readonly children?: readonly AstNode[] };
+  assert.equal(group.type, 'Group');
+  assert.equal(group.children?.length, 3);
+  assertDataOnly(ast);
+
+  for (const source of [
+    '${{ () }}',
+    '{% if false %}${{ () }}{% endif %}',
+    '${{ [()] }}',
+    '${{ {value: ()} }}',
+    '${{ consume(()) }}',
+    '${{ "value" | default(()) }}',
+    '${{ (()) }}',
+  ]) {
+    assert.throws(
+      () => parseTemplate(source),
+      error => (
+        error instanceof NunjitsuParseError &&
+        /Parenthesized expression cannot be empty/.test(error.message)
       ),
       source,
     );
@@ -75,6 +125,76 @@ test('validates inactive branches and stores regexes as inert data', () => {
   ));
   assert.deepEqual(regex, { type: 'regex-literal', source: 'a+b', flags: 'gi' });
   assert.ok(Object.isFrozen(regex));
+
+  const cookiecutter = {
+    trimBlocks: false,
+    lstripBlocks: false,
+    cookiecutterCompat: true,
+  };
+  for (const flags of ['', 'g', 'i', 'm', 'y', 'gimy']) {
+    parseTemplate('${{ r/x/' + flags + ' }}');
+    parseTemplate(`{{ r/x/${flags} }}`, cookiecutter);
+  }
+
+  for (const [source, message] of [
+    ['${{ r/x/s }}', /Unsupported regular-expression flag/],
+    ['${{ r/x/u }}', /Unsupported regular-expression flag/],
+    ['${{ r/x/d }}', /Unsupported regular-expression flag/],
+    ['${{ r/x/v }}', /Unsupported regular-expression flag/],
+    ['${{ r/x/gs }}', /Unsupported regular-expression flag/],
+    ['${{ r/x/gu }}', /Unsupported regular-expression flag/],
+    ['${{ r/x/gd }}', /Unsupported regular-expression flag/],
+    ['${{ r/x/gv }}', /Unsupported regular-expression flag/],
+    ['${{ r/x/is }}', /Unsupported regular-expression flag/],
+    ['${{ r/x/mu }}', /Unsupported regular-expression flag/],
+    ['${{ r/x/yd }}', /Unsupported regular-expression flag/],
+    ['${{ r/x/a }}', /Unsupported regular-expression flag/],
+    ['${{ r/x/G }}', /Unsupported regular-expression flag/],
+    ['${{ r/x/gg }}', /Duplicate regular-expression flag/],
+    ['${{ r/x/uv }}', /Unsupported regular-expression flag/],
+    ['${{ r/' + '\\'.repeat(2) + '/ }}', /Ambiguous regular-expression delimiter escape/],
+  ] as const) {
+    assert.throws(
+      () => parseTemplate(source),
+      error => error instanceof NunjitsuParseError && message.test(error.message),
+      source,
+    );
+  }
+
+  for (const source of [
+    '${{ r/' + '\\/' + '/ }}',
+    '${{ r/' + 'a\\/b' + '/ }}',
+    '${{ r/' + 'a' + '\\'.repeat(3) + '/b' + '/ }}',
+  ]) {
+    parseTemplate(source);
+  }
+
+  for (const source of [
+    '${{ bar/2 }}',
+    '${{ order/2 }}',
+    '${{ longerIdentifier/2 }}',
+    '${{ obj.bar/2 }}',
+    '${{ bar /2 }}',
+    '${{ bar//2 }}',
+    '${{ bar/2/3 }}',
+    '${{ bar/2/s }}',
+    '${{ bar/(1 + 1) }}',
+  ]) {
+    parseTemplate(source);
+  }
+
+  parseTemplate('{# ignored r/x/s and r/' + '\\'.repeat(2) + '/ #}');
+  parseTemplate('${{ "quoted r/x/s and r/' + '\\'.repeat(2) + '/" }}');
+
+  assert.throws(
+    () => parseTemplate('text\n${{ r/' + 'attacker'.repeat(100) + '/s }}'),
+    error => (
+      error instanceof NunjitsuParseError &&
+      error.message === 'Unsupported regular-expression flag' &&
+      error.line === 1 &&
+      error.column === 4
+    ),
+  );
 });
 
 test('applies whitespace controls and supports explicit Cookiecutter mode', () => {
@@ -95,6 +215,37 @@ test('applies whitespace controls and supports explicit Cookiecutter mode', () =
     cookiecutterCompat: true,
   });
   assert.equal(cookiecutter.type, 'Root');
+});
+
+test('restricts numeric literals to the pinned decimal grammar', () => {
+  for (const value of ['0', '00', '01', '1.', '1.0', '00.5', '01.50', '+1.5', '-1.5']) {
+    parseTemplate('${{ ' + value + ' }}');
+  }
+
+  for (const value of [
+    '.5',
+    '1e3',
+    '1E3',
+    '1e+3',
+    '1e-3',
+    '1.e3',
+    '1.0e3',
+    '0x10',
+    '0Xff',
+    '0b10',
+    '0o10',
+    '1_000',
+    '123abc',
+  ]) {
+    assert.throws(
+      () => parseTemplate('${{ ' + value + ' }}'),
+      error => (
+        error instanceof NunjitsuParseError &&
+        error.message === 'Invalid numeric literal'
+      ),
+      value,
+    );
+  }
 });
 
 test('scans delimiters only outside literals and rejects malformed complete input', () => {

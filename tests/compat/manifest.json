@@ -124,8 +124,9 @@
     },
     {
       "upstream": {"id":"tests/parser.js:2","file":"tests/parser.js","test":"should parse aggregate types"},
-      "status": "not applicable",
-      "reason": "Requires automatic escaping, while the direct-string API fixes autoescape to false."
+      "status": "adapted",
+      "reason": "Observable parenthesized group, array, and dictionary behavior is verified through rendered output because Nunjitsu exposes no parser AST API.",
+      "cases": ["parser-parenthesized-comma-groups"]
     },
     {
       "upstream": {"id":"tests/parser.js:3","file":"tests/parser.js","test":"should parse variables"},
@@ -148,7 +149,7 @@
       "upstream": {"id":"tests/parser.js:6","file":"tests/parser.js","test":"should parse operators with correct precedence"},
       "status": "adapted",
       "reason": "Boolean, comparison, membership, test, and observable not grouping are exercised through rendered results rather than AST nesting.",
-      "cases": ["compiler-inline-if-group","compiler-mixed-comparison-precedence","compiler-membership-test-precedence","compiler-observable-not-grouping"]
+      "cases": ["compiler-inline-if-group","compiler-mixed-comparison-precedence","compiler-membership-test-precedence","compiler-observable-not-grouping","runtime-empty-safe-string-truthiness"]
     },
     {
       "upstream": {"id":"tests/parser.js:7","file":"tests/parser.js","test":"should parse blocks"},
@@ -170,13 +171,13 @@
       "upstream": {"id":"tests/parser.js:10","file":"tests/parser.js","test":"should parse for loops"},
       "status": "adapted",
       "reason": "Flat loop targets and container-sensitive iteration are verified through rendered output rather than exposed parser nodes.",
-      "cases": ["compiler-multi-target-string-loop","compiler-multi-target-record-loop"]
+      "cases": ["compiler-multi-target-string-loop","compiler-multi-target-record-loop","runtime-record-property-order","runtime-record-duplicate-and-derived-order"]
     },
     {
       "upstream": {"id":"tests/parser.js:11","file":"tests/parser.js","test":"should parse for loops with else"},
       "status": "adapted",
       "reason": "Loop else behavior is verified through rendered output with fixed autoescape false.",
-      "cases": ["compiler-single-target-record-else"]
+      "cases": ["compiler-single-target-record-else","globals-empty-safe-string-truthiness"]
     },
     {
       "upstream": {"id":"tests/parser.js:12","file":"tests/parser.js","test":"should parse filters"},
@@ -204,82 +205,90 @@
     {
       "upstream": {"id":"tests/parser.js:16","file":"tests/parser.js","test":"should parse raw"},
       "status": "adapted",
-      "reason": "Raw scanning and argument-free opening-tag validation are verified with fixed autoescape false."
+      "reason": "Raw scanning and argument-free opening-tag validation are verified through inline rendered output with fixed autoescape false.",
+      "cases": ["parser-raw-regions","parser-nested-raw","parser-mixed-raw-verbatim","parser-raw-whitespace-control","parser-inner-raw-marker-grammar"]
     },
     {
       "upstream": {"id":"tests/parser.js:17","file":"tests/parser.js","test":"should parse raw with broken variables"},
-      "status": "not applicable",
-      "reason": "Requires automatic escaping, while the direct-string API fixes autoescape to false."
+      "status": "adapted",
+      "reason": "Broken variable syntax is verified as inert raw text with fixed autoescape false.",
+      "cases": ["parser-raw-regions"]
     },
     {
       "upstream": {"id":"tests/parser.js:18","file":"tests/parser.js","test":"should parse raw with broken blocks"},
-      "status": "not applicable",
-      "reason": "Requires automatic escaping, while the direct-string API fixes autoescape to false."
+      "status": "adapted",
+      "reason": "Broken block syntax is verified as inert raw text with fixed autoescape false.",
+      "cases": ["parser-raw-regions"]
     },
     {
       "upstream": {"id":"tests/parser.js:19","file":"tests/parser.js","test":"should parse raw with pure text"},
-      "status": "not applicable",
-      "reason": "Requires automatic escaping, while the direct-string API fixes autoescape to false."
+      "status": "ported",
+      "cases": ["parser-raw-regions"]
     },
     {
       "upstream": {"id":"tests/parser.js:20","file":"tests/parser.js","test":"should parse raw with raw blocks"},
-      "status": "not applicable",
-      "reason": "Requires automatic escaping, while the direct-string API fixes autoescape to false."
+      "status": "ported",
+      "cases": ["parser-nested-raw","parser-inner-raw-marker-grammar"]
     },
     {
       "upstream": {"id":"tests/parser.js:21","file":"tests/parser.js","test":"should parse raw with comment blocks"},
-      "status": "not applicable",
-      "reason": "Requires automatic escaping, while the direct-string API fixes autoescape to false."
+      "status": "ported",
+      "cases": ["parser-raw-regions"]
     },
     {
       "upstream": {"id":"tests/parser.js:22","file":"tests/parser.js","test":"should parse multiple raw blocks"},
-      "status": "not applicable",
-      "reason": "Requires automatic escaping, while the direct-string API fixes autoescape to false."
+      "status": "ported",
+      "cases": ["parser-raw-regions"]
     },
     {
       "upstream": {"id":"tests/parser.js:23","file":"tests/parser.js","test":"should parse multiline multiple raw blocks"},
-      "status": "not applicable",
-      "reason": "Requires automatic escaping, while the direct-string API fixes autoescape to false."
+      "status": "adapted",
+      "reason": "Multiple inline raw regions and multiline raw content are verified through rendered output.",
+      "cases": ["parser-raw-regions","parser-raw-whitespace-control"]
     },
     {
       "upstream": {"id":"tests/parser.js:24","file":"tests/parser.js","test":"should parse verbatim"},
       "status": "adapted",
-      "reason": "Verbatim scanning and argument-free opening-tag validation are verified with fixed autoescape false."
+      "reason": "Verbatim scanning and argument-free opening-tag validation are verified through inline rendered output with fixed autoescape false.",
+      "cases": ["parser-verbatim-regions","parser-nested-verbatim","parser-mixed-raw-verbatim","parser-inner-raw-marker-grammar"]
     },
     {
       "upstream": {"id":"tests/parser.js:25","file":"tests/parser.js","test":"should parse verbatim with broken variables"},
-      "status": "not applicable",
-      "reason": "Requires automatic escaping, while the direct-string API fixes autoescape to false."
+      "status": "adapted",
+      "reason": "Broken variable syntax is verified as inert verbatim text with fixed autoescape false.",
+      "cases": ["parser-verbatim-regions"]
     },
     {
       "upstream": {"id":"tests/parser.js:26","file":"tests/parser.js","test":"should parse verbatim with broken blocks"},
-      "status": "not applicable",
-      "reason": "Requires automatic escaping, while the direct-string API fixes autoescape to false."
+      "status": "adapted",
+      "reason": "Broken block syntax is verified as inert verbatim text with fixed autoescape false.",
+      "cases": ["parser-verbatim-regions"]
     },
     {
       "upstream": {"id":"tests/parser.js:27","file":"tests/parser.js","test":"should parse verbatim with pure text"},
-      "status": "not applicable",
-      "reason": "Requires automatic escaping, while the direct-string API fixes autoescape to false."
+      "status": "ported",
+      "cases": ["parser-verbatim-regions"]
     },
     {
       "upstream": {"id":"tests/parser.js:28","file":"tests/parser.js","test":"should parse verbatim with verbatim blocks"},
-      "status": "not applicable",
-      "reason": "Requires automatic escaping, while the direct-string API fixes autoescape to false."
+      "status": "ported",
+      "cases": ["parser-nested-verbatim","parser-inner-raw-marker-grammar"]
     },
     {
       "upstream": {"id":"tests/parser.js:29","file":"tests/parser.js","test":"should parse verbatim with comment blocks"},
-      "status": "not applicable",
-      "reason": "Requires automatic escaping, while the direct-string API fixes autoescape to false."
+      "status": "ported",
+      "cases": ["parser-verbatim-regions"]
     },
     {
       "upstream": {"id":"tests/parser.js:30","file":"tests/parser.js","test":"should parse multiple verbatim blocks"},
-      "status": "not applicable",
-      "reason": "Requires automatic escaping, while the direct-string API fixes autoescape to false."
+      "status": "ported",
+      "cases": ["parser-verbatim-regions"]
     },
     {
       "upstream": {"id":"tests/parser.js:31","file":"tests/parser.js","test":"should parse multiline multiple verbatim blocks"},
-      "status": "not applicable",
-      "reason": "Requires automatic escaping, while the direct-string API fixes autoescape to false."
+      "status": "adapted",
+      "reason": "Multiple inline verbatim regions and multiline verbatim content are verified through rendered output.",
+      "cases": ["parser-verbatim-regions"]
     },
     {
       "upstream": {"id":"tests/parser.js:32","file":"tests/parser.js","test":"should parse switch statements"},
@@ -300,8 +309,9 @@
     },
     {
       "upstream": {"id":"tests/parser.js:35","file":"tests/parser.js","test":"should parse whitespace control"},
-      "status": "not applicable",
-      "reason": "Requires named-template loading, includes, imports, or inheritance, which the secure direct-string API does not support."
+      "status": "adapted",
+      "reason": "Applicable variable, block, comment, and raw whitespace controls are verified through inline rendered output.",
+      "cases": ["parser-whitespace-domains","parser-raw-whitespace-control"]
     },
     {
       "upstream": {"id":"tests/parser.js:36","file":"tests/parser.js","test":"should throw errors"},
@@ -357,8 +367,8 @@
     },
     {
       "upstream": {"id":"tests/lexer.js:9","file":"tests/lexer.js","test":"should treat the non-breaking space as valid whitespace"},
-      "status": "not applicable",
-      "reason": "Requires automatic escaping, while the direct-string API fixes autoescape to false."
+      "status": "ported",
+      "cases": ["parser-whitespace-domains"]
     },
     {
       "upstream": {"id":"tests/lexer.js:10","file":"tests/lexer.js","test":"should parse block start and end"},
@@ -367,8 +377,9 @@
     },
     {
       "upstream": {"id":"tests/lexer.js:11","file":"tests/lexer.js","test":"should parse basic types"},
-      "status": "not applicable",
-      "reason": "Requires automatic escaping, while the direct-string API fixes autoescape to false."
+      "status": "adapted",
+      "reason": "Primitive values are verified through rendered output with fixed autoescape false, including the pinned string-escape grammar rather than public lexer tokens.",
+      "cases": ["compiler-string-escape-grammar","compiler-decimal-literal-grammar"]
     },
     {
       "upstream": {"id":"tests/lexer.js:12","file":"tests/lexer.js","test":"should parse function calls"},
@@ -379,7 +390,7 @@
     {
       "upstream": {"id":"tests/lexer.js:13","file":"tests/lexer.js","test":"should parse groups"},
       "status": "not applicable",
-      "reason": "Requires automatic escaping, while the direct-string API fixes autoescape to false."
+      "reason": "Asserts the public Nunjucks lexer token API, which Nunjitsu intentionally does not expose; observable group semantics are adapted under tests/parser.js:2."
     },
     {
       "upstream": {"id":"tests/lexer.js:14","file":"tests/lexer.js","test":"should parse arrays"},
@@ -391,7 +402,7 @@
       "upstream": {"id":"tests/lexer.js:15","file":"tests/lexer.js","test":"should parse dicts"},
       "status": "adapted",
       "reason": "Dictionary literal delimiters and the accepted string and ordinary-identifier key forms are verified with fixed autoescape false.",
-      "cases": ["compiler-dictionary-string-and-name-keys"]
+      "cases": ["compiler-dictionary-string-and-name-keys","compiler-string-escape-keys"]
     },
     {
       "upstream": {"id":"tests/lexer.js:16","file":"tests/lexer.js","test":"should parse blocks without whitespace"},
@@ -401,7 +412,7 @@
     {
       "upstream": {"id":"tests/lexer.js:17","file":"tests/lexer.js","test":"should parse filters"},
       "status": "adapted",
-      "reason": "Pipe tokens and filter names are exercised throughout the built-in filter rendering corpus."
+      "reason": "Pipe tokens, built-in names, and exact dotted registered filter names are exercised through rendered output; public lexer token shapes are outside the contract."
     },
     {
       "upstream": {"id":"tests/lexer.js:18","file":"tests/lexer.js","test":"should parse operators"},
@@ -441,8 +452,9 @@
     },
     {
       "upstream": {"id":"tests/lexer.js:25","file":"tests/lexer.js","test":"should parse regular expressions"},
-      "status": "not applicable",
-      "reason": "Requires automatic escaping, while the direct-string API fixes autoescape to false."
+      "status": "adapted",
+      "reason": "Nunjitsu exposes no lexer token API; complete-template tests preserve the applicable fixed gimy flag grammar and inert literal data while intentionally rejecting ambiguous even-backslash delimiters.",
+      "cases": ["compiler-regex-literal","compiler-regex-flags","compiler-division-r-identifiers"]
     },
     {
       "upstream": {"id":"tests/lexer.js:26","file":"tests/lexer.js","test":"should keep track of token positions"},
@@ -492,7 +504,7 @@
     {
       "upstream": {"id":"tests/compiler.js:46","file":"tests/compiler.js","test":"should compile basic arithmetic operators"},
       "status": "ported",
-      "cases": ["compiler-basic-arithmetic"]
+      "cases": ["compiler-basic-arithmetic","compiler-division-r-identifiers"]
     },
     {
       "upstream": {"id":"tests/compiler.js:47","file":"tests/compiler.js","test":"should compile the exponentiation (**) operator"},
@@ -627,13 +639,14 @@
     },
     {
       "upstream": {"id":"tests/compiler.js:74","file":"tests/compiler.js","test":"should compile macro calls inside blocks"},
-      "status": "not applicable",
-      "reason": "Requires named-template loading, includes, imports, or inheritance, which the secure direct-string API does not support."
+      "status": "adapted",
+      "reason": "Macro calls and lexical declarations inside standalone inline blocks are verified with fixed autoescape false.",
+      "cases": ["compiler-macro-lexical-frames"]
     },
     {
       "upstream": {"id":"tests/compiler.js:75","file":"tests/compiler.js","test":"should compile macros defined in one block and called in another"},
       "status": "ported",
-      "cases": ["compiler-macro-defined-across-blocks"]
+      "cases": ["compiler-macro-defined-across-blocks","compiler-macro-lexical-frames"]
     },
     {
       "upstream": {"id":"tests/compiler.js:76","file":"tests/compiler.js","test":"should compile macros that include other templates"},
@@ -663,7 +676,7 @@
     {
       "upstream": {"id":"tests/compiler.js:81","file":"tests/compiler.js","test":"should compile macros that cannot see variables in caller scope"},
       "status": "ported",
-      "cases": ["compiler-macro-no-caller-scope"]
+      "cases": ["compiler-macro-no-caller-scope","compiler-macro-lexical-frames"]
     },
     {
       "upstream": {"id":"tests/compiler.js:82","file":"tests/compiler.js","test":"should compile call blocks"},
@@ -793,12 +806,13 @@
     {
       "upstream": {"id":"tests/compiler.js:111","file":"tests/compiler.js","test":"should maintain nested scopes"},
       "status": "ported",
-      "cases": ["compiler-nested-loop-scope"]
+      "cases": ["compiler-nested-loop-scope","compiler-macro-lexical-frames"]
     },
     {
       "upstream": {"id":"tests/compiler.js:112","file":"tests/compiler.js","test":"should allow blocks in for loops"},
-      "status": "not applicable",
-      "reason": "Requires named-template loading, includes, imports, or inheritance, which the secure direct-string API does not support."
+      "status": "adapted",
+      "reason": "Standalone inline blocks nested in loops reset macro export behavior without template loading or inheritance.",
+      "cases": ["compiler-macro-lexical-frames"]
     },
     {
       "upstream": {"id":"tests/compiler.js:113","file":"tests/compiler.js","test":"should make includes inherit scope"},
@@ -868,7 +882,7 @@
     {
       "upstream": {"id":"tests/compiler.js:132","file":"tests/compiler.js","test":"should render regexs"},
       "status": "ported",
-      "cases": ["compiler-regex-literal"]
+      "cases": ["compiler-regex-literal","compiler-regex-flags"]
     },
     {
       "upstream": {"id":"tests/compiler.js:133","file":"tests/compiler.js","test":"should throw an error when {% call %} is passed an object that is not a function"},
@@ -892,13 +906,15 @@
     },
     {
       "upstream": {"id":"tests/compiler.js:137","file":"tests/compiler.js","test":"should control whitespaces correctly"},
-      "status": "not applicable",
-      "reason": "Requires automatic escaping, while the direct-string API fixes autoescape to false."
+      "status": "adapted",
+      "reason": "Applicable block and comment whitespace control is verified with fixed autoescape false.",
+      "cases": ["parser-whitespace-domains"]
     },
     {
       "upstream": {"id":"tests/compiler.js:138","file":"tests/compiler.js","test":"should control expression whitespaces correctly"},
-      "status": "not applicable",
-      "reason": "Requires automatic escaping, while the direct-string API fixes autoescape to false."
+      "status": "adapted",
+      "reason": "Applicable expression whitespace control is verified with fixed autoescape false.",
+      "cases": ["parser-whitespace-domains"]
     },
     {
       "upstream": {"id":"tests/compiler.js:139","file":"tests/compiler.js","test":"should get right value when macro parameter conflict with global macro name"},
@@ -912,13 +928,15 @@
     },
     {
       "upstream": {"id":"tests/compiler.js:141","file":"tests/compiler.js","test":"should allow access to outer scope in call blocks"},
-      "status": "not applicable",
-      "reason": "Requires automatic escaping, while the direct-string API fixes autoescape to false."
+      "status": "adapted",
+      "reason": "Synthetic caller bodies retain their explicit call-site value scope while macro declarations remain caller-local, with fixed autoescape false.",
+      "cases": ["compiler-macro-lexical-frames"]
     },
     {
       "upstream": {"id":"tests/compiler.js:142","file":"tests/compiler.js","test":"should not leak scope from call blocks to parent"},
-      "status": "not applicable",
-      "reason": "Requires automatic escaping, while the direct-string API fixes autoescape to false."
+      "status": "adapted",
+      "reason": "Caller-body macro bindings remain local and do not leak to their containing frame, with fixed autoescape false.",
+      "cases": ["compiler-macro-lexical-frames"]
     },
     {
       "upstream": {"id":"tests/compiler.js:143","file":"tests/compiler.js","test":"should import template objects"},
@@ -942,18 +960,21 @@
     },
     {
       "upstream": {"id":"tests/compiler.js:147","file":"tests/compiler.js","test":"should apply the title filter to the body"},
-      "status": "not applicable",
-      "reason": "Requires automatic escaping, while the direct-string API fixes autoescape to false."
+      "status": "adapted",
+      "reason": "Synchronous filter-block capture and built-in dispatch are verified through rendered output with fixed autoescape false.",
+      "cases": ["compiler-filter-block-title"]
     },
     {
       "upstream": {"id":"tests/compiler.js:148","file":"tests/compiler.js","test":"should apply the replace filter to the body"},
-      "status": "not applicable",
-      "reason": "Requires automatic escaping, while the direct-string API fixes autoescape to false."
+      "status": "adapted",
+      "reason": "Filter-block arguments and replacement output are verified through rendered output with fixed autoescape false.",
+      "cases": ["compiler-filter-block-replace"]
     },
     {
       "upstream": {"id":"tests/compiler.js:149","file":"tests/compiler.js","test":"should work with variables in the body"},
-      "status": "not applicable",
-      "reason": "Requires automatic escaping, while the direct-string API fixes autoescape to false."
+      "status": "adapted",
+      "reason": "Variables and statements inside captured filter-block bodies are verified through rendered output with fixed autoescape false.",
+      "cases": ["compiler-filter-block-variables"]
     },
     {
       "upstream": {"id":"tests/compiler.js:150","file":"tests/compiler.js","test":"should work with blocks in the body"},
@@ -1155,8 +1176,9 @@
     },
     {
       "upstream": {"id":"tests/compiler.js:14","file":"tests/compiler.js","test":"should compile if blocks"},
-      "status": "not applicable",
-      "reason": "Requires automatic escaping, while the direct-string API fixes autoescape to false."
+      "status": "adapted",
+      "reason": "Inline if, elif, elseif, nested, and else control flow is verified through rendered output with fixed autoescape false; malformed continuations are covered through structured parse failures.",
+      "cases": ["compiler-if-elif-elseif-chains"]
     },
     {
       "upstream": {"id":"tests/compiler.js:51","file":"tests/compiler.js","test":"should compile comparison operators"},
@@ -1284,15 +1306,17 @@
     {
       "upstream": {"id":"tests/filters.js:4","file":"tests/filters.js","test":"center"},
       "status": "ported",
-      "cases": ["filters-numeric-center-indent"]
+      "cases": ["filters-numeric-center-indent","filters-safe-identity-short-circuits","filters-empty-safe-string-truthiness","filters-center-length-short-circuit","filters-ordinary-keyword-bags-a","runtime-infinity-ordering-consumers"]
     },
     {
       "upstream": {"id":"tests/filters.js:5","file":"tests/filters.js","test":"default"},
-      "status": "ported"
+      "status": "ported",
+      "cases": ["filters-empty-safe-string-truthiness","filters-ordinary-keyword-bags-a"]
     },
     {
       "upstream": {"id":"tests/filters.js:7","file":"tests/filters.js","test":"escape"},
-      "status": "ported"
+      "status": "ported",
+      "cases": ["runtime-empty-safe-string-truthiness"]
     },
     {
       "upstream": {"id":"tests/filters.js:8","file":"tests/filters.js","test":"escape skip safe"},
@@ -1321,19 +1345,23 @@
     },
     {
       "upstream": {"id":"tests/filters.js:15","file":"tests/filters.js","test":"first"},
-      "status": "ported"
+      "status": "ported",
+      "cases": ["filters-array-like-record-sequences"]
     },
     {
       "upstream": {"id":"tests/filters.js:16","file":"tests/filters.js","test":"float"},
-      "status": "ported"
+      "status": "ported",
+      "cases": ["filters-ordinary-keyword-bags-a"]
     },
     {
       "upstream": {"id":"tests/filters.js:17","file":"tests/filters.js","test":"forceescape"},
-      "status": "ported"
+      "status": "ported",
+      "cases": ["runtime-empty-safe-string-truthiness"]
     },
     {
       "upstream": {"id":"tests/filters.js:18","file":"tests/filters.js","test":"int"},
-      "status": "ported"
+      "status": "ported",
+      "cases": ["filters-macro-keyword-binding"]
     },
     {
       "upstream": {"id":"tests/filters.js:19","file":"tests/filters.js","test":"int (default value)"},
@@ -1341,20 +1369,23 @@
     },
     {
       "upstream": {"id":"tests/filters.js:20","file":"tests/filters.js","test":"float (default value)"},
-      "status": "ported"
+      "status": "ported",
+      "cases": ["filters-ordinary-keyword-bags-a"]
     },
     {
       "upstream": {"id":"tests/filters.js:22","file":"tests/filters.js","test":"indent"},
       "status": "ported",
-      "cases": ["filters-numeric-center-indent"]
+      "cases": ["filters-numeric-center-indent","filters-empty-safe-string-truthiness","filters-ordinary-keyword-bags-a"]
     },
     {
       "upstream": {"id":"tests/filters.js:23","file":"tests/filters.js","test":"join"},
-      "status": "ported"
+      "status": "ported",
+      "cases": ["filters-direct-attribute-keys","filters-getter-attribute-paths","filters-attribute-array-string-lookup","filters-ordinary-keyword-bags-a"]
     },
     {
       "upstream": {"id":"tests/filters.js:24","file":"tests/filters.js","test":"last"},
-      "status": "ported"
+      "status": "ported",
+      "cases": ["filters-array-like-record-sequences","filters-array-like-record-length-semantics"]
     },
     {
       "upstream": {"id":"tests/filters.js:42","file":"tests/filters.js","test":"lower"},
@@ -1366,21 +1397,23 @@
     },
     {
       "upstream": {"id":"tests/filters.js:50","file":"tests/filters.js","test":"reverse"},
-      "status": "ported"
+      "status": "ported",
+      "cases": ["filters-array-like-record-sequences","filters-array-like-record-length-semantics"]
     },
     {
       "upstream": {"id":"tests/filters.js:51","file":"tests/filters.js","test":"round"},
       "status": "ported",
-      "cases": ["filters-numeric-urlize-round-dump"]
+      "cases": ["filters-numeric-urlize-round-dump","filters-round-strict-method-option","filters-ordinary-keyword-bags-b"]
     },
     {
       "upstream": {"id":"tests/filters.js:53","file":"tests/filters.js","test":"sum"},
       "status": "ported",
-      "cases": ["filters-sum-preserves-addition-types"]
+      "cases": ["filters-sum-preserves-addition-types","filters-direct-attribute-keys","filters-attribute-array-string-lookup","filters-ordinary-keyword-bags-b"]
     },
     {
       "upstream": {"id":"tests/filters.js:55","file":"tests/filters.js","test":"string"},
-      "status": "ported"
+      "status": "ported",
+      "cases": ["filters-safe-identity-short-circuits"]
     },
     {
       "upstream": {"id":"tests/filters.js:57","file":"tests/filters.js","test":"title"},
@@ -1396,33 +1429,40 @@
     },
     {
       "upstream": {"id":"tests/filters.js:64","file":"tests/filters.js","test":"wordcount"},
-      "status": "ported"
+      "status": "ported",
+      "cases": ["filters-truncate-wordcount-short-circuits"]
     },
     {
       "upstream": {"id":"tests/filters.js:2","file":"tests/filters.js","test":"batch"},
-      "status": "ported"
+      "status": "ported",
+      "cases": ["filters-empty-safe-string-truthiness","filters-array-like-record-sequences","filters-array-like-record-length-semantics"]
     },
     {
       "upstream": {"id":"tests/filters.js:14","file":"tests/filters.js","test":"dictsort"},
-      "status": "ported"
+      "status": "ported",
+      "cases": ["filters-dictsort-closed-comparison","filters-empty-safe-string-truthiness","filters-array-like-record-distinct-record-operations","filters-dictsort-strict-by-option","filters-ordinary-keyword-bags-a","runtime-infinity-ordering-consumers"]
     },
     {
       "upstream": {"id":"tests/filters.js:41","file":"tests/filters.js","test":"list"},
-      "status": "ported"
+      "status": "ported",
+      "cases": ["filters-array-like-record-distinct-record-operations","runtime-record-property-order"]
     },
     {
       "upstream": {"id":"tests/filters.js:52","file":"tests/filters.js","test":"slice"},
-      "status": "ported"
+      "status": "ported",
+      "cases": ["filters-empty-safe-string-truthiness"]
     },
     {
       "upstream": {"id":"tests/filters.js:54","file":"tests/filters.js","test":"sort"},
       "status": "adapted",
-      "reason": "All copied-value sort assertions are ported. Exact throwOnUndefined diagnostics are outside the documented exception-format contract."
+      "reason": "All copied-value sort assertions are ported. Exact throwOnUndefined diagnostics are outside the documented exception-format contract.",
+      "cases": ["filters-sort-closed-comparison","filters-empty-safe-string-truthiness","filters-array-like-record-sequences","filters-array-like-record-group-selection","filters-getter-attribute-paths","filters-attribute-array-string-lookup","filters-macro-keyword-binding","runtime-infinity-ordering-consumers"]
     },
     {
       "upstream": {"id":"tests/filters.js:21","file":"tests/filters.js","test":"groupby"},
       "status": "adapted",
-      "reason": "All copied-value grouping assertions, including nested and undefined attributes, are ported. Exact throwOnUndefined diagnostics are outside the documented exception-format contract."
+      "reason": "All copied-value grouping assertions, including nested and undefined attributes, are ported. Exact throwOnUndefined diagnostics are outside the documented exception-format contract.",
+      "cases": ["filters-array-like-record-group-selection","filters-getter-attribute-paths","runtime-record-duplicate-and-derived-order","filters-ordinary-keyword-bags-a"]
     },
     {
       "upstream": {"id":"tests/filters.js:25","file":"tests/filters.js","test":"should return length of a list literal"},
@@ -1459,7 +1499,8 @@
     },
     {
       "upstream": {"id":"tests/filters.js:33","file":"tests/filters.js","test":"should output 1 for an Object with 1 property"},
-      "status": "ported"
+      "status": "ported",
+      "cases": ["filters-array-like-record-distinct-record-operations"]
     },
     {
       "upstream": {"id":"tests/filters.js:34","file":"tests/filters.js","test":"should output the number of properties for a plain Object, not the value of its length property"},
@@ -1494,37 +1535,43 @@
     },
     {
       "upstream": {"id":"tests/filters.js:45","file":"tests/filters.js","test":"reject"},
-      "status": "ported"
+      "status": "ported",
+      "cases": ["filters-empty-safe-string-truthiness","filters-array-like-record-group-selection"]
     },
     {
       "upstream": {"id":"tests/filters.js:46","file":"tests/filters.js","test":"rejectattr"},
-      "status": "ported"
+      "status": "ported",
+      "cases": ["filters-empty-safe-string-truthiness","filters-direct-attribute-keys","filters-ordinary-keyword-bags-b","filters-selectattr-ignored-arguments"]
     },
     {
       "upstream": {"id":"tests/filters.js:47","file":"tests/filters.js","test":"select"},
-      "status": "ported"
+      "status": "ported",
+      "cases": ["filters-empty-safe-string-truthiness","filters-array-like-record-group-selection","filters-array-like-record-length-semantics"]
     },
     {
       "upstream": {"id":"tests/filters.js:48","file":"tests/filters.js","test":"selectattr"},
-      "status": "ported"
+      "status": "ported",
+      "cases": ["filters-empty-safe-string-truthiness","filters-direct-attribute-keys","filters-attribute-array-string-lookup","filters-ordinary-keyword-bags-b","filters-selectattr-ignored-arguments"]
     },
     {
       "upstream": {"id":"tests/filters.js:6","file":"tests/filters.js","test":"dump"},
       "status": "ported",
-      "cases": ["filters-numeric-urlize-round-dump"]
+      "cases": ["filters-numeric-urlize-round-dump","runtime-record-property-order","filters-dump-strict-indentation-option","filters-regex-dump-shapes"]
     },
     {
       "upstream": {"id":"tests/filters.js:56","file":"tests/filters.js","test":"striptags"},
-      "status": "ported"
+      "status": "ported",
+      "cases": ["filters-empty-safe-string-truthiness","filters-ordinary-keyword-bags-b"]
     },
     {
       "upstream": {"id":"tests/filters.js:59","file":"tests/filters.js","test":"truncate"},
       "status": "ported",
-      "cases": ["filters-numeric-truncate-replace"]
+      "cases": ["filters-numeric-truncate-replace","filters-safe-identity-short-circuits","filters-empty-safe-string-truthiness","filters-truncate-wordcount-short-circuits","filters-ordinary-keyword-bags-b","runtime-infinity-ordering-consumers"]
     },
     {
       "upstream": {"id":"tests/filters.js:61","file":"tests/filters.js","test":"urlencode"},
-      "status": "ported"
+      "status": "ported",
+      "cases": ["filters-array-like-record-distinct-record-operations","runtime-record-property-order"]
     },
     {
       "upstream": {"id":"tests/filters.js:62","file":"tests/filters.js","test":"urlencode - object without prototype"},
@@ -1532,12 +1579,13 @@
     },
     {
       "upstream": {"id":"tests/filters.js:44","file":"tests/filters.js","test":"random"},
-      "status": "ported"
+      "status": "ported",
+      "cases": ["filters-array-like-record-sequences"]
     },
     {
       "upstream": {"id":"tests/filters.js:49","file":"tests/filters.js","test":"replace"},
       "status": "ported",
-      "cases": ["filters-numeric-truncate-replace"]
+      "cases": ["filters-numeric-truncate-replace","filters-replace-value-semantics","filters-safe-identity-short-circuits"]
     },
     {
       "upstream": {"id":"tests/filters.js:63","file":"tests/filters.js","test":"urlize"},
@@ -1592,27 +1640,33 @@
     },
     {
       "upstream": {"id":"tests/tests.js:12","file":"tests/tests.js","test":"falsy should detect whether or not a value is falsy"},
-      "status": "ported"
+      "status": "ported",
+      "cases": ["runtime-empty-safe-string-truthiness"]
     },
     {
       "upstream": {"id":"tests/tests.js:13","file":"tests/tests.js","test":"truthy should detect whether or not a value is truthy"},
-      "status": "ported"
+      "status": "ported",
+      "cases": ["runtime-empty-safe-string-truthiness"]
     },
     {
       "upstream": {"id":"tests/tests.js:14","file":"tests/tests.js","test":"greaterthan than should detect whether or not a value is less than another"},
-      "status": "ported"
+      "status": "ported",
+      "cases": ["runtime-equal-infinity-ordering"]
     },
     {
       "upstream": {"id":"tests/tests.js:15","file":"tests/tests.js","test":"ge should detect whether or not a value is greater than or equal to another"},
-      "status": "ported"
+      "status": "ported",
+      "cases": ["runtime-equal-infinity-ordering"]
     },
     {
       "upstream": {"id":"tests/tests.js:16","file":"tests/tests.js","test":"lessthan than should detect whether or not a value is less than another"},
-      "status": "ported"
+      "status": "ported",
+      "cases": ["runtime-equal-infinity-ordering"]
     },
     {
       "upstream": {"id":"tests/tests.js:17","file":"tests/tests.js","test":"le should detect whether or not a value is less than or equal to another"},
-      "status": "ported"
+      "status": "ported",
+      "cases": ["runtime-equal-infinity-ordering"]
     },
     {
       "upstream": {"id":"tests/tests.js:18","file":"tests/tests.js","test":"ne should detect whether or not a value is not equal to another"},
@@ -1665,7 +1719,7 @@
     {
       "upstream": {"id":"tests/globals.js:1","file":"tests/globals.js","test":"should have range"},
       "status": "ported",
-      "cases": ["globals-range-preserves-value-types"]
+      "cases": ["globals-range-preserves-value-types","globals-empty-safe-string-truthiness","runtime-infinity-ordering-consumers"]
     },
     {
       "upstream": {"id":"tests/globals.js:2","file":"tests/globals.js","test":"should have cycler"},
@@ -1676,7 +1730,7 @@
       "upstream": {"id":"tests/globals.js:3","file":"tests/globals.js","test":"should have joiner"},
       "status": "ported",
       "reason": "Primitive joiner behavior is ported; retaining sealed callable authority or discarding method arguments is intentionally rejected outside the upstream assertions.",
-      "cases": ["globals-joiner-preserves-separator-types"]
+      "cases": ["globals-joiner-preserves-separator-types","globals-empty-safe-string-truthiness"]
     },
     {
       "upstream": {"id":"tests/globals.js:4","file":"tests/globals.js","test":"should allow addition of globals"},
@@ -1768,7 +1822,8 @@
     },
     {
       "upstream": {"id":"tests/jinja-compat.js:13","file":"tests/jinja-compat.js","test":"should support array slices with start, stop, and step"},
-      "status": "ported"
+      "status": "ported",
+      "cases": ["runtime-jinja-infinite-slice-boundary"]
     }
   ]
 }

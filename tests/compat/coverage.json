@@ -21,16 +21,62 @@
       ]
     },
     {
+      "id": "compiler-if-blocks",
+      "file": "tests/source/runtime.test.ts",
+      "test": "matches Nunjucks elif and elseif conditional chains",
+      "upstream": ["tests/compiler.js:14"]
+    },
+    {
+      "id": "compiler-if-validation",
+      "file": "tests/source/security.test.ts",
+      "test": "rejects malformed structural tags before any template capability executes",
+      "upstream": ["tests/compiler.js:14"]
+    },
+    {
+      "id": "compiler-filter-blocks",
+      "file": "tests/source/runtime.test.ts",
+      "test": "matches synchronous Nunjucks filter blocks",
+      "upstream": [
+        "tests/compiler.js:147",
+        "tests/compiler.js:148",
+        "tests/compiler.js:149"
+      ]
+    },
+    {
       "id": "observable-expression-grouping",
       "file": "tests/source/runtime.test.ts",
       "test": "matches Nunjucks comparison, membership, test, and not grouping",
       "upstream": ["tests/parser.js:6", "tests/lexer.js:18"]
     },
     {
+      "id": "parenthesized-comma-groups",
+      "file": "tests/source/runtime.test.ts",
+      "test": "matches Nunjucks parenthesized comma-expression groups",
+      "upstream": ["tests/parser.js:2"]
+    },
+    {
       "id": "repeated-unary-validation",
       "file": "tests/source/security.test.ts",
       "test": "rejects Nunjucks-invalid repeated unary signs before capability dispatch",
       "upstream": ["tests/lexer.js:18", "tests/compiler.js:50"]
+    },
+    {
+      "id": "regex-literal-grammar",
+      "file": "tests/source/security.test.ts",
+      "test": "restricts regex literals before capability dispatch",
+      "upstream": ["tests/lexer.js:25", "tests/compiler.js:46", "tests/compiler.js:132"]
+    },
+    {
+      "id": "string-literal-grammar",
+      "file": "tests/source/security.test.ts",
+      "test": "matches Nunjucks string escapes before capability dispatch",
+      "upstream": ["tests/lexer.js:11", "tests/lexer.js:15"]
+    },
+    {
+      "id": "numeric-literal-grammar",
+      "file": "tests/source/security.test.ts",
+      "test": "restricts numeric literals before capability dispatch",
+      "upstream": ["tests/lexer.js:11", "tests/lexer.js:18"]
     },
     {
       "id": "parser-expression-acceptance",
@@ -83,6 +129,20 @@
       ]
     },
     {
+      "id": "macro-lexical-frames",
+      "file": "tests/source/runtime.test.ts",
+      "test": "matches Nunjucks lexical macro declaration frames",
+      "upstream": [
+        "tests/compiler.js:74",
+        "tests/compiler.js:75",
+        "tests/compiler.js:81",
+        "tests/compiler.js:111",
+        "tests/compiler.js:112",
+        "tests/compiler.js:141",
+        "tests/compiler.js:142"
+      ]
+    },
+    {
       "id": "declaration-validation",
       "file": "tests/source/security.test.ts",
       "test": "rejects invalid macro and caller declarations before capability dispatch",
@@ -127,9 +187,62 @@
       "statuses": ["ported", "adapted"]
     },
     {
+      "id": "sort-comparison-semantics",
+      "file": "tests/source/runtime.test.ts",
+      "test": "matches Nunjucks sort and dictsort comparison semantics",
+      "upstream": ["tests/filters.js:14", "tests/filters.js:54"]
+    },
+    {
+      "id": "runtime-equal-infinity-ordering",
+      "file": "tests/source/runtime.test.ts",
+      "test": "orders equal infinities after closed numeric conversion",
+      "upstream": [
+        "tests/filters.js:4",
+        "tests/filters.js:14",
+        "tests/filters.js:54",
+        "tests/filters.js:59",
+        "tests/tests.js:14",
+        "tests/tests.js:15",
+        "tests/tests.js:16",
+        "tests/tests.js:17",
+        "tests/globals.js:1",
+        "tests/jinja-compat.js:13"
+      ]
+    },
+    {
+      "id": "filter-value-semantics",
+      "file": "tests/source/runtime.test.ts",
+      "test": "matches Nunjucks replacement and safe-string identity semantics",
+      "upstream": ["tests/filters.js:4", "tests/filters.js:49", "tests/filters.js:55", "tests/filters.js:59"]
+    },
+    {
+      "id": "selectattr-ignored-arguments",
+      "file": "tests/source/runtime.test.ts",
+      "test": "ignores surplus selectattr tests after safe argument evaluation",
+      "upstream": ["tests/filters.js:46", "tests/filters.js:48"]
+    },
+    {
+      "id": "regex-dump-shapes",
+      "file": "tests/source/runtime.test.ts",
+      "test": "serializes inert regex values with Nunjucks JSON shapes",
+      "upstream": ["tests/filters.js:6"]
+    },
+    {
+      "id": "regex-replace-fail-stop",
+      "file": "tests/source/security.test.ts",
+      "test": "halts after invalid regex replacement inputs and preserves value branches",
+      "upstream": ["tests/filters.js:49"]
+    },
+    {
       "id": "parser-filter-syntax",
       "file": "tests/source/runtime.test.ts",
       "test": "implements the closed Nunjucks filter and test standard library",
+      "upstream": ["tests/parser.js:12", "tests/lexer.js:17"]
+    },
+    {
+      "id": "dotted-filter-names",
+      "file": "tests/source/security.test.ts",
+      "test": "dotted filters dispatch exact validated capability names",
       "upstream": ["tests/parser.js:12", "tests/lexer.js:17"]
     },
     {
@@ -142,6 +255,41 @@
         "tests/lexer.js:5",
         "tests/lexer.js:6",
         "tests/lexer.js:7"
+      ]
+    },
+    {
+      "id": "parser-whitespace-domains",
+      "file": "tests/source/runtime.test.ts",
+      "test": "matches Nunjucks code and template-data whitespace domains",
+      "upstream": [
+        "tests/parser.js:35",
+        "tests/lexer.js:9",
+        "tests/compiler.js:137",
+        "tests/compiler.js:138",
+        "tests/compiler.js:146"
+      ]
+    },
+    {
+      "id": "parser-nested-raw-regions",
+      "file": "tests/source/runtime.test.ts",
+      "test": "matches nested raw scanning and raw whitespace controls",
+      "upstream": [
+        "tests/parser.js:16",
+        "tests/parser.js:17",
+        "tests/parser.js:18",
+        "tests/parser.js:19",
+        "tests/parser.js:20",
+        "tests/parser.js:21",
+        "tests/parser.js:22",
+        "tests/parser.js:23",
+        "tests/parser.js:24",
+        "tests/parser.js:25",
+        "tests/parser.js:26",
+        "tests/parser.js:27",
+        "tests/parser.js:28",
+        "tests/parser.js:29",
+        "tests/parser.js:30",
+        "tests/parser.js:31"
       ]
     },
     {
@@ -218,6 +366,13 @@
       "statuses": ["ported"]
     },
     {
+      "id": "jinja-slice-coercion",
+      "file": "tests/source/runtime.test.ts",
+      "test": "matches pinned Jinja slice coercion and lookup semantics",
+      "upstreamRange": {"file": "tests/jinja-compat.js", "start": 1, "end": 13},
+      "statuses": ["ported"]
+    },
+    {
       "id": "runtime-call-errors",
       "file": "tests/source/evaluator.test.ts",
       "test": "never treats looked-up values as JavaScript callables",
@@ -243,6 +398,158 @@
       "file": "tests/source/security.test.ts",
       "test": "scope lookup never falls through to host globals or polluted prototypes",
       "upstream": ["tests/runtime.js:8"]
+    },
+    {
+      "id": "empty-safe-string-truthiness",
+      "file": "tests/source/runtime.test.ts",
+      "test": "matches Nunjucks empty safe-string truthiness",
+      "upstream": [
+        "tests/parser.js:6",
+        "tests/parser.js:11",
+        "tests/filters.js:2",
+        "tests/filters.js:4",
+        "tests/filters.js:5",
+        "tests/filters.js:7",
+        "tests/filters.js:14",
+        "tests/filters.js:17",
+        "tests/filters.js:22",
+        "tests/filters.js:45",
+        "tests/filters.js:46",
+        "tests/filters.js:47",
+        "tests/filters.js:48",
+        "tests/filters.js:52",
+        "tests/filters.js:54",
+        "tests/filters.js:56",
+        "tests/filters.js:59",
+        "tests/tests.js:12",
+        "tests/tests.js:13",
+        "tests/globals.js:1",
+        "tests/globals.js:3"
+      ]
+    },
+    {
+      "id": "empty-safe-string-slice-failure",
+      "file": "tests/source/security.test.ts",
+      "test": "empty safe-string slice fills fail before later capabilities",
+      "upstream": ["tests/filters.js:52"]
+    },
+    {
+      "id": "array-like-record-filters",
+      "file": "tests/source/runtime.test.ts",
+      "test": "matches Nunjucks array-like record filter semantics",
+      "upstream": [
+        "tests/filters.js:2",
+        "tests/filters.js:14",
+        "tests/filters.js:15",
+        "tests/filters.js:21",
+        "tests/filters.js:24",
+        "tests/filters.js:33",
+        "tests/filters.js:41",
+        "tests/filters.js:44",
+        "tests/filters.js:45",
+        "tests/filters.js:47",
+        "tests/filters.js:50",
+        "tests/filters.js:54",
+        "tests/filters.js:61"
+      ]
+    },
+    {
+      "id": "array-like-record-filter-failures",
+      "file": "tests/source/security.test.ts",
+      "test": "array-like record filters fail closed and enforce projected limits",
+      "upstream": [
+        "tests/filters.js:21",
+        "tests/filters.js:23",
+        "tests/filters.js:46",
+        "tests/filters.js:48",
+        "tests/filters.js:50",
+        "tests/filters.js:52",
+        "tests/filters.js:53",
+        "tests/filters.js:54"
+      ]
+    },
+    {
+      "id": "filter-specific-attribute-lookup",
+      "file": "tests/source/runtime.test.ts",
+      "test": "matches filter-specific Nunjucks attribute lookup semantics",
+      "upstream": [
+        "tests/filters.js:21",
+        "tests/filters.js:23",
+        "tests/filters.js:46",
+        "tests/filters.js:48",
+        "tests/filters.js:53",
+        "tests/filters.js:54"
+      ]
+    },
+    {
+      "id": "attribute-lookup-failures",
+      "file": "tests/source/security.test.ts",
+      "test": "attribute lookup policies reject reserved paths and fail on nullish values",
+      "upstream": [
+        "tests/filters.js:21",
+        "tests/filters.js:23",
+        "tests/filters.js:46",
+        "tests/filters.js:48",
+        "tests/filters.js:53",
+        "tests/filters.js:54"
+      ]
+    },
+    {
+      "id": "record-property-order",
+      "file": "tests/source/runtime.test.ts",
+      "test": "enumerates record keys in Nunjucks property order",
+      "upstream": [
+        "tests/parser.js:10",
+        "tests/filters.js:6",
+        "tests/filters.js:21",
+        "tests/filters.js:41",
+        "tests/filters.js:61"
+      ]
+    },
+    {
+      "id": "text-filter-short-circuit-order",
+      "file": "tests/source/runtime.test.ts",
+      "test": "matches Nunjucks text-filter short-circuit order",
+      "upstream": [
+        "tests/filters.js:4",
+        "tests/filters.js:59",
+        "tests/filters.js:64"
+      ]
+    },
+    {
+      "id": "strict-built-in-option-types",
+      "file": "tests/source/runtime.test.ts",
+      "test": "matches Nunjucks strict built-in option types",
+      "upstream": [
+        "tests/filters.js:6",
+        "tests/filters.js:14",
+        "tests/filters.js:51"
+      ]
+    },
+    {
+      "id": "built-in-filter-keyword-lowering",
+      "file": "tests/source/runtime.test.ts",
+      "test": "lowers built-in filter keyword arguments like Nunjucks",
+      "upstream": [
+        "tests/filters.js:4",
+        "tests/filters.js:5",
+        "tests/filters.js:14",
+        "tests/filters.js:16",
+        "tests/filters.js:18",
+        "tests/filters.js:20",
+        "tests/filters.js:21",
+        "tests/filters.js:22",
+        "tests/filters.js:23",
+        "tests/filters.js:45",
+        "tests/filters.js:46",
+        "tests/filters.js:47",
+        "tests/filters.js:48",
+        "tests/filters.js:51",
+        "tests/filters.js:53",
+        "tests/filters.js:54",
+        "tests/filters.js:56",
+        "tests/filters.js:59"
+      ]
     }
   ]
 }

@@ -17,6 +17,11 @@ test('renders synchronously through the CommonJS package entry', t => {
     throw new Error('Math.random must not be called during rendering');
   });
   const engine = createEngine({
+    filters: {
+      'tools.identity'(value) {
+        return value;
+      },
+    },
     globals: {
       value() {
         return 'works';
@@ -34,6 +39,11 @@ test('renders synchronously through the CommonJS package entry', t => {
   const context = engine.prepareContext({ value: 'prepared' });
   assert.equal(engine.render('CommonJS ${{ value }}', context), 'CommonJS prepared');
   assert.equal(engine.render('${{ ["only"] | random }}'), 'only');
+  assert.equal(engine.render('${{ "dotted" | tools.identity }}'), 'dotted');
+  assert.equal(
+    engine.render('{% filter tools.identity %}filter block{% endfilter %}'),
+    'filter block',
+  );
   assert.throws(
     () => engine.render('${{ value["LEFT\\u061cARABIC\\u200eLTR\\u200fRTL"]() }}', {
       value: {},
