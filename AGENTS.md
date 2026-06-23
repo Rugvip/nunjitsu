@@ -218,6 +218,10 @@ Do not create additional packages without a documented architectural reason.
   distinct boundaries. Preserve Nunjucks's observable prefix-`not` lowering
   through raw arithmetic and comparison operands rather than normalizing it to
   conventional unary precedence.
+- Reject a unary `Neg` whose direct child is `Neg` and a unary `Pos` whose
+  direct child is `Pos`. This matches Nunjucks's compiler-derived rejection of
+  adjacent `--` and `++`; preserve alternating signs, grouped repeated signs,
+  and repeated `not`.
 - Require parentheses around an inline conditional nested in another inline
   conditional's else arm. Accept only strings and ordinary identifiers as
   dictionary literal keys; reject literal-looking numeric, boolean, and nullish

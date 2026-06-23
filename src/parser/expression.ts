@@ -329,11 +329,20 @@ export class ExpressionParser {
   }
 
   #parseUnary(): AstNode {
+    const operator = this.#peek();
     if (this.#consume('-')) {
-      return this.#make('Neg', { target: this.#nested(() => this.#parseUnary()) });
+      const target = this.#nested(() => this.#parseUnary());
+      if (target.type === 'Neg') {
+        this.#fail('Repeated unparenthesized unary - is not supported', target);
+      }
+      return this.#make('Neg', { target }, operator);
     }
     if (this.#consume('+')) {
-      return this.#make('Pos', { target: this.#nested(() => this.#parseUnary()) });
+      const target = this.#nested(() => this.#parseUnary());
+      if (target.type === 'Pos') {
+        this.#fail('Repeated unparenthesized unary + is not supported', target);
+      }
+      return this.#make('Pos', { target }, operator);
     }
     return this.#parsePostfix();
   }

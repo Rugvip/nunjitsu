@@ -63,7 +63,10 @@ matching and case evaluation order, callable-boundary rejection, structured
 cause-free public diagnostics, declaration-specific formal validation,
 post-default and post-keyword positional ordering, structural-tag remainder and
 named-block checks, raw-mode entry validation, and render state cleanup after
-failures. Standard-library regressions compare collection and text input domains,
+failures. Repeated-unary regressions cover active and inactive expressions,
+defaults, arguments, collections, arithmetic nesting, both delimiter modes,
+valid grouping, and zero capability dispatch. Standard-library regressions
+compare collection and text input domains,
 nullish failure behavior, scalar length results, URL-encoding pair lookup,
 safe-string adaptations, keyword arguments, stateful globals, capability order,
 callable-laundering attempts, and type preservation across `range`, `sum`, and
@@ -71,10 +74,10 @@ callable-laundering attempts, and type preservation across `range`, `sum`, and
 repeat bounds, substring and replacement limits, URL label lengths, fractional
 precision, and number/string JSON indentation. Standalone-block tests cover
 unresolved `super`, alias/container and capture paths, configured-name
-behavior, macro-only call-block targets, and
-caller-handle confinement. Validation-order tests cover effectful call-block
+behavior, macro-only call-block targets, and caller-handle confinement.
+Validation-order tests cover effectful call-block
 targets, non-macro targets, unknown filters and tests, empty selection inputs,
-known-operation operand order, no partial output, and clean recovery. Static
+known-operation operand order, no partial output, and clean recovery.
 Callable-argument tests cover direct, nested, renamed, positional, and surplus
 handles across registered capabilities, finite and disabled scratch accounting,
 stateful built-ins, ignored method arguments, and exact test arity while

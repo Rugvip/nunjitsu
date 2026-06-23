@@ -47,6 +47,14 @@ inside `Math.floor`, including adjacent modulo operations. Parenthesized groups
 remain explicit AST boundaries, and evaluator traversal preserves source-order
 operand and capability evaluation.
 
+Repeated unparenthesized unary signs follow Nunjucks's observable compiler
+restriction. A `Neg` node cannot directly contain another `Neg`, and a `Pos`
+node cannot directly contain another `Pos`, because Nunjucks emits those pairs
+as invalid JavaScript update operators. Alternating signs remain valid, as do
+repeated signs separated by an explicit `Group` and repeated `not` expressions.
+The parser rejects the invalid direct-child shape while parsing the complete
+source, before any active or inactive expression can execute.
+
 ## Closed values
 
 The interpreter owns all values:

@@ -39,6 +39,11 @@ or trailing structural content therefore fail before evaluator construction;
 earlier output, declaration defaults, wrapper macros, raw contents, and later
 capabilities cannot execute.
 
+It also rejects direct `Neg(Neg(...))` and `Pos(Pos(...))` expression shapes in
+every syntax position, including inactive branches and unused macro defaults.
+This preserves Nunjucks's compiler-derived syntax rejection without generating
+JavaScript and prevents repeated signs from reaching capability evaluation.
+
 Strings, numbers, booleans, nulls, arrays, and record data supplied through
 trusted application code may contain hostile data. Node's native proxy brand
 check rejects proxy-backed values, including nested and revoked proxies, before

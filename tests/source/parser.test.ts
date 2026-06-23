@@ -134,6 +134,83 @@ test('scans delimiters only outside literals and rejects malformed complete inpu
   }
 });
 
+test('rejects adjacent identical unary signs while preserving separated forms', () => {
+  assert.throws(
+    () => parseTemplate('${{ - -value }}'),
+    error => (
+      error instanceof NunjitsuParseError &&
+      error.message === 'Repeated unparenthesized unary - is not supported' &&
+      error.line === 0 &&
+      error.column === 2
+    ),
+  );
+  const modes = [
+    undefined,
+    {
+      trimBlocks: false,
+      lstripBlocks: false,
+      cookiecutterCompat: true,
+    },
+  ];
+  const rejectedExpressions = [
+    '- -value',
+    '--value',
+    '-  -  value',
+    '+ +value',
+    '++value',
+    '+  +  value',
+    '- + +value',
+    '+ - -value',
+    '- - + -value',
+    'not - -value',
+    '1 * + +value',
+    '[- -value]',
+    '{value: + +value}',
+  ];
+  const rejectedTemplates = [
+    '{% if false %}${{ + +value }}{% endif %}',
+    '{% macro f(value=- -value) %}${{ value }}{% endmacro %}',
+    '${{ consume(+ +value) }}',
+    '${{ "x" | identity(- -value) }}',
+  ];
+  for (const options of modes) {
+    for (const expression of rejectedExpressions) {
+      const source = `\${{ ${expression} }}`;
+      const renderedSource = options ? source.replaceAll('${{', '{{') : source;
+      assert.throws(
+        () => parseTemplate(renderedSource, options),
+        error => (
+          error instanceof NunjitsuParseError &&
+          /Repeated unparenthesized unary/.test(error.message)
+        ),
+        renderedSource,
+      );
+    }
+    for (const source of rejectedTemplates) {
+      const renderedSource = options ? source.replaceAll('${{', '{{') : source;
+      assert.throws(
+        () => parseTemplate(renderedSource, options),
+        error => (
+          error instanceof NunjitsuParseError &&
+          /Repeated unparenthesized unary/.test(error.message)
+        ),
+        renderedSource,
+      );
+    }
+    for (const expression of [
+      '- +value',
+      '+ -value',
+      '-(-value)',
+      '+(+value)',
+      'not not value',
+    ]) {
+      const source = `\${{ ${expression} }}`;
+      const renderedSource = options ? source.replaceAll('${{', '{{') : source;
+      assert.doesNotThrow(() => parseTemplate(renderedSource, options), renderedSource);
+    }
+  }
+});
+
 test('rejects template loading syntax during complete parsing', () => {
   for (const source of [
     '{% include "x" %}',

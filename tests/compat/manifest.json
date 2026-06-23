@@ -406,7 +406,7 @@
     {
       "upstream": {"id":"tests/lexer.js:18","file":"tests/lexer.js","test":"should parse operators"},
       "status": "adapted",
-      "reason": "Arithmetic, power, floor-division, comparison, membership, test, and observable not operators are verified through evaluated output.",
+      "reason": "Operator tokens are verified through evaluated output, while repeated identical unary signs are rejected according to the pinned compiler's observable output.",
       "cases": ["compiler-basic-arithmetic","compiler-exponentiation","compiler-floor-division","compiler-mixed-comparison-precedence","compiler-membership-test-precedence","compiler-observable-not-grouping"]
     },
     {
@@ -512,6 +512,7 @@
     {
       "upstream": {"id":"tests/compiler.js:50","file":"tests/compiler.js","test":"should compile numeric negation operator"},
       "status": "ported",
+      "reason": "Ordinary and grouped negation are ported; adjacent identical unary signs are additionally covered as compiler-derived syntax failures.",
       "cases": ["compiler-numeric-negation"]
     },
     {

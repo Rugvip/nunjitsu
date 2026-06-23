@@ -804,6 +804,113 @@ test('rejects malformed structural tags before any template capability executes'
   }
 });
 
+test('rejects Nunjucks-invalid repeated unary signs before capability dispatch', () => {
+  const invalidSources = [
+    '${{ before() }}${{ - -mark() }}${{ later() }}',
+    '${{ before() }}${{ ++mark() }}${{ later() }}',
+    '${{ before() }}${{ - + +mark() }}${{ later() }}',
+    '${{ before() }}${{ + - -mark() }}${{ later() }}',
+    '${{ before() }}${{ - - + -mark() }}${{ later() }}',
+    '{% if false %}${{ + +mark() }}{% endif %}${{ later() }}',
+    '{% macro f(value=- -mark()) %}${{ value }}{% endmacro %}${{ later() }}',
+    '${{ consume(+ +mark()) }}${{ later() }}',
+    '${{ "x" | identity(- -mark()) }}${{ later() }}',
+    '${{ [- -mark()] | first }}${{ later() }}',
+    '${{ {value: + +mark()} | dump }}${{ later() }}',
+    '${{ not - -mark() }}${{ later() }}',
+    '${{ 1 * + +mark() }}${{ later() }}',
+  ];
+  for (const cookiecutterCompat of [false, true]) {
+    const engineCalls: string[] = [];
+    const oracleCalls: string[] = [];
+    const engine = createEngine({
+      cookiecutterCompat,
+      filters: {
+        identity(input) {
+          engineCalls.push('identity');
+          return input;
+        },
+      },
+      globals: {
+        before() {
+          engineCalls.push('before');
+          return 2;
+        },
+        consume(value) {
+          engineCalls.push('consume');
+          return value;
+        },
+        later() {
+          engineCalls.push('later');
+          return 2;
+        },
+        mark() {
+          engineCalls.push('mark');
+          return 2;
+        },
+      },
+    });
+    const oracle = new nunjucks.Environment(undefined, { autoescape: false });
+    oracle.addFilter('identity', (input: unknown) => {
+      oracleCalls.push('identity');
+      return input;
+    });
+    for (const name of ['before', 'consume', 'later', 'mark']) {
+      oracle.addGlobal(name, (value?: unknown) => {
+        oracleCalls.push(name);
+        return value ?? 2;
+      });
+    }
+    for (const originalSource of invalidSources) {
+      engineCalls.length = 0;
+      oracleCalls.length = 0;
+      const engineSource = cookiecutterCompat
+        ? originalSource.replaceAll('${{', '{{')
+        : originalSource;
+      const oracleSource = originalSource.replaceAll('${{', '{{');
+      let caught: NunjitsuRenderError | undefined;
+      assert.throws(
+        () => engine.render(engineSource),
+        error => {
+          if (!(error instanceof NunjitsuRenderError)) {
+            return false;
+          }
+          caught = error;
+          return true;
+        },
+        engineSource,
+      );
+      assert.throws(() => oracle.renderString(oracleSource, {}), oracleSource);
+      assert.equal(caught?.phase, 'parse', engineSource);
+      assert.equal(caught?.code, 'syntax_error', engineSource);
+      assert.equal(caught?.cause, undefined, engineSource);
+      assert.deepEqual(engineCalls, [], engineSource);
+      assert.deepEqual(oracleCalls, [], oracleSource);
+      assert.equal(engine.render('clean'), 'clean', engineSource);
+    }
+
+    engineCalls.length = 0;
+    oracleCalls.length = 0;
+    const validSource = [
+      '${{ - +mark() }}|',
+      '${{ + -mark() }}|',
+      '${{ -(-mark()) }}|',
+      '${{ +(+mark()) }}|',
+      '${{ not not value }}',
+    ].join('');
+    const engineSource = cookiecutterCompat
+      ? validSource.replaceAll('${{', '{{')
+      : validSource;
+    const oracleSource = validSource.replaceAll('${{', '{{');
+    assert.equal(
+      engine.render(engineSource, { value: true }),
+      oracle.renderString(oracleSource, { value: true }),
+    );
+    assert.deepEqual(engineCalls, ['mark', 'mark', 'mark', 'mark']);
+    assert.deepEqual(oracleCalls, engineCalls);
+  }
+});
+
 test('standalone blocks never synthesize unsupported super authority', () => {
   let engineCalls = 0;
   let oracleCalls = 0;

@@ -27,6 +27,12 @@
       "upstream": ["tests/parser.js:6", "tests/lexer.js:18"]
     },
     {
+      "id": "repeated-unary-validation",
+      "file": "tests/source/security.test.ts",
+      "test": "rejects Nunjucks-invalid repeated unary signs before capability dispatch",
+      "upstream": ["tests/lexer.js:18", "tests/compiler.js:50"]
+    },
+    {
       "id": "parser-expression-acceptance",
       "file": "tests/source/runtime.test.ts",
       "test": "rejects Nunjucks-invalid nested conditionals and dictionary keys before evaluation",

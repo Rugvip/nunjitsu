@@ -32,6 +32,8 @@ Nunjitsu targets:
 - observable comparison, membership, test, and prefix-`not` grouping, including
   Nunjucks's generated-code behavior where it differs from conventional unary
   precedence;
+- compiler-derived rejection of repeated unparenthesized `--` and `++` unary
+  shapes while preserving alternating, parenthesized, and repeated-`not` forms;
 - Nunjucks parser acceptance for parenthesized nested inline conditionals and
   string or ordinary-identifier dictionary keys;
 - target-count-sensitive Nunjucks loop behavior for arrays, primitive and safe
@@ -98,6 +100,13 @@ counter comparison for `replace`, `substr` length for `urlize`, exponent
 precision for `round`, and JSON number/string indentation for `dump`. Infinite
 spacing fails closed instead of reproducing an unbounded upstream loop. The
 documented positive-integer restrictions for `batch` and `slice` are unchanged.
+
+Nunjucks parses recursive unary signs but emits adjacent identical signs as
+JavaScript `--` or `++`, which fails compilation for template operands. Nunjitsu
+reproduces that observable result directly in its closed parser: `Neg(Neg)` and
+`Pos(Pos)` fail complete-source validation regardless of whitespace or syntax
+position. An explicit group separates the nodes, alternating signs remain
+valid, and repeated `not` remains valid.
 
 Safe strings are internal text values rather than emulations of Nunjucks's
 prototype-bearing JavaScript `String` wrapper. Collection filters therefore
