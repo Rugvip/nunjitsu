@@ -18,6 +18,8 @@ Nunjitsu targets:
 - Cookiecutter `{{ ... }}` mode and its `jsonify` alias;
 - expressions, truthiness, scoping, loops, inline macros, call blocks, and
   rendering semantics used within one source;
+- call-block caller signatures containing regex literals, including escaped or
+  character-class parentheses and regexes nested in closed expressions;
 - block conditionals with equivalent `elif` and `elseif` continuations, nested
   mixed chains, final `else`, and complete malformed-branch validation;
 - synchronous `{% filter ... %}` blocks with built-in or exact dotted

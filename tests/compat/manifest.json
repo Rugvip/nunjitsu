@@ -200,7 +200,7 @@
       "upstream": {"id":"tests/parser.js:15","file":"tests/parser.js","test":"should parse call blocks with args"},
       "status": "adapted",
       "reason": "Call-block bindings plus positional and keyword arguments are verified through rendered output.",
-      "cases": ["compiler-call-block-arguments","compiler-caller-post-default-formal-order"]
+      "cases": ["compiler-call-block-arguments","compiler-call-block-regex-signature","compiler-caller-post-default-formal-order"]
     },
     {
       "upstream": {"id":"tests/parser.js:16","file":"tests/parser.js","test":"should parse raw"},
@@ -686,7 +686,7 @@
     {
       "upstream": {"id":"tests/compiler.js:83","file":"tests/compiler.js","test":"should compile call blocks with args"},
       "status": "ported",
-      "cases": ["compiler-call-block-arguments","compiler-caller-post-default-formal-order"]
+      "cases": ["compiler-call-block-arguments","compiler-call-block-regex-signature","compiler-caller-post-default-formal-order"]
     },
     {
       "upstream": {"id":"tests/compiler.js:84","file":"tests/compiler.js","test":"should compile call blocks using imported macros"},

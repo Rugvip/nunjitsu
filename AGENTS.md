@@ -237,6 +237,10 @@ Do not create additional packages without a documented architectural reason.
   evaluation; share complete identifier boundaries between tag and expression
   scanning so only an exact `r/` token starts a regex. Native Node.js RegExp
   support must never expand accepted syntax.
+- Use the shared parser-owned balanced code scanner for structural delimiter,
+  keyword, assignment, and tag-end discovery. It must skip strings and exact
+  `r/` literals through the same lexical helpers as expression parsing; do not
+  add local character scanners that can reinterpret regex parentheses.
 - Compare validated primitive strings with direct UTF-16 relational operators.
   Do not use locale-aware collation or `Intl` inside template semantics.
 - Centralize property-key, primitive, number, string, addition, relational, and

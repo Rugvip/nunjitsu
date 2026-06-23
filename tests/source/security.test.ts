@@ -1316,6 +1316,76 @@ test('restricts regex literals before capability dispatch', () => {
   }
 });
 
+test('rejects malformed call-block signature regexes before capability dispatch', () => {
+  const malformedValues = [
+    'r/[)/',
+    'r/\\)/gg',
+    '[r/[)/]',
+    '{pattern:r/[)/}',
+  ];
+  for (const cookiecutterCompat of [false, true]) {
+    const events: string[] = [];
+    const oracleEvents: string[] = [];
+    const engine = createEngine({
+      cookiecutterCompat,
+      globals: {
+        before() {
+          events.push('before');
+          return '';
+        },
+        body() {
+          events.push('body');
+          return '';
+        },
+        after() {
+          events.push('after');
+          return '';
+        },
+      },
+    });
+    const oracle = new nunjucks.Environment(undefined, { autoescape: false });
+    for (const name of ['before', 'body', 'after']) {
+      oracle.addGlobal(name, () => {
+        oracleEvents.push(name);
+        return '';
+      });
+    }
+    for (const value of malformedValues) {
+      const source = [
+        '${{ before() }}',
+        '{% macro wrap() %}${{ caller() }}{% endmacro %}',
+        '{% call(value=' + value + ') wrap() %}${{ body() }}{% endcall %}',
+        '${{ after() }}',
+      ].join('');
+      const engineSource = cookiecutterCompat
+        ? source.replaceAll('${{', '{{')
+        : source;
+      let caught: NunjitsuRenderError | undefined;
+      assert.throws(
+        () => engine.render(engineSource),
+        error => {
+          if (!(error instanceof NunjitsuRenderError)) {
+            return false;
+          }
+          caught = error;
+          return true;
+        },
+        value,
+      );
+      assert.equal(caught?.phase, 'parse', value);
+      assert.equal(caught?.code, 'syntax_error', value);
+      assert.equal(caught?.cause, undefined, value);
+      assert.deepEqual(events, [], value);
+      assert.throws(
+        () => oracle.renderString(source.replaceAll('${{', '{{'), {}),
+        value,
+      );
+      assert.deepEqual(oracleEvents, [], value);
+      assert.equal(engine.render('clean'), 'clean', value);
+    }
+  }
+});
+
 test('matches Nunjucks string escapes before capability dispatch', () => {
   const stringSources = [
     String.raw`{{ "\n" | dump }}|{{ "\t" | dump }}|{{ "\r" | dump }}`,

@@ -67,6 +67,18 @@
       "upstream": ["tests/lexer.js:25", "tests/compiler.js:46", "tests/compiler.js:132"]
     },
     {
+      "id": "call-block-regex-signatures",
+      "file": "tests/source/runtime.test.ts",
+      "test": "matches Nunjucks regex literals in call-block signatures",
+      "upstream": ["tests/parser.js:15", "tests/compiler.js:83"]
+    },
+    {
+      "id": "call-block-regex-signature-validation",
+      "file": "tests/source/security.test.ts",
+      "test": "rejects malformed call-block signature regexes before capability dispatch",
+      "upstream": ["tests/parser.js:15", "tests/lexer.js:25"]
+    },
+    {
       "id": "string-literal-grammar",
       "file": "tests/source/security.test.ts",
       "test": "matches Nunjucks string escapes before capability dispatch",

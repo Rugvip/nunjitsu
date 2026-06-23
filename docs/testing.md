@@ -87,7 +87,9 @@ behavior, macro-only call-block targets, and caller-handle confinement.
 Validation-order tests cover effectful call-block
 targets, non-macro targets, unknown filters and tests, empty selection inputs,
 known-operation operand order, ignored attribute-selection arguments, no partial
-output, and clean recovery.
+output, and clean recovery. Call-block signature regressions compare regex
+parentheses, nested expression containers, division ambiguity, malformed regex
+fail-stop behavior, and both variable-delimiter modes against the pinned oracle.
 Callable-argument tests cover direct, nested, renamed, positional, and surplus
 handles across registered capabilities, finite and disabled scratch accounting,
 stateful built-ins, ignored method arguments, and exact test arity while

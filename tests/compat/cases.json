@@ -494,6 +494,12 @@
       "expected": "<ul><li>a</li><li>b</li></ul>"
     },
     {
+      "id": "compiler-call-block-regex-signature",
+      "template": "{% macro wrap() %}{{ caller() }}{% endmacro %}{% call(value=r/\\)/) wrap() %}{{ value }}{% endcall %}",
+      "context": {},
+      "expected": "/\\)/"
+    },
+    {
       "id": "compiler-caller-post-default-formal-order",
       "template": "{% macro wrap() %}{{ caller(2,3) }}{% endmacro %}{% call(a=1,b) wrap() %}[{{ a | dump }},{{ b | dump }}]{% endcall %}",
       "context": {},

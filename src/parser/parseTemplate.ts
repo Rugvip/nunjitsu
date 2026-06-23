@@ -2,8 +2,13 @@ import { formatDiagnosticValue } from '../diagnostics.ts';
 import { NunjitsuLimitError } from '../limits.ts';
 import { isAstNode, type AstCaseNode, type AstNode } from './ast.ts';
 import { ExpressionParser, ExpressionSyntaxError } from './expression.ts';
-import { scanIdentifier } from './scanIdentifier.ts';
-import { RegexLiteralSyntaxError, scanRegexLiteral } from './scanRegexLiteral.ts';
+import {
+  findCodeTerminator,
+  findMatchingCodeDelimiter,
+  findTopLevelCodeCharacter,
+  splitTopLevelCodeKeyword,
+} from './scanCode.ts';
+import { RegexLiteralSyntaxError } from './scanRegexLiteral.ts';
 import {
   isCodeWhitespace,
   isTemplateWhitespace,
@@ -217,7 +222,7 @@ class TemplateParser {
   }
 
   #parseFor(header: string, token: TemplateToken): AstNode {
-    const split = splitKeyword(header, 'in');
+    const split = splitTopLevelCodeKeyword(header, 'in');
     if (!split) {
       this.#fail('For tag requires an in expression', token);
     }
@@ -242,7 +247,7 @@ class TemplateParser {
   }
 
   #parseSet(header: string, token: TemplateToken): AstNode {
-    const assignment = findTopLevelCharacter(header, '=');
+    const assignment = findTopLevelCodeCharacter(header, '=');
     if (assignment >= 0) {
       const targets = this.#targets(header.slice(0, assignment), token);
       const value = this.#expression(header.slice(assignment + 1), token);
@@ -281,7 +286,7 @@ class TemplateParser {
     let callerArguments = '';
     let callSource = trimCodeWhitespace(header);
     if (callSource.startsWith('(')) {
-      const closing = findMatchingParenthesis(callSource, 0);
+      const closing = findMatchingCodeDelimiter(callSource, 0);
       if (closing < 0) {
         this.#fail('Invalid call-block arguments', token);
       }
@@ -609,45 +614,7 @@ function findTagEnd(
   close: string,
   scanRegex: boolean,
 ): number {
-  let quote: string | undefined;
-  let escaped = false;
-  for (let index = start; index <= source.length - close.length; index += 1) {
-    const character = source[index]!;
-    if (escaped) {
-      escaped = false;
-      continue;
-    }
-    if (quote && character === '\\') {
-      escaped = true;
-      continue;
-    }
-    if (quote) {
-      if (character === quote) {
-        quote = undefined;
-      }
-      continue;
-    }
-    if (character === '"' || character === "'") {
-      quote = character;
-      continue;
-    }
-    if (scanRegex) {
-      const identifier = scanIdentifier(source, index);
-      if (identifier) {
-        if (identifier.value === 'r' && source[identifier.end] === '/') {
-          const regex = scanRegexLiteral(source, index);
-          index = regex.end - 1;
-        } else {
-          index = identifier.end - 1;
-        }
-        continue;
-      }
-    }
-    if (source.startsWith(close, index)) {
-      return index;
-    }
-  }
-  return -1;
+  return findCodeTerminator(source, start, close, scanRegex);
 }
 
 function sourcePosition(
@@ -759,89 +726,6 @@ function tagName(value: string): string {
 
 function tagRemainder(value: string): string {
   return trimCodeWhitespace(trimCodeWhitespace(value).slice(tagName(value).length));
-}
-
-function splitKeyword(
-  source: string,
-  keyword: string,
-): { readonly left: string; readonly right: string } | undefined {
-  let depth = 0;
-  let quote: string | undefined;
-  for (let index = 0; index < source.length; index += 1) {
-    const character = source[index]!;
-    if (quote) {
-      if (character === '\\') {
-        index += 1;
-      } else if (character === quote) {
-        quote = undefined;
-      }
-      continue;
-    }
-    if (character === '"' || character === "'") {
-      quote = character;
-    } else if ('([{'.includes(character)) {
-      depth += 1;
-    } else if (')]}'.includes(character)) {
-      depth -= 1;
-    } else if (
-      depth === 0 &&
-      source.slice(index, index + keyword.length) === keyword &&
-      isCodeWhitespace(source[index - 1] ?? ' ') &&
-      isCodeWhitespace(source[index + keyword.length] ?? ' ')
-    ) {
-      return {
-        left: trimCodeWhitespace(source.slice(0, index)),
-        right: trimCodeWhitespace(source.slice(index + keyword.length)),
-      };
-    }
-  }
-  return undefined;
-}
-
-function findTopLevelCharacter(source: string, expected: string): number {
-  let depth = 0;
-  let quote: string | undefined;
-  for (let index = 0; index < source.length; index += 1) {
-    const character = source[index]!;
-    if (quote) {
-      if (character === '\\') {
-        index += 1;
-      } else if (character === quote) {
-        quote = undefined;
-      }
-    } else if (character === '"' || character === "'") {
-      quote = character;
-    } else if ('([{'.includes(character)) {
-      depth += 1;
-    } else if (')]}'.includes(character)) {
-      depth -= 1;
-    } else if (depth === 0 && character === expected) {
-      return index;
-    }
-  }
-  return -1;
-}
-
-function findMatchingParenthesis(source: string, start: number): number {
-  let depth = 0;
-  let quote: string | undefined;
-  for (let index = start; index < source.length; index += 1) {
-    const character = source[index]!;
-    if (quote) {
-      if (character === '\\') {
-        index += 1;
-      } else if (character === quote) {
-        quote = undefined;
-      }
-    } else if (character === '"' || character === "'") {
-      quote = character;
-    } else if (character === '(') {
-      depth += 1;
-    } else if (character === ')' && --depth === 0) {
-      return index;
-    }
-  }
-  return -1;
 }
 
 function containsMacroDeclaration(node: AstNode): boolean {

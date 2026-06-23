@@ -36,7 +36,9 @@ must be argument-free before the scanner enters raw mode. A call block remains
 a dedicated statement node rather than being lowered to an ordinary call with
 a hidden argument. Its target must be a direct symbol or a static constant-key
 lookup rooted at one, so target validation cannot execute another call, filter,
-or computed lookup.
+or computed lookup. Its optional caller signature is split with the shared
+balanced code scanner, which ignores delimiters inside parser-owned strings and
+regex literals before the expression parser validates the resulting defaults.
 
 Expression nodes encode the observable result of Nunjucks's parser and
 generated-JavaScript grouping without generating or executing JavaScript.

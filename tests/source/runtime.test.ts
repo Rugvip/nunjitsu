@@ -48,6 +48,47 @@ test('renders control flow, loops, macros, call blocks, and assignments', () => 
   );
 });
 
+test('matches Nunjucks regex literals in call-block signatures', () => {
+  const cases = [
+    { value: 'r/\\)/', body: '${{ value }}' },
+    { value: 'r/[)]/', body: '${{ value }}' },
+    { value: 'r/[(]/', body: '${{ value }}' },
+    { value: 'r/a\\)b/', body: '${{ value }}' },
+    { value: '[r/\\)/]', body: '${{ value[0] }}' },
+    { value: '{pattern:r/[)]/}', body: '${{ value.pattern }}' },
+    { value: '(r/\\)/)', body: '${{ value }}' },
+    {
+      value: '"a)b" | replace(r/[)]/, "X")',
+      body: '${{ value }}',
+    },
+    { value: 'r/a(b)c/', body: '${{ value }}' },
+    { value: 'bar/2', body: '${{ value }}' },
+    { value: 'r / 2', body: '${{ value }}' },
+  ];
+  for (const cookiecutterCompat of [false, true]) {
+    const engine = createEngine({ cookiecutterCompat });
+    const oracle = new nunjucks.Environment(undefined, { autoescape: false });
+    for (const case_ of cases) {
+      const source = [
+        '{% macro wrap() %}${{ caller() }}{% endmacro %}',
+        `{% call(value=${case_.value}) wrap() %}`,
+        case_.body,
+        '{% endcall %}',
+      ].join('');
+      const engineSource = cookiecutterCompat
+        ? source.replaceAll('${{', '{{')
+        : source;
+      const oracleSource = source.replaceAll('${{', '{{');
+      const context = { bar: 8, r: 8 };
+      assert.equal(
+        engine.render(engineSource, context),
+        oracle.renderString(oracleSource, context),
+        case_.value,
+      );
+    }
+  }
+});
+
 test('matches Nunjucks elif and elseif conditional chains', () => {
   const sources = [
     '{% if true %}if{% else %}else{% endif %}',
