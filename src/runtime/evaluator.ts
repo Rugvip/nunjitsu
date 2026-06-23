@@ -22,6 +22,7 @@ import {
   builtinTestArity,
   hasBuiltinFilter,
   hasBuiltinTest,
+  lowerBuiltinFilterArguments,
   lookupRuntimeConstantKey,
   lookupRuntimeValue,
 } from './builtins.ts';
@@ -89,10 +90,18 @@ export interface EvaluateOptions {
 }
 
 type OutputTarget = string[];
+// Covers temporary and immutable reference slots produced by indexed filters.
+const indexedValueScratchBytes = 32;
 
 interface MacroDefinition {
   readonly node: AstCallableBodyNode;
   readonly scope: RuntimeScope;
+  readonly invocationScope: RuntimeScope;
+}
+
+interface MacroBindingContext {
+  readonly bindingScope: RuntimeScope;
+  readonly invocationScope: RuntimeScope;
 }
 
 /** One non-materializing view over values accepted by a template loop. */
@@ -162,7 +171,6 @@ class Evaluator {
   readonly #capabilityNames = new Map<number, string>();
   readonly #capabilityHandles = new Map<string, RuntimeCallable>();
   readonly #builtinGlobalHandles = new Map<BuiltinGlobalName, RuntimeCallable>();
-  readonly #blockScopes: RuntimeScope[] = [];
   #nextCallableId = 1;
   #workUnits = 0;
   #outputCodeUnits = 0;
@@ -181,9 +189,10 @@ class Evaluator {
       contextScope.setReadonly(name, value);
     }
     const scope = contextScope.child(true);
+    const macroContext = createMacroBindingContext(scope, scope);
     const output: OutputTarget = [];
     try {
-      this.#renderTemplate(ast, scope, output, 0);
+      this.#renderTemplate(ast, scope, macroContext, output, 0);
       return output.join('');
     } catch (error) {
       if (error instanceof NunjitsuLimitError) {
@@ -196,21 +205,23 @@ class Evaluator {
   #renderTemplate(
     ast: AstNode,
     scope: RuntimeScope,
+    macroContext: MacroBindingContext,
     output: OutputTarget,
     depth: number,
   ): void {
     validateUniqueBlocks(ast);
-    this.#evaluateNode(ast, scope, output, depth + 1);
+    this.#evaluateNode(ast, scope, macroContext, output, depth + 1);
   }
 
   #evaluateNode(
     node: AstNode,
     scope: RuntimeScope,
+    macroContext: MacroBindingContext,
     output: OutputTarget,
     depth: number,
   ): void {
     try {
-      this.#evaluateNodeUnchecked(node, scope, output, depth);
+      this.#evaluateNodeUnchecked(node, scope, macroContext, output, depth);
     } catch (error) {
       if (error instanceof NunjitsuLimitError) {
         throw error;
@@ -222,6 +233,7 @@ class Evaluator {
   #evaluateNodeUnchecked(
     node: AstNode,
     scope: RuntimeScope,
+    macroContext: MacroBindingContext,
     output: OutputTarget,
     depth: number,
   ): void {
@@ -229,59 +241,62 @@ class Evaluator {
     switch (node.type) {
       case 'Root':
       case 'NodeList':
-        this.#evaluateSequence(node.children, scope, output, depth);
+        this.#evaluateSequence(node.children, scope, macroContext, output, depth);
         return;
       case 'Output':
         for (const child of node.children) {
           if (child.type === 'TemplateData') {
             this.#append(output, literalString(child));
           } else {
-            const value = this.#evaluateExpression(child, scope, depth + 1);
+            const value = this.#evaluateExpression(child, scope, macroContext, depth + 1);
             this.#append(output, renderRuntimeValue(value));
           }
         }
         return;
       case 'If':
       {
-        const condition = this.#evaluateExpression(node.cond, scope, depth + 1);
+        const condition = this.#evaluateExpression(node.cond, scope, macroContext, depth + 1);
         if (runtimeTruthy(condition)) {
-          this.#evaluateNode(node.body, scope, output, depth + 1);
+          this.#evaluateNode(node.body, scope, macroContext, output, depth + 1);
         } else {
           const otherwise = node.else_;
           if (otherwise) {
-            this.#evaluateNode(otherwise, scope, output, depth + 1);
+            this.#evaluateNode(otherwise, scope, macroContext, output, depth + 1);
           }
         }
         return;
       }
       case 'For':
-        this.#evaluateFor(node, scope, output, depth + 1);
+        this.#evaluateFor(node, scope, macroContext, output, depth + 1);
         return;
       case 'Set':
-        this.#evaluateSet(node, scope, depth + 1);
+        this.#evaluateSet(node, scope, macroContext, depth + 1);
         return;
       case 'Macro': {
         const name = symbolName(node.name);
         const id = this.#nextCallableId++;
-        const definitionScope = this.#blockScopes.at(-1) ?? scope;
-        this.#macros.set(id, { node, scope: definitionScope });
-        definitionScope.set(name, new RuntimeCallable('macro', id));
+        this.#macros.set(id, {
+          node,
+          scope: macroContext.invocationScope,
+          invocationScope: macroContext.invocationScope,
+        });
+        macroContext.bindingScope.set(name, new RuntimeCallable('macro', id));
         return;
       }
       case 'CallBlock':
-        this.#evaluateCallBlock(node, scope, output, depth + 1);
+        this.#evaluateCallBlock(node, scope, macroContext, output, depth + 1);
         return;
       case 'Block':
-        this.#evaluateBlock(node, scope, output, depth + 1);
+        this.#evaluateBlock(node, scope, macroContext, output, depth + 1);
         return;
       case 'Switch': {
-        const value = this.#evaluateExpression(node.expr, scope, depth + 1);
+        const value = this.#evaluateExpression(node.expr, scope, macroContext, depth + 1);
         const cases = node.cases;
         let matched = false;
         for (const candidate of cases) {
           const condition = matched
             ? undefined
-            : this.#evaluateExpression(candidate.cond, scope, depth + 1);
+            : this.#evaluateExpression(candidate.cond, scope, macroContext, depth + 1);
           if (matched || runtimeStrictEqual(value, condition)) {
             matched = true;
             if (candidate.body.type === 'NodeList' && candidate.body.children.length === 0) {
@@ -290,6 +305,7 @@ class Evaluator {
             this.#evaluateNode(
               candidate.body,
               scope,
+              macroContext,
               output,
               depth + 1,
             );
@@ -298,7 +314,7 @@ class Evaluator {
         }
         const fallback = node.default;
         if (fallback) {
-          this.#evaluateNode(fallback, scope, output, depth + 1);
+          this.#evaluateNode(fallback, scope, macroContext, output, depth + 1);
         }
         return;
       }
@@ -310,40 +326,43 @@ class Evaluator {
   #evaluateBlock(
     node: AstBlockNode,
     scope: RuntimeScope,
+    macroContext: MacroBindingContext,
     output: OutputTarget,
     depth: number,
   ): void {
-    this.#blockScopes.push(scope);
-    try {
-      this.#evaluateNode(
-        node.body,
-        scope.child(true),
-        output,
-        depth + 1,
-      );
-    } finally {
-      this.#blockScopes.pop();
-    }
+    const blockMacroContext = createMacroBindingContext(
+      macroContext.invocationScope,
+      macroContext.invocationScope,
+    );
+    this.#evaluateNode(
+      node.body,
+      scope.child(true),
+      blockMacroContext,
+      output,
+      depth + 1,
+    );
   }
 
   #evaluateSequence(
     nodes: readonly AstNode[],
     scope: RuntimeScope,
+    macroContext: MacroBindingContext,
     output: OutputTarget,
     depth: number,
   ): void {
     for (const node of nodes) {
-      this.#evaluateNode(node, scope, output, depth + 1);
+      this.#evaluateNode(node, scope, macroContext, output, depth + 1);
     }
   }
 
   #evaluateFor(
     node: AstForNode,
     scope: RuntimeScope,
+    macroContext: MacroBindingContext,
     output: OutputTarget,
     depth: number,
   ): void {
-    const value = this.#evaluateExpression(node.arr, scope, depth + 1);
+    const value = this.#evaluateExpression(node.arr, scope, macroContext, depth + 1);
     const binding = node.name;
     let targets: readonly AstNode[];
     if (binding.type === 'Symbol') {
@@ -355,6 +374,10 @@ class Evaluator {
     }
     const entries = iterableEntries(value, targets.length);
     const loopScope = scope.child();
+    const loopMacroContext = createMacroBindingContext(
+      loopScope,
+      macroContext.invocationScope,
+    );
     let index = 0;
     for (const entry of entries.values) {
       const iteration = loopScope;
@@ -372,6 +395,7 @@ class Evaluator {
       this.#evaluateNode(
         node.body,
         iteration,
+        loopMacroContext,
         output,
         depth + 1,
       );
@@ -379,23 +403,28 @@ class Evaluator {
     }
     const otherwise = node.else_;
     if (!runtimeTruthy(entries.length) && otherwise) {
-      this.#evaluateNode(otherwise, loopScope, output, depth + 1);
+      this.#evaluateNode(otherwise, loopScope, loopMacroContext, output, depth + 1);
     }
   }
 
-  #evaluateSet(node: AstSetNode, scope: RuntimeScope, depth: number): void {
+  #evaluateSet(
+    node: AstSetNode,
+    scope: RuntimeScope,
+    macroContext: MacroBindingContext,
+    depth: number,
+  ): void {
     const targets = node.targets;
     const valueNode = node.value;
     let value: RuntimeValue;
     if (valueNode) {
-      value = this.#evaluateExpression(valueNode, scope, depth + 1);
+      value = this.#evaluateExpression(valueNode, scope, macroContext, depth + 1);
     } else {
       const body = node.body;
       if (!body) {
         throw new Error('Invalid block assignment');
       }
       const capturedBody = body.type === 'Capture' ? body.body : body;
-      value = this.#capture(capturedBody, scope, depth + 1, false);
+      value = this.#capture(capturedBody, scope, macroContext, depth + 1, false);
     }
     if (targets.length === 1) {
       bindAssignment(targets[0]!, value, scope);
@@ -409,10 +438,11 @@ class Evaluator {
   #evaluateExpression(
     node: AstNode,
     scope: RuntimeScope,
+    macroContext: MacroBindingContext,
     depth: number,
   ): RuntimeValue {
     try {
-      return this.#evaluateExpressionUnchecked(node, scope, depth);
+      return this.#evaluateExpressionUnchecked(node, scope, macroContext, depth);
     } catch (error) {
       if (error instanceof NunjitsuLimitError) {
         throw error;
@@ -424,6 +454,7 @@ class Evaluator {
   #evaluateExpressionUnchecked(
     node: AstNode,
     scope: RuntimeScope,
+    macroContext: MacroBindingContext,
     depth: number,
   ): RuntimeValue {
     this.#charge(depth);
@@ -470,15 +501,26 @@ class Evaluator {
         }
         return this.#registerBuiltinGlobal(name);
       }
-      case 'Array':
-      case 'Group': {
+      case 'Array': {
         const values: RuntimeValue[] = [];
         for (const child of node.children) {
-          values.push(this.#evaluateExpression(child, scope, depth + 1));
+          values.push(this.#evaluateExpression(child, scope, macroContext, depth + 1));
         }
-        return node.type === 'Group' && values.length === 1
-          ? values[0]
-          : new RuntimeArray(values);
+        return new RuntimeArray(values);
+      }
+      case 'Group': {
+        if (node.children.length === 0) {
+          throw new Error('Invalid empty expression group');
+        }
+        let result: RuntimeValue = undefined;
+        for (const [index, child] of node.children.entries()) {
+          const value = this.#evaluateExpression(child, scope, macroContext, depth + 1);
+          if (index < node.children.length - 1) {
+            assertRuntimeValueHasNoCallable(value);
+          }
+          result = value;
+        }
+        return result;
       }
       case 'Dict':
       case 'KeywordArgs': {
@@ -490,27 +532,35 @@ class Evaluator {
           const keyNode = pair.key;
           const name = keyNode.type === 'Symbol'
             ? symbolName(keyNode)
-            : runtimeToPropertyKey(this.#evaluateExpression(keyNode, scope, depth + 1));
+            : runtimeToPropertyKey(
+              this.#evaluateExpression(keyNode, scope, macroContext, depth + 1),
+            );
           if (isReservedName(name)) {
             throw new Error(`Template name ${name} is reserved`);
           }
           entries.push([
             name,
-            this.#evaluateExpression(pair.value, scope, depth + 1),
+            this.#evaluateExpression(pair.value, scope, macroContext, depth + 1),
           ]);
         }
         return new RuntimeRecord(entries);
       }
       case 'LookupVal': {
-        const target = this.#evaluateExpression(node.target, scope, depth + 1);
+        const target = this.#evaluateExpression(node.target, scope, macroContext, depth + 1);
         const valueNode = node.val;
         if (valueNode.type === 'Slice') {
-          return this.#evaluateSlice(target, valueNode, scope, depth + 1);
+          return this.#evaluateSlice(target, valueNode, scope, macroContext, depth + 1);
         }
         if (valueNode.type === 'Array') {
           const children = valueNode.children;
           if (children.length === 1 && children[0]?.type === 'Slice') {
-            return this.#evaluateSlice(target, children[0], scope, depth + 1);
+            return this.#evaluateSlice(
+              target,
+              children[0],
+              scope,
+              macroContext,
+              depth + 1,
+            );
           }
         }
         const constantKey = constantLookupKey(valueNode);
@@ -525,43 +575,49 @@ class Evaluator {
           }
           return freshMemberCallable(lookupRuntimeConstantKey(target, constantKey.value));
         }
-        const key = this.#evaluateExpression(valueNode, scope, depth + 1);
+        const key = this.#evaluateExpression(valueNode, scope, macroContext, depth + 1);
         if (target instanceof RuntimeCallable && target.callableKind === 'builtin') {
           return this.#lookupBuiltinCallable(target.id, runtimeToPropertyKey(key));
         }
         return freshMemberCallable(lookupRuntimeValue(target, key));
       }
       case 'InlineIf': {
-        const condition = this.#evaluateExpression(node.cond, scope, depth + 1);
+        const condition = this.#evaluateExpression(node.cond, scope, macroContext, depth + 1);
         if (runtimeTruthy(condition)) {
-          return this.#evaluateExpression(node.body, scope, depth + 1);
+          return this.#evaluateExpression(node.body, scope, macroContext, depth + 1);
         }
         const otherwise = node.else_;
         return otherwise
-          ? this.#evaluateExpression(otherwise, scope, depth + 1)
+          ? this.#evaluateExpression(otherwise, scope, macroContext, depth + 1)
           : undefined;
       }
       case 'Or': {
-        const left = this.#evaluateExpression(node.left, scope, depth + 1);
+        const left = this.#evaluateExpression(node.left, scope, macroContext, depth + 1);
         return runtimeTruthy(left)
           ? left
-          : this.#evaluateExpression(node.right, scope, depth + 1);
+          : this.#evaluateExpression(node.right, scope, macroContext, depth + 1);
       }
       case 'And': {
-        const left = this.#evaluateExpression(node.left, scope, depth + 1);
+        const left = this.#evaluateExpression(node.left, scope, macroContext, depth + 1);
         return runtimeTruthy(left)
-          ? this.#evaluateExpression(node.right, scope, depth + 1)
+          ? this.#evaluateExpression(node.right, scope, macroContext, depth + 1)
           : left;
       }
       case 'Not':
-        return !runtimeTruthy(this.#evaluateExpression(node.target, scope, depth + 1));
+        return !runtimeTruthy(
+          this.#evaluateExpression(node.target, scope, macroContext, depth + 1),
+        );
       case 'Neg':
-        return -runtimeToNumber(this.#evaluateExpression(node.target, scope, depth + 1));
+        return -runtimeToNumber(
+          this.#evaluateExpression(node.target, scope, macroContext, depth + 1),
+        );
       case 'Pos':
-        return runtimeToNumber(this.#evaluateExpression(node.target, scope, depth + 1));
+        return runtimeToNumber(
+          this.#evaluateExpression(node.target, scope, macroContext, depth + 1),
+        );
       case 'Floor':
         return Math.floor(runtimeToNumber(
-          this.#evaluateExpression(node.target, scope, depth + 1),
+          this.#evaluateExpression(node.target, scope, macroContext, depth + 1),
         ));
       case 'Add':
       case 'Concat':
@@ -570,70 +626,94 @@ class Evaluator {
       case 'Div':
       case 'Mod':
       case 'Pow':
-        return this.#evaluateBinary(node, scope, depth + 1);
+        return this.#evaluateBinary(node, scope, macroContext, depth + 1);
       case 'Compare':
-        return this.#evaluateComparison(node, scope, depth + 1);
+        return this.#evaluateComparison(node, scope, macroContext, depth + 1);
       case 'In': {
-        const needle = this.#evaluateExpression(node.left, scope, depth + 1);
-        const container = this.#evaluateExpression(node.right, scope, depth + 1);
+        const needle = this.#evaluateExpression(node.left, scope, macroContext, depth + 1);
+        const container = this.#evaluateExpression(node.right, scope, macroContext, depth + 1);
         return runtimeContains(container, needle);
       }
       case 'Is':
-        return this.#evaluateTest(node, scope, depth + 1);
+        return this.#evaluateTest(node, scope, macroContext, depth + 1);
       case 'Filter':
-        return this.#evaluateFilter(node, scope, depth + 1);
+        return this.#evaluateFilter(node, scope, macroContext, depth + 1);
       case 'FunCall':
-        return this.#evaluateCall(node, scope, depth + 1);
+        return this.#evaluateCall(node, scope, macroContext, depth + 1);
       case 'Capture':
-        return this.#capture(node.body, scope.child(), depth + 1, false);
+        return this.#capture(node.body, scope.child(), macroContext, depth + 1, false);
       case 'Caller':
-        return this.#registerCaller(node, scope);
+        return this.#registerCaller(node, scope, macroContext.invocationScope);
       default:
         throw new Error(`Unexpected expression node ${node.type}`);
     }
   }
 
   #evaluateSlice(
-    target: RuntimeValue,
+    input: RuntimeValue,
     slice: AstSliceNode,
     scope: RuntimeScope,
+    macroContext: MacroBindingContext,
     depth: number,
   ): RuntimeValue {
-    const startValue = this.#evaluateExpression(slice.start, scope, depth + 1);
-    const stopValue = this.#evaluateExpression(slice.stop, scope, depth + 1);
-    const stepValue = this.#evaluateExpression(slice.step, scope, depth + 1);
-    const values = target instanceof RuntimeArray
-      ? Array.from(target.values())
-      : typeof target === 'string' || target instanceof RuntimeSafeString
-        ? renderRuntimeValue(target).split('')
-        : [];
-    const step = Math.trunc(runtimeToNumber(stepValue));
-    if (!Number.isFinite(step) || step === 0) {
-      throw new Error('Slice step must be a non-zero finite integer');
+    if (input instanceof RuntimeCallable) {
+      throw new TypeError('Callable values cannot be sliced');
     }
-    const start = startValue === null
-      ? (step < 0 ? values.length - 1 : 0)
-      : normalizeSliceIndex(startValue, values.length, step);
-    const stop = stopValue === null
-      ? (step < 0 ? -1 : values.length)
-      : normalizeSliceIndex(stopValue, values.length, step);
+    const target = runtimeTruthy(input) ? input : new RuntimeArray([]);
+    const length = lookupRuntimeConstantKey(target, 'length');
+    let start = this.#evaluateExpression(slice.start, scope, macroContext, depth + 1);
+    let stop = this.#evaluateExpression(slice.stop, scope, macroContext, depth + 1);
+    const step = this.#evaluateExpression(slice.step, scope, macroContext, depth + 1);
+    const numericStep = runtimeToNumber(step);
+    if (!Number.isFinite(numericStep) || numericStep === 0) {
+      throw new Error('Slice step must have finite non-zero numeric coercion');
+    }
+    const stepOrder = runtimeOrder(step, 0);
+    if (start === null) {
+      start = stepOrder < 0 ? runtimeToNumber(length) - 1 : 0;
+    }
+    if (stop === null) {
+      stop = stepOrder < 0 ? -1 : length;
+    } else if (runtimeOrder(stop, 0) < 0) {
+      stop = runtimeAdd(stop, length);
+    }
+    if (runtimeOrder(start, 0) < 0) {
+      start = runtimeAdd(start, length);
+    }
     const output: RuntimeValue[] = [];
-    for (let index = start; ; index += step) {
-      if (index < 0 || index >= values.length) {
+    let scratchBytes = 0;
+    for (let index = start; ; index = runtimeAdd(index, step)) {
+      if (runtimeOrder(index, 0) < 0 || runtimeOrder(index, length) > 0) {
         break;
       }
-      if ((step > 0 && index >= stop) || (step < 0 && index <= stop)) {
+      if (
+        (stepOrder > 0 && runtimeOrder(index, stop) >= 0) ||
+        (stepOrder < 0 && runtimeOrder(index, stop) <= 0)
+      ) {
         break;
       }
-      output.push(values[index]);
       this.#charge(depth);
+      const value = lookupRuntimeValue(target, index);
+      assertRuntimeValueHasNoCallable(value);
+      if (this.#options.limits.scratchBytes !== Number.POSITIVE_INFINITY) {
+        scratchBytes += indexedValueScratchBytes + runtimeValueBytes(value);
+        if (scratchBytes > this.#options.limits.scratchBytes) {
+          throw new NunjitsuLimitError('scratchBytes');
+        }
+      }
+      output.push(value);
     }
     return new RuntimeArray(output);
   }
 
-  #evaluateBinary(node: AstBinaryNode, scope: RuntimeScope, depth: number): RuntimeValue {
-    const left = this.#evaluateExpression(node.left, scope, depth + 1);
-    const right = this.#evaluateExpression(node.right, scope, depth + 1);
+  #evaluateBinary(
+    node: AstBinaryNode,
+    scope: RuntimeScope,
+    macroContext: MacroBindingContext,
+    depth: number,
+  ): RuntimeValue {
+    const left = this.#evaluateExpression(node.left, scope, macroContext, depth + 1);
+    const right = this.#evaluateExpression(node.right, scope, macroContext, depth + 1);
     if (node.type === 'Concat') {
       return runtimeConcat(left, right);
     }
@@ -655,19 +735,25 @@ class Evaluator {
   #evaluateComparison(
     node: AstCompareNode,
     scope: RuntimeScope,
+    macroContext: MacroBindingContext,
     depth: number,
   ): boolean {
-    let left = this.#evaluateExpression(node.expr, scope, depth + 1);
+    let left = this.#evaluateExpression(node.expr, scope, macroContext, depth + 1);
     let result = false;
     for (const operation of node.ops) {
-      const right = this.#evaluateExpression(operation.expr, scope, depth + 1);
+      const right = this.#evaluateExpression(operation.expr, scope, macroContext, depth + 1);
       result = runtimeCompare(left, operation.operator, right);
       left = result;
     }
     return result;
   }
 
-  #evaluateFilter(node: AstCallNode, scope: RuntimeScope, depth: number): RuntimeValue {
+  #evaluateFilter(
+    node: AstCallNode,
+    scope: RuntimeScope,
+    macroContext: MacroBindingContext,
+    depth: number,
+  ): RuntimeValue {
     const name = symbolName(node.name);
     const builtinName = this.#options.cookiecutterCompat && name === 'jsonify' ? 'dump' : name;
     const hasHostFilter = this.#options.host?.hasFilter?.(name) === true;
@@ -677,13 +763,15 @@ class Evaluator {
     if (hasHostFilter) {
       assertPositionalOnlySyntax(node.args, `Registered filter ${name}`);
     }
-    const arguments_ = this.#evaluateArguments(node.args, scope, depth + 1);
+    const arguments_ = this.#evaluateArguments(node.args, scope, macroContext, depth + 1);
     const [input, ...positional] = arguments_.positional;
     if (hasHostFilter) {
       assertRuntimeArgumentsHaveNoCallable(arguments_);
-    }
-    this.#assertScratch([input, ...positional, ...arguments_.keyword.values()]);
-    if (hasHostFilter) {
+      this.#assertScratch([
+        input,
+        ...positional,
+        ...arguments_.keyword.values(),
+      ]);
       this.#chargeCapability();
       const hostResult = this.#options.host.filter?.(
         name,
@@ -695,10 +783,31 @@ class Evaluator {
       }
       throw new Error(`Unknown configured template filter ${name}`);
     }
-    return applyBuiltinFilter(builtinName, input, positional, arguments_.keyword);
+    const lowered = lowerBuiltinFilterArguments(
+      builtinName,
+      positional,
+      arguments_.keyword,
+    );
+    const scratchBytes = this.#assertScratch([
+      input,
+      ...lowered.positional,
+      ...lowered.keyword.values(),
+    ]);
+    return applyBuiltinFilter(
+      builtinName,
+      input,
+      lowered.positional,
+      lowered.keyword,
+      count => this.#reserveIndexedValues(count, scratchBytes),
+    );
   }
 
-  #evaluateTest(node: AstBinaryNode, scope: RuntimeScope, depth: number): boolean {
+  #evaluateTest(
+    node: AstBinaryNode,
+    scope: RuntimeScope,
+    macroContext: MacroBindingContext,
+    depth: number,
+  ): boolean {
     const test = node.right;
     let name: string;
     let argumentsNode: AstNode | undefined;
@@ -708,8 +817,8 @@ class Evaluator {
     } else if (test.type === 'Symbol') {
       name = symbolName(test);
     } else if (test.type === 'Literal') {
-      const input = this.#evaluateExpression(node.left, scope, depth + 1);
-      const expected = this.#evaluateExpression(test, scope, depth + 1);
+      const input = this.#evaluateExpression(node.left, scope, macroContext, depth + 1);
+      const expected = this.#evaluateExpression(test, scope, macroContext, depth + 1);
       return runtimeStrictEqual(input, expected);
     } else {
       throw new Error(`Invalid template test ${test.type}`);
@@ -726,9 +835,9 @@ class Evaluator {
     } else if (expectedArity !== 0) {
       throw new TypeError(`Template test ${name} requires ${expectedArity} positional argument`);
     }
-    const input = this.#evaluateExpression(node.left, scope, depth + 1);
+    const input = this.#evaluateExpression(node.left, scope, macroContext, depth + 1);
     const arguments_ = argumentsNode
-      ? this.#evaluateArguments(argumentsNode, scope, depth + 1)
+      ? this.#evaluateArguments(argumentsNode, scope, macroContext, depth + 1)
       : Object.freeze({ positional: Object.freeze([]), keyword: new Map() });
     const builtin = applyBuiltinTest(name, input, arguments_.positional);
     if (builtin === undefined) {
@@ -740,6 +849,7 @@ class Evaluator {
   #evaluateCallBlock(
     node: AstCallBlockNode,
     scope: RuntimeScope,
+    macroContext: MacroBindingContext,
     output: OutputTarget,
     depth: number,
   ): void {
@@ -747,13 +857,21 @@ class Evaluator {
     if (call.type !== 'FunCall') {
       throw new Error('Invalid call block');
     }
-    const target = this.#evaluateExpression(call.name, scope, depth + 1);
+    const target = this.#evaluateExpression(call.name, scope, macroContext, depth + 1);
     if (!(target instanceof RuntimeCallable) || target.callableKind !== 'macro') {
       throw new Error('Call blocks can target only template macros');
     }
-    const ordinaryArguments = this.#evaluateArguments(call.args, scope, depth + 1);
+    const ordinaryArguments = this.#evaluateArguments(
+      call.args,
+      scope,
+      macroContext,
+      depth + 1,
+    );
     const keyword = new Map(ordinaryArguments.keyword);
-    keyword.set('caller', this.#registerCaller(node.caller, scope));
+    keyword.set(
+      'caller',
+      this.#registerCaller(node.caller, scope, macroContext.invocationScope),
+    );
     const arguments_ = Object.freeze({
       positional: ordinaryArguments.positional,
       keyword,
@@ -762,18 +880,23 @@ class Evaluator {
     this.#append(output, renderRuntimeValue(value));
   }
 
-  #evaluateCall(node: AstCallNode, scope: RuntimeScope, depth: number): RuntimeValue {
+  #evaluateCall(
+    node: AstCallNode,
+    scope: RuntimeScope,
+    macroContext: MacroBindingContext,
+    depth: number,
+  ): RuntimeValue {
     const targetNode = node.name;
-    const target = this.#evaluateExpression(targetNode, scope, depth + 1);
+    const target = this.#evaluateExpression(targetNode, scope, macroContext, depth + 1);
     const name = diagnosticCallablePath(targetNode);
     if (target instanceof RuntimeCallable) {
       if (target.callableKind === 'macro' || target.callableKind === 'caller') {
-        const arguments_ = this.#evaluateArguments(node.args, scope, depth + 1);
+        const arguments_ = this.#evaluateArguments(node.args, scope, macroContext, depth + 1);
         return this.#invokeMacro(target.id, arguments_, depth + 1);
       }
       if (target.callableKind === 'builtin') {
         this.#assertBuiltinArgumentSyntax(target.id, node.args);
-        const arguments_ = this.#evaluateArguments(node.args, scope, depth + 1);
+        const arguments_ = this.#evaluateArguments(node.args, scope, macroContext, depth + 1);
         assertRuntimeArgumentsHaveNoCallable(arguments_);
         return this.#invokeBuiltinCallable(target.id, arguments_);
       }
@@ -783,7 +906,7 @@ class Evaluator {
           throw new Error('Unknown template capability');
         }
         assertPositionalOnlySyntax(node.args, `Registered global ${capabilityName}`);
-        const arguments_ = this.#evaluateArguments(node.args, scope, depth + 1);
+        const arguments_ = this.#evaluateArguments(node.args, scope, macroContext, depth + 1);
         assertRuntimeArgumentsHaveNoCallable(arguments_);
         this.#chargeCapability();
         const result = this.#options.host.global(capabilityName, arguments_);
@@ -799,6 +922,7 @@ class Evaluator {
   #evaluateArguments(
     node: AstNode,
     scope: RuntimeScope,
+    macroContext: MacroBindingContext,
     depth: number,
   ): RuntimeArguments {
     const positional: RuntimeValue[] = [];
@@ -815,17 +939,19 @@ class Evaluator {
           const keyNode = pair.key;
           const name = keyNode.type === 'Symbol'
             ? symbolName(keyNode)
-            : runtimeToPropertyKey(this.#evaluateExpression(keyNode, scope, depth + 1));
+            : runtimeToPropertyKey(
+              this.#evaluateExpression(keyNode, scope, macroContext, depth + 1),
+            );
           if (isReservedName(name)) {
             throw new Error(`Template name ${name} is reserved`);
           }
           keyword.set(
             name,
-            this.#evaluateExpression(pair.value, scope, depth + 1),
+            this.#evaluateExpression(pair.value, scope, macroContext, depth + 1),
           );
         }
       } else {
-        positional.push(this.#evaluateExpression(child, scope, depth + 1));
+        positional.push(this.#evaluateExpression(child, scope, macroContext, depth + 1));
       }
     }
     return Object.freeze({ positional: Object.freeze(positional), keyword });
@@ -858,9 +984,13 @@ class Evaluator {
     return handle;
   }
 
-  #registerCaller(node: AstCallableBodyNode, scope: RuntimeScope): RuntimeCallable {
+  #registerCaller(
+    node: AstCallableBodyNode,
+    scope: RuntimeScope,
+    invocationScope: RuntimeScope,
+  ): RuntimeCallable {
     const id = this.#nextCallableId++;
-    this.#macros.set(id, { node, scope });
+    this.#macros.set(id, { node, scope, invocationScope });
     return new RuntimeCallable('caller', id);
   }
 
@@ -874,6 +1004,12 @@ class Evaluator {
       throw new Error('Unknown template macro');
     }
     const local = definition.scope.child(true);
+    const bodyMacroContext = definition.node.type === 'Caller'
+      ? createMacroBindingContext(local, definition.invocationScope)
+      : createMacroBindingContext(
+        definition.invocationScope,
+        definition.invocationScope,
+      );
     const args = definition.node.args;
     if (args.type !== 'NodeList') {
       throw new Error('Invalid macro arguments');
@@ -901,7 +1037,12 @@ class Evaluator {
           }
           const value = hasSupplied
             ? supplied
-            : this.#evaluateExpression(pair.value, local, depth + 1);
+            : this.#evaluateExpression(
+              pair.value,
+              local,
+              bodyMacroContext,
+              depth + 1,
+            );
           if (!boundNames.has(name)) {
             local.set(name, value);
             boundNames.add(name);
@@ -930,6 +1071,7 @@ class Evaluator {
     return this.#capture(
       definition.node.body,
       local,
+      bodyMacroContext,
       depth + 1,
       true,
     );
@@ -1064,11 +1206,12 @@ class Evaluator {
   #capture(
     node: AstNode,
     scope: RuntimeScope,
+    macroContext: MacroBindingContext,
     depth: number,
     safe: boolean,
   ): RuntimeValue {
     const chunks: string[] = [];
-    this.#evaluateNode(node, scope, chunks, depth + 1);
+    this.#evaluateNode(node, scope, macroContext, chunks, depth + 1);
     const value = chunks.join('');
     return safe ? new RuntimeSafeString(value) : value;
   }
@@ -1110,9 +1253,9 @@ class Evaluator {
     }
   }
 
-  #assertScratch(values: Iterable<RuntimeValue>): void {
+  #assertScratch(values: Iterable<RuntimeValue>): number {
     if (this.#options.limits.scratchBytes === Number.POSITIVE_INFINITY) {
-      return;
+      return 0;
     }
     let bytes = 0;
     for (const value of values) {
@@ -1121,6 +1264,33 @@ class Evaluator {
         throw new NunjitsuLimitError('scratchBytes');
       }
     }
+    return bytes;
+  }
+
+  #reserveIndexedValues(count: number, existingScratchBytes: number): void {
+    const workLimit = this.#options.limits.workUnits;
+    if (
+      workLimit !== Number.POSITIVE_INFINITY &&
+      (!Number.isSafeInteger(count) || count > workLimit - this.#workUnits)
+    ) {
+      throw new NunjitsuLimitError('workUnits');
+    }
+    const scratchLimit = this.#options.limits.scratchBytes;
+    if (
+      scratchLimit !== Number.POSITIVE_INFINITY &&
+      (
+        !Number.isSafeInteger(count) ||
+        count > Math.floor(
+          (scratchLimit - existingScratchBytes) / indexedValueScratchBytes,
+        )
+      )
+    ) {
+      throw new NunjitsuLimitError('scratchBytes');
+    }
+    if (!Number.isSafeInteger(count) || count < 0) {
+      throw new RangeError('Array-like record length exceeds the supported range');
+    }
+    this.#workUnits += count;
   }
 }
 
@@ -1385,16 +1555,6 @@ function runtimeContains(container: RuntimeValue, needle: RuntimeValue): boolean
   throw new Error('Membership requires an array, record, or string');
 }
 
-function normalizeSliceIndex(value: RuntimeValue, length: number, step: number): number {
-  let index = Math.trunc(runtimeToNumber(value));
-  if (index < 0) {
-    index += length;
-  }
-  return step < 0
-    ? Math.min(length - 1, Math.max(-1, index))
-    : Math.min(length, Math.max(0, index));
-}
-
 function runtimeValueBytes(value: RuntimeValue): number {
   if (value instanceof RuntimeArray) {
     let bytes = 0;
@@ -1424,6 +1584,13 @@ function validateUniqueBlocks(ast: AstNode): void {
       blocks.add(name);
     }
   });
+}
+
+function createMacroBindingContext(
+  bindingScope: RuntimeScope,
+  invocationScope: RuntimeScope,
+): MacroBindingContext {
+  return Object.freeze({ bindingScope, invocationScope });
 }
 
 function visitAst(node: AstNode, visitor: (node: AstNode) => void): void {
