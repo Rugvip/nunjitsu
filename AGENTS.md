@@ -154,7 +154,9 @@ implementation and documentation aligned with the architecture in
 - Publish only through `.github/workflows/publish.yml` using npm trusted
   publishing bound to the `npm` GitHub environment. Ongoing releases must be
   staged from an exact stable-version GitHub Release tag, never published with
-  a repository npm token.
+  a repository npm token. On pushes to `main`, `.github/workflows/release.yml`
+  must inspect every new first-parent commit and create each missing stable
+  release at the exact commit where `package.json` changed version.
 
 The rationale and detailed contracts live in:
 
@@ -513,7 +515,8 @@ Do not create additional packages without a documented architectural reason.
   correct semantic bump, and describe the user-visible package change.
 - Run `pnpm version:packages` only when intentionally preparing a release. It
   consumes pending entries, updates `package.json` and `CHANGELOG.md`, and the
-  resulting version change must be committed before creating its matching tag.
+  resulting version change must be committed before pushing it to `main`, where
+  release automation creates its matching tag and GitHub Release.
 
 ## Documentation rules
 

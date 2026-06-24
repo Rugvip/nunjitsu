@@ -1,0 +1,80 @@
+name: Release
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: github-release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Create missing releases
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      actions: write
+      contents: write
+    steps:
+      - name: Check out repository history
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - name: Find version changes
+        run: node scripts/release/findReleaseCandidates.mjs > "$RUNNER_TEMP/release-candidates.json"
+        env:
+          PUSH_AFTER: ${{ github.event.after }}
+          PUSH_BEFORE: ${{ github.event.before }}
+      - name: Create releases and request publishing
+        run: |
+          while IFS=$'\t' read -r commit tag; do
+            if gh release view "$tag" >/dev/null 2>&1; then
+              tagged_commit="$(git rev-parse "${tag}^{commit}")"
+              if [[ "$tagged_commit" != "$commit" ]]; then
+                echo "Release ${tag} already exists at ${tagged_commit}; skipping ${commit}"
+                continue
+              fi
+              echo "Release ${tag} already exists at ${commit}"
+            else
+              if git show-ref --verify --quiet "refs/tags/${tag}"; then
+                tagged_commit="$(git rev-parse "${tag}^{commit}")"
+                if [[ "$tagged_commit" != "$commit" ]]; then
+                  echo "Tag ${tag} points to ${tagged_commit}, expected ${commit}" >&2
+                  exit 1
+                fi
+                gh release create "$tag" --generate-notes --verify-tag
+              else
+                gh release create "$tag" --generate-notes --target "$commit"
+              fi
+            fi
+
+            existing_run="$(
+              gh run list \
+                --commit "$commit" \
+                --json databaseId \
+                --limit 1 \
+                --workflow publish.yml \
+                --jq 'length'
+            )"
+            if [[ "$existing_run" != "0" ]]; then
+              echo "A publish workflow already exists for ${tag}"
+              continue
+            fi
+
+            gh workflow run publish.yml --ref "$tag" -f "release_tag=${tag}"
+          done < <(
+            jq -r '.[] | [.commit, .tag] | @tsv' \
+              "$RUNNER_TEMP/release-candidates.json"
+          )
+        env:
+          GH_TOKEN: ${{ github.token }}

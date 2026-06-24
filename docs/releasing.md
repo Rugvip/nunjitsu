@@ -36,16 +36,31 @@ run `pnpm changeset` to create one interactively; coding agents follow
 
 When preparing a release, `pnpm version:packages` consumes all pending
 changesets, applies the combined semantic version bump, and updates
-`CHANGELOG.md`. Commit those generated changes before creating the matching
-`v<version>` tag and GitHub Release. Version preparation does not publish or
-create a GitHub Release by itself.
+`CHANGELOG.md`. Commit those generated changes and push them to `main`.
+Version preparation does not publish or create a GitHub Release locally.
 
 ## Release lifecycle
 
-Publishing a GitHub Release triggers `publish.yml` at the release tag. The job
-must reject a release whose `v<version>` tag does not exactly match the stable
-version in `package.json`. Prerelease versions remain unsupported until the
-versioning policy defines their npm distribution tags.
+Every push to `main` triggers `release.yml`. It walks every newly introduced
+first-parent commit in order and compares the `package.json` version with that
+commit's first parent. For each stable version change without an existing
+GitHub Release, it creates `v<version>` at the exact commit containing the
+change. A push containing multiple version commits therefore creates each tag
+at its corresponding commit rather than tagging only the push head. Automatic
+releases require fast-forward `main` history; the workflow rejects a force push
+instead of inferring release commits from rewritten history.
+
+The release workflow explicitly dispatches `publish.yml` because GitHub does
+not start another workflow from a Release created with `GITHUB_TOKEN`. It first
+checks for an existing publish run at the release commit so rerunning release
+discovery does not enqueue duplicate publishing. Manually publishing a GitHub
+Release continues to trigger `publish.yml` directly.
+
+The publish job checks out the exact release tag and must reject a release
+whose `v<version>` tag does not exactly match the stable version in
+`package.json`. It also verifies that the tag has a published, non-draft GitHub
+Release. Prerelease versions remain unsupported until the versioning policy
+defines their npm distribution tags.
 
 The job installs from `pnpm-lock.yaml`, runs the complete repository test
 command on Node.js 24, builds the package, and submits it with
