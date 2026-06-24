@@ -1065,6 +1065,159 @@ test('binds static compiler slots before capability resolution', () => {
   }
 });
 
+test('preserves inherited compiler slots across defaulted caller parameters', () => {
+  const cases = [
+    {
+      source: [
+        '{% macro outer(item) %}',
+        '{% macro wrap() %}${{ caller() }}{% endmacro %}',
+        '{% call(item=policy) wrap() %}',
+        '{% if item is callable %}${{ item() }}{% else %}outer-item{% endif %}',
+        '{% endcall %}{% endmacro %}${{ outer(false) }}',
+      ].join(''),
+      events: [],
+    },
+    {
+      source: [
+        '{% macro item() %}outer-macro{% endmacro %}',
+        '{% macro wrap() %}${{ caller() }}{% endmacro %}',
+        '{% call(item=policy) wrap() %}${{ item() }}{% endcall %}',
+      ].join(''),
+      events: [],
+    },
+    {
+      source: [
+        '{% macro wrap() %}${{ caller() }}{% endmacro %}',
+        '{% for item in [false] %}{% call(item=policy) wrap() %}',
+        '{% if item is callable %}${{ item() }}{% else %}loop-item{% endif %}',
+        '{% endcall %}{% endfor %}',
+      ].join(''),
+      events: [],
+    },
+    {
+      source: [
+        '{% macro item() %}outer-macro{% endmacro %}{% set item=false %}',
+        '{% macro wrap() %}${{ caller() }}{% endmacro %}',
+        '{% call(item=policy) wrap() %}',
+        '{% if item is callable %}${{ item() }}{% else %}reassigned{% endif %}',
+        '{% endcall %}',
+      ].join(''),
+      events: [],
+    },
+    {
+      source: [
+        '{% if false %}{% macro item() %}inactive{% endmacro %}{% endif %}',
+        '{% macro wrap() %}${{ caller() }}{% endmacro %}',
+        '{% call(item=policy) wrap() %}${{ item is undefined }}{% endcall %}',
+      ].join(''),
+      events: [],
+    },
+    {
+      source: [
+        '{% macro outer(item) %}',
+        '{% macro wrap() %}${{ caller() }}{% endmacro %}',
+        '{% call(item=true) wrap() %}${{ item | dump }}{% endcall %}',
+        '{% endmacro %}${{ outer(false) }}',
+      ].join(''),
+      events: [],
+    },
+    {
+      source: [
+        '{% macro outer(item) %}',
+        '{% macro wrap() %}${{ caller(true) }}{% endmacro %}',
+        '{% call(item) wrap() %}${{ item | dump }}{% endcall %}',
+        '{% endmacro %}${{ outer(false) }}',
+      ].join(''),
+      events: [],
+    },
+    {
+      source: [
+        '{% macro item() %}outer-macro{% endmacro %}',
+        '{% macro ordinary(item=policy) %}${{ item() }}{% endmacro %}',
+        '${{ ordinary() }}',
+      ].join(''),
+      events: ['policy'],
+    },
+    {
+      source: [
+        '{% set item=false %}{% macro wrap() %}${{ caller() }}{% endmacro %}',
+        '{% call(item=policy) wrap() %}${{ item() }}{% endcall %}',
+      ].join(''),
+      events: ['policy'],
+    },
+    {
+      source: [
+        '{% macro wrap() %}${{ caller() }}{% endmacro %}',
+        '{% call(item=policy) wrap() %}${{ item() }}{% endcall %}',
+      ].join(''),
+      context: { item: false },
+      events: ['policy'],
+    },
+  ];
+
+  for (const cookiecutterCompat of [false, true]) {
+    const engineEvents: string[] = [];
+    const oracleEvents: string[] = [];
+    const engine = createEngine({
+      cookiecutterCompat,
+      globals: {
+        mark(value) {
+          engineEvents.push(String(value));
+          return '';
+        },
+        policy() {
+          engineEvents.push('policy');
+          return 'policy-result';
+        },
+      },
+    });
+    const oracle = new nunjucks.Environment(undefined, { autoescape: false });
+    oracle.addGlobal('mark', (value: unknown) => {
+      oracleEvents.push(String(value));
+      return '';
+    });
+    oracle.addGlobal('policy', () => {
+      oracleEvents.push('policy');
+      return 'policy-result';
+    });
+    const engineSource = (source: string) => cookiecutterCompat
+      ? source.replaceAll('${{', '{{')
+      : source;
+
+    for (const case_ of cases) {
+      assert.equal(
+        engine.render(engineSource(case_.source), case_.context),
+        oracle.renderString(
+          case_.source.replaceAll('${{', '{{'),
+          case_.context ?? {},
+        ),
+        case_.source,
+      );
+      assert.deepEqual(engineEvents, case_.events);
+      assert.deepEqual(oracleEvents, engineEvents);
+      engineEvents.length = 0;
+      oracleEvents.length = 0;
+    }
+
+    const failingSource = [
+      '{% macro outer(item) %}',
+      '{% macro wrap() %}${{ caller() }}{% endmacro %}',
+      '{% call(item=policy) wrap() %}${{ item() }}{% endcall %}',
+      '{% endmacro %}${{ outer(false) }}${{ mark("later") }}',
+    ].join('');
+    assert.throws(
+      () => engine.render(engineSource(failingSource)),
+      NunjitsuRenderError,
+    );
+    assert.throws(
+      () => oracle.renderString(failingSource.replaceAll('${{', '{{'), {}),
+    );
+    assert.deepEqual(engineEvents, []);
+    assert.deepEqual(oracleEvents, []);
+    assert.equal(engine.render('clean'), 'clean');
+  }
+});
+
 test('matches built-in filters, tests, globals, comments, and raw regions', () => {
   const engine = createEngine();
   assert.equal(

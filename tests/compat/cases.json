@@ -881,6 +881,12 @@
       "template": "{% if true %}{% macro policy() %}A{% endmacro %}{% else %}{% macro policy() %}B{% endmacro %}{% endif %}{{ policy is undefined }}|{% if false %}{% macro selected() %}A{% endmacro %}{% else %}{% macro selected() %}B{% endmacro %}{% endif %}{{ selected() }}|{% macro positional(loop) %}{% for value in [1] %}{% if loop.index %}bad{% else %}ok{% endif %}{% endfor %}{% endmacro %}{{ positional({index:false}) }}|{% macro defaulted(loop={index:false}) %}{% for value in [1] %}{% if loop.index %}metadata{% else %}bad{% endif %}{% endfor %}{% endmacro %}{{ defaulted() }}|{% macro action() %}A{% endmacro %}{% for loop,value in [[action,1]] %}{{ loop is callable }}{% endfor %}",
       "context": {},
       "expected": "true|B|ok|metadata|true"
+    },
+    {
+      "id": "compiler-caller-default-inherited-slots",
+      "template": "{% macro outer(item) %}{% macro wrap() %}{{ caller() }}{% endmacro %}{% call(item=true) wrap() %}{{ item | dump }}{% endcall %}{% endmacro %}{{ outer(false) }}|{% macro inherited() %}macro{% endmacro %}{% macro wrap() %}{{ caller() }}{% endmacro %}{% call(inherited=false) wrap() %}{{ inherited() }}{% endcall %}|{% set runtime=false %}{% call(runtime=true) wrap() %}{{ runtime | dump }}{% endcall %}",
+      "context": {},
+      "expected": "false|macro|true"
     }
   ]
 }

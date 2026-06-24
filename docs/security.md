@@ -190,8 +190,8 @@ Template-controlled data is revalidated whenever its role changes:
   while runtime value frames and shared exports remain separate;
 - positional macro and caller parameters, loop targets, and reassigned macro
   slots retain direct-slot identity independently of their current value kind;
-  defaulted formals and loop metadata remain runtime bindings, so metadata
-  cannot overwrite or discard a direct callable value;
+  defaulted caller formals cannot hide an inherited call-site slot, and loop
+  metadata cannot overwrite or discard a direct callable value;
 - standalone blocks carry no inheritance chain and synthesize no `super`
   authority; call blocks target only macros, and their `caller` handle cannot
   cross or be silently discarded at capability or built-in boundaries;

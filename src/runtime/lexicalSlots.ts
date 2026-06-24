@@ -145,7 +145,6 @@ export function planLexicalSlots(ast: AstNode): LexicalSlotPlan {
           visit(pair.value, state);
           const name = pair.key.value;
           if (!boundNames.has(name)) {
-            state.bindings.delete(name);
             boundNames.add(name);
           }
         }

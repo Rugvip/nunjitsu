@@ -90,10 +90,13 @@ implementation and documentation aligned with the architecture in
   resolve unbound names through runtime frames and current exports.
 - Give positional macro and caller formals and loop targets direct slots, while
   keeping defaulted formals and loop metadata runtime-frame-only. Preserve slot
-  identity when `set` reassigns a macro, positional formal, or loop target.
-  Reject a single loop target named `loop` during complete parsing; multi-target
-  `loop` bindings remain direct and must not be overwritten by metadata. Never
-  discard or transform a callable while installing runtime locals.
+  identity when `set` reassigns a macro, positional formal, or loop target. A
+  defaulted synthetic-caller formal must not remove an inherited call-site slot
+  mapping of the same name; the runtime binding is selected only when no direct
+  slot applies. Reject a single loop target named `loop` during complete
+  parsing; multi-target `loop` bindings remain direct and must not be
+  overwritten by metadata. Never discard or transform a callable while
+  installing runtime locals.
 - Reject macro declarations anywhere inside block-set or filter-block captures
   during complete parsing rather than inventing capture-specific macro scope.
 - Validate macro and caller declarations separately from ordinary calls. Every

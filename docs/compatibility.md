@@ -40,6 +40,9 @@ Nunjitsu targets:
 - statically allocated compiler slots for inactive and duplicate macro
   declarations, positional formals, and loop targets, preventing an undefined
   local from falling through to context or registered capabilities;
+- inherited call-site compiler-slot precedence over same-named defaulted
+  synthetic-caller parameters, while runtime-only caller defaults continue to
+  shadow context and ordinary `set` bindings;
 - nearest-frame precedence for single and destructured loop targets, loop
   metadata, macro parameters, and synthetic caller parameters, including
   per-iteration rebinding without mutation of enclosing lexical values;

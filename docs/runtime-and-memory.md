@@ -369,13 +369,17 @@ identity even when the new value is not callable.
 
 Positional macro and synthetic-caller formals and loop targets receive direct
 slots as well as runtime bindings. Defaulted formals remain runtime-frame-only,
-matching the pinned compiler. Loop metadata is installed only in the runtime
-frame: it shadows ordinary enclosing values but never overwrites a direct
-parameter, target, or reassigned macro slot. A single loop target named `loop`
-is rejected during complete parsing because pinned Nunjucks installs metadata
-by mutating or replacing that iteration value, which the closed value model
-cannot reproduce without discarding values or behavior. A `loop` name in a
-multi-target destructuring remains a normal direct slot.
+matching the pinned compiler. A defaulted synthetic-caller formal creates no
+slot and does not remove an inherited call-site slot of the same name; body
+references keep the inherited direct binding even though argument/default
+binding still occurs in the runtime frame. With no inherited direct slot, that
+runtime binding remains visible normally. Loop metadata is installed only in
+the runtime frame: it shadows ordinary enclosing values but never overwrites a
+direct parameter, target, or reassigned macro slot. A single loop target named
+`loop` is rejected during complete parsing because pinned Nunjucks installs
+metadata by mutating or replacing that iteration value, which the closed value
+model cannot reproduce without discarding values or behavior. A `loop` name in
+a multi-target destructuring remains a normal direct slot.
 
 Block-set and filter-block captures reject nested macro declarations during
 complete parsing. Nunjucks's generated JavaScript has inconsistent failures for

@@ -124,10 +124,12 @@ inherit outer direct slots, synthetic callers retain their confined call-site
 slots, and blocks or ordinary macros resolve otherwise-unbound names through
 runtime frames and current exports. Positional formals and loop targets are
 direct slots; defaulted formals and loop metadata remain runtime bindings.
-Assignment preserves an existing direct slot independently of the assigned
-value kind. A single target named `loop` is rejected because upstream mutates
-that iteration value to install metadata; multi-target `loop` bindings remain
-ordinary direct slots.
+Defaulted synthetic-caller formals preserve any inherited call-site direct
+mapping instead of replacing it with their runtime binding. Assignment
+preserves an existing direct slot independently of the assigned value kind. A
+single target named `loop` is rejected because upstream mutates that iteration
+value to install metadata; multi-target `loop` bindings remain ordinary direct
+slots.
 
 Operation validation precedes attacker-controlled operands. Call blocks resolve
 and require a macro before evaluating arguments or registering their caller
