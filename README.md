@@ -1,35 +1,19 @@
 # Nunjitsu
 
-Nunjitsu is a secure native TypeScript implementation of a simpler Nunjucks
-subset, optimized for secure direct string templating. It replaces generated
-JavaScript execution with a closed interpreter and a small synchronous API.
+Nunjitsu is a secure native TypeScript template engine for direct string
+rendering. It supports a focused subset of Nunjucks 3.2.4 through a closed,
+synchronous interpreter rather than generated JavaScript.
 
-The project prioritizes:
+Use Nunjitsu when templates may be untrusted and the application needs explicit
+control over every value and function exposed to them. The package targets
+Node.js 22 or newer and accepts inline template source only; filesystem loading,
+precompilation, streaming, browser execution, and asynchronous callbacks are
+outside its scope.
 
-- compatibility with the Nunjucks syntax used by direct string templates;
-- secure interpretation of untrusted templates with cooperative resource
-  limits;
-- a closed value model that gives templates no implicit access to JavaScript
-  objects or ambient Node.js authority;
-- low retained memory for templates rendered infrequently; and
-- one-shot parsing and rendering without precompilation or persistent
-  compiled-template caches.
-
-Nunjitsu intentionally does not emulate the Nunjucks JavaScript API. The
-runtime target is Node.js only.
-
-## Status
-
-The compatibility baseline is a secure direct-string subset of Nunjucks 3.2.4:
-inline rendering, `${{ ... }}` variables, Cookiecutter compatibility,
-synchronous filters and filter blocks, and JSON-valued or synchronous function
-globals. The normative design and testing strategy are documented in
-[`docs/`](docs/index.md).
-Contributors should also read [`AGENTS.md`](AGENTS.md).
+See the [compatibility guide](docs/compatibility.md) for supported template
+syntax and the [security model](docs/security.md) for trust-boundary details.
 
 ## Installation
-
-Nunjitsu requires Node.js 22 or newer.
 
 ```sh
 pnpm add nunjitsu
@@ -49,13 +33,13 @@ const { createEngine } = require('nunjitsu');
 
 ### Quick start
 
-Create an engine once and render complete inline template strings
-synchronously:
+Create an engine once, then render complete inline templates synchronously:
 
 ```ts
 import { createEngine } from 'nunjitsu';
 
 const engine = createEngine();
+
 const output = engine.render('Hello ${{ name }}!', {
   name: 'world',
 });
@@ -63,30 +47,26 @@ const output = engine.render('Hello ${{ name }}!', {
 console.log(output); // Hello world!
 ```
 
-The default variable delimiters are `${{` and `}}`. Template loading,
-precompilation, streaming, asynchronous rendering, and context functions are
-not part of the API.
+The default variable delimiters are `${{` and `}}`.
 
-### `createEngine`
+### Creating an engine
 
 ```ts
 function createEngine(options?: EngineOptions): Engine;
 ```
 
-Creates an immutable engine synchronously. Filters, globals, whitespace
-behavior, and rendering mode cannot be changed after creation.
-
-`EngineOptions` accepts:
+`createEngine` returns an immutable engine. Its filters, globals, delimiter
+mode, and whitespace behavior cannot be changed after creation.
 
 | Option | Type | Default | Description |
 | --- | --- | --- | --- |
-| `filters` | `Readonly<Record<string, TemplateFilter>>` | `{}` | Trusted synchronous filters addressed by exact identifier or dotted-identifier names. |
-| `globals` | `Readonly<Record<string, TemplateGlobal>>` | `{}` | Trusted values and synchronous functions available by one valid template identifier. |
-| `cookiecutterCompat` | `boolean` | `false` | Uses `{{` and `}}`, supported Jinja behavior, and the `jsonify` alias. |
-| `trimBlocks` | `boolean` | `false` | Removes one LF or CRLF immediately after each block tag. |
+| `filters` | `Readonly<Record<string, TemplateFilter>>` | `{}` | Trusted synchronous template filters. |
+| `globals` | `Readonly<Record<string, TemplateGlobal>>` | `{}` | Trusted values and synchronous functions. |
+| `cookiecutterCompat` | `boolean` | `false` | Uses `{{` and `}}` plus supported Jinja compatibility behavior. |
+| `trimBlocks` | `boolean` | `false` | Removes one newline immediately after block tags. |
 | `lstripBlocks` | `boolean` | `false` | Removes indentation before block tags on otherwise blank lines. |
 
-### `engine.render`
+### Rendering
 
 ```ts
 interface Engine {
@@ -98,9 +78,9 @@ interface Engine {
 }
 ```
 
-Parses and renders one complete inline source. The call returns the complete
-string or throws; partial output is never returned. A plain context is copied
-and validated on every call. Passing no context uses an empty record.
+Each call parses and renders one complete template. Plain context values are
+copied and validated before evaluation. Rendering returns the complete output
+string or throws without returning partial output.
 
 ```ts
 const result = engine.render(
@@ -109,26 +89,33 @@ const result = engine.render(
     user: { name: 'Patrik' },
     items: ['one', 'two'],
   },
-  {
-    limits: { outputCodeUnits: 10_000 },
-  },
 );
 ```
 
-The source must be a string. Nunjitsu accepts no filename or loader; callers
-must read files and enforce path policy outside the engine. Interpolation is
-never automatically escaped; rendered output remains attacker-controlled and
-must be handled according to its destination.
+Automatic escaping is disabled. Treat rendered output according to its
+destination, for example by applying the appropriate escaping before inserting
+it into HTML, SQL, or shell commands.
 
-Every render clears the host realm's legacy static RegExp state, including
-`RegExp.$1` through `RegExp.$9`, `input`, and match-context fields, before it
-returns or throws. Pre-existing values are cleared rather than restored because
-the platform does not provide a reliable restoration mechanism. Registered
-filters and globals are also entered and exited with this state cleared, so
-template regex operations and separate capabilities cannot communicate through
-the legacy fields during a render.
+Every render has cooperative limits for source size, AST size, evaluator work,
+nesting, output, filter scratch data, and capability calls. Applications can
+tighten or disable individual limits for one render:
+
+```ts
+engine.render(source, context, {
+  limits: {
+    outputCodeUnits: 100_000,
+    capabilityCalls: 100,
+  },
+});
+```
+
+See [Runtime and interpreter](docs/runtime-and-memory.md#cooperative-limits) for
+the limit fields, defaults, and guarantees.
 
 ### Prepared contexts
+
+Use a prepared context when the same data is rendered repeatedly. It is copied
+once into an immutable snapshot owned by the engine:
 
 ```ts
 interface Engine {
@@ -140,15 +127,7 @@ interface PreparedContext {
 }
 ```
 
-`prepareContext` copies and validates context data once for reuse across
-renders. The returned snapshot is immutable, opaque, and bound to the engine
-that created it.
-
-`withPath` returns a new snapshot with one copied replacement. It structurally
-shares unchanged engine-owned values, creates missing record segments, and
-rejects traversal through an existing non-record value, including an explicit
-`undefined` entry. Directly replacing that final entry remains valid. The
-original snapshot is unchanged.
+`withPath` returns a new snapshot and leaves the original unchanged.
 
 ```ts
 const initial = engine.prepareContext({
@@ -164,11 +143,11 @@ const afterBuild = initial.withPath(
 engine.render('${{ steps.build.output.image }}', afterBuild);
 ```
 
-A prepared context cannot be used with another engine. It retains its copied
-values until the snapshot becomes unreachable; releasing it is not a guarantee
-of secret-data zeroization.
+A prepared context can only be used with the engine that created it.
 
-### Template values and contexts
+### Template values
+
+Contexts and capability results use recursively copied data:
 
 ```ts
 type TemplateValue =
@@ -182,16 +161,10 @@ type TemplateValue =
 type TemplateContext = Readonly<Record<string, TemplateValue>>;
 ```
 
-At runtime, records must be plain objects with either `Object.prototype` or a
-null prototype. Nunjitsu copies enumerable own data properties without invoking
-getters. It rejects accessors, symbols, custom prototypes, class instances,
-functions, promises, proxies, cycles, and other behavior-bearing values. Proxy
-objects, including revoked and nested proxies, are rejected before any proxy
-trap can run.
-
-The names `constructor`, `prototype`, and `__proto__` are reserved throughout
-the template boundary. Later mutation of the caller's input objects is never
-observed by an active render or prepared context.
+Records must be plain data objects. Functions, accessors, proxies, class
+instances, promises, cycles, and other behavior-bearing objects are rejected.
+Host behavior is available only through explicitly registered filters and
+globals.
 
 ### Filters and globals
 
@@ -206,42 +179,20 @@ type TemplateGlobalFunction = (
 ) => TemplateValue | undefined;
 
 type TemplateGlobal = TemplateValue | TemplateGlobalFunction;
-
-interface TemplateCapabilities {
-  filters?: Readonly<Record<string, TemplateFilter>>;
-  globals?: Readonly<Record<string, TemplateGlobal>>;
-}
 ```
 
-Capabilities are trusted host code and are the only way templates invoke
-JavaScript behavior. They must execute synchronously. Filters receive their
-input followed by positional arguments; global functions receive positional
-arguments. Keyword syntax is rejected before its value expressions execute.
-Internal macro, caller, built-in, and capability handles are recursively
-rejected from capability inputs and arguments rather than converted or
-silently discarded. Returning `undefined` creates an absent template value.
-
-Filter names contain one or more dot-separated template identifier segments;
-each full spelling is one exact capability ID rather than a namespace or
-property path. Reserved segments (`constructor`, `prototype`, and `__proto__`)
-are rejected. Global names remain single template identifiers, and dotted
-global registry names are rejected. A call first resolves its target through
-lexical scope and the closed runtime value model. Context and local bindings
-therefore shadow configured globals normally. Capability aliases retain a
-sealed identity for the exact registered callback rather than deriving
-authority from call-site spelling.
+Capabilities must be synchronous. They receive frozen copies of
+template-controlled data, and their results cross the same value-copying
+boundary before becoming visible to the template.
 
 ```ts
-const configured = createEngine({
+const engine = createEngine({
   filters: {
     slugify(input) {
       if (typeof input !== 'string') {
         throw new TypeError('slugify requires a string');
       }
       return input.toLowerCase().replaceAll(' ', '-');
-    },
-    'tools.identity'(input) {
-      return input;
     },
   },
   globals: {
@@ -256,177 +207,27 @@ const configured = createEngine({
 });
 ```
 
-Arguments are frozen copies of internal values. Results pass through the same
-validator as context input. Templates cannot access callback functions, live
-host objects, object methods, or capability exceptions. If a capability
-throws or returns an invalid value, rendering stops immediately and no later
-template expression or capability executes. Result validation failures use the
-same opaque capability-error boundary as callback exceptions.
-
-Capability failures preserve a bounded, control-free detail only when the
-thrown value is a primitive string or a native error with an own string data
-property named `message`. Every other value produces a fixed diagnostic. The
-original thrown value is discarded and never retained in the public error.
-Preserved details may still contain sensitive application data;
-do not return them automatically to untrusted clients.
-
-Capability authors must still treat all arguments as attacker-controlled data.
-The value boundary prevents access to JavaScript authority; it does not make
-the data trustworthy for application-specific operations.
-
-### Resource limits
-
-```ts
-interface RenderOptions {
-  limits?: Partial<RenderLimits>;
-}
-
-interface RenderLimits {
-  sourceCodeUnits: number;
-  astNodes: number;
-  workUnits: number;
-  nestingDepth: number;
-  outputCodeUnits: number;
-  scratchBytes: number;
-  capabilityCalls: number;
-}
-```
-
-Every render uses high finite cooperative defaults:
-
-| Limit | Default | Meaning |
-| --- | ---: | --- |
-| `sourceCodeUnits` | `4_194_304` | Total UTF-16 source code units parsed. |
-| `astNodes` | `1_000_000` | Immutable AST nodes created. |
-| `workUnits` | `1_000_000` | Cap applied to duplicated static planning, evaluator work, and logical value expansion. |
-| `nestingDepth` | `512` | Nested interpreter evaluation depth. |
-| `outputCodeUnits` | `16_777_216` | UTF-16 code units in the returned string. |
-| `scratchBytes` | `67_108_864` | Estimated UTF-8 bytes supplied to one filter. |
-| `capabilityCalls` | `4_096` | Filter and global-function invocations. |
-
-Overrides must be non-negative safe integers or `Infinity`. Limits are
-cooperative guards, not exact CPU, heap, RSS, or process-isolation controls.
-
-### Errors
-
-The package exports two error classes:
-
-- `NunjitsuRenderError` reports parser or interpreter failures through an
-  engine-owned sanitized message and structured diagnostic fields. Its `cause`
-  is always `undefined`; internal evaluator errors and capability exceptions
-  are never retained.
-- `NunjitsuLimitError` reports a resource-limit failure. Its `limit` property
-  identifies the exceeded `RenderLimits` field when available. Structured
-  fields report the processing phase, template location, configured maximum,
-  and observed or projected usage when the engine can determine them.
-
-```ts
-type NunjitsuRenderErrorCode =
-  | 'syntax_error'
-  | 'evaluation_error'
-  | 'capability_error';
-
-type NunjitsuRenderErrorPhase = 'parse' | 'evaluate';
-
-interface NunjitsuRenderErrorDetails {
-  readonly code: NunjitsuRenderErrorCode;
-  readonly phase: NunjitsuRenderErrorPhase;
-  readonly line: number | undefined;
-  readonly column: number | undefined;
-}
-
-class NunjitsuRenderError extends Error {
-  readonly code: NunjitsuRenderErrorCode;
-  readonly phase: NunjitsuRenderErrorPhase;
-  readonly line: number | undefined;
-  readonly column: number | undefined;
-  readonly cause: undefined;
-
-  constructor(message: string, details?: NunjitsuRenderErrorDetails);
-}
-
-interface NunjitsuLimitErrorDetails {
-  readonly phase?: 'parse' | 'evaluate';
-  readonly line?: number;
-  readonly column?: number;
-  readonly configured?: number;
-  readonly observed?: number;
-}
-
-class NunjitsuLimitError extends Error {
-  readonly limit: keyof RenderLimits | undefined;
-  readonly phase: 'parse' | 'evaluate' | undefined;
-  readonly line: number | undefined;
-  readonly column: number | undefined;
-  readonly configured: number | undefined;
-  readonly observed: number | undefined;
-}
-```
-
-`line` and `column` are one-based and identify the deepest template node known
-to the engine. They are `undefined` only when no safe template location is
-available. `code` is stable for programmatic handling; `message` remains the
-bounded human-readable diagnostic and includes the location when one is known.
-Diagnostics identify validated tag, filter, test, capability, and callable
-names where relevant, but never interpolate raw source excerpts or runtime
-values. Unknown fixed-language names may include one bounded close-spelling
-suggestion.
-
-Invalid source, context, prepared-context ownership, capability configuration,
-and reserved names supplied through those API inputs throw `TypeError` before
-template evaluation. Invalid limit values similarly throw `RangeError`.
-After API validation, every parser or evaluator failure other than resource
-limit exhaustion is wrapped in `NunjitsuRenderError`, regardless of its
-underlying JavaScript error class. Public diagnostic messages escape terminal
-and line-control characters plus the complete Unicode `Bidi_Control` set,
-remain single-line, and have bounded length. All render failures discard partial
-output and leave the engine ready for a clean subsequent render.
-
-### Exported API
-
-The package root exports:
-
-| Export | Kind | Purpose |
-| --- | --- | --- |
-| `createEngine` | function | Creates an immutable synchronous engine. |
-| `Engine` | type | Rendering and prepared-context methods. |
-| `EngineOptions` | type | Immutable mode, whitespace, and capability configuration. |
-| `RenderOptions` | type | Per-render cooperative limits. |
-| `PreparedContext` | type | Opaque reusable context snapshot. |
-| `TemplateValue` | type | Accepted recursively copied data values. |
-| `TemplateContext` | type | Root template scope. |
-| `TemplateCapabilities` | type | Filter and global registries. |
-| `TemplateFilter` | type | Trusted synchronous filter signature. |
-| `TemplateGlobal` | type | Global data or function union. |
-| `TemplateGlobalFunction` | type | Trusted synchronous global signature. |
-| `RenderLimits` | type | All configurable resource dimensions. |
-| `NunjitsuRenderError` | class | Structured parser or evaluator failure. |
-| `NunjitsuRenderErrorCode` | type | Stable render-failure category. |
-| `NunjitsuRenderErrorPhase` | type | Parse or evaluation failure stage. |
-| `NunjitsuRenderErrorDetails` | type | Structured safe render diagnostic fields. |
-| `NunjitsuLimitError` | class | Structured resource-limit failure. |
-| `NunjitsuLimitErrorDetails` | type | Optional safe resource-limit diagnostic fields. |
-
-For the supported template-language subset, security model, and detailed
-design constraints, see the [project documentation](docs/index.md).
+Capability implementations must treat all arguments as attacker-controlled
+application data. See [Security](docs/security.md#capabilities) for the
+full boundary and failure behavior.
 
 ## Development
 
-Development requires Node.js 22.18 or newer and pnpm 11.3. The repository uses
-its pinned TypeScript 7 native compiler for authoring and TypeScript 5.7 for
-package consumer compatibility tests.
-
-Install dependencies and run the complete source and package test matrix:
+Development requires Node.js 22.18 or newer and the pnpm version pinned in
+`package.json`.
 
 ```sh
 pnpm install
 pnpm test
 ```
 
+Run `pnpm benchmark` for the full Nunjucks comparison harness. Architecture,
+testing, compatibility, and release documentation start in
+[`docs/`](docs/index.md). Contributors and coding agents must also follow
+[`AGENTS.md`](AGENTS.md).
+
 ## License
 
-Licensed under the [MIT License](LICENSE).
-
-Copied or adapted Nunjucks test materials retain their upstream BSD-2-Clause
-license and attribution as described in
-[`docs/compatibility.md`](docs/compatibility.md#attribution-and-licensing).
+Licensed under the [MIT License](LICENSE). Adapted Nunjucks tests retain their
+upstream license and attribution as documented in
+[Compatibility](docs/compatibility.md#attribution-and-licensing).

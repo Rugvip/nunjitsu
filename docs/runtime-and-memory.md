@@ -571,6 +571,21 @@ is intentionally UTF-16 code-unit rather than exact byte accounting.
 Nesting depth is checked before evaluating each statement and expression node.
 These are cooperative availability safeguards, not a process sandbox or exact
 CPU/RSS accounting.
+
+Every render starts with these defaults:
+
+| Limit | Default | Unit or operation |
+| --- | ---: | --- |
+| `sourceCodeUnits` | `4_194_304` | UTF-16 source code units parsed |
+| `astNodes` | `1_000_000` | Immutable AST nodes created |
+| `workUnits` | `1_000_000` | Static planning, evaluation, and logical value expansion |
+| `nestingDepth` | `512` | Nested statement and expression evaluation |
+| `outputCodeUnits` | `16_777_216` | UTF-16 code units in the returned string |
+| `scratchBytes` | `67_108_864` | Estimated UTF-8 bytes supplied to one filter |
+| `capabilityCalls` | `4_096` | Registered filter and global-function calls |
+
+`RenderOptions.limits` accepts a partial override. Each value must be a
+non-negative safe integer or `Infinity`; an omitted field retains its default.
 Trusted callbacks execute outside interpreter work accounting except for their
 invocation count and returned-value validation. Callback return validation is
 inside the fail-stop capability exception boundary.

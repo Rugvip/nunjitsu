@@ -1,9 +1,9 @@
 # Nunjitsu documentation
 
 This directory contains the normative design documentation for Nunjitsu. The
-root [README](../README.md) introduces the project and documents the complete
-public TypeScript API; implementation rationale, constraints, and cross-cutting
-decisions belong here.
+root [README](../README.md) introduces the package, its primary TypeScript API,
+and the contributor workflow; detailed behavior, implementation rationale,
+constraints, and cross-cutting decisions belong here.
 
 ## Architecture map
 

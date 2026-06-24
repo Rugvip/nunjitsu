@@ -234,9 +234,10 @@ Node.js 22 or newer. The build produces equivalent tested ESM and CommonJS
 entrypoints and declarations from the same format-neutral source entrypoint.
 Runtime behavior must not vary with the consuming module format.
 
-The root README owns the complete consumer-facing TypeScript API reference.
-This documentation directory owns implementation rationale, security
-constraints, compatibility policy, and other architectural decisions.
+The root README owns the package introduction, primary consumer-facing
+TypeScript API, and minimal contributor workflow. This documentation directory
+owns detailed behavior, implementation rationale, security constraints,
+compatibility policy, and other architectural decisions.
 
 ## Architectural non-goals
 

@@ -520,9 +520,11 @@ Do not create additional packages without a documented architectural reason.
 
 ## Documentation rules
 
-- Keep `README.md` focused on the project introduction, high-level goals,
-  current status, installation, complete public TypeScript API reference,
-  minimal development setup, and links into `docs/`.
+- Keep `README.md` focused on the package introduction, installation, primary
+  TypeScript API, minimal contributor workflow, and links into `docs/`. Put
+  detailed error contracts, security invariants, compatibility behavior,
+  resource-limit semantics, architecture, and release operations in the
+  focused documentation pages that own them.
 - Put design details in the page that owns the area. Add a new focused page only
   when no existing page has clear ownership, and link it from `docs/index.md`.
 - Documentation describes the current intended design, not a chronological log.
