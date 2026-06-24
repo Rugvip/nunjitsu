@@ -336,8 +336,10 @@ NBSP, Unicode spacing characters, vertical tab, form feed, and BOM. Inside
 expressions and structural tags, only space, tab, LF, CR, and NBSP are code
 whitespace; other spacing characters are rejected rather than normalized or
 silently skipped. Only LF resets the current template-data line for
-`lstripBlocks`; CR is ordinary removable indentation after LF or in a leading
-all-whitespace prefix. The same rules apply in default and Cookiecutter modes.
+`lstripBlocks`; CR is ordinary indentation and does not erase an earlier token
+or non-whitespace code unit from line state. A no-LF all-whitespace prefix is
+removable only at the actual start of the source line. The same rules apply in
+default and Cookiecutter modes.
 
 Raw and verbatim regions count nested openers of their own name and close only
 when that depth returns to zero. Nested markers remain in rendered text, and a
@@ -345,8 +347,10 @@ when that depth returns to zero. Nested markers remain in rendered text, and a
 meaning. An opening `{%- raw %}` or `{%- verbatim %}` applies ordinary left
 trimming, while an opening right hyphen does not trim raw content and instead
 removes template whitespace after the terminal closer. Terminal raw and
-verbatim closers do not participate in `trimBlocks`. Hyphenated closing markers
-are rejected, matching pinned Nunjucks v3.2.4.
+verbatim closers do not participate in `trimBlocks`, but their opening tags
+still remove one immediate LF or CRLF before content capture when that option is
+enabled. Hyphenated closing markers are rejected, matching pinned Nunjucks
+v3.2.4.
 
 Top-level raw openers use the ordinary code-token whitespace grammar. After
 raw mode begins, inner same-name markers instead accept the full ECMAScript

@@ -126,10 +126,11 @@ ordinary-data closers, contained literal, regex, raw, and verbatim controls,
 executable syntax after comments, whitespace controls and options, capability
 order, both delimiter modes, malformed input, and clean recovery. Whitespace
 regressions cover LF-only `lstripBlocks` boundaries, leading and embedded CR,
-LFCR and CRLF sequences, repeated CR, full template whitespace, and every
-trim/lstrip combination. Raw regressions separately preserve newline data after
-terminal closers under `trimBlocks` and the opening right-hyphen effect across
-LF, CRLF, LFCR, and bare CR.
+LFCR and CRLF sequences, repeated CR, prior blocks, comments, variables, and
+empty raw regions, full template whitespace, and every trim/lstrip combination.
+Raw regressions separately cover immediate newlines after ordinary and
+right-hyphen openers, nested regions, preserved newline data after terminal
+closers, and the opening right-hyphen effect across LF, CRLF, LFCR, and bare CR.
 Sparse-array regressions use TypeScript fixtures because JSON cannot represent
 holes. They compare context, global result, filter result, membership,
 reduction, selection, attribute projection, reversal, sorting,

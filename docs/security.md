@@ -48,14 +48,15 @@ Parser-owned whitespace classification prevents unsupported Unicode spacing
 characters from disguising code boundaries. Code accepts only space, tab, LF,
 CR, and NBSP; broader ECMAScript whitespace is recognized only by template-data
 trim controls and `lstripBlocks`; only LF establishes the latter's current-line
-boundary, so CR cannot create or conceal an indentation boundary. Raw and
-verbatim scanning requires balanced
+boundary, so CR cannot create or conceal an indentation boundary or erase
+prior-token state. Raw and verbatim scanning requires balanced
 same-name depth before evaluation, so a missing outer closer fails complete
 source validation before any capability can run. Inner markers use their own
 full-whitespace, no-hyphen grammar, and terminal LF or CRLF closers fail safely
 before evaluation rather than reproducing the pinned tokenizer exception.
-Terminal raw closers bypass `trimBlocks`, while an opening right hyphen may trim
-only template whitespace after the matched closer.
+`trimBlocks` removes one immediate LF or CRLF after a raw opener before content
+capture. Terminal raw closers bypass it, while an opening right hyphen may also
+trim template whitespace after the matched closer.
 
 The ordinary template-data scanner rejects an unmatched exact `#}` before AST
 construction. Code strings, regexes, comment bodies, and raw or verbatim regions

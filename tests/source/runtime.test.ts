@@ -5391,6 +5391,24 @@ test('matches Nunjucks code and template-data whitespace domains', () => {
       '{% raw %}X{% endraw %}',
       '{% filter upper %}x{% endfilter %}',
     ];
+    const lineStateSources = [
+      '\r {% if true %}Y{% endif %}',
+      'X\r {% if true %}Y{% endif %}',
+      '{% if true %}{% endif %}\r {% if true %}Y{% endif %}',
+      '{% if true %}X{% endif %}\r {% if true %}Y{% endif %}',
+      '{# comment #}\r {% if true %}Y{% endif %}',
+      '{#- comment -#}\r {% if true %}Y{% endif %}',
+      '{{ value }}\r {% if true %}Y{% endif %}',
+      '{{- value -}}\r {% if true %}Y{% endif %}',
+      '{% raw %}X{% endraw %}\r {% if true %}Y{% endif %}',
+      '{% raw %}{% endraw %}\r {% if true %}Y{% endif %}',
+      '{% if true %}{% endif %}\r \r {% if true %}Y{% endif %}',
+      '{% if true %}{% endif %}\n\r {% if true %}Y{% endif %}',
+      '{% if true %}{% endif %}\r\n {% if true %}Y{% endif %}',
+      '{% if true %}{% endif %}\nX\r {% if true %}Y{% endif %}',
+      '{% if true %}{% endif %}\r {# comment #}\r {% if true %}Y{% endif %}',
+      '{% if true %}{% endif %}\r {{ value }}\r {% if true %}Y{% endif %}',
+    ];
     for (const trimBlocks of [false, true]) {
       for (const lstripBlocks of [false, true]) {
         const boundaryEngine = createEngine({
@@ -5412,6 +5430,13 @@ test('matches Nunjucks code and template-data whitespace domains', () => {
               `${JSON.stringify({ trimBlocks, lstripBlocks })} ${JSON.stringify(source)}`,
             );
           }
+        }
+        for (const source of lineStateSources) {
+          assert.equal(
+            boundaryEngine.render(engineSource(source), { value: 'V' }),
+            boundaryOracle.renderString(source, { value: 'V' }),
+            `${JSON.stringify({ trimBlocks, lstripBlocks })} ${JSON.stringify(source)}`,
+          );
         }
       }
     }
@@ -5527,6 +5552,24 @@ test('matches nested raw scanning and raw whitespace controls', () => {
               `{% ${name} %}A{% end${name} %}${newline}B`,
               `A \t\n{%- ${name} %}X{% end${name} %}${newline}B`,
               `{% ${name} -%} \t\nX{% end${name} %}${newline}B`,
+            ]) {
+              assert.equal(
+                optionEngine.render(source),
+                optionOracle.renderString(source, {}),
+                `${JSON.stringify({ trimBlocks, lstripBlocks })} ${JSON.stringify(source)}`,
+              );
+            }
+            for (const source of [
+              `{% ${name} %}${newline}X{% end${name} %}\nY`,
+              `{% ${name} -%}${newline}X{% end${name} %}\nY`,
+              [
+                `{% ${name} %}${newline}A{% ${name} %}B`,
+                `{% end${name} %}C{% end${name} %}\nY`,
+              ].join(''),
+              [
+                `{% ${name} -%}${newline}A{% ${name} %}B`,
+                `{% end${name} %}C{% end${name} %}\nY`,
+              ].join(''),
             ]) {
               assert.equal(
                 optionEngine.render(source),

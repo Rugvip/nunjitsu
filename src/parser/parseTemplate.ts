@@ -479,6 +479,7 @@ function scanTemplate(source: string, options: ParseOptions): readonly TemplateT
   let pendingText = '';
   let textLine = 0;
   let textColumn = 0;
+  let lineHasContent = false;
 
   const advance = (value: string): void => {
     for (let offset = 0; offset < value.length; offset += 1) {
@@ -486,8 +487,12 @@ function scanTemplate(source: string, options: ParseOptions): readonly TemplateT
       if (character === '\n') {
         line += 1;
         column = 0;
+        lineHasContent = false;
       } else {
         column += 1;
+        if (!isTemplateWhitespace(character)) {
+          lineHasContent = true;
+        }
       }
     }
     index += value.length;
@@ -531,7 +536,7 @@ function scanTemplate(source: string, options: ParseOptions): readonly TemplateT
     const startLine = line;
     const startColumn = column;
     if (opening.kind === 'block' && options.lstripBlocks) {
-      pendingText = stripBlockIndent(pendingText);
+      pendingText = stripBlockIndent(pendingText, lineHasContent);
     }
     const leftTrim = source.startsWith(`${opening.value}-`, opening.index);
     if (leftTrim) {
@@ -571,6 +576,12 @@ function scanTemplate(source: string, options: ParseOptions): readonly TemplateT
             startLine,
             startColumn,
           );
+        }
+        if (options.trimBlocks) {
+          const newline = leadingNewlinePattern.exec(source.slice(index))?.[0];
+          if (newline) {
+            advance(newline);
+          }
         }
         const closing = findRawEnd(source, index, rawName);
         if (!closing) {
@@ -724,7 +735,10 @@ function scanRawMarker(
   return undefined;
 }
 
-function stripBlockIndent(value: string): string {
+function stripBlockIndent(value: string, lineHasContent: boolean): string {
+  if (lineHasContent) {
+    return value;
+  }
   const newline = value.lastIndexOf('\n');
   const suffix = value.slice(newline + 1);
   return indentationPattern.test(suffix) ? value.slice(0, newline + 1) : value;

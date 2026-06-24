@@ -35,13 +35,15 @@ scanner. Executable tags continue to use the code-aware scanner for strings and
 regex literals.
 
 `lstripBlocks` uses LF as its sole template-data line reset. The suffix after
-the latest LF, or the complete leading prefix when no LF exists, is stripped
-only when it consists entirely of ECMAScript whitespace. CR therefore remains
-part of a CRLF ending but behaves as ordinary removable indentation after LF;
-an embedded bare CR does not hide preceding non-whitespace text. Terminal raw
-and verbatim closers do not participate in `trimBlocks`. A right hyphen on the
-opening raw marker retains its pinned behavior: raw content is preserved and
-template whitespace following the terminal closer is removed.
+the latest LF, or the complete source-leading prefix when no LF exists, is
+stripped only when it consists entirely of ECMAScript whitespace and no earlier
+token occupies that source line. CR therefore remains part of a CRLF ending but
+behaves as ordinary removable indentation after LF; an embedded bare CR does
+not reset prior token or non-whitespace state. `trimBlocks` removes one immediate
+LF or CRLF after a raw or verbatim opener before content capture, including when
+the opener has a right hyphen. Terminal raw and verbatim closers do not
+participate in `trimBlocks`. The opening right hyphen otherwise preserves raw
+content and removes template whitespace following the terminal closer.
 
 Macro and call-block declarations apply a stricter policy than ordinary call
 arguments: positional formals must be symbols and default keys must be

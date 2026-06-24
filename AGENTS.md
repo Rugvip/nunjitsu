@@ -218,18 +218,19 @@ Do not create additional packages without a documented architectural reason.
   LF, CR, and NBSP; unsupported ECMAScript whitespace in code is rejected.
   Explicit `-` controls and `lstripBlocks` use the full ECMAScript whitespace
   set. For `lstripBlocks`, only LF resets the current template-data line; CR is
-  ordinary indentation whitespace after the latest LF or within a leading
-  all-whitespace prefix. Do not use general `trim`, `trimStart`, or `\s` for
-  code parsing.
+  ordinary indentation whitespace, and a no-LF all-whitespace prefix is
+  removable only when no earlier token or non-whitespace text occupies that
+  source line. Do not use general `trim`, `trimStart`, or `\s` for code parsing.
 - Scan raw and verbatim regions with same-name nesting depth. Preserve nested
   markers and mixed raw/verbatim markers as literal text, require the outer
   same-name closer, preserve content after a top-level opening `-%}`, and reject
   hyphenated closing markers. Inside a raw region, recognize markers with the
   full template-data whitespace set and no left or right hyphen; safely reject
   a terminal closer containing LF or CRLF while allowing multiline non-terminal
-  nested markers. Never apply `trimBlocks` after the terminal raw or verbatim
-  closer. A right hyphen on the opening marker preserves raw content but trims
-  template whitespace following that terminal closer.
+  nested markers. Apply `trimBlocks` to one immediate LF or CRLF after the raw
+  opener before capturing content, but never after the terminal raw or verbatim
+  closer. A right hyphen on the opening marker preserves remaining raw content
+  but trims template whitespace following that terminal closer.
 - Inspect input records through own property descriptors and reject accessors.
   Do not invoke getters while copying accepted plain records.
 - Reject Node-detected proxies before array detection or any reflective value

@@ -335,6 +335,11 @@
       "test": "matches Nunjucks code and template-data whitespace domains",
       "upstream": [
         "tests/parser.js:35",
+        "tests/lexer.js:3",
+        "tests/lexer.js:4",
+        "tests/lexer.js:5",
+        "tests/lexer.js:6",
+        "tests/lexer.js:7",
         "tests/lexer.js:9",
         "tests/compiler.js:137",
         "tests/compiler.js:138",

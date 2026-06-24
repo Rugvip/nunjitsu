@@ -67,9 +67,11 @@ only an ordinary, non-hyphenated matching closing marker ends the outer region.
 Once inside raw content, marker recognition uses the full template-data
 whitespace set and treats either whitespace-control hyphen as literal text.
 `lstripBlocks` measures a template-data line from the latest LF, treating CR as
-ordinary indentation whitespace. A terminal raw or verbatim closer bypasses
-`trimBlocks`; only a right hyphen on its opening marker trims template whitespace
-after that closer.
+ordinary indentation whitespace while retaining whether an earlier token or
+non-whitespace code unit occupies that line. `trimBlocks` consumes one immediate
+LF or CRLF after a raw or verbatim opener, but a terminal closer bypasses it;
+only a right hyphen on the opening marker trims template whitespace after that
+closer.
 
 Default variables use `${{` and `}}` delimiters. Cookiecutter mode
 uses `{{` and `}}` with the supported Jinja compatibility behavior. Block and

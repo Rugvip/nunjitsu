@@ -981,6 +981,8 @@ test('rejects malformed structural tags before any template capability executes'
     for (const source of [
       '{{ before() }}{% raw %}A{% raw %}B{% endraw %}{{ after() }}',
       '{{ before() }}{% verbatim %}A{% verbatim %}B{% endverbatim %}{{ after() }}',
+      '{{ before() }}{% raw %}\nA{% raw %}B{% endraw %}{{ after() }}',
+      '{{ before() }}{% verbatim -%}\r\nA{% verbatim %}B{% endverbatim %}{{ after() }}',
       '{{ before() }}{% raw %}A{%\nendraw\n%}{{ after() }}',
       '{{ before() }}{% verbatim %}A{%\r\nendverbatim\r\n%}{{ after() }}',
       '{{ before() }}{% raw %}A{%- raw %}B{% endraw %}{% endraw %}{{ after() }}',
@@ -993,6 +995,19 @@ test('rejects malformed structural tags before any template capability executes'
       assert.deepEqual(missingCloserCalls, []);
       assert.equal(missingCloserEngine.render('clean'), 'clean');
     }
+    const limitedSource = cookiecutterCompat
+      ? '{{ before() }}{% raw %}\nX'
+      : '${{ before() }}{% raw %}\nX';
+    assert.throws(
+      () => missingCloserEngine.render(
+        limitedSource,
+        {},
+        { limits: { sourceCodeUnits: 1 } },
+      ),
+      NunjitsuLimitError,
+    );
+    assert.deepEqual(missingCloserCalls, []);
+    assert.equal(missingCloserEngine.render('clean'), 'clean');
   }
 
   for (const cookiecutterCompat of [false, true]) {
