@@ -885,21 +885,36 @@ function joinRuntimeValues(
   const separatorValue = positional[0];
   const separator = runtimeTruthy(separatorValue) ? runtimeToString(separatorValue) : '';
   const attribute = optionalDirectAttributeKey(positional[1]);
-  const values = attribute === undefined
-    ? requireRuntimeArray(input, 'join')
-    : projectRuntimeAttributeValues(input, attribute, reserveIndexedValues);
   const output: string[] = [];
-  output.length = values.length;
-  for (let index = 0; index < values.length; index += 1) {
-    if (!values.has(index)) {
-      continue;
+  if (attribute === undefined) {
+    const values = requireRuntimeArray(input, 'join');
+    output.length = values.length;
+    for (let index = 0; index < values.length; index += 1) {
+      if (!values.has(index)) {
+        continue;
+      }
+      const item = values.at(index);
+      defineOwnArrayIndex(
+        output,
+        index,
+        item === undefined || item === null ? '' : runtimeToString(item),
+      );
     }
-    const item = values.at(index);
-    defineOwnArrayIndex(
-      output,
-      index,
-      item === undefined || item === null ? '' : runtimeToString(item),
+  } else {
+    const projection = projectRuntimeAttributeValues(
+      input,
+      attribute,
+      reserveIndexedValues,
     );
+    output.length = projection.length;
+    for (let offset = 0; offset < projection.values.length; offset += 1) {
+      const item = projection.values[offset];
+      defineOwnArrayIndex(
+        output,
+        projection.indices?.[offset] ?? offset,
+        item === undefined || item === null ? '' : runtimeToString(item),
+      );
+    }
   }
   return output.join(separator);
 }
@@ -910,12 +925,21 @@ function sumRuntimeValues(
   reserveIndexedValues: (count: number) => void,
 ): RuntimeValue {
   const attribute = optionalDirectAttributeKey(positional[0]);
-  const values = attribute === undefined
-    ? requireRuntimeArray(input, 'sum')
-    : projectRuntimeAttributeValues(input, attribute, reserveIndexedValues);
   let reduced: RuntimeValue = 0;
-  for (const value of values.presentValues()) {
-    reduced = runtimeAdd(reduced, value);
+  if (attribute === undefined) {
+    const values = requireRuntimeArray(input, 'sum');
+    for (const value of values.presentValues()) {
+      reduced = runtimeAdd(reduced, value);
+    }
+  } else {
+    const projection = projectRuntimeAttributeValues(
+      input,
+      attribute,
+      reserveIndexedValues,
+    );
+    for (let index = 0; index < projection.values.length; index += 1) {
+      reduced = runtimeAdd(reduced, projection.values[index]);
+    }
   }
   return runtimeAdd(positional[1] === undefined ? 0 : positional[1], reduced);
 }
@@ -927,51 +951,59 @@ function requireRuntimeArray(input: RuntimeValue, operation: string): RuntimeArr
   return input;
 }
 
+/** One complete attribute projection retained only for the current built-in call. */
+interface RuntimeAttributeProjection {
+  readonly length: number;
+  readonly indices?: readonly number[];
+  readonly values: readonly RuntimeValue[];
+}
+
+/** Creates transient indexed storage that cannot observe inherited setters. */
+function createTransientArray<T>(): T[] {
+  return Object.setPrototypeOf([], null) as T[];
+}
+
 function projectRuntimeAttributeValues(
   input: RuntimeValue,
   attribute: string,
   reserveIndexedValues: (count: number) => void,
-): RuntimeArray {
+): RuntimeAttributeProjection {
   if (input instanceof RuntimeArray) {
-    const output = input.copySparse();
+    const indices = createTransientArray<number>();
+    const values = createTransientArray<RuntimeValue>();
+    let offset = 0;
     for (let index = 0; index < input.length; index += 1) {
       if (input.has(index)) {
-        defineOwnArrayIndex(
-          output,
-          index,
-          lookupRuntimeAttribute(input.at(index), attribute),
-        );
+        indices[offset] = index;
+        values[offset] = lookupRuntimeAttribute(input.at(index), attribute);
+        offset += 1;
       }
     }
-    return new RuntimeArray(output);
+    return { indices, length: input.length, values };
   }
   if (typeof input === 'string') {
-    const output: RuntimeValue[] = [];
-    output.length = input.length;
+    const values = createTransientArray<RuntimeValue>();
+    values.length = input.length;
     for (let index = 0; index < input.length; index += 1) {
-      defineOwnArrayIndex(
-        output,
-        index,
-        lookupRuntimeAttribute(input[index], attribute),
-      );
+      values[index] = lookupRuntimeAttribute(input[index], attribute);
     }
-    return new RuntimeArray(output);
+    return { length: input.length, values };
   }
   if (input instanceof RuntimeRecord) {
-    const output = mapRuntimeRecordValues(input, reserveIndexedValues);
-    for (let index = 0; index < output.length; index += 1) {
+    const values = mapRuntimeRecordValues(input, reserveIndexedValues);
+    for (let index = 0; index < values.length; index += 1) {
       defineOwnArrayIndex(
-        output,
+        values,
         index,
-        lookupRuntimeAttribute(output[index], attribute),
+        lookupRuntimeAttribute(values[index], attribute),
       );
     }
-    return new RuntimeArray(output);
+    return { length: values.length, values };
   }
   if (input instanceof RuntimeSafeString && input.value.length > 0) {
     lookupRuntimeAttribute(undefined, attribute);
   }
-  return new RuntimeArray([]);
+  return { length: 0, values: [] };
 }
 
 function sortRuntimeValues(

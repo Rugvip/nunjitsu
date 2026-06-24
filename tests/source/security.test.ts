@@ -496,6 +496,38 @@ test('dump does not invoke inherited host serialization hooks', () => {
   }
 });
 
+test('attribute projection does not invoke inherited numeric setters', () => {
+  const input = new RuntimeArray([
+    new RuntimeRecord([['text', 'a'], ['value', 2]]),
+    new RuntimeRecord([['text', 'b'], ['value', 3]]),
+  ]);
+  let setterCalls = 0;
+  const previousIndex = Object.getOwnPropertyDescriptor(Object.prototype, '0');
+  Object.defineProperty(Object.prototype, '0', {
+    configurable: true,
+    set() {
+      setterCalls += 1;
+    },
+  });
+  try {
+    assert.equal(
+      applyBuiltinFilter('join', input, [',', 'text'], new Map(), () => {}),
+      'a,b',
+    );
+    assert.equal(
+      applyBuiltinFilter('sum', input, ['value'], new Map(), () => {}),
+      5,
+    );
+  } finally {
+    if (previousIndex) {
+      Object.defineProperty(Object.prototype, '0', previousIndex);
+    } else {
+      delete (Object.prototype as Record<string, unknown>)['0'];
+    }
+  }
+  assert.equal(setterCalls, 0);
+});
+
 test('regex coercion does not invoke internal or host RegExp string hooks', () => {
   let hookCalls = 0;
   const runtimeDescriptor = Object.getOwnPropertyDescriptor(
