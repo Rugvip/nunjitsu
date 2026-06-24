@@ -21,6 +21,9 @@ export type RuntimeValue =
   | RuntimeRegex
   | RuntimeCallable;
 
+/** Charges one logical recursive expansion of an interpreter-owned value. */
+export type RuntimeWorkCharge = () => void;
+
 /** An interpreter string carrying Nunjucks safe-filter semantics. */
 export class RuntimeSafeString {
   readonly kind = 'safe-string';
@@ -309,9 +312,12 @@ export function copyPublicValue(value: RuntimeValue): TemplateValue | undefined 
 }
 
 /** Explicit string coercion over closed value variants. */
-export function renderRuntimeValue(value: RuntimeValue): string {
+export function renderRuntimeValue(
+  value: RuntimeValue,
+  chargeWork?: RuntimeWorkCharge,
+): string {
   assertRuntimeValueHasNoCallable(value);
-  return renderRuntimeValueUnchecked(value);
+  return renderRuntimeValueUnchecked(value, chargeWork);
 }
 
 /** Rejects callable identities anywhere inside a closed value graph. */
@@ -341,7 +347,10 @@ export function assertRuntimeValueHasNoCallable(value: RuntimeValue): void {
   }
 }
 
-function renderRuntimeValueUnchecked(value: RuntimeValue): string {
+function renderRuntimeValueUnchecked(
+  value: RuntimeValue,
+  chargeWork?: RuntimeWorkCharge,
+): string {
   if (value === undefined || value === null) {
     return '';
   }
@@ -369,7 +378,8 @@ function renderRuntimeValueUnchecked(value: RuntimeValue): string {
   if (value instanceof RuntimeArray) {
     const output: string[] = [];
     for (const item of value.values()) {
-      output.push(renderRuntimeValueUnchecked(item));
+      chargeWork?.();
+      output.push(renderRuntimeValueUnchecked(item, chargeWork));
     }
     return output.join(',');
   }

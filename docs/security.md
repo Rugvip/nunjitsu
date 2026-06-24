@@ -404,6 +404,14 @@ nesting, rendered output, filter-argument scratch size, and trusted capability
 calls. They reduce accidental and intentional denial of service but are
 cooperative checks rather than hard isolation or general heap limits.
 
+Recursive rendering, coercion, serialization, and scratch measurement charge
+each logical array or record entry against evaluator work. An immutable value
+graph may retain repeated aliases, but a template cannot use a short chain of
+shared containers to trigger exponentially more traversal or materialization
+than the work limit permits. The charge occurs before descending into each
+entry, and successful values preserve the same alias identity and expanded
+Nunjucks output.
+
 Indexed filters over array-like records, including truthy-attribute `join` and
 `sum`, project their numeric work and fixed-size result slots before visiting
 or allocating positions. Sparse missing entries count toward both projections,

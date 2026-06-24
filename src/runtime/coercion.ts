@@ -8,10 +8,14 @@ import {
   RuntimeSafeString,
   type RuntimePrimitive,
   type RuntimeValue,
+  type RuntimeWorkCharge,
 } from './value.ts';
 
 /** Converts one closed value to a primitive without invoking host behavior. */
-export function runtimeToPrimitive(value: RuntimeValue): RuntimePrimitive {
+export function runtimeToPrimitive(
+  value: RuntimeValue,
+  chargeWork?: RuntimeWorkCharge,
+): RuntimePrimitive {
   assertRuntimeValueHasNoCallable(value);
   if (isRuntimePrimitive(value)) {
     return value;
@@ -22,7 +26,12 @@ export function runtimeToPrimitive(value: RuntimeValue): RuntimePrimitive {
   if (value instanceof RuntimeArray) {
     const items: string[] = [];
     for (const item of value.values()) {
-      items.push(item === undefined || item === null ? '' : runtimeToString(item));
+      chargeWork?.();
+      items.push(
+        item === undefined || item === null
+          ? ''
+          : runtimeToString(item, chargeWork),
+      );
     }
     return items.join(',');
   }
@@ -39,8 +48,11 @@ export function runtimeToPrimitive(value: RuntimeValue): RuntimePrimitive {
 }
 
 /** Converts one closed value with JavaScript-compatible numeric semantics. */
-export function runtimeToNumber(value: RuntimeValue): number {
-  const primitive = runtimeToPrimitive(value);
+export function runtimeToNumber(
+  value: RuntimeValue,
+  chargeWork?: RuntimeWorkCharge,
+): number {
+  const primitive = runtimeToPrimitive(value, chargeWork);
   if (primitive === undefined) {
     return Number.NaN;
   }
@@ -60,13 +72,19 @@ export function runtimeToNumber(value: RuntimeValue): number {
 }
 
 /** Converts one closed value with JavaScript-compatible string semantics. */
-export function runtimeToString(value: RuntimeValue): string {
-  return primitiveToString(runtimeToPrimitive(value));
+export function runtimeToString(
+  value: RuntimeValue,
+  chargeWork?: RuntimeWorkCharge,
+): string {
+  return primitiveToString(runtimeToPrimitive(value, chargeWork));
 }
 
 /** Converts one closed value to an allowed property-key string. */
-export function runtimeToPropertyKey(value: RuntimeValue): string {
-  return runtimeToString(value);
+export function runtimeToPropertyKey(
+  value: RuntimeValue,
+  chargeWork?: RuntimeWorkCharge,
+): string {
+  return runtimeToString(value, chargeWork);
 }
 
 /** Resolves a canonical in-range array index from one property key. */
@@ -89,7 +107,11 @@ export function runtimeStrictEqual(left: RuntimeValue, right: RuntimeValue): boo
 }
 
 /** Applies supported JavaScript abstract equality over closed values. */
-export function runtimeLooseEqual(left: RuntimeValue, right: RuntimeValue): boolean {
+export function runtimeLooseEqual(
+  left: RuntimeValue,
+  right: RuntimeValue,
+  chargeWork?: RuntimeWorkCharge,
+): boolean {
   if (left === right) {
     return true;
   }
@@ -99,15 +121,19 @@ export function runtimeLooseEqual(left: RuntimeValue, right: RuntimeValue): bool
     return false;
   }
   return primitiveLooseEqual(
-    leftPrimitive ? left : runtimeToPrimitive(left),
-    rightPrimitive ? right : runtimeToPrimitive(right),
+    leftPrimitive ? left : runtimeToPrimitive(left, chargeWork),
+    rightPrimitive ? right : runtimeToPrimitive(right, chargeWork),
   );
 }
 
 /** Applies JavaScript-style addition after closed primitive conversion. */
-export function runtimeAdd(left: RuntimeValue, right: RuntimeValue): RuntimeValue {
-  const leftPrimitive = runtimeToPrimitive(left);
-  const rightPrimitive = runtimeToPrimitive(right);
+export function runtimeAdd(
+  left: RuntimeValue,
+  right: RuntimeValue,
+  chargeWork?: RuntimeWorkCharge,
+): RuntimeValue {
+  const leftPrimitive = runtimeToPrimitive(left, chargeWork);
+  const rightPrimitive = runtimeToPrimitive(right, chargeWork);
   if (typeof leftPrimitive === 'string' || typeof rightPrimitive === 'string') {
     return primitiveToString(leftPrimitive) + primitiveToString(rightPrimitive);
   }
@@ -115,14 +141,22 @@ export function runtimeAdd(left: RuntimeValue, right: RuntimeValue): RuntimeValu
 }
 
 /** Concatenates closed values using JavaScript-compatible string conversion. */
-export function runtimeConcat(left: RuntimeValue, right: RuntimeValue): string {
-  return runtimeToString(left) + runtimeToString(right);
+export function runtimeConcat(
+  left: RuntimeValue,
+  right: RuntimeValue,
+  chargeWork?: RuntimeWorkCharge,
+): string {
+  return runtimeToString(left, chargeWork) + runtimeToString(right, chargeWork);
 }
 
 /** Returns the ordering delta after closed relational primitive conversion. */
-export function runtimeOrder(left: RuntimeValue, right: RuntimeValue): number {
-  const leftPrimitive = runtimeToPrimitive(left);
-  const rightPrimitive = runtimeToPrimitive(right);
+export function runtimeOrder(
+  left: RuntimeValue,
+  right: RuntimeValue,
+  chargeWork?: RuntimeWorkCharge,
+): number {
+  const leftPrimitive = runtimeToPrimitive(left, chargeWork);
+  const rightPrimitive = runtimeToPrimitive(right, chargeWork);
   if (typeof leftPrimitive === 'string' && typeof rightPrimitive === 'string') {
     if (leftPrimitive < rightPrimitive) {
       return -1;

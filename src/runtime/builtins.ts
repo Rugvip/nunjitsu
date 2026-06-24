@@ -209,7 +209,7 @@ export function applyBuiltinFilter(
   }
   if (name === 'dump') {
     const spacing = jsonIndentation(positional[0]);
-    return JSON.stringify(toJsonValue(input), null, spacing);
+    return JSON.stringify(toJsonValue(input, new Map()), null, spacing);
   }
   if (name === 'escape' || name === 'e') {
     return input instanceof RuntimeSafeString
@@ -834,24 +834,37 @@ function escapeHtml(value: string): string {
   );
 }
 
-function toJsonValue(value: RuntimeValue): unknown {
+function toJsonValue(
+  value: RuntimeValue,
+  aliases: Map<RuntimeArray | RuntimeRecord, unknown>,
+): unknown {
   if (value instanceof RuntimeSafeString) {
     return value.value;
   }
   if (value instanceof RuntimeArray) {
+    const existing = aliases.get(value);
+    if (existing !== undefined) {
+      return existing;
+    }
     const output = Object.setPrototypeOf([], null) as unknown[];
+    aliases.set(value, output);
     output.length = value.length;
     for (let index = 0; index < value.length; index += 1) {
       if (value.has(index)) {
-        defineOwnArrayIndex(output, index, toJsonValue(value.at(index)));
+        defineOwnArrayIndex(output, index, toJsonValue(value.at(index), aliases));
       }
     }
     return output;
   }
   if (value instanceof RuntimeRecord) {
+    const existing = aliases.get(value);
+    if (existing !== undefined) {
+      return existing;
+    }
     const output = Object.create(null) as Record<string, unknown>;
+    aliases.set(value, output);
     for (const [key, item] of value.entries()) {
-      output[key] = toJsonValue(item);
+      output[key] = toJsonValue(item, aliases);
     }
     return output;
   }

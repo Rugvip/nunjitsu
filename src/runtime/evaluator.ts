@@ -68,6 +68,7 @@ import {
   RuntimeRegex,
   RuntimeSafeString,
   type RuntimeValue,
+  type RuntimeWorkCharge,
 } from './value.ts';
 
 /** Copied positional and keyword arguments for one closed call. */
@@ -215,6 +216,9 @@ class Evaluator {
   readonly #capabilityNames = new Map<number, string>();
   readonly #capabilityHandles = new Map<string, RuntimeCallable>();
   readonly #builtinGlobalHandles = new Map<BuiltinGlobalName, RuntimeCallable>();
+  readonly #chargeExpansionWork: RuntimeWorkCharge = () => {
+    this.#charge(0);
+  };
   #nextCallableId = 1;
   #workUnits = 0;
   #outputCodeUnits = 0;
@@ -311,7 +315,7 @@ class Evaluator {
             this.#append(output, literalString(child));
           } else {
             const value = this.#evaluateExpression(child, scope, macroContext, depth + 1);
-            this.#append(output, renderRuntimeValue(value));
+            this.#append(output, renderRuntimeValue(value, this.#chargeExpansionWork));
           }
         }
         return;
@@ -448,7 +452,7 @@ class Evaluator {
     } else {
       throw new Error(`Invalid loop target ${binding.type}`);
     }
-    const entries = iterableEntries(value, targets.length);
+    const entries = iterableEntries(value, targets.length, this.#chargeExpansionWork);
     const loopScope = scope.child();
     const loopPlan = macroContext.lexicalPlan.loop(node);
     const bodyPlan = loopPlan.body(
@@ -478,7 +482,7 @@ class Evaluator {
         loopMacroContext.lexicalFrame,
         loopMacroContext.lexicalPlan,
       );
-      const numericLength = runtimeToNumber(loopLength);
+      const numericLength = runtimeToNumber(loopLength, this.#chargeExpansionWork);
       bindRuntimeFrameLocal('loop', new RuntimeRecord([
         ['index', index + 1],
         ['index0', index],
@@ -676,6 +680,7 @@ class Evaluator {
             ? symbolName(keyNode)
             : runtimeToPropertyKey(
               this.#evaluateExpression(keyNode, scope, macroContext, depth + 1),
+              this.#chargeExpansionWork,
             );
           if (isReservedName(name)) {
             throw new Error(`Template name ${name} is reserved`);
@@ -719,7 +724,10 @@ class Evaluator {
         }
         const key = this.#evaluateExpression(valueNode, scope, macroContext, depth + 1);
         if (target instanceof RuntimeCallable && target.callableKind === 'builtin') {
-          return this.#lookupBuiltinCallable(target.id, runtimeToPropertyKey(key));
+          return this.#lookupBuiltinCallable(
+            target.id,
+            runtimeToPropertyKey(key, this.#chargeExpansionWork),
+          );
         }
         return freshMemberCallable(lookupRuntimeValue(target, key));
       }
@@ -752,14 +760,17 @@ class Evaluator {
       case 'Neg':
         return -runtimeToNumber(
           this.#evaluateExpression(node.target, scope, macroContext, depth + 1),
+          this.#chargeExpansionWork,
         );
       case 'Pos':
         return runtimeToNumber(
           this.#evaluateExpression(node.target, scope, macroContext, depth + 1),
+          this.#chargeExpansionWork,
         );
       case 'Floor':
         return Math.floor(runtimeToNumber(
           this.#evaluateExpression(node.target, scope, macroContext, depth + 1),
+          this.#chargeExpansionWork,
         ));
       case 'Add':
       case 'Concat':
@@ -774,7 +785,7 @@ class Evaluator {
       case 'In': {
         const needle = this.#evaluateExpression(node.left, scope, macroContext, depth + 1);
         const container = this.#evaluateExpression(node.right, scope, macroContext, depth + 1);
-        return runtimeContains(container, needle);
+        return runtimeContains(container, needle, this.#chargeExpansionWork);
       }
       case 'Is':
         return this.#evaluateTest(node, scope, macroContext, depth + 1);
@@ -812,31 +823,36 @@ class Evaluator {
     let start = this.#evaluateExpression(slice.start, scope, macroContext, depth + 1);
     let stop = this.#evaluateExpression(slice.stop, scope, macroContext, depth + 1);
     const step = this.#evaluateExpression(slice.step, scope, macroContext, depth + 1);
-    const numericStep = runtimeToNumber(step);
+    const numericStep = runtimeToNumber(step, this.#chargeExpansionWork);
     if (!Number.isFinite(numericStep) || numericStep === 0) {
       throw new Error('Slice step must have finite non-zero numeric coercion');
     }
-    const stepOrder = runtimeOrder(step, 0);
+    const stepOrder = runtimeOrder(step, 0, this.#chargeExpansionWork);
     if (start === null) {
-      start = stepOrder < 0 ? runtimeToNumber(length) - 1 : 0;
+      start = stepOrder < 0
+        ? runtimeToNumber(length, this.#chargeExpansionWork) - 1
+        : 0;
     }
     if (stop === null) {
       stop = stepOrder < 0 ? -1 : length;
-    } else if (runtimeOrder(stop, 0) < 0) {
-      stop = runtimeAdd(stop, length);
+    } else if (runtimeOrder(stop, 0, this.#chargeExpansionWork) < 0) {
+      stop = runtimeAdd(stop, length, this.#chargeExpansionWork);
     }
-    if (runtimeOrder(start, 0) < 0) {
-      start = runtimeAdd(start, length);
+    if (runtimeOrder(start, 0, this.#chargeExpansionWork) < 0) {
+      start = runtimeAdd(start, length, this.#chargeExpansionWork);
     }
     const output: RuntimeValue[] = [];
     let scratchBytes = 0;
-    for (let index = start; ; index = runtimeAdd(index, step)) {
-      if (runtimeOrder(index, 0) < 0 || runtimeOrder(index, length) > 0) {
+    for (let index = start; ; index = runtimeAdd(index, step, this.#chargeExpansionWork)) {
+      if (
+        runtimeOrder(index, 0, this.#chargeExpansionWork) < 0 ||
+        runtimeOrder(index, length, this.#chargeExpansionWork) > 0
+      ) {
         break;
       }
       if (
-        (stepOrder > 0 && runtimeOrder(index, stop) >= 0) ||
-        (stepOrder < 0 && runtimeOrder(index, stop) <= 0)
+        (stepOrder > 0 && runtimeOrder(index, stop, this.#chargeExpansionWork) >= 0) ||
+        (stepOrder < 0 && runtimeOrder(index, stop, this.#chargeExpansionWork) <= 0)
       ) {
         break;
       }
@@ -844,7 +860,10 @@ class Evaluator {
       const value = lookupRuntimeValue(target, index);
       assertRuntimeValueHasNoCallable(value);
       if (this.#options.limits.scratchBytes !== Number.POSITIVE_INFINITY) {
-        scratchBytes += indexedValueScratchBytes + runtimeValueBytes(value);
+        scratchBytes += indexedValueScratchBytes + runtimeValueBytes(
+          value,
+          this.#chargeExpansionWork,
+        );
         if (scratchBytes > this.#options.limits.scratchBytes) {
           throw new NunjitsuLimitError('scratchBytes', {
             phase: 'evaluate',
@@ -867,13 +886,13 @@ class Evaluator {
     const left = this.#evaluateExpression(node.left, scope, macroContext, depth + 1);
     const right = this.#evaluateExpression(node.right, scope, macroContext, depth + 1);
     if (node.type === 'Concat') {
-      return runtimeConcat(left, right);
+      return runtimeConcat(left, right, this.#chargeExpansionWork);
     }
     if (node.type === 'Add') {
-      return runtimeAdd(left, right);
+      return runtimeAdd(left, right, this.#chargeExpansionWork);
     }
-    const leftNumber = runtimeToNumber(left);
-    const rightNumber = runtimeToNumber(right);
+    const leftNumber = runtimeToNumber(left, this.#chargeExpansionWork);
+    const rightNumber = runtimeToNumber(right, this.#chargeExpansionWork);
     switch (node.type) {
       case 'Sub': return leftNumber - rightNumber;
       case 'Mul': return leftNumber * rightNumber;
@@ -894,7 +913,12 @@ class Evaluator {
     let result = false;
     for (const operation of node.ops) {
       const right = this.#evaluateExpression(operation.expr, scope, macroContext, depth + 1);
-      result = runtimeCompare(left, operation.operator, right);
+      result = runtimeCompare(
+        left,
+        operation.operator,
+        right,
+        this.#chargeExpansionWork,
+      );
       left = result;
     }
     return result;
@@ -994,6 +1018,7 @@ class Evaluator {
     const arguments_ = argumentsNode
       ? this.#evaluateArguments(argumentsNode, scope, macroContext, depth + 1)
       : Object.freeze({ positional: Object.freeze([]), keyword: new Map() });
+    this.#chargeExpandedValues([input, ...arguments_.positional]);
     let builtin: boolean | undefined;
     try {
       builtin = applyBuiltinTest(name, input, arguments_.positional);
@@ -1048,7 +1073,7 @@ class Evaluator {
       keyword,
     });
     const value = this.#invokeMacro(target.id, arguments_, depth + 1);
-    this.#append(output, renderRuntimeValue(value));
+    this.#append(output, renderRuntimeValue(value, this.#chargeExpansionWork));
   }
 
   #evaluateCall(
@@ -1120,6 +1145,7 @@ class Evaluator {
             ? symbolName(keyNode)
             : runtimeToPropertyKey(
               this.#evaluateExpression(keyNode, scope, macroContext, depth + 1),
+              this.#chargeExpansionWork,
             );
           if (isReservedName(name)) {
             throw new Error(`Template name ${name} is reserved`);
@@ -1294,6 +1320,7 @@ class Evaluator {
   #invokeBuiltinGlobal(name: BuiltinGlobalName, arguments_: RuntimeArguments): RuntimeValue {
     assertRuntimeArgumentsHaveNoCallable(arguments_);
     if (name === 'range') {
+      this.#chargeExpandedValues(arguments_.positional);
       let start = arguments_.positional[0];
       let stop = arguments_.positional[1];
       let step = arguments_.positional[2];
@@ -1305,13 +1332,21 @@ class Evaluator {
         step = 1;
       }
       const output: RuntimeValue[] = [];
-      if (runtimeOrder(step, 0) > 0) {
-        for (let value = start; runtimeOrder(value, stop) < 0; value = runtimeAdd(value, step)) {
+      if (runtimeOrder(step, 0, this.#chargeExpansionWork) > 0) {
+        for (
+          let value = start;
+          runtimeOrder(value, stop, this.#chargeExpansionWork) < 0;
+          value = runtimeAdd(value, step, this.#chargeExpansionWork)
+        ) {
           output.push(value);
           this.#charge(0);
         }
       } else {
-        for (let value = start; runtimeOrder(value, stop) > 0; value = runtimeAdd(value, step)) {
+        for (
+          let value = start;
+          runtimeOrder(value, stop, this.#chargeExpansionWork) > 0;
+          value = runtimeAdd(value, step, this.#chargeExpansionWork)
+        ) {
           output.push(value);
           this.#charge(0);
         }
@@ -1485,13 +1520,11 @@ class Evaluator {
   }
 
   #assertScratch(values: Iterable<RuntimeValue>): number {
-    if (this.#options.limits.scratchBytes === Number.POSITIVE_INFINITY) {
-      return 0;
-    }
+    const bounded = this.#options.limits.scratchBytes !== Number.POSITIVE_INFINITY;
     let bytes = 0;
     for (const value of values) {
-      bytes += runtimeValueBytes(value);
-      if (bytes > this.#options.limits.scratchBytes) {
+      bytes += runtimeValueBytes(value, this.#chargeExpansionWork);
+      if (bounded && bytes > this.#options.limits.scratchBytes) {
         throw new NunjitsuLimitError('scratchBytes', {
           phase: 'evaluate',
           configured: this.#options.limits.scratchBytes,
@@ -1499,7 +1532,13 @@ class Evaluator {
         });
       }
     }
-    return bytes;
+    return bounded ? bytes : 0;
+  }
+
+  #chargeExpandedValues(values: Iterable<RuntimeValue>): void {
+    for (const value of values) {
+      chargeRuntimeValueExpansion(value, this.#chargeExpansionWork);
+    }
   }
 
   #reserveIndexedValues(count: number, existingScratchBytes: number): void {
@@ -1772,7 +1811,11 @@ function bindAssignment(target: AstNode, value: RuntimeValue, scope: RuntimeScop
   scope.assign(symbolName(target), value);
 }
 
-function iterableEntries(value: RuntimeValue, targetCount: number): RuntimeIteration {
+function iterableEntries(
+  value: RuntimeValue,
+  targetCount: number,
+  chargeWork?: RuntimeWorkCharge,
+): RuntimeIteration {
   const compilerBranch =
     value instanceof RuntimeArray || value instanceof RuntimeSafeString
       ? 'array'
@@ -1783,7 +1826,11 @@ function iterableEntries(value: RuntimeValue, targetCount: number): RuntimeItera
     }
     if (value instanceof RuntimeRecord) {
       const length = value.get('length');
-      return { compilerBranch, length, values: recordIndexValues(value, length) };
+      return {
+        compilerBranch,
+        length,
+        values: recordIndexValues(value, length, chargeWork),
+      };
     }
     if (typeof value === 'string' || value instanceof RuntimeSafeString) {
       const text = typeof value === 'string' ? value : value.value;
@@ -1833,8 +1880,9 @@ function destructureRuntimeValue(value: RuntimeValue, index: number): RuntimeVal
 function* recordIndexValues(
   value: RuntimeRecord,
   length: RuntimeValue,
+  chargeWork?: RuntimeWorkCharge,
 ): IterableIterator<RuntimeValue> {
-  const numericLength = runtimeToNumber(length);
+  const numericLength = runtimeToNumber(length, chargeWork);
   for (let index = 0; index < numericLength; index += 1) {
     yield value.get(`${index}`);
   }
@@ -1854,16 +1902,21 @@ function* indexedStringIterationValues(value: string): IterableIterator<RuntimeV
 
 function* emptyRuntimeValues(): IterableIterator<RuntimeValue> {}
 
-function runtimeCompare(left: RuntimeValue, operator: string, right: RuntimeValue): boolean {
+function runtimeCompare(
+  left: RuntimeValue,
+  operator: string,
+  right: RuntimeValue,
+  chargeWork?: RuntimeWorkCharge,
+): boolean {
   switch (operator) {
-    case '==': return runtimeLooseEqual(left, right);
+    case '==': return runtimeLooseEqual(left, right, chargeWork);
     case '===': return runtimeStrictEqual(left, right);
-    case '!=': return !runtimeLooseEqual(left, right);
+    case '!=': return !runtimeLooseEqual(left, right, chargeWork);
     case '!==': return !runtimeStrictEqual(left, right);
-    case '<': return runtimeOrder(left, right) < 0;
-    case '<=': return runtimeOrder(left, right) <= 0;
-    case '>': return runtimeOrder(left, right) > 0;
-    case '>=': return runtimeOrder(left, right) >= 0;
+    case '<': return runtimeOrder(left, right, chargeWork) < 0;
+    case '<=': return runtimeOrder(left, right, chargeWork) <= 0;
+    case '>': return runtimeOrder(left, right, chargeWork) > 0;
+    case '>=': return runtimeOrder(left, right, chargeWork) >= 0;
     default: throw new Error(`Unsupported comparison operator ${operator}`);
   }
 }
@@ -1929,12 +1982,16 @@ function argumentSyntax(
   return { positionalCount, keywordCount };
 }
 
-function runtimeContains(container: RuntimeValue, needle: RuntimeValue): boolean {
+function runtimeContains(
+  container: RuntimeValue,
+  needle: RuntimeValue,
+  chargeWork?: RuntimeWorkCharge,
+): boolean {
   if (typeof container === 'string') {
-    return container.includes(runtimeToString(needle));
+    return container.includes(runtimeToString(needle, chargeWork));
   }
   if (container instanceof RuntimeSafeString) {
-    const propertyKey = runtimeToPropertyKey(needle);
+    const propertyKey = runtimeToPropertyKey(needle, chargeWork);
     return propertyKey === 'length' || propertyKey === 'val';
   }
   if (container instanceof RuntimeArray) {
@@ -1946,27 +2003,49 @@ function runtimeContains(container: RuntimeValue, needle: RuntimeValue): boolean
     return false;
   }
   if (container instanceof RuntimeRecord) {
-    return container.has(runtimeToPropertyKey(needle));
+    return container.has(runtimeToPropertyKey(needle, chargeWork));
   }
   throw new Error('Membership requires an array, record, or string');
 }
 
-function runtimeValueBytes(value: RuntimeValue): number {
+function runtimeValueBytes(
+  value: RuntimeValue,
+  chargeWork?: RuntimeWorkCharge,
+): number {
   if (value instanceof RuntimeArray) {
     let bytes = 0;
     for (const item of value.values()) {
-      bytes += runtimeValueBytes(item);
+      chargeWork?.();
+      bytes += runtimeValueBytes(item, chargeWork);
     }
     return bytes;
   }
   if (value instanceof RuntimeRecord) {
     let bytes = 0;
     for (const [key, item] of value.entries()) {
-      bytes += Buffer.byteLength(key) + runtimeValueBytes(item);
+      chargeWork?.();
+      bytes += Buffer.byteLength(key) + runtimeValueBytes(item, chargeWork);
     }
     return bytes;
   }
-  return Buffer.byteLength(renderRuntimeValue(value));
+  return Buffer.byteLength(renderRuntimeValue(value, chargeWork));
+}
+
+function chargeRuntimeValueExpansion(
+  value: RuntimeValue,
+  chargeWork: RuntimeWorkCharge,
+): void {
+  if (value instanceof RuntimeArray) {
+    for (const item of value.values()) {
+      chargeWork();
+      chargeRuntimeValueExpansion(item, chargeWork);
+    }
+  } else if (value instanceof RuntimeRecord) {
+    for (const [, item] of value.entries()) {
+      chargeWork();
+      chargeRuntimeValueExpansion(item, chargeWork);
+    }
+  }
 }
 
 function unknownRuntimeName(

@@ -5628,6 +5628,42 @@ test('enforces finite resource limits and recovers after failures', () => {
   );
 });
 
+test('charges repeated alias expansion against evaluator work', () => {
+  const engine = createEngine();
+  const oracle = new nunjucks.Environment(undefined, { autoescape: false });
+  const assignments = (depth: number) => [
+    '{% set value = "a" %}',
+    '{% set value = [value, value] %}'.repeat(depth),
+  ].join('');
+
+  const ordinaryDepth = 8;
+  for (const [engineTail, oracleTail] of [
+    ['${{ value }}', '{{ value }}'],
+    ['${{ (value ~ "") | length }}', '{{ (value ~ "") | length }}'],
+    ['${{ value | dump | length }}', '{{ value | dump | length }}'],
+  ]) {
+    assert.equal(
+      engine.render(assignments(ordinaryDepth) + engineTail),
+      oracle.renderString(assignments(ordinaryDepth) + oracleTail, {}),
+    );
+  }
+
+  const hostileDepth = 24;
+  for (const [tail, limits] of [
+    ['${{ value }}', { workUnits: 1_000, outputCodeUnits: 0 }],
+    ['${{ value | length }}', { workUnits: 1_000, scratchBytes: 0 }],
+    ['${{ (value ~ "") | length }}', { workUnits: 1_000 }],
+    ['${{ value | dump | length }}', { workUnits: 1_000 }],
+  ] as const) {
+    assert.throws(
+      () => engine.render(assignments(hostileDepth) + tail, {}, { limits }),
+      error => error instanceof NunjitsuLimitError && error.limit === 'workUnits',
+      tail,
+    );
+  }
+  assert.equal(engine.render('clean'), 'clean');
+});
+
 test('wraps parse and evaluation failures without retaining render state', () => {
   const engine = createEngine();
 

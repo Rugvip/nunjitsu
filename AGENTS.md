@@ -134,9 +134,10 @@ implementation and documentation aligned with the architecture in
   model; do not expose prototypes, getters, arbitrary functions, or live host
   objects. Host behavior requires explicit capability handles.
 - Apply high finite cooperative resource limits by default on every render.
-  Account for source size, AST nodes, evaluator work, depth, output,
-  filter-argument scratch size, and capability calls. Do not describe these
-  checks as general heap limits, process isolation, or exact CPU/RSS accounting.
+  Account for source size, AST nodes, evaluator work, logical array and record
+  expansion, depth, output, filter-argument scratch size, and capability calls.
+  Do not describe these checks as general heap limits, process isolation, or
+  exact CPU/RSS accounting.
 - Accept inline template source only. Filesystem discovery and path policy
   belong to the application outside Nunjitsu. Reject include, import, from, and
   extends because the secure direct-string API does not support template loading.

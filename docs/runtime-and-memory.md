@@ -558,10 +558,13 @@ interpreter nesting depth, rendered output code units, filter-argument scratch
 size, and capability calls. The scratch limit estimates the UTF-8 size of the
 closed values passed into a filter plus fixed-size slots projected for indexed
 array-like record materialization; it is not a general allocation or heap
-limit. Indexed positions, including missing sparse positions, are charged as
-work and reserved before iteration or allocation. Output growth uses JavaScript
-string length as a cheap memory-pressure guard and is intentionally UTF-16
-code-unit rather than exact byte accounting.
+limit. Every logical array or record entry visited while rendering, coercing,
+serializing, or measuring a value is charged as evaluator work. Repeated aliases
+therefore consume work for every observable occurrence without changing their
+identity or successful output. Indexed positions, including missing sparse
+positions, are charged as work and reserved before iteration or allocation.
+Output growth uses JavaScript string length as a cheap memory-pressure guard and
+is intentionally UTF-16 code-unit rather than exact byte accounting.
 Nesting depth is checked before evaluating each statement and expression node.
 These are cooperative availability safeguards, not a process sandbox or exact
 CPU/RSS accounting.

@@ -298,7 +298,7 @@ Every render uses high finite cooperative defaults:
 | --- | ---: | --- |
 | `sourceCodeUnits` | `4_194_304` | Total UTF-16 source code units parsed. |
 | `astNodes` | `1_000_000` | Immutable AST nodes created. |
-| `workUnits` | `1_000_000` | Cap applied to duplicated static planning and evaluator work. |
+| `workUnits` | `1_000_000` | Cap applied to duplicated static planning, evaluator work, and logical value expansion. |
 | `nestingDepth` | `512` | Nested interpreter evaluation depth. |
 | `outputCodeUnits` | `16_777_216` | UTF-16 code units in the returned string. |
 | `scratchBytes` | `67_108_864` | Estimated UTF-8 bytes supplied to one filter. |
