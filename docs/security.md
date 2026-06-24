@@ -193,8 +193,9 @@ Template-controlled data is revalidated whenever its role changes:
   defaulted caller formals cannot hide an inherited call-site slot, and loop
   metadata cannot overwrite or discard a direct callable value;
 - repeated loop entry reuses only compiler-owned direct and control storage for
-  the enclosing function invocation; branch-specific target slots cannot be
-  conflated to expose or discard callable authority in a later `else` body;
+  the enclosing function invocation; branch-specific target slots and safe-
+  string array-branch classification cannot be conflated to expose or discard
+  callable authority in a later `else` body;
 - standalone blocks carry no inheritance chain and synthesize no `super`
   authority; call blocks target only macros, and their `caller` handle cannot
   cross or be silently discarded at capability or built-in boundaries;

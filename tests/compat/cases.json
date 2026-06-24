@@ -893,6 +893,12 @@
       "template": "{% for flag in [true,false] %}{% for value in [1] %}{% if flag %}{% macro guard() %}G{% endmacro %}{% endif %}[{{ guard is callable }}]{% endfor %}{% endfor %}|{% macro retained() %}R{% endmacro %}{% for values in [[retained],[]] %}{% for item in values %}{{ item() }}{% else %}[{{ item is callable }}]{% endfor %}{% endfor %}|{% for values in [\"a\",\"\"] %}{% for item in values %}{{ item }}{% else %}unexpected{% endfor %}{% endfor %}|{% for values in [[[retained,1]],[]] %}{% for item,value in values %}{{ item() }}={{ value }}{% else %}[{{ item is undefined }}={{ value is undefined }}]{% endfor %}{% endfor %}|{% for values in [[[true,1]],{}] %}{% for flag,value in values %}{% if flag %}{% macro branch() %}B{% endmacro %}{% endif %}[{{ branch is callable }}]{% else %}[{{ branch is callable }}]{% endfor %}{% endfor %}",
       "context": {},
       "expected": "[true][true]|R[true]|a|R=1[true=true]|[true][false]"
+    },
+    {
+      "id": "compiler-safe-string-loop-branch",
+      "template": "{% for values in [\"a\"|safe,[]] %}{% for first,second in values %}{% macro safeArray() %}G{% endmacro %}{% else %}[{{ safeArray is callable }}]{% endfor %}{% endfor %}|{% for values in [\"a\"|safe,\"\"|safe] %}{% for first,second in values %}{% macro safeEmpty() %}G{% endmacro %}{% else %}[{{ safeEmpty is callable }}]{% endfor %}{% endfor %}|{% for values in [\"a\",[]] %}{% for first,second in values %}{% macro primitive() %}G{% endmacro %}{% else %}[{{ primitive is callable }}]{% endfor %}{% endfor %}|{% for values in [[[\"a\",1]],[]] %}{% for first,second in values %}{% macro arrayValue() %}G{% endmacro %}{% else %}[{{ arrayValue is callable }}]{% endfor %}{% endfor %}|{% for values in [{first:1},{}] %}{% for first,second in values %}{% macro recordValue() %}G{% endmacro %}{% else %}[{{ recordValue is callable }}]{% endfor %}{% endfor %}|{% for values in [\"a\"|safe,\"\"|safe] %}{% for item in values %}{% macro singleValue() %}G{% endmacro %}{% else %}[{{ singleValue is callable }}]{% endfor %}{% endfor %}",
+      "context": {},
+      "expected": "[false]|[false]|[true]|[false]|[true]|[true]"
     }
   ]
 }

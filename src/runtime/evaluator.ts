@@ -118,6 +118,7 @@ interface MacroBindingContext {
 
 /** One non-materializing view over values accepted by a template loop. */
 interface RuntimeIteration {
+  readonly compilerBranch: 'array' | 'record';
   readonly length: RuntimeValue;
   readonly values: IterableIterator<RuntimeValue>;
 }
@@ -416,7 +417,7 @@ class Evaluator {
     const loopPlan = macroContext.lexicalPlan.loop(node);
     const bodyPlan = loopPlan.body(
       targets.length,
-      value instanceof RuntimeArray,
+      entries.compilerBranch === 'array',
     );
     const loopMacroContext = createMacroBindingContext(
       macroContext.lexicalFrame,
@@ -1594,33 +1595,45 @@ function bindAssignment(target: AstNode, value: RuntimeValue, scope: RuntimeScop
 }
 
 function iterableEntries(value: RuntimeValue, targetCount: number): RuntimeIteration {
+  const compilerBranch =
+    value instanceof RuntimeArray || value instanceof RuntimeSafeString
+      ? 'array'
+      : 'record';
   if (targetCount === 1) {
     if (value instanceof RuntimeArray) {
-      return { length: value.length, values: value.values() };
+      return { compilerBranch, length: value.length, values: value.values() };
     }
     if (value instanceof RuntimeRecord) {
       const length = value.get('length');
-      return { length, values: recordIndexValues(value, length) };
+      return { compilerBranch, length, values: recordIndexValues(value, length) };
     }
     if (typeof value === 'string' || value instanceof RuntimeSafeString) {
       const text = typeof value === 'string' ? value : value.value;
-      return { length: text.length, values: stringCodeUnits(text) };
+      return { compilerBranch, length: text.length, values: stringCodeUnits(text) };
     }
-    return { length: undefined, values: emptyRuntimeValues() };
+    return { compilerBranch, length: undefined, values: emptyRuntimeValues() };
   }
   if (value instanceof RuntimeArray) {
-    return { length: value.length, values: value.values() };
+    return { compilerBranch, length: value.length, values: value.values() };
   }
   if (value instanceof RuntimeRecord) {
-    return { length: value.size, values: recordIterationValues(value) };
+    return { compilerBranch, length: value.size, values: recordIterationValues(value) };
   }
   if (typeof value === 'string') {
-    return { length: value.length, values: indexedStringIterationValues(value) };
+    return {
+      compilerBranch,
+      length: value.length,
+      values: indexedStringIterationValues(value),
+    };
   }
   if (value instanceof RuntimeSafeString) {
-    return { length: value.value.length, values: stringCodeUnits(value.value) };
+    return {
+      compilerBranch,
+      length: value.value.length,
+      values: stringCodeUnits(value.value),
+    };
   }
-  return { length: 0, values: emptyRuntimeValues() };
+  return { compilerBranch, length: 0, values: emptyRuntimeValues() };
 }
 
 function destructureRuntimeValue(value: RuntimeValue, index: number): RuntimeValue {

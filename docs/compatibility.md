@@ -49,6 +49,8 @@ Nunjitsu targets:
 - compiled-function lifetime for nested-loop target, macro, and length
   temporaries across repeated entries, including separate multi-target array
   and record mappings and record-mapped `else` bodies;
+- array-branch selection for multi-target safe-string loops after iterable
+  conversion, while primitive strings retain record-branch behavior;
 - Nunjucks-compatible UTF-16 code-unit semantics for string length, lookup,
   iteration, ordering, filters, replacement, and Jinja-compatible slicing;
 - pinned Jinja slice lookup semantics, including raw fractional and string

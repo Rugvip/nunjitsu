@@ -150,6 +150,12 @@
       "upstream": ["tests/compiler.js:17", "tests/compiler.js:20", "tests/compiler.js:22"]
     },
     {
+      "id": "safe-string-loop-branch",
+      "file": "tests/source/runtime.test.ts",
+      "test": "selects safe-string loop compiler branches with iteration semantics",
+      "upstream": ["tests/compiler.js:17", "tests/compiler.js:20"]
+    },
+    {
       "id": "callable-identity",
       "file": "tests/source/runtime.test.ts",
       "test": "matches Nunjucks canonical global and fresh member callable identities",

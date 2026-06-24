@@ -376,7 +376,10 @@ guarded assignment before `else` selection. New root, block, ordinary macro,
 and synthetic-caller invocations allocate fresh storage. Multi-target loops
 carry separate array-branch and record-branch plans; their `else` body uses the
 final record-branch mapping. Repeated static planning caused by those duplicated
-branches is bounded by the render work limit.
+branches is bounded by the render work limit. The iteration planner owns both
+the value iterator and compiler-branch classification: arrays and safe strings
+select the array plan after iterable-wrapper conversion, while records,
+primitive strings, and other values select the record plan.
 
 Positional macro and synthetic-caller formals and loop targets receive direct
 slots as well as runtime bindings. Defaulted formals remain runtime-frame-only,
