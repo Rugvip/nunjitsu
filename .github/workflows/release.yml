@@ -46,16 +46,26 @@ jobs:
               fi
               echo "Release ${tag} already exists at ${commit}"
             else
+              version="${tag#v}"
+              release_notes="$RUNNER_TEMP/release-notes-${version}.md"
+              node scripts/release/formatGitHubReleaseIntroduction.mjs \
+                "$GITHUB_REPOSITORY" "$tag" > "$release_notes"
+              release_args=(
+                "$tag"
+                --generate-notes
+                --notes-file "$release_notes"
+              )
               if git show-ref --verify --quiet "refs/tags/${tag}"; then
                 tagged_commit="$(git rev-parse "${tag}^{commit}")"
                 if [[ "$tagged_commit" != "$commit" ]]; then
                   echo "Tag ${tag} points to ${tagged_commit}, expected ${commit}" >&2
                   exit 1
                 fi
-                gh release create "$tag" --generate-notes --verify-tag
+                release_args+=(--verify-tag)
               else
-                gh release create "$tag" --generate-notes --target "$commit"
+                release_args+=(--target "$commit")
               fi
+              gh release create "${release_args[@]}"
             fi
 
             existing_run="$(

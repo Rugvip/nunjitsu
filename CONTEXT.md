@@ -173,10 +173,6 @@ belong here so those pages can remain readable.
   a repository npm token. On pushes to `main`, `.github/workflows/release.yml`
   must inspect every new first-parent commit and create each missing stable
   release at the exact commit where `package.json` changed version.
-- Generate changelog entries through `scripts/release/changelog.mjs`. Preserve
-  changeset summary text and dependency versions without adding commit hashes
-  or repository metadata to `CHANGELOG.md`.
-
 Human-facing explanations of these constraints live in:
 
 - [`docs/architecture.md`](docs/architecture.md)

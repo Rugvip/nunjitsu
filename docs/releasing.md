@@ -30,7 +30,8 @@ commit changes `package.json` to a stable version without an existing release,
 the workflow:
 
 1. creates `v<version>` at that exact commit;
-2. publishes the corresponding GitHub Release with generated notes; and
+2. publishes the corresponding GitHub Release with a link to that version's
+   changelog entry and generated notes for the full commit range; and
 3. dispatches `.github/workflows/publish.yml` for that tag.
 
 This means a push containing multiple version commits produces one correctly

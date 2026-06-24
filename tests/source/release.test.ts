@@ -14,6 +14,10 @@ const candidatesScript = fileURLToPath(new URL(
   '../../scripts/release/findReleaseCandidates.mjs',
   import.meta.url,
 ));
+const releaseIntroductionScript = fileURLToPath(new URL(
+  '../../scripts/release/formatGitHubReleaseIntroduction.mjs',
+  import.meta.url,
+));
 const changesetConfigUrl = new URL('../../.changeset/config.json', import.meta.url);
 const changesetConfig = JSON.parse(readFileSync(
   changesetConfigUrl,
@@ -163,4 +167,33 @@ test('formats changelog entries without commit hashes', () => {
     release: '- Improve template handling\n  with additional context.',
   });
   assert.doesNotMatch(result.stdout, /abcdef1/);
+});
+
+test('formats version-specific GitHub release introductions', () => {
+  const result = spawnSync(
+    process.execPath,
+    [releaseIntroductionScript, 'Rugvip/nunjitsu', 'v1.2.3'],
+    { encoding: 'utf8' },
+  );
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(
+    result.stdout,
+    'See the [1.2.3 changelog entry]' +
+      '(https://github.com/Rugvip/nunjitsu/blob/main/CHANGELOG.md#123) ' +
+      'for the curated release highlights.\n\n' +
+      'The generated notes below cover the complete commit range since the ' +
+      'previous release.\n',
+  );
+
+  for (const [repository, tag] of [
+    ['invalid', 'v1.2.3'],
+    ['Rugvip/nunjitsu', 'v1.2.3-beta.1'],
+  ] as const) {
+    const rejected = spawnSync(
+      process.execPath,
+      [releaseIntroductionScript, repository, tag],
+      { encoding: 'utf8' },
+    );
+    assert.notEqual(rejected.status, 0);
+  }
 });
