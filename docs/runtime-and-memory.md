@@ -166,8 +166,10 @@ input as an empty collection. Text filters separately model Nunjucks's
 false/nullish-to-empty normalization and its strict string-only operations.
 Supported keyword arguments are resolved by map presence, preserving explicit
 nullish values. Safe strings remain engine-owned text for these operations;
-Nunjitsu does not reproduce accidental indexed-property gaps from Nunjucks's
-JavaScript `String` wrapper implementation. The `string` filter rejects nullish
+only the pinned map-before-method path of truthy-attribute `join` and `sum`
+reproduces their JavaScript-wrapper numeric lookup gap. An empty safe string
+therefore projects no values, while a non-empty wrapper reaches a missing
+numeric value and fails attribute lookup. The `string` filter rejects nullish
 input, `length` preserves absent results for unsupported scalars, and
 `urlencode` applies closed numeric pair lookup to every sequence entry rather
 than silently discarding malformed entries.
@@ -186,8 +188,10 @@ Array-like records remain records with an own raw `length` and canonical
 numeric keys; they are not admitted to the shared array/string sequence helper.
 Filters reproduce their individual indexed algorithms: direct edge lookup,
 comparison-loop collection, map-style length assignment, slice-style presence
-checks, or one cryptographically selected index. Missing positions become
-closed `undefined` only on algorithms that perform a direct lookup. Native
+checks, or one cryptographically selected index. Truthy-attribute `join` and
+`sum` use map-style projection before invoking their closed join or reduction;
+their falsey-attribute forms remain array-only. Missing positions become closed
+`undefined` only on algorithms that perform a direct lookup. Other native
 array-method filters continue to reject records, while record-oriented filters
 continue to enumerate record entries.
 
@@ -203,8 +207,9 @@ object property.
 Stateful and reducing built-ins retain closed value types while they operate.
 `range` selects its short form when the stop value is absent, compares each
 current value and step through closed ordering, and increments through closed
-addition. `sum` reduces elements from numeric zero through closed addition and
-only then adds the original start value. `joiner` retains its original truthy
+addition. `sum` first performs its truthy-attribute projection when requested,
+reduces present elements from numeric zero through closed addition, and only
+then adds the original start value. `joiner` retains its original truthy
 separator value and returns that exact closed value after its first call.
 Coercion therefore occurs only at a later operation that actually requires it.
 `cycler` starts with a `null` current value, advances to `undefined` when

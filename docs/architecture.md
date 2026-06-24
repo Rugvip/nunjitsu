@@ -163,6 +163,15 @@ its formal slot before a same-named keyword is considered. Every original value
 is recursively callable-checked before ignored keywords or surplus positionals
 are discarded.
 
+Built-in collection behavior follows each pinned implementation rather than a
+generic iterable abstraction. In particular, a truthy `join` or `sum`
+attribute triggers a closed map-before-method projection. Nullish values and
+scalars without an indexed length project to an empty array, primitive strings
+project UTF-16 code units, sparse arrays retain holes, and array-like records
+use their raw own length. The falsey-attribute forms still require an array.
+This reproduces observable dispatch without consulting host iteration,
+properties, methods, or coercion hooks.
+
 Operation validation precedes attacker-controlled operands. Call blocks resolve
 and require a macro before evaluating arguments or registering their caller
 body. Filter and test names, including tests named through `select` and

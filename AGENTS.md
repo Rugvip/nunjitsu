@@ -324,11 +324,12 @@ Do not create additional packages without a documented architectural reason.
 - Handle array-like records per operation rather than through the generic
   sequence path. Preserve direct `first`, raw-length `last`, indexed-loop
   `batch` and `groupby`, map-style `reverse` and `sort`, slice-style `select`
-  and `reject`, and cryptographic `random` behavior. Keep record semantics for
-  `list`, `length`, `urlencode`, and `dictsort`, and reject record input for
-  method-dependent filters such as `join`, `slice`, `sum`, and attribute
-  selection. Reserve projected indexed work and scratch slots before iterating
-  or allocating sparse record positions.
+  and `reject`, truthy-attribute map-before-method `join` and `sum`, and
+  cryptographic `random` behavior. Keep record semantics for `list`, `length`,
+  `urlencode`, and `dictsort`, and reject record input for `slice`, attribute
+  selection, and falsey-attribute `join` and `sum`. Reserve projected indexed
+  work and scratch slots before iterating or allocating sparse record
+  positions.
 - Handle sparse interpreter arrays per operation. Membership, reductions,
   selection, attribute projection, URL encoding, and sort callbacks
   skip holes; reverse, sort, list, and slice preserve hole positions; loops,
@@ -337,7 +338,10 @@ Do not create additional packages without a documented architectural reason.
   absent frozen indices while present `undefined` retains its established
   public normalization.
 - Keep attribute semantics filter-specific. `join` and `sum` use one truthy
-  direct key; `selectattr` and `rejectattr` always use one direct key, including
+  direct key and project arrays, primitive strings, scalars, and array-like
+  records through the pinned map-before-method path before joining or reducing;
+  safe strings retain their wrapper-specific numeric lookup behavior.
+  `selectattr` and `rejectattr` always use one direct key, including
   the omitted `undefined` key, apply direct truthiness only, and ignore surplus
   evaluated non-callable arguments; `sort` and `groupby` use an empty path for
   a falsey attribute, split only primitive strings on dots, and treat every

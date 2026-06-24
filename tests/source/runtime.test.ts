@@ -2320,6 +2320,137 @@ test('matches Nunjucks array-like record filter semantics', () => {
   }
 });
 
+test('matches Nunjucks join and sum attribute projection semantics', () => {
+  const successSources = [
+    [
+      '{{ missing | join(",", "x") | dump }}|',
+      '{{ null | join(",", "x") | dump }}|',
+      '{{ false | join(",", "x") | dump }}|',
+      '{{ true | join(",", "x") | dump }}|',
+      '{{ 1 | join(",", "x") | dump }}|',
+      '{{ {} | join(",", "x") | dump }}|',
+      '{{ missing | sum("x", 7) | dump }}|',
+      '{{ null | sum("x", 7) | dump }}|',
+      '{{ false | sum("x", 7) | dump }}|',
+      '{{ true | sum("x", 7) | dump }}|',
+      '{{ 1 | sum("x", 7) | dump }}|',
+      '{{ {} | sum("x", 7) | dump }}',
+    ].join(''),
+    [
+      '{{ "ab" | join(",", "length") | dump }}|',
+      '{{ "😀" | join(",", "length") | dump }}|',
+      '{{ "ab" | sum("length", 7) | dump }}|',
+      '{{ "😀" | sum("length", 7) | dump }}|',
+      '{{ ("" | safe) | join(",", "length") | dump }}|',
+      '{{ ("" | safe) | sum("length", 7) | dump }}',
+    ].join(''),
+    [
+      '{{ {"0":{x:"a"},"1":{x:"b"},length:2}',
+      ' | join(",", "x") | dump }}|',
+      '{{ {"0":{x:"a"},"1":{x:"b"},length:true}',
+      ' | join(",", "x") | dump }}|',
+      '{{ {"0":{x:"a"},"1":{x:"b"},length:"1.5"}',
+      ' | join(",", "x") | dump }}|',
+      '{{ {"0":{x:"a"},length:null} | join(",", "x") | dump }}|',
+      '{{ {"0":{x:"a"},length:"bad"} | join(",", "x") | dump }}|',
+      '{{ {"0":{x:2},"1":{x:3},length:2} | sum("x", 7) | dump }}|',
+      '{{ {"0":{x:2},"1":{x:3},length:true} | sum("x", 7) | dump }}|',
+      '{{ {"0":{x:2},"1":{x:3},length:"1.5"}',
+      ' | sum("x", 7) | dump }}|',
+      '{{ {"0":{x:2},length:null} | sum("x", 7) | dump }}|',
+      '{{ {"0":{x:2},length:"bad"} | sum("x", 7) | dump }}',
+    ].join(''),
+    [
+      '{{ missing | join(",", projected="x") | dump }}|',
+      '{{ missing | sum(projected="x") | dump }}|',
+      '{{ [{x:"a"},{x:"b"}] | join(",", "x") | dump }}|',
+      '{{ [{x:2},{x:3}] | sum("x", 7) | dump }}',
+    ].join(''),
+  ];
+
+  for (const cookiecutterCompat of [false, true]) {
+    const engineEvents: string[] = [];
+    const oracleEvents: string[] = [];
+    const markedValues = new Map<string, string>([
+      ['separator', ','],
+      ['attribute', 'x'],
+      ['keyword', 'ignored'],
+    ]);
+    const engine = createEngine({
+      cookiecutterCompat,
+      globals: {
+        empty() {
+          engineEvents.push('empty');
+          return undefined;
+        },
+        mark(value) {
+          const label = String(value);
+          engineEvents.push(label);
+          return markedValues.get(label) ?? label;
+        },
+        privileged(value) {
+          engineEvents.push(`privileged:${String(value)}`);
+          return value;
+        },
+      },
+    });
+    const oracle = new nunjucks.Environment(undefined, { autoescape: false });
+    oracle.addGlobal('empty', () => {
+      oracleEvents.push('empty');
+      return undefined;
+    });
+    oracle.addGlobal('mark', (value: unknown) => {
+      const label = String(value);
+      oracleEvents.push(label);
+      return markedValues.get(label) ?? label;
+    });
+    oracle.addGlobal('privileged', (value: unknown) => {
+      oracleEvents.push(`privileged:${String(value)}`);
+      return value;
+    });
+    for (const source of successSources) {
+      const engineSource = cookiecutterCompat
+        ? source
+        : source.replaceAll('{{', '${{');
+      assert.equal(
+        engine.render(engineSource),
+        oracle.renderString(source, {}),
+        source,
+      );
+    }
+
+    const capabilitySource = [
+      '{{ empty() | join(ignored=mark("keyword"),',
+      ' mark("separator"), mark("attribute")) | dump }}|',
+      '{{ empty() | sum(ignored=mark("keyword"), mark("attribute"), 7) | dump }}|',
+      '{% if missing | sum("x", 7) == 7 %}',
+      '{{ privileged("sum") }}{% endif %}|',
+      '{% if "ab" | join("", "length") == "11" %}',
+      '{{ privileged("join") }}{% endif %}',
+    ].join('');
+    const engineCapabilitySource = cookiecutterCompat
+      ? capabilitySource
+      : capabilitySource.replaceAll('{{', '${{');
+    assert.equal(
+      engine.render(engineCapabilitySource),
+      oracle.renderString(capabilitySource, {}),
+    );
+    assert.deepEqual(engineEvents, [
+      'empty',
+      'separator',
+      'attribute',
+      'keyword',
+      'empty',
+      'attribute',
+      'keyword',
+      'privileged:sum',
+      'privileged:join',
+    ]);
+    assert.deepEqual(oracleEvents, engineEvents);
+    assert.equal(engine.render('clean'), 'clean');
+  }
+});
+
 test('matches filter-specific Nunjucks attribute lookup semantics', () => {
   const oracle = new nunjucks.Environment(undefined, { autoescape: false });
   const context = {

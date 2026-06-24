@@ -172,6 +172,9 @@ Template-controlled data is revalidated whenever its role changes:
   comparison or addition at the same observable points as pinned Nunjucks, so
   eager numeric or string conversion cannot change strict branches or switch
   selection;
+- truthy-attribute `join` and `sum` reproduce Nunjucks's map-before-method
+  ordering through closed own lookup, including scalar-empty and array-like
+  inputs, without invoking host properties, iteration, or methods;
 - empty cyclers advance from their initial `null` state to closed `undefined`
   on `next()` and return to `null` only on reset, preventing stale state from
   selecting a capability branch that Nunjucks would skip;
@@ -379,11 +382,12 @@ nesting, rendered output, filter-argument scratch size, and trusted capability
 calls. They reduce accidental and intentional denial of service but are
 cooperative checks rather than hard isolation or general heap limits.
 
-Indexed filters over array-like records project their numeric work and
-fixed-size result slots before visiting or allocating positions. Sparse missing
-entries count toward both projections, preventing a tiny record with a hostile
-`length` from amplifying into an unbounded intermediate array before a limit
-check. The projection remains an estimate rather than exact V8 heap accounting.
+Indexed filters over array-like records, including truthy-attribute `join` and
+`sum`, project their numeric work and fixed-size result slots before visiting
+or allocating positions. Sparse missing entries count toward both projections,
+preventing a tiny record with a hostile `length` from amplifying into an
+unbounded intermediate array before a limit check. The projection remains an
+estimate rather than exact V8 heap accounting.
 
 Jinja slice syntax cannot always project its result count because string and
 fractional addition may change index type as it advances. It therefore charges

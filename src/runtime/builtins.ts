@@ -243,10 +243,10 @@ export function applyBuiltinFilter(
     return groupRuntimeValues(input, positional[0], reserveIndexedValues);
   }
   if (name === 'join') {
-    return joinRuntimeValues(input, positional);
+    return joinRuntimeValues(input, positional, reserveIndexedValues);
   }
   if (name === 'sum') {
-    return sumRuntimeValues(input, positional);
+    return sumRuntimeValues(input, positional, reserveIndexedValues);
   }
   if (name === 'sort') {
     return sortRuntimeValues(input, positional, keyword, reserveIndexedValues);
@@ -854,23 +854,21 @@ function toJsonValue(value: RuntimeValue): unknown {
 function joinRuntimeValues(
   input: RuntimeValue,
   positional: readonly RuntimeValue[],
+  reserveIndexedValues: (count: number) => void,
 ): RuntimeValue {
-  if (!(input instanceof RuntimeArray)) {
-    throw new TypeError('join requires an array');
-  }
   const separatorValue = positional[0];
   const separator = runtimeTruthy(separatorValue) ? runtimeToString(separatorValue) : '';
   const attribute = optionalDirectAttributeKey(positional[1]);
+  const values = attribute === undefined
+    ? requireRuntimeArray(input, 'join')
+    : projectRuntimeAttributeValues(input, attribute, reserveIndexedValues);
   const output: string[] = [];
-  output.length = input.length;
-  for (let index = 0; index < input.length; index += 1) {
-    if (attribute !== undefined && !input.has(index)) {
+  output.length = values.length;
+  for (let index = 0; index < values.length; index += 1) {
+    if (!values.has(index)) {
       continue;
     }
-    const value = input.at(index);
-    const item = attribute === undefined
-      ? value
-      : lookupRuntimeAttribute(value, attribute);
+    const item = values.at(index);
     defineOwnArrayIndex(
       output,
       index,
@@ -883,21 +881,71 @@ function joinRuntimeValues(
 function sumRuntimeValues(
   input: RuntimeValue,
   positional: readonly RuntimeValue[],
+  reserveIndexedValues: (count: number) => void,
 ): RuntimeValue {
-  if (!(input instanceof RuntimeArray)) {
-    throw new TypeError('sum requires an array');
-  }
   const attribute = optionalDirectAttributeKey(positional[0]);
+  const values = attribute === undefined
+    ? requireRuntimeArray(input, 'sum')
+    : projectRuntimeAttributeValues(input, attribute, reserveIndexedValues);
   let reduced: RuntimeValue = 0;
-  for (const value of input.presentValues()) {
-    reduced = runtimeAdd(
-      reduced,
-      attribute === undefined
-        ? value
-        : lookupRuntimeAttribute(value, attribute),
-    );
+  for (const value of values.presentValues()) {
+    reduced = runtimeAdd(reduced, value);
   }
   return runtimeAdd(positional[1] === undefined ? 0 : positional[1], reduced);
+}
+
+function requireRuntimeArray(input: RuntimeValue, operation: string): RuntimeArray {
+  if (!(input instanceof RuntimeArray)) {
+    throw new TypeError(`${operation} requires an array`);
+  }
+  return input;
+}
+
+function projectRuntimeAttributeValues(
+  input: RuntimeValue,
+  attribute: string,
+  reserveIndexedValues: (count: number) => void,
+): RuntimeArray {
+  if (input instanceof RuntimeArray) {
+    const output = input.copySparse();
+    for (let index = 0; index < input.length; index += 1) {
+      if (input.has(index)) {
+        defineOwnArrayIndex(
+          output,
+          index,
+          lookupRuntimeAttribute(input.at(index), attribute),
+        );
+      }
+    }
+    return new RuntimeArray(output);
+  }
+  if (typeof input === 'string') {
+    const output: RuntimeValue[] = [];
+    output.length = input.length;
+    for (let index = 0; index < input.length; index += 1) {
+      defineOwnArrayIndex(
+        output,
+        index,
+        lookupRuntimeAttribute(input[index], attribute),
+      );
+    }
+    return new RuntimeArray(output);
+  }
+  if (input instanceof RuntimeRecord) {
+    const output = mapRuntimeRecordValues(input, reserveIndexedValues);
+    for (let index = 0; index < output.length; index += 1) {
+      defineOwnArrayIndex(
+        output,
+        index,
+        lookupRuntimeAttribute(output[index], attribute),
+      );
+    }
+    return new RuntimeArray(output);
+  }
+  if (input instanceof RuntimeSafeString && input.value.length > 0) {
+    lookupRuntimeAttribute(undefined, attribute);
+  }
+  return new RuntimeArray([]);
 }
 
 function sortRuntimeValues(

@@ -1384,7 +1384,7 @@
     {
       "upstream": {"id":"tests/filters.js:23","file":"tests/filters.js","test":"join"},
       "status": "ported",
-      "cases": ["filters-direct-attribute-keys","filters-getter-attribute-paths","filters-attribute-array-string-lookup","filters-ordinary-keyword-bags-a"]
+      "cases": ["filters-direct-attribute-keys","filters-join-sum-attribute-projection","filters-getter-attribute-paths","filters-attribute-array-string-lookup","filters-ordinary-keyword-bags-a"]
     },
     {
       "upstream": {"id":"tests/filters.js:24","file":"tests/filters.js","test":"last"},
@@ -1412,7 +1412,7 @@
     {
       "upstream": {"id":"tests/filters.js:53","file":"tests/filters.js","test":"sum"},
       "status": "ported",
-      "cases": ["filters-sum-preserves-addition-types","filters-direct-attribute-keys","filters-attribute-array-string-lookup","filters-ordinary-keyword-bags-b"]
+      "cases": ["filters-sum-preserves-addition-types","filters-direct-attribute-keys","filters-join-sum-attribute-projection","filters-attribute-array-string-lookup","filters-ordinary-keyword-bags-b"]
     },
     {
       "upstream": {"id":"tests/filters.js:55","file":"tests/filters.js","test":"string"},

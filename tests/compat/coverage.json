@@ -588,6 +588,12 @@
       ]
     },
     {
+      "id": "join-sum-attribute-projection",
+      "file": "tests/source/runtime.test.ts",
+      "test": "matches Nunjucks join and sum attribute projection semantics",
+      "upstream": ["tests/filters.js:23", "tests/filters.js:53"]
+    },
+    {
       "id": "attribute-lookup-failures",
       "file": "tests/source/security.test.ts",
       "test": "attribute lookup policies reject reserved paths and fail on nullish values",

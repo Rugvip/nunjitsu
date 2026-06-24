@@ -674,6 +674,12 @@
       "expected": "direct|direct|[object Object]|empty|truth|2|2|1|1|1"
     },
     {
+      "id": "filters-join-sum-attribute-projection",
+      "template": "{{ missing | join(\",\", \"x\") | dump }}|{{ null | join(\",\", \"x\") | dump }}|{{ false | join(\",\", \"x\") | dump }}|{{ \"ab\" | join(\",\", \"length\") | dump }}|{{ {} | join(\",\", \"x\") | dump }}|{{ {\"0\":{x:\"a\"},\"1\":{x:\"b\"},length:2} | join(\",\", \"x\") | dump }}|{{ missing | sum(\"x\", 7) | dump }}|{{ null | sum(\"x\", 7) | dump }}|{{ false | sum(\"x\", 7) | dump }}|{{ \"ab\" | sum(\"length\", 7) | dump }}|{{ {} | sum(\"x\", 7) | dump }}|{{ {\"0\":{x:2},\"1\":{x:3},length:2} | sum(\"x\", 7) | dump }}|{{ (\"\" | safe) | join(\",\", \"length\") | dump }}|{{ (\"\" | safe) | sum(\"length\", 7) | dump }}",
+      "context": {},
+      "expected": "\"\"|\"\"|\"\"|\"1,1\"|\"\"|\"a,b\"|7|7|7|9|7|12|\"\"|7"
+    },
+    {
       "id": "filters-getter-attribute-paths",
       "template": "{{ sortRows | sort(attribute=\"a.b\") | join(\",\", \"name\") }}|{{ sortRows | sort(attribute=\"a.b\" | safe) | join(\",\", \"name\") }}|{{ sortRows | sort(attribute=\"\") | join(\",\", \"name\") }}|{{ sortRows | sort(attribute=\"\" | safe) | join(\",\", \"name\") }}|{{ sortRows | sort(attribute=true) | join(\",\", \"name\") }}|{{ [1,2,1] | groupby() | dump }}|{{ [{\"\":2}] | groupby(\"\") | dictsort | first | first }}|{{ [{\"\":2}] | groupby(\"\" | safe) | dictsort | first | first }}|{{ sortRows | groupby(\"a.b\") | dictsort | first | last | join(\",\", \"name\") }}|{{ sortRows | groupby(\"a.b\" | safe) | dictsort | first | last | join(\",\", \"name\") }}",
       "context": {"sortRows":[{"name":"A","a.b":1,"a":{"b":2},"":2,"true":2},{"name":"B","a.b":2,"a":{"b":1},"":1,"true":1}]},

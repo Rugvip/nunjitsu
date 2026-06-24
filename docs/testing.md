@@ -99,7 +99,9 @@ compare collection and text input domains,
 nullish failure behavior, scalar length results, URL-encoding pair lookup,
 safe-string adaptations, ordinary keyword bags, macro-wrapped filter positional
 precedence, stateful globals, capability order, callable-laundering attempts,
-and type preservation across `range`, `sum`, and `joiner`. Cycler state tests
+truthy-attribute `join` and `sum` projection across scalar, string, sparse, and
+array-like inputs, and type preservation across `range`, `sum`, and `joiner`.
+Cycler state tests
 distinguish initial, empty advance, repeated
 advance, explicit-undefined item, non-empty, and reset transitions. Shared
 numeric-filter cases cover original-value defaults, fractional

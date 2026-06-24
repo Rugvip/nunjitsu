@@ -120,6 +120,9 @@ Nunjitsu targets:
   fail-before-later-capability behavior over the closed value model;
 - operation-specific array-like record behavior for indexed collection filters,
   including sparse values and malformed-length failure ordering;
+- map-before-method truthy-attribute behavior for `join` and `sum` over
+  nullish values, scalars, primitive and safe strings, arrays, and array-like
+  records;
 - sparse-array index presence across context and capability boundaries, with
   operation-specific hole skipping, preservation, and dense numeric access
   matching Nunjucks's native array methods;
@@ -208,20 +211,26 @@ performs indexed record access. `first` reads key `0` without consulting
 `length`; `last` derives one key from the raw length; `batch` and `groupby`
 perform indexed comparison loops; `reverse` and `sort` preserve map-style raw
 numeric length validation; and `select` and `reject` use slice-style length and
-presence semantics. `random` selects the derived record index with Node's
-cryptographic source rather than the host `Math.random` stream. Sparse positions
-remain absent for selection but become closed `undefined` where the pinned
-algorithm performs a direct indexed read.
+presence semantics. Truthy-attribute `join` and `sum` project through the same
+map-style raw-length rules before joining or reducing. `random` selects the
+derived record index with Node's cryptographic source rather than the host
+`Math.random` stream. Sparse positions remain absent for selection but become
+closed `undefined` where the pinned algorithm performs a direct indexed read.
 
-This support does not turn records into generic sequences. `join`, `slice`,
-`sum`, `selectattr`, and `rejectattr` still reject them because Nunjucks requires
-array methods on those paths. `list`, `length`, `urlencode`, and `dictsort`
-retain record/key-value semantics. Numeric, numeric-string, nullish, invalid,
-negative, and fractional lengths follow the coercion and failure behavior of
-the individual operation rather than one shared integer normalization.
+This support does not turn records into generic sequences. `slice`,
+`selectattr`, `rejectattr`, and falsey-attribute `join` and `sum` still reject
+them because Nunjucks requires array methods on those paths. `list`, `length`,
+`urlencode`, and `dictsort` retain record/key-value semantics. Numeric,
+numeric-string, nullish, invalid, negative, and fractional lengths follow the
+coercion and failure behavior of the individual operation rather than one
+shared integer normalization.
 
 Attribute-bearing filters likewise retain separate policies. `join` and `sum`
-perform one direct lookup only when their attribute is truthy. `selectattr` and
+perform one direct lookup only when their attribute is truthy, after mapping
+nullish values and scalars to an empty projection, primitive strings by UTF-16
+numeric lookup, sparse arrays by present indices, and array-like records by raw
+length. Empty safe strings project no entries, while non-empty wrappers expose
+the pinned missing numeric lookup and fail. `selectattr` and
 `rejectattr` always convert the supplied or omitted attribute to one direct
 property key and select by that value's direct truthiness. They do not resolve a
 named test: surplus positional values and keyword bags are evaluated in source

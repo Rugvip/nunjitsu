@@ -1904,8 +1904,18 @@ test('array-like record filters fail closed and enforce projected limits', () =>
       '{"0":"a","1":"b",length:1.5} | sort | dump',
       '{length:2} | groupby("x") | dump',
       '{"0":"a",length:1} | join',
+      'missing | join(",", false)',
+      '("x" | safe) | join(",", "length")',
+      '{"0":{x:"a"},length:-1} | join(",", "x")',
+      '{"0":{x:"a"},"1":{x:"b"},length:1.5} | join(",", "x")',
+      '{"0":{x:"a"},length:2} | join(",", "x")',
       '{"0":"a",length:1} | slice(1) | dump',
       '{"0":"a",length:1} | sum',
+      'missing | sum(false, 7)',
+      '("x" | safe) | sum("length", 7)',
+      '{"0":{x:2},length:-1} | sum("x", 7)',
+      '{"0":{x:2},"1":{x:3},length:1.5} | sum("x", 7)',
+      '{"0":{x:2},length:2} | sum("x", 7)',
       '{"0":{x:true},length:1} | selectattr("x") | dump',
       '{"0":{x:true},length:1} | rejectattr("x") | dump',
     ];
@@ -1927,25 +1937,31 @@ test('array-like record filters fail closed and enforce projected limits', () =>
       assert.equal(engine.render('clean'), 'clean', expression);
     }
 
-    const largeSource = [
-      '{{ before() }}',
-      '{{ {length:1000000000} | reverse | dump }}',
-      '{{ later() }}',
-    ].join('');
-    const engineLargeSource = cookiecutterCompat
-      ? largeSource
-      : largeSource.replaceAll('{{', '${{');
-    for (const limits of [
-      { workUnits: 100 },
-      { workUnits: Number.POSITIVE_INFINITY, scratchBytes: 100 },
+    for (const expression of [
+      '{length:1000000000} | reverse | dump',
+      '{length:1000000000} | join(",", "x") | dump',
+      '{length:1000000000} | sum("x", 7) | dump',
     ]) {
-      engineEvents.length = 0;
-      assert.throws(
-        () => engine.render(engineLargeSource, {}, { limits }),
-        NunjitsuLimitError,
-      );
-      assert.deepEqual(engineEvents, ['before']);
-      assert.equal(engine.render('clean'), 'clean');
+      const largeSource = [
+        '{{ before() }}',
+        `{{ ${expression} }}`,
+        '{{ later() }}',
+      ].join('');
+      const engineLargeSource = cookiecutterCompat
+        ? largeSource
+        : largeSource.replaceAll('{{', '${{');
+      for (const limits of [
+        { workUnits: 100 },
+        { workUnits: Number.POSITIVE_INFINITY, scratchBytes: 100 },
+      ]) {
+        engineEvents.length = 0;
+        assert.throws(
+          () => engine.render(engineLargeSource, {}, { limits }),
+          NunjitsuLimitError,
+        );
+        assert.deepEqual(engineEvents, ['before']);
+        assert.equal(engine.render('clean'), 'clean');
+      }
     }
   }
 });
@@ -2008,6 +2024,8 @@ test('attribute lookup policies reject reserved paths and fail on nullish values
     const reservedExpressions = [
       '[{}] | join(",", "constructor")',
       '[{}] | sum("prototype")',
+      'missing | join(",", "constructor")',
+      '{} | sum("prototype")',
       '[{}] | selectattr("__proto__") | dump',
       '[{}] | sort(attribute="a.constructor") | dump',
       '[{}] | groupby("a.prototype") | dump',
@@ -2836,6 +2854,12 @@ test('callable identities cannot be laundered through rendering or built-ins', (
     '${{ handle | string | inspect }}${{ later() }}',
     '${{ handle | safe | inspect }}${{ later() }}',
     '${{ [handle] | join | inspect }}${{ later() }}',
+    '${{ missing | join(",", handle) | inspect }}${{ later() }}',
+    '${{ missing | join(",", ignored=handle) | inspect }}${{ later() }}',
+    '${{ {hidden:handle} | join(",", "x") | inspect }}${{ later() }}',
+    '${{ missing | sum(handle, 7) | inspect }}${{ later() }}',
+    '${{ missing | sum(ignored=handle) | inspect }}${{ later() }}',
+    '${{ {hidden:handle} | sum("x", 7) | inspect }}${{ later() }}',
     '${{ [[handle]] | urlencode | inspect }}${{ later() }}',
     '${{ [handle] | dump | inspect }}${{ later() }}',
     '${{ {"value":handle} | string | inspect }}${{ later() }}',
