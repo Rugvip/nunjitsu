@@ -9,10 +9,12 @@ import { NunjitsuParseError, parseTemplate } from '../../src/parser/index.ts';
 import { applyBuiltinFilter } from '../../src/runtime/builtins.ts';
 import { RuntimeScope } from '../../src/runtime/scope.ts';
 import {
+  assertRuntimeValueHasNoCallable,
   copyPublicValue,
   copyRuntimeContext,
   copyRuntimeValue,
   RuntimeArray,
+  RuntimeCallable,
   RuntimeRecord,
   RuntimeRegex,
   RuntimeSafeString,
@@ -2731,6 +2733,32 @@ test('callable identities stay sealed and regular expressions cross as inert dat
   assert.equal(captureCalls, 1);
   assert.equal(laterCalls, 0);
   assert.equal(engine.render('clean'), 'clean');
+});
+
+test('immutable containers track exact transitive callable presence', () => {
+  const callable = new RuntimeCallable('capability', 1);
+  const nested = new RuntimeArray([
+    new RuntimeRecord([['value', callable]]),
+  ]);
+  assert.throws(
+    () => assertRuntimeValueHasNoCallable(nested),
+    /Callable values cannot be coerced/,
+  );
+
+  const overwritten = new RuntimeRecord([
+    ['value', callable],
+    ['value', 'safe'],
+  ]);
+  assert.doesNotThrow(() => assertRuntimeValueHasNoCallable(overwritten));
+
+  const replaced = new RuntimeRecord([['value', callable]]).with('value', 'safe');
+  assert.doesNotThrow(() => assertRuntimeValueHasNoCallable(replaced));
+
+  const introduced = overwritten.with('value', callable);
+  assert.throws(
+    () => assertRuntimeValueHasNoCallable(introduced),
+    /Callable values cannot be coerced/,
+  );
 });
 
 test('callable authority cannot enter or be discarded by non-macro arguments', () => {

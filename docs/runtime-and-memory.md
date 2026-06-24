@@ -158,6 +158,9 @@ Callable coercion fails closed before any callable nested in an array or record
 can be rendered, serialized, captured, used as a separator, transformed by the
 standard library, or included in scratch accounting. No path invokes a host
 object's iteration, `valueOf`, `toString`, or primitive-conversion hook.
+Immutable arrays and records record transitive callable presence while they are
+constructed, so repeated boundary checks preserve this recursive rejection
+without rescanning the value graph.
 
 Numeric ordering performs explicit less-than, greater-than, and equality checks
 after this closed primitive conversion. It does not subtract operands, because

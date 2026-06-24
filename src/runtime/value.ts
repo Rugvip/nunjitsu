@@ -42,6 +42,7 @@ export class RuntimeArray {
   readonly kind = 'array';
   readonly #items: readonly RuntimeValue[];
   readonly #present: ReadonlySet<number> | undefined;
+  readonly #containsCallable: boolean;
 
   constructor(items: readonly RuntimeValue[]) {
     if (types.isProxy(items)) {
@@ -53,6 +54,7 @@ export class RuntimeArray {
     const copied: RuntimeValue[] = [];
     copied.length = items.length;
     const present = new Set<number>();
+    let containsCallable = false;
     for (let index = 0; index < items.length; index += 1) {
       const descriptor = Object.getOwnPropertyDescriptor(items, `${index}`);
       if (descriptor === undefined) {
@@ -62,11 +64,14 @@ export class RuntimeArray {
       if (!('value' in descriptor)) {
         throw new TypeError('Runtime arrays cannot contain accessors');
       }
-      defineOwnArrayIndex(copied, index, descriptor.value as RuntimeValue);
+      const value = descriptor.value as RuntimeValue;
+      defineOwnArrayIndex(copied, index, value);
       present.add(index);
+      containsCallable ||= runtimeValueContainsCallable(value);
     }
     this.#items = Object.freeze(copied);
     this.#present = present.size === copied.length ? undefined : present;
+    this.#containsCallable = containsCallable;
     Object.freeze(this);
   }
 
@@ -104,6 +109,11 @@ export class RuntimeArray {
     }
   }
 
+  /** Returns whether any present element transitively contains callable authority. */
+  containsCallable(): boolean {
+    return this.#containsCallable;
+  }
+
   /** Returns a mutable sparse copy without exposing interpreter storage. */
   copySparse(): RuntimeValue[] {
     const output: RuntimeValue[] = [];
@@ -121,6 +131,7 @@ export class RuntimeArray {
 export class RuntimeRecord {
   readonly kind = 'record';
   readonly #entries: ReadonlyMap<string, RuntimeValue>;
+  readonly #containsCallable: boolean;
 
   constructor(entries: Iterable<readonly [string, RuntimeValue]>) {
     const indexedEntries = new Map<string, RuntimeValue>();
@@ -142,6 +153,11 @@ export class RuntimeRecord {
       }
       this.#entries = new Map(orderedEntries);
     }
+    let containsCallable = false;
+    for (const value of this.#entries.values()) {
+      containsCallable ||= runtimeValueContainsCallable(value);
+    }
+    this.#containsCallable = containsCallable;
     Object.freeze(this);
   }
 
@@ -166,6 +182,11 @@ export class RuntimeRecord {
   /** Iterates array indices numerically, then named entries by first insertion. */
   entries(): IterableIterator<[string, RuntimeValue]> {
     return this.#entries.entries();
+  }
+
+  /** Returns whether any own entry transitively contains callable authority. */
+  containsCallable(): boolean {
+    return this.#containsCallable;
   }
 
   /** Returns a derived record with one allowed own entry replaced. */
@@ -322,29 +343,31 @@ export function renderRuntimeValue(
 
 /** Rejects callable identities anywhere inside a closed value graph. */
 export function assertRuntimeValueHasNoCallable(value: RuntimeValue): void {
-  const pending = Object.setPrototypeOf([value], null) as RuntimeValue[];
-  const visited = new Set<RuntimeArray | RuntimeRecord>();
-  while (pending.length > 0) {
-    const index = pending.length - 1;
-    const current = pending[index]!;
-    pending.length = index;
-    if (current instanceof RuntimeCallable) {
-      throw new TypeError('Callable values cannot be coerced');
-    }
-    if (current instanceof RuntimeArray) {
-      if (!visited.has(current)) {
-        visited.add(current);
-        for (const item of current.presentValues()) {
-          pending[pending.length] = item;
-        }
-      }
-    } else if (current instanceof RuntimeRecord && !visited.has(current)) {
-      visited.add(current);
-      for (const [, item] of current.entries()) {
-        pending[pending.length] = item;
-      }
-    }
+  if (value === null || typeof value !== 'object') {
+    return;
   }
+  if (value instanceof RuntimeCallable) {
+    throw new TypeError('Callable values cannot be coerced');
+  }
+  if (
+    (value instanceof RuntimeArray || value instanceof RuntimeRecord) &&
+    value.containsCallable()
+  ) {
+    throw new TypeError('Callable values cannot be coerced');
+  }
+}
+
+function runtimeValueContainsCallable(value: RuntimeValue): boolean {
+  if (value === null || typeof value !== 'object') {
+    return false;
+  }
+  if (value instanceof RuntimeCallable) {
+    return true;
+  }
+  if (value instanceof RuntimeArray || value instanceof RuntimeRecord) {
+    return value.containsCallable();
+  }
+  return false;
 }
 
 function renderRuntimeValueUnchecked(
