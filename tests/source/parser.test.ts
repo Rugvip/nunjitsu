@@ -350,7 +350,7 @@ test('rejects adjacent identical unary signs while preserving separated forms', 
       error instanceof NunjitsuParseError &&
       error.message === 'Repeated unparenthesized unary - is not supported' &&
       error.line === 0 &&
-      error.column === 2
+      error.column === 6
     ),
   );
   const modes = [

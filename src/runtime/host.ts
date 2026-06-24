@@ -5,7 +5,10 @@ import type {
   TemplateFilter,
   TemplateGlobalFunction,
 } from '../capabilities.ts';
-import { neutralizeDiagnosticMessage } from '../diagnostics.ts';
+import {
+  formatDiagnosticValue,
+  neutralizeDiagnosticMessage,
+} from '../diagnostics.ts';
 import { clearLegacyRegExpState } from './clearLegacyRegExpState.ts';
 import { RuntimeEvaluationError } from './RuntimeEvaluationError.ts';
 import {
@@ -21,6 +24,7 @@ const templateIdentifierPattern = /^[A-Za-z_][A-Za-z0-9_]*$/;
 /** Creates an immutable synchronous host dispatcher for the interpreter. */
 export function createRuntimeHost(capabilities: TemplateCapabilities): RuntimeHost {
   const filters = copyFunctions(capabilities.filters, 'filter');
+  const filterNames = Object.freeze(Array.from(filters.keys()));
   const globalFunctions = new Map<string, TemplateGlobalFunction>();
   const globalValues = new Map<string, RuntimeValue>();
   copyGlobals(capabilities.globals, globalFunctions, globalValues);
@@ -28,6 +32,9 @@ export function createRuntimeHost(capabilities: TemplateCapabilities): RuntimeHo
   return Object.freeze({
     hasFilter(name) {
       return filters.has(name);
+    },
+    filterNames() {
+      return filterNames;
     },
     hasGlobal(name) {
       return globalFunctions.has(name);
@@ -42,7 +49,7 @@ export function createRuntimeHost(capabilities: TemplateCapabilities): RuntimeHo
       if (!callback) {
         return { found: false };
       }
-      return invokeCapability(() => {
+      return invokeCapability(`filter ${formatDiagnosticValue(name)}`, () => {
         const value = callback(
           copyPublicValue(input),
           ...arguments_.positional.map(copyPublicValue),
@@ -55,7 +62,7 @@ export function createRuntimeHost(capabilities: TemplateCapabilities): RuntimeHo
       if (!callback) {
         return { found: false };
       }
-      return invokeCapability(() => {
+      return invokeCapability(`global ${formatDiagnosticValue(name)}`, () => {
         const value = callback(...arguments_.positional.map(copyPublicValue));
         return { found: true, value: copyRuntimeValue(value) };
       });
@@ -63,7 +70,7 @@ export function createRuntimeHost(capabilities: TemplateCapabilities): RuntimeHo
   } satisfies RuntimeHost);
 }
 
-function invokeCapability<T>(operation: () => T): T {
+function invokeCapability<T>(description: string, operation: () => T): T {
   clearLegacyRegExpState();
   try {
     try {
@@ -72,7 +79,9 @@ function invokeCapability<T>(operation: () => T): T {
       const detail = extractCapabilityMessage(thrown);
       throw new RuntimeEvaluationError(
         'capability_error',
-        detail ? `Template capability failed: ${detail}` : 'Template capability failed',
+        detail
+          ? `Template ${description} failed: ${detail}`
+          : `Template ${description} failed`,
       );
     }
   } finally {

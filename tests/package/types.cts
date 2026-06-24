@@ -7,6 +7,7 @@ import {
   type NunjitsuRenderErrorCode,
   type NunjitsuRenderErrorDetails,
   type NunjitsuRenderErrorPhase,
+  type NunjitsuLimitErrorDetails,
 } from 'nunjitsu';
 
 const options = { cookiecutterCompat: true } satisfies EngineOptions;
@@ -20,8 +21,14 @@ const details: NunjitsuRenderErrorDetails = {
   line: undefined,
   column: undefined,
 };
+const limitDetails: NunjitsuLimitErrorDetails = {
+  phase: 'parse',
+  configured: 10,
+  observed: 11,
+};
 
 void output;
 void details;
+void limitDetails;
 void NunjitsuLimitError;
 void NunjitsuRenderError;

@@ -15,7 +15,11 @@ export type {
   TemplateGlobal,
   TemplateGlobalFunction,
 } from './capabilities.ts';
-export { NunjitsuLimitError, type RenderLimits } from './limits.ts';
+export {
+  NunjitsuLimitError,
+  type NunjitsuLimitErrorDetails,
+  type RenderLimits,
+} from './limits.ts';
 export {
   type TemplateContext,
   type TemplateValue,

@@ -344,6 +344,9 @@ text only from a primitive string or a native error with an own string-valued
 invoking traps, and descriptor inspection never reads an accessor. The detail
 passes through the central control-character neutralizer and length bound.
 Every other thrown value produces a fixed message.
+The engine prefixes this bounded detail only with the validated registered
+filter or global name and its fixed capability kind. It never includes
+arguments, results, or another runtime value in the diagnostic.
 
 The boundary constructs a new engine-owned error containing only that inert
 string and discards the original thrown value. No original error, proxy, or
@@ -366,6 +369,9 @@ engine-owned message, stable parse/evaluation phase and failure code, and the
 deepest available one-based template coordinates. Unknown internal thrown
 values are never retained; non-native values receive a fixed diagnostic, while
 native engine errors contribute only an own string-valued message data property.
+The bounded public message repeats known coordinates so ordinary error logging
+does not discard them. Runtime type diagnostics expose only a fixed closed value
+kind such as `number`, `array`, or `record`.
 
 Parser diagnostics never interpolate raw token content. Source-derived values
 use a central quoted formatter that escapes C0, C1, terminal, line-separator,
@@ -376,6 +382,9 @@ neutralizes controls and bounds the complete message, so logging
 control sequences, or bidirectional visual spoofing. Logging or recursively
 inspecting the complete error is also safe because `cause` is always
 `undefined` and no raw internal stack or error object crosses the boundary.
+Close-spelling suggestions operate only on bounded validated identifiers and
+trusted fixed or registered name sets. The edit calculation and candidate
+length are bounded independently of the source-size limit.
 
 Regular-expression grammar is parser-owned rather than inherited from the host
 Node.js version. Literals accept only `g`, `i`, `m`, and `y`; unsupported or

@@ -45,7 +45,7 @@ const htmlEscapeReplacements: Readonly<Record<string, string>> = Object.freeze({
   '&': '&amp;', '"': '&quot;', "'": '&#39;', '<': '&lt;', '>': '&gt;', '\\': '&#92;',
 });
 
-const builtinFilters = new Set([
+const builtinFilterNames = Object.freeze([
   'abs', 'batch', 'capitalize', 'center', 'd', 'default', 'dictsort', 'dump', 'e',
   'escape', 'first', 'float', 'forceescape', 'groupby', 'indent', 'int', 'join',
   'last', 'length', 'list', 'lower', 'nl2br', 'random', 'reject', 'rejectattr',
@@ -53,6 +53,7 @@ const builtinFilters = new Set([
   'string', 'striptags', 'sum', 'title', 'trim', 'truncate', 'upper', 'urlencode',
   'urlize', 'wordcount',
 ]);
+const builtinFilters = new Set(builtinFilterNames);
 
 const builtinTestArities = new Map<string, number>([
   ['callable', 0],
@@ -82,6 +83,7 @@ const builtinTestArities = new Map<string, number>([
   ['undefined', 0],
   ['upper', 0],
 ]);
+const builtinTestNames = Object.freeze(Array.from(builtinTestArities.keys()));
 
 const macroFilterPositionalNames = new Map<string, readonly string[]>([
   ['int', Object.freeze(['default', 'base'])],
@@ -93,9 +95,19 @@ export function hasBuiltinFilter(name: string): boolean {
   return builtinFilters.has(name);
 }
 
+/** Returns the fixed built-in filter spellings for bounded diagnostics. */
+export function listBuiltinFilterNames(): readonly string[] {
+  return builtinFilterNames;
+}
+
 /** Returns whether the pinned standard library exposes one test name. */
 export function hasBuiltinTest(name: string): boolean {
   return builtinTestArities.has(name);
+}
+
+/** Returns the fixed built-in test spellings for bounded diagnostics. */
+export function listBuiltinTestNames(): readonly string[] {
+  return builtinTestNames;
 }
 
 /** Returns the exact positional arity for one closed built-in test. */

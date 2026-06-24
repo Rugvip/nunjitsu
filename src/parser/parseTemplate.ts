@@ -1,5 +1,11 @@
-import { formatDiagnosticValue } from '../diagnostics.ts';
-import { NunjitsuLimitError } from '../limits.ts';
+import {
+  formatDiagnosticValue,
+  suggestDiagnosticName,
+} from '../diagnostics.ts';
+import {
+  NunjitsuLimitError,
+  withNunjitsuLimitErrorContext,
+} from '../limits.ts';
 import { isAstNode, type AstCaseNode, type AstNode } from './ast.ts';
 import { ExpressionParser, ExpressionSyntaxError } from './expression.ts';
 import {
@@ -32,6 +38,16 @@ const emptyStructuralTags = new Set([
   'endset',
   'default',
   'endswitch',
+]);
+const statementTags = Object.freeze([
+  'if', 'for', 'set', 'macro', 'call', 'filter', 'block', 'switch',
+  'include', 'import', 'from', 'extends',
+]);
+const structuralStopTags = new Set([
+  ...emptyStructuralTags,
+  'elif',
+  'elseif',
+  'case',
 ]);
 
 /** Configuration for parsing one complete inline template. */
@@ -66,6 +82,8 @@ interface TemplateToken {
   readonly value: string;
   readonly line: number;
   readonly column: number;
+  readonly valueLine: number;
+  readonly valueColumn: number;
 }
 
 type ScannedTokenKind = TemplateToken['kind'] | 'comment';
@@ -88,8 +106,11 @@ export function parseTemplate(
     );
     return parser.parse();
   } catch (error) {
-    if (error instanceof NunjitsuParseError || error instanceof NunjitsuLimitError) {
+    if (error instanceof NunjitsuParseError) {
       throw error;
+    }
+    if (error instanceof NunjitsuLimitError) {
+      throw withNunjitsuLimitErrorContext(error, 'parse');
     }
     if (error instanceof ExpressionSyntaxError) {
       throw new NunjitsuParseError(error.message, error.line, error.column);
@@ -128,8 +149,14 @@ class TemplateParser {
         parsed.stop,
       );
     }
-    const root = parsed.body.type === 'NodeList' ? parsed.body.children : [parsed.body];
-    return this.#make('Root', { children: Object.freeze(Array.from(root)) }, this.#tokens[0]);
+    const rootChildren = parsed.body.type === 'NodeList' ? parsed.body.children : [parsed.body];
+    const root = this.#make(
+      'Root',
+      { children: Object.freeze(Array.from(rootChildren)) },
+      this.#tokens[0],
+    );
+    validateUniqueBlocks(root);
+    return root;
   }
 
   #parseBody(stops: ReadonlySet<string>): ParsedBody {
@@ -138,7 +165,14 @@ class TemplateParser {
       this.#maximumDepth !== Number.POSITIVE_INFINITY &&
       this.#bodyDepth > this.#maximumDepth
     ) {
-      throw new NunjitsuLimitError('nestingDepth');
+      const token = this.#tokens[Math.max(0, this.#index - 1)];
+      throw new NunjitsuLimitError('nestingDepth', {
+        phase: 'parse',
+        line: token === undefined ? undefined : token.line + 1,
+        column: token === undefined ? undefined : token.column + 1,
+        configured: this.#maximumDepth,
+        observed: this.#bodyDepth,
+      });
     }
     try {
       return this.#parseBodyContents(stops);
@@ -167,6 +201,9 @@ class TemplateParser {
       if (stops.has(name)) {
         this.#validateStructuralStop(name, token);
         return { body: this.#nodeList(children, token), stop: token };
+      }
+      if (structuralStopTags.has(name)) {
+        this.#fail(structuralTagMismatch(name, stops), token);
       }
       children.push(this.#parseStatement(name, tagRemainder(token.value), token));
     }
@@ -197,7 +234,10 @@ class TemplateParser {
       case 'extends':
         this.#fail(`Unsupported template-loading tag ${formatDiagnosticValue(name)}`, token);
       default:
-        this.#fail(`Unknown template tag ${formatDiagnosticValue(name)}`, token);
+        if (name === '') {
+          this.#fail('Template block tag cannot be empty', token);
+        }
+        this.#fail(unknownNameMessage('template tag', name, statementTags), token);
     }
   }
 
@@ -277,7 +317,7 @@ class TemplateParser {
     if (!signature) {
       this.#fail('Invalid macro signature', token);
     }
-    const name = this.#expression(signature[1]!, token);
+    const name = this.#expression(signature[1]!, token, false);
     if (name.type !== 'Symbol') {
       this.#fail('Macro name must be an identifier', token);
     }
@@ -329,10 +369,11 @@ class TemplateParser {
       this.#fail('Macro declarations are not supported inside filter captures', token);
     }
     const capture = this.#make('Capture', { body: parsed.body }, token);
+    const position = tokenValuePosition(token, header);
     const filter = new ExpressionParser(
       header,
-      token.line,
-      token.column,
+      position.line,
+      position.column,
       node => this.#freezeNode(node),
       this.#maximumDepth,
     ).parseFilterInvocation(capture);
@@ -387,21 +428,23 @@ class TemplateParser {
     }, token);
   }
 
-  #expression(source: string, token: TemplateToken): AstNode {
+  #expression(source: string, token: TemplateToken, fromEnd = true): AstNode {
+    const position = tokenValuePosition(token, source, fromEnd);
     return new ExpressionParser(
       source,
-      token.line,
-      token.column,
+      position.line,
+      position.column,
       node => this.#freezeNode(node),
       this.#maximumDepth,
     ).parse();
   }
 
   #targets(source: string, token: TemplateToken): readonly AstNode[] {
+    const position = tokenValuePosition(token, source, false);
     return new ExpressionParser(
       source,
-      token.line,
-      token.column,
+      position.line,
+      position.column,
       node => this.#freezeNode(node),
       this.#maximumDepth,
     ).parseTargetList();
@@ -411,10 +454,11 @@ class TemplateParser {
     if (trimCodeWhitespace(source) === '') {
       return this.#make('NodeList', { children: Object.freeze([]) }, token);
     }
+    const position = tokenValuePosition(token, source);
     return new ExpressionParser(
       `${source})`,
-      token.line,
-      token.column,
+      position.line,
+      position.column,
       node => this.#freezeNode(node),
       this.#maximumDepth,
     ).parseSignature();
@@ -445,7 +489,13 @@ class TemplateParser {
       this.#maximumNodes !== Number.POSITIVE_INFINITY &&
       this.#nodeCount > this.#maximumNodes
     ) {
-      throw new NunjitsuLimitError('astNodes');
+      throw new NunjitsuLimitError('astNodes', {
+        phase: 'parse',
+        line: node.line + 1,
+        column: node.column + 1,
+        configured: this.#maximumNodes,
+        observed: this.#nodeCount,
+      });
     }
     return Object.freeze(node);
   }
@@ -508,7 +558,12 @@ function scanTemplate(source: string, options: ParseOptions): readonly TemplateT
   const flushText = (): void => {
     if (pendingText.length > 0) {
       tokens.push(Object.freeze({
-        kind: 'text', value: pendingText, line: textLine, column: textColumn,
+        kind: 'text',
+        value: pendingText,
+        line: textLine,
+        column: textColumn,
+        valueLine: textLine,
+        valueColumn: textColumn,
       }));
       pendingText = '';
     }
@@ -557,16 +612,27 @@ function scanTemplate(source: string, options: ParseOptions): readonly TemplateT
     const rightTrim = source[end - 1] === '-';
     const contentEnd = rightTrim ? end - 1 : end;
     const content = source.slice(index, contentEnd);
+    const contentLine = line;
+    const contentColumn = column;
     advance(source.slice(index, end + close.length));
 
     if (opening.kind !== 'comment') {
+      const startTrimmedContent = trimCodeWhitespaceStart(content);
+      const value = opening.kind === 'variable'
+        ? startTrimmedContent
+        : trimCodeWhitespace(content);
+      const valuePosition = advancePosition(
+        content.slice(0, content.length - startTrimmedContent.length),
+        contentLine,
+        contentColumn,
+      );
       const token = Object.freeze({
         kind: opening.kind,
-        value: opening.kind === 'variable'
-          ? trimCodeWhitespaceStart(content)
-          : trimCodeWhitespace(content),
+        value,
         line: startLine,
         column: startColumn,
+        valueLine: valuePosition.line,
+        valueColumn: valuePosition.column,
       } as TemplateToken);
       const rawName = opening.kind === 'block' ? tagName(token.value) : '';
       if (rawName === 'raw' || rawName === 'verbatim') {
@@ -653,6 +719,45 @@ function sourcePosition(
     }
   }
   return { line, column };
+}
+
+function advancePosition(
+  value: string,
+  initialLine: number,
+  initialColumn: number,
+): { readonly line: number; readonly column: number } {
+  let line = initialLine;
+  let column = initialColumn;
+  for (let index = 0; index < value.length; index += 1) {
+    const character = value[index]!;
+    if (character === '\n') {
+      line += 1;
+      column = 0;
+    } else {
+      column += 1;
+    }
+  }
+  return { line, column };
+}
+
+function tokenValuePosition(
+  token: TemplateToken,
+  source: string,
+  fromEnd = true,
+): { readonly line: number; readonly column: number } {
+  const diagnosticSource = source.endsWith(')') && !token.value.includes(source)
+    ? source.slice(0, -1)
+    : source;
+  const offset = diagnosticSource === ''
+    ? token.value.length
+    : fromEnd
+      ? token.value.lastIndexOf(diagnosticSource)
+      : token.value.indexOf(diagnosticSource);
+  return advancePosition(
+    token.value.slice(0, offset < 0 ? 0 : offset),
+    token.valueLine,
+    token.valueColumn,
+  );
 }
 
 function findRawEnd(
@@ -750,6 +855,66 @@ function tagName(value: string): string {
 
 function tagRemainder(value: string): string {
   return trimCodeWhitespace(trimCodeWhitespace(value).slice(tagName(value).length));
+}
+
+function unknownNameMessage(
+  description: string,
+  name: string,
+  candidates: Iterable<string>,
+): string {
+  const suggestion = suggestDiagnosticName(name, candidates);
+  return `Unknown ${description} ${formatDiagnosticValue(name)}` + (
+    suggestion ? `; did you mean ${formatDiagnosticValue(suggestion)}?` : ''
+  );
+}
+
+function structuralTagMismatch(name: string, expected: ReadonlySet<string>): string {
+  if (expected.size === 0) {
+    return `Unexpected ${formatDiagnosticValue(name)} tag without a matching opening tag`;
+  }
+  const names = Array.from(expected, value => formatDiagnosticValue(value));
+  const expectedDescription = names.length === 1
+    ? names[0]
+    : `${names.slice(0, -1).join(', ')}, or ${names.at(-1)}`;
+  return `Unexpected ${formatDiagnosticValue(name)} tag; expected ${expectedDescription}`;
+}
+
+function validateUniqueBlocks(root: AstNode): void {
+  const blocks = new Map<string, AstNode>();
+  visitAstNodes(root, node => {
+    if (node.type !== 'Block' || node.name.type !== 'Symbol') {
+      return;
+    }
+    const name = node.name.value;
+    if (typeof name !== 'string') {
+      return;
+    }
+    const first = blocks.get(name);
+    if (first) {
+      throw new NunjitsuParseError(
+        `Block ${formatDiagnosticValue(name)} is declared more than once; ` +
+          `the first declaration is at line ${first.line + 1}, column ${first.column + 1}`,
+        node.line,
+        node.column,
+      );
+    }
+    blocks.set(name, node);
+  });
+}
+
+function visitAstNodes(node: AstNode, visit: (node: AstNode) => void): void {
+  visit(node);
+  for (const value of Object.values(node)) {
+    if (isAstNode(value)) {
+      visitAstNodes(value, visit);
+    } else if (Array.isArray(value)) {
+      for (const child of value) {
+        if (isAstNode(child)) {
+          visitAstNodes(child, visit);
+        }
+      }
+    }
+  }
 }
 
 function containsMacroDeclaration(node: AstNode): boolean {

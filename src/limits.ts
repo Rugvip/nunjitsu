@@ -19,18 +19,90 @@ export interface RenderLimits {
 /** Fully populated limits passed to the native parser and evaluator. */
 export type NormalizedRenderLimits = Readonly<RenderLimits>;
 
+/** Safe structured context for one resource-limit failure. */
+export interface NunjitsuLimitErrorDetails {
+  /** Processing stage in which the limit was exceeded. */
+  readonly phase?: 'parse' | 'evaluate' | undefined;
+  /** One-based template line when available. */
+  readonly line?: number | undefined;
+  /** One-based template column when available. */
+  readonly column?: number | undefined;
+  /** Configured maximum for the failed resource dimension. */
+  readonly configured?: number | undefined;
+  /** Observed or projected usage that exceeded the maximum. */
+  readonly observed?: number | undefined;
+}
+
 /** A render rejected after exceeding one configured resource dimension. */
 export class NunjitsuLimitError extends Error {
   /** Limit name when the host can identify the failed dimension. */
   readonly limit: keyof RenderLimits | undefined;
+  /** Processing stage in which the limit was exceeded. */
+  readonly phase: 'parse' | 'evaluate' | undefined;
+  /** One-based template line when available. */
+  readonly line: number | undefined;
+  /** One-based template column when available. */
+  readonly column: number | undefined;
+  /** Configured maximum for the failed resource dimension. */
+  readonly configured: number | undefined;
+  /** Observed or projected usage that exceeded the maximum. */
+  readonly observed: number | undefined;
 
   /** Creates a deterministic resource-limit failure. */
-  constructor(limit?: keyof RenderLimits) {
-    super(limit ? `Nunjitsu render exceeded ${limit}` : 'Nunjitsu render exceeded a resource limit');
+  constructor(limit?: keyof RenderLimits, details: NunjitsuLimitErrorDetails = {}) {
+    const resource = limit ? limitDescriptions[limit] : 'resource';
+    const usage = details.configured === undefined
+      ? ''
+      : ` of ${details.configured}` + (
+        details.observed === undefined ? '' : ` (observed ${details.observed})`
+      );
+    const stage = details.phase === 'parse'
+      ? 'Template parsing'
+      : details.phase === 'evaluate'
+        ? 'Template evaluation'
+        : 'Template rendering';
+    const location = details.line === undefined
+      ? ''
+      : details.column === undefined
+        ? ` at line ${details.line}`
+        : ` at line ${details.line}, column ${details.column}`;
+    super(`${stage} exceeded the ${resource} limit${usage}${location}`);
     this.name = 'NunjitsuLimitError';
     this.limit = limit;
+    this.phase = details.phase;
+    this.line = details.line;
+    this.column = details.column;
+    this.configured = details.configured;
+    this.observed = details.observed;
   }
+
 }
+
+/** Adds missing one-based template context to an engine-owned limit error. */
+export function withNunjitsuLimitErrorContext(
+  error: NunjitsuLimitError,
+  phase: 'parse' | 'evaluate',
+  line?: number,
+  column?: number,
+): NunjitsuLimitError {
+  return new NunjitsuLimitError(error.limit, {
+    phase: error.phase ?? phase,
+    line: error.line ?? line,
+    column: error.column ?? column,
+    configured: error.configured,
+    observed: error.observed,
+  });
+}
+
+const limitDescriptions: Readonly<Record<keyof RenderLimits, string>> = Object.freeze({
+  sourceCodeUnits: 'source code unit',
+  astNodes: 'AST node',
+  workUnits: 'work unit',
+  nestingDepth: 'nesting depth',
+  outputCodeUnits: 'output code unit',
+  scratchBytes: 'scratch byte',
+  capabilityCalls: 'capability call',
+});
 
 const defaultLimits: NormalizedRenderLimits = Object.freeze({
   sourceCodeUnits: 4 * 1024 * 1024,

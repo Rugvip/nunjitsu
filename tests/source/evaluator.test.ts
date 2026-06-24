@@ -45,6 +45,6 @@ test('evaluates macros, keyword defaults, tests, and call blocks', () => {
 test('never treats looked-up values as JavaScript callables', () => {
   assert.throws(
     () => evaluateTemplate('${{ value.toString() }}', { value: 'secret' }, options),
-    /Unable to call template value/,
+    /Template value "value\.toString" resolved to undefined and cannot be called/,
   );
 });

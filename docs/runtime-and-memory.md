@@ -587,3 +587,10 @@ bounded message, stable phase and code, and the deepest available one-based
 template line and column. It never retains an internal error or stack as its
 cause. This keeps diagnostics useful for template authors without making
 logging or recursive inspection another path for untrusted source text.
+Expression coordinates retain their original offset after delimiters, tag
+keywords, and leading code whitespace are removed for parsing. Compound nodes
+select the operation, test, filter, or lookup position that owns a failure
+rather than inheriting the beginning of the expression. The public message
+repeats the resulting line and column, while structured limit errors add the
+phase, location, configured maximum, and observed or projected usage whenever
+those values are available.

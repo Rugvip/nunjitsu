@@ -316,7 +316,9 @@ The package exports two error classes:
   is always `undefined`; internal evaluator errors and capability exceptions
   are never retained.
 - `NunjitsuLimitError` reports a resource-limit failure. Its `limit` property
-  identifies the exceeded `RenderLimits` field when available.
+  identifies the exceeded `RenderLimits` field when available. Structured
+  fields report the processing phase, template location, configured maximum,
+  and observed or projected usage when the engine can determine them.
 
 ```ts
 type NunjitsuRenderErrorCode =
@@ -342,12 +344,33 @@ class NunjitsuRenderError extends Error {
 
   constructor(message: string, details?: NunjitsuRenderErrorDetails);
 }
+
+interface NunjitsuLimitErrorDetails {
+  readonly phase?: 'parse' | 'evaluate';
+  readonly line?: number;
+  readonly column?: number;
+  readonly configured?: number;
+  readonly observed?: number;
+}
+
+class NunjitsuLimitError extends Error {
+  readonly limit: keyof RenderLimits | undefined;
+  readonly phase: 'parse' | 'evaluate' | undefined;
+  readonly line: number | undefined;
+  readonly column: number | undefined;
+  readonly configured: number | undefined;
+  readonly observed: number | undefined;
+}
 ```
 
 `line` and `column` are one-based and identify the deepest template node known
 to the engine. They are `undefined` only when no safe template location is
 available. `code` is stable for programmatic handling; `message` remains the
-bounded human-readable diagnostic.
+bounded human-readable diagnostic and includes the location when one is known.
+Diagnostics identify validated tag, filter, test, capability, and callable
+names where relevant, but never interpolate raw source excerpts or runtime
+values. Unknown fixed-language names may include one bounded close-spelling
+suggestion.
 
 Invalid source, context, prepared-context ownership, capability configuration,
 and reserved names supplied through those API inputs throw `TypeError` before
@@ -381,7 +404,8 @@ The package root exports:
 | `NunjitsuRenderErrorCode` | type | Stable render-failure category. |
 | `NunjitsuRenderErrorPhase` | type | Parse or evaluation failure stage. |
 | `NunjitsuRenderErrorDetails` | type | Structured safe render diagnostic fields. |
-| `NunjitsuLimitError` | class | Resource-limit failure with an optional `limit` field. |
+| `NunjitsuLimitError` | class | Structured resource-limit failure. |
+| `NunjitsuLimitErrorDetails` | type | Optional safe resource-limit diagnostic fields. |
 
 For the supported template-language subset, security model, and detailed
 design constraints, see the [project documentation](docs/index.md).

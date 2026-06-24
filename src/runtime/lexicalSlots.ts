@@ -308,7 +308,11 @@ export function planLexicalSlots(
         maximumExpansionWork !== Number.POSITIVE_INFINITY &&
         expansionWork > maximumExpansionWork
       ) {
-        throw new NunjitsuLimitError('workUnits');
+        throw new NunjitsuLimitError('workUnits', {
+          phase: 'evaluate',
+          configured: maximumExpansionWork,
+          observed: expansionWork,
+        });
       }
     } else {
       visitedNodes.add(node);

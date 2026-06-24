@@ -447,7 +447,11 @@ Do not create additional packages without a documented architectural reason.
 - Public render errors must expose only engine-owned bounded messages, stable
   phase and code fields, and one-based template coordinates. Never retain an
   internal error, stack, thrown capability value, or other original value as
-  `cause`; the public `cause` property remains `undefined`.
+  `cause`; the public `cause` property remains `undefined`. Preserve original
+  source offsets after delimiter and code-whitespace normalization, repeat known
+  coordinates in the bounded message, and enrich limit errors with safe phase,
+  location, configured, and observed fields when available. Diagnostic context
+  may include only validated names and fixed closed runtime-kind labels.
 - Never interpolate raw template source or decoded token values into
   diagnostics. Use the central bounded diagnostic formatter and keep the public
   render-error message independently neutralized and single-line. Escape every

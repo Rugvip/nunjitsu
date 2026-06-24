@@ -12,9 +12,16 @@ import type {
   AstSetNode,
   AstSliceNode,
 } from '../parser/ast.ts';
+import {
+  formatDiagnosticValue,
+  suggestDiagnosticName,
+} from '../diagnostics.ts';
 import { parseTemplate } from '../parser/index.ts';
 import type { NormalizedRenderLimits } from '../limits.ts';
-import { NunjitsuLimitError } from '../limits.ts';
+import {
+  NunjitsuLimitError,
+  withNunjitsuLimitErrorContext,
+} from '../limits.ts';
 import type { TemplateContext } from '../values.ts';
 import { normalizeMacroArguments } from './arguments.ts';
 import {
@@ -23,6 +30,8 @@ import {
   builtinTestArity,
   hasBuiltinFilter,
   hasBuiltinTest,
+  listBuiltinFilterNames,
+  listBuiltinTestNames,
   lowerBuiltinFilterArguments,
   lookupRuntimeConstantKey,
   lookupRuntimeValue,
@@ -73,6 +82,8 @@ export interface RuntimeHost {
   hasGlobal?(name: string): boolean;
   /** Returns whether one exact filter name is registered. */
   hasFilter?(name: string): boolean;
+  /** Returns configured filter spellings for bounded typo diagnostics. */
+  filterNames?(): readonly string[];
   /** Returns one configured non-callable global value. */
   globalValue?(name: string): { readonly found: boolean; readonly value?: RuntimeValue };
   /** Invokes a configured filter, returning `undefined` when no filter exists. */
@@ -166,7 +177,11 @@ export function evaluateRuntimeTemplate(
     options.limits.sourceCodeUnits !== Number.POSITIVE_INFINITY &&
     source.length > options.limits.sourceCodeUnits
   ) {
-    throw new NunjitsuLimitError('sourceCodeUnits');
+    throw new NunjitsuLimitError('sourceCodeUnits', {
+      phase: 'parse',
+      configured: options.limits.sourceCodeUnits,
+      observed: source.length,
+    });
   }
   const ast = parseTemplate(source, {
     trimBlocks: options.trimBlocks,
@@ -175,10 +190,21 @@ export function evaluateRuntimeTemplate(
     astNodes: options.limits.astNodes,
     nestingDepth: options.limits.nestingDepth,
   });
-  return new Evaluator(
-    options,
-    planLexicalSlots(ast, options.limits.workUnits),
-  ).render(ast, context);
+  let lexicalSlots: LexicalSlotPlan;
+  try {
+    lexicalSlots = planLexicalSlots(ast, options.limits.workUnits);
+  } catch (error) {
+    if (error instanceof NunjitsuLimitError) {
+      throw withNunjitsuLimitErrorContext(
+        error,
+        'evaluate',
+        ast.line + 1,
+        ast.column + 1,
+      );
+    }
+    throw error;
+  }
+  return new Evaluator(options, lexicalSlots).render(ast, context);
 }
 
 class Evaluator {
@@ -223,7 +249,12 @@ class Evaluator {
       return output.join('');
     } catch (error) {
       if (error instanceof NunjitsuLimitError) {
-        throw error;
+        throw withNunjitsuLimitErrorContext(
+          error,
+          'evaluate',
+          ast.line + 1,
+          ast.column + 1,
+        );
       }
       throw RuntimeEvaluationError.from(error, ast.line, ast.column);
     }
@@ -236,7 +267,6 @@ class Evaluator {
     output: OutputTarget,
     depth: number,
   ): void {
-    validateUniqueBlocks(ast);
     this.#evaluateNode(ast, scope, macroContext, output, depth + 1);
   }
 
@@ -251,7 +281,12 @@ class Evaluator {
       this.#evaluateNodeUnchecked(node, scope, macroContext, output, depth);
     } catch (error) {
       if (error instanceof NunjitsuLimitError) {
-        throw error;
+        throw withNunjitsuLimitErrorContext(
+          error,
+          'evaluate',
+          node.line + 1,
+          node.column + 1,
+        );
       }
       throw RuntimeEvaluationError.from(error, node.line, node.column);
     }
@@ -543,7 +578,12 @@ class Evaluator {
       return this.#evaluateExpressionUnchecked(node, scope, macroContext, depth);
     } catch (error) {
       if (error instanceof NunjitsuLimitError) {
-        throw error;
+        throw withNunjitsuLimitErrorContext(
+          error,
+          'evaluate',
+          node.line + 1,
+          node.column + 1,
+        );
       }
       throw RuntimeEvaluationError.from(error, node.line, node.column);
     }
@@ -806,7 +846,11 @@ class Evaluator {
       if (this.#options.limits.scratchBytes !== Number.POSITIVE_INFINITY) {
         scratchBytes += indexedValueScratchBytes + runtimeValueBytes(value);
         if (scratchBytes > this.#options.limits.scratchBytes) {
-          throw new NunjitsuLimitError('scratchBytes');
+          throw new NunjitsuLimitError('scratchBytes', {
+            phase: 'evaluate',
+            configured: this.#options.limits.scratchBytes,
+            observed: scratchBytes,
+          });
         }
       }
       output.push(value);
@@ -866,7 +910,12 @@ class Evaluator {
     const builtinName = this.#options.cookiecutterCompat && name === 'jsonify' ? 'dump' : name;
     const hasHostFilter = this.#options.host?.hasFilter?.(name) === true;
     if (!hasHostFilter && !hasBuiltinFilter(builtinName)) {
-      throw new Error(`Unknown template filter ${name}`);
+      const configuredNames = this.#options.host?.filterNames?.() ?? [];
+      const candidates = diagnosticFilterNames(
+        this.#options.cookiecutterCompat,
+        configuredNames,
+      );
+      throw new Error(unknownRuntimeName('template filter', name, candidates));
     }
     if (hasHostFilter) {
       assertPositionalOnlySyntax(node.args, `Registered filter ${name}`);
@@ -900,13 +949,23 @@ class Evaluator {
       input,
       ...lowered.scratch,
     ]);
-    return applyBuiltinFilter(
-      builtinName,
-      input,
-      lowered.positional,
-      lowered.keyword,
-      count => this.#reserveIndexedValues(count, scratchBytes),
-    );
+    try {
+      return applyBuiltinFilter(
+        builtinName,
+        input,
+        lowered.positional,
+        lowered.keyword,
+        count => this.#reserveIndexedValues(count, scratchBytes),
+      );
+    } catch (error) {
+      throw contextualizeRuntimeFailure(
+        error,
+        `Filter ${formatDiagnosticValue(builtinName)} failed for ` +
+          `${runtimeValueKind(input)} input`,
+        node.name.line,
+        node.name.column,
+      );
+    }
   }
 
   #evaluateTest(
@@ -920,7 +979,7 @@ class Evaluator {
       throw new Error(`Template test ${name} is reserved`);
     }
     if (!hasBuiltinTest(name)) {
-      throw new Error(`Unknown template test ${name}`);
+      throw new Error(unknownRuntimeName('template test', name, listBuiltinTestNames()));
     }
     const expectedArity = builtinTestArity(name);
     if (expectedArity === undefined) {
@@ -935,7 +994,17 @@ class Evaluator {
     const arguments_ = argumentsNode
       ? this.#evaluateArguments(argumentsNode, scope, macroContext, depth + 1)
       : Object.freeze({ positional: Object.freeze([]), keyword: new Map() });
-    const builtin = applyBuiltinTest(name, input, arguments_.positional);
+    let builtin: boolean | undefined;
+    try {
+      builtin = applyBuiltinTest(name, input, arguments_.positional);
+    } catch (error) {
+      throw contextualizeRuntimeFailure(
+        error,
+        `Test ${formatDiagnosticValue(name)} failed for ${runtimeValueKind(input)} input`,
+        node.right.line,
+        node.right.column,
+      );
+    }
     if (builtin === undefined) {
       throw new Error(`Invalid template test ${name}`);
     }
@@ -1018,7 +1087,15 @@ class Evaluator {
         throw new Error('Unknown template capability');
       }
     }
-    throw new Error(`Unable to call template value${name ? ` ${name}` : ''}`);
+    if (name) {
+      throw new Error(
+        `Template value ${formatDiagnosticValue(name)} resolved to ` +
+          `${runtimeValueKind(target)} and cannot be called`,
+      );
+    }
+    throw new Error(
+      `Template expression resolved to ${runtimeValueKind(target)} and cannot be called`,
+    );
   }
 
   #evaluateArguments(
@@ -1360,7 +1437,11 @@ class Evaluator {
       this.#options.limits.outputCodeUnits !== Number.POSITIVE_INFINITY &&
       this.#outputCodeUnits > this.#options.limits.outputCodeUnits
     ) {
-      throw new NunjitsuLimitError('outputCodeUnits');
+      throw new NunjitsuLimitError('outputCodeUnits', {
+        phase: 'evaluate',
+        configured: this.#options.limits.outputCodeUnits,
+        observed: this.#outputCodeUnits,
+      });
     }
     output.push(value);
   }
@@ -1370,14 +1451,22 @@ class Evaluator {
       this.#options.limits.nestingDepth !== Number.POSITIVE_INFINITY &&
       depth > this.#options.limits.nestingDepth
     ) {
-      throw new NunjitsuLimitError('nestingDepth');
+      throw new NunjitsuLimitError('nestingDepth', {
+        phase: 'evaluate',
+        configured: this.#options.limits.nestingDepth,
+        observed: depth,
+      });
     }
     this.#workUnits += 1;
     if (
       this.#options.limits.workUnits !== Number.POSITIVE_INFINITY &&
       this.#workUnits > this.#options.limits.workUnits
     ) {
-      throw new NunjitsuLimitError('workUnits');
+      throw new NunjitsuLimitError('workUnits', {
+        phase: 'evaluate',
+        configured: this.#options.limits.workUnits,
+        observed: this.#workUnits,
+      });
     }
   }
 
@@ -1387,7 +1476,11 @@ class Evaluator {
       this.#options.limits.capabilityCalls !== Number.POSITIVE_INFINITY &&
       this.#capabilityCalls > this.#options.limits.capabilityCalls
     ) {
-      throw new NunjitsuLimitError('capabilityCalls');
+      throw new NunjitsuLimitError('capabilityCalls', {
+        phase: 'evaluate',
+        configured: this.#options.limits.capabilityCalls,
+        observed: this.#capabilityCalls,
+      });
     }
   }
 
@@ -1399,7 +1492,11 @@ class Evaluator {
     for (const value of values) {
       bytes += runtimeValueBytes(value);
       if (bytes > this.#options.limits.scratchBytes) {
-        throw new NunjitsuLimitError('scratchBytes');
+        throw new NunjitsuLimitError('scratchBytes', {
+          phase: 'evaluate',
+          configured: this.#options.limits.scratchBytes,
+          observed: bytes,
+        });
       }
     }
     return bytes;
@@ -1411,7 +1508,11 @@ class Evaluator {
       workLimit !== Number.POSITIVE_INFINITY &&
       (!Number.isSafeInteger(count) || count > workLimit - this.#workUnits)
     ) {
-      throw new NunjitsuLimitError('workUnits');
+      throw new NunjitsuLimitError('workUnits', {
+        phase: 'evaluate',
+        configured: workLimit,
+        observed: this.#workUnits + count,
+      });
     }
     const scratchLimit = this.#options.limits.scratchBytes;
     if (
@@ -1423,7 +1524,11 @@ class Evaluator {
         )
       )
     ) {
-      throw new NunjitsuLimitError('scratchBytes');
+      throw new NunjitsuLimitError('scratchBytes', {
+        phase: 'evaluate',
+        configured: scratchLimit,
+        observed: existingScratchBytes + count * indexedValueScratchBytes,
+      });
     }
     if (!Number.isSafeInteger(count) || count < 0) {
       throw new RangeError('Array-like record length exceeds the supported range');
@@ -1864,17 +1969,72 @@ function runtimeValueBytes(value: RuntimeValue): number {
   return Buffer.byteLength(renderRuntimeValue(value));
 }
 
-function validateUniqueBlocks(ast: AstNode): void {
-  const blocks = new Set<string>();
-  visitAst(ast, node => {
-    if (node.type === 'Block') {
-      const name = symbolName(node.name);
-      if (blocks.has(name)) {
-        throw new Error(`Template defines block ${name} more than once`);
-      }
-      blocks.add(name);
-    }
-  });
+function unknownRuntimeName(
+  description: string,
+  name: string,
+  candidates: Iterable<string>,
+): string {
+  const suggestion = suggestDiagnosticName(name, candidates);
+  return `Unknown ${description} ${formatDiagnosticValue(name)}` + (
+    suggestion ? `; did you mean ${formatDiagnosticValue(suggestion)}?` : ''
+  );
+}
+
+function* diagnosticFilterNames(
+  cookiecutterCompat: boolean,
+  configuredNames: readonly string[],
+): IterableIterator<string> {
+  yield* listBuiltinFilterNames();
+  if (cookiecutterCompat) {
+    yield 'jsonify';
+  }
+  yield* configuredNames;
+}
+
+function contextualizeRuntimeFailure(
+  error: unknown,
+  context: string,
+  line: number,
+  column: number,
+): RuntimeEvaluationError {
+  if (error instanceof NunjitsuLimitError) {
+    throw error;
+  }
+  const failure = RuntimeEvaluationError.from(error, line, column);
+  return new RuntimeEvaluationError(
+    failure.code,
+    `${context}: ${failure.message}`,
+    failure.line,
+    failure.column,
+  );
+}
+
+function runtimeValueKind(value: RuntimeValue): string {
+  if (value === undefined) {
+    return 'undefined';
+  }
+  if (value === null) {
+    return 'null';
+  }
+  if (typeof value === 'boolean' || typeof value === 'number' || typeof value === 'string') {
+    return typeof value;
+  }
+  if (value instanceof RuntimeArray) {
+    return 'array';
+  }
+  if (value instanceof RuntimeRecord) {
+    return 'record';
+  }
+  if (value instanceof RuntimeSafeString) {
+    return 'safe string';
+  }
+  if (value instanceof RuntimeRegex) {
+    return 'regular expression';
+  }
+  if (value instanceof RuntimeCallable) {
+    return 'callable';
+  }
+  return 'unknown value';
 }
 
 function createMacroBindingContext(
@@ -1891,86 +2051,4 @@ function createMacroBindingContext(
     exportsMacros,
     exportsAssignments,
   });
-}
-
-function visitAst(node: AstNode, visitor: (node: AstNode) => void): void {
-  visitor(node);
-  for (const child of astChildren(node)) {
-    visitAst(child, visitor);
-  }
-}
-
-function astChildren(node: AstNode): readonly AstNode[] {
-  switch (node.type) {
-    case 'Root':
-    case 'NodeList':
-    case 'Output':
-    case 'Group':
-    case 'Array':
-    case 'Dict':
-    case 'KeywordArgs':
-      return node.children;
-    case 'Pair':
-      return [node.key, node.value];
-    case 'LookupVal':
-      return [node.target, node.val];
-    case 'Slice':
-      return [node.start, node.stop, node.step];
-    case 'If':
-    case 'InlineIf':
-      return node.else_ ? [node.cond, node.body, node.else_] : [node.cond, node.body];
-    case 'For':
-      return node.else_ ? [node.arr, node.name, node.body, node.else_] : [node.arr, node.name, node.body];
-    case 'Macro':
-    case 'Caller':
-      return [node.name, node.args, node.body];
-    case 'FunCall':
-    case 'Filter':
-      return [node.name, node.args];
-    case 'CallBlock':
-      return [node.call, node.caller];
-    case 'Block':
-      return [node.name, node.body];
-    case 'Set': {
-      const children = Array.from(node.targets);
-      if (node.value) {
-        children.push(node.value);
-      }
-      if (node.body) {
-        children.push(node.body);
-      }
-      return children;
-    }
-    case 'Switch':
-      return node.default ? [node.expr, ...node.cases, node.default] : [node.expr, ...node.cases];
-    case 'Case':
-      return [node.cond, node.body];
-    case 'Capture':
-      return [node.body];
-    case 'In':
-    case 'Is':
-    case 'Or':
-    case 'And':
-    case 'Add':
-    case 'Concat':
-    case 'Sub':
-    case 'Mul':
-    case 'Div':
-    case 'Mod':
-    case 'Pow':
-      return [node.left, node.right];
-    case 'Not':
-    case 'Neg':
-    case 'Pos':
-    case 'Floor':
-      return [node.target];
-    case 'Compare':
-      return [node.expr, ...node.ops];
-    case 'CompareOperand':
-      return [node.expr];
-    case 'TemplateData':
-    case 'Literal':
-    case 'Symbol':
-      return [];
-  }
 }

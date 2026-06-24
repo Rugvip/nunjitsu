@@ -185,8 +185,9 @@ test('rejects proxy-backed values before invoking reflection traps', () => {
           return false;
         }
         caught = error;
-        return error.message ===
-          'Template capability failed: Proxy objects cannot be used as template values';
+        return error.message.includes(
+          'failed: Proxy objects cannot be used as template values',
+        );
       },
     );
     assert.equal(caught?.code, 'capability_error');
@@ -1794,7 +1795,7 @@ test('restricts numeric literals before capability dispatch', () => {
 
     const positioned = assertRejected(['first line', '{{ 1e3 }}'].join('\n'));
     assert.equal(positioned.line, 2);
-    assert.equal(positioned.column, 1);
+    assert.equal(positioned.column, cookiecutterCompat ? 4 : 5);
   }
 });
 
@@ -3677,15 +3678,24 @@ test('capability exceptions retain only inert sanitized messages and halt evalua
   const failureCases = [
     {
       source: 'before${{ "value" | failUseful }}${{ later() }}',
-      message: 'Template capability failed: useful message',
+      message: 'Template filter "failUseful" failed: useful message',
     },
     {
       source: 'before${{ failString() }}${{ later() }}',
-      message: 'Template capability failed: first\\u000asecond\\u001b[31m',
+      message: 'Template global "failString" failed: first\\u000asecond\\u001b[31m',
     },
-    { source: 'before${{ failGetter() }}${{ later() }}', message: 'Template capability failed' },
-    { source: 'before${{ failProxy() }}${{ later() }}', message: 'Template capability failed' },
-    { source: 'before${{ failExotic() }}${{ later() }}', message: 'Template capability failed' },
+    {
+      source: 'before${{ failGetter() }}${{ later() }}',
+      message: 'Template global "failGetter" failed',
+    },
+    {
+      source: 'before${{ failProxy() }}${{ later() }}',
+      message: 'Template global "failProxy" failed',
+    },
+    {
+      source: 'before${{ failExotic() }}${{ later() }}',
+      message: 'Template global "failExotic" failed',
+    },
   ];
   for (const { source, message } of failureCases) {
     let caught: NunjitsuRenderError | undefined;
@@ -3699,7 +3709,8 @@ test('capability exceptions retain only inert sanitized messages and halt evalua
         return true;
       },
     );
-    assert.equal(caught?.message, message);
+    assert.match(caught?.message ?? '', /^Template error at line 1, column \d+: /);
+    assert.ok(caught?.message.endsWith(message));
     assert.equal(caught?.code, 'capability_error');
     assert.equal(caught?.cause, undefined);
     inspect(caught, { showHidden: true, depth: 5 });
@@ -3722,7 +3733,10 @@ test('capability exceptions retain only inert sanitized messages and halt evalua
       return true;
     },
   );
-  assert.match(longError?.message ?? '', /^Template capability failed: x+…$/);
+  assert.match(
+    longError?.message ?? '',
+    /^Template error at line 1, column 5: Template global "failLong" failed: x+…$/,
+  );
   assert.ok((longError?.message.length ?? 0) <= 1_025);
   assert.equal(longError?.code, 'capability_error');
   assert.equal(longError?.cause, undefined);
@@ -3770,7 +3784,7 @@ test('parser diagnostics neutralize untrusted token content', () => {
     for (const message of [parseMessage, renderMessage]) {
       assert.doesNotMatch(message, unsafeDiagnosticCharacterPattern);
       assert.ok(message.length < 300);
-      assert.match(message, /^Expected name, received "/);
+      assert.match(message, /Expected name, received "/);
     }
     assert.equal(engine.render('clean'), 'clean');
   }
@@ -3837,9 +3851,9 @@ test('public render diagnostics expose safe structure without internal causes', 
   assert.equal(evaluationError?.phase, 'evaluate');
   assert.equal(evaluationError?.code, 'evaluation_error');
   assert.equal(evaluationError?.line, 1);
-  assert.equal(evaluationError?.column, 1);
+  assert.equal(evaluationError?.column, 11);
   assert.equal(evaluationError?.cause, undefined);
-  assert.match(evaluationError?.message ?? '', /FORGED\\u000a\\u001b/);
+  assert.match(evaluationError?.message ?? '', /FORGED\\n\\u001b/);
   const inspectedEvaluationError = inspect(evaluationError, { showHidden: true, depth: 5 });
   assert.doesNotMatch(inspectedEvaluationError, unsafeControlPattern);
   assert.ok(!inspectedEvaluationError.includes('FORGED\n'));
@@ -3858,7 +3872,7 @@ test('public render diagnostics expose safe structure without internal causes', 
   assert.equal(parseError?.phase, 'parse');
   assert.equal(parseError?.code, 'syntax_error');
   assert.equal(parseError?.line, 2);
-  assert.equal(parseError?.column, 9);
+  assert.equal(parseError?.column, 13);
   assert.equal(parseError?.cause, undefined);
 
   const capabilityEngine = createEngine({
@@ -3882,7 +3896,7 @@ test('public render diagnostics expose safe structure without internal causes', 
   assert.equal(capabilityError?.phase, 'evaluate');
   assert.equal(capabilityError?.code, 'capability_error');
   assert.equal(capabilityError?.line, 1);
-  assert.equal(capabilityError?.column, 8);
+  assert.equal(capabilityError?.column, 12);
   assert.equal(capabilityError?.cause, undefined);
   assert.doesNotMatch(inspect(capabilityError, { showHidden: true }), unsafeControlPattern);
   assert.equal(capabilityEngine.render('clean'), 'clean');
@@ -4025,7 +4039,8 @@ test('isolates capabilities from template-controlled legacy RegExp state', () =>
     () => engine.render('${{ fail() }}${{ later() }}'),
     error => (
       error instanceof NunjitsuRenderError &&
-      error.message === 'Template capability failed: expected failure'
+      error.message ===
+        'Template error at line 1, column 5: Template global "fail" failed: expected failure'
     ),
   );
   assert.deepEqual(readLegacyState(), emptyLegacyState);

@@ -3821,7 +3821,10 @@ test('dispatches only registered synchronous filters and globals', () => {
     'ab||production|zzz',
   );
   assert.deepEqual(callbackInputs, ['a', 'b']);
-  assert.throws(() => engine.render('${{ missingGlobal() }}'), /Unable to call/);
+  assert.throws(
+    () => engine.render('${{ missingGlobal() }}'),
+    /Template value "missingGlobal" resolved to undefined and cannot be called/,
+  );
 
   const invalid = createEngine({
     filters: {
@@ -5672,4 +5675,128 @@ test('wraps parse and evaluation failures without retaining render state', () =>
     );
     assert.equal(engine.render('${{ value }}', { value: 'clean' }), 'clean');
   }
+});
+
+test('reports actionable template diagnostics with precise safe context', () => {
+  const engine = createEngine();
+  const renderFailure = (
+    source: string,
+    context: Parameters<typeof engine.render>[1] = undefined,
+  ): NunjitsuRenderError => {
+    let caught: NunjitsuRenderError | undefined;
+    assert.throws(
+      () => engine.render(source, context),
+      error => {
+        if (!(error instanceof NunjitsuRenderError)) {
+          return false;
+        }
+        caught = error;
+        return true;
+      },
+    );
+    return caught!;
+  };
+
+  const expression = renderFailure('first line\n${{ total + }}');
+  assert.deepEqual(
+    { phase: expression.phase, code: expression.code, line: expression.line, column: expression.column },
+    { phase: 'parse', code: 'syntax_error', line: 2, column: 13 },
+  );
+  assert.equal(
+    expression.message,
+    'Template error at line 2, column 13: Unexpected expression token at end of input',
+  );
+
+  assert.match(
+    renderFailure('{% if ready %}yes{% endfor %}').message,
+    /Unexpected "endfor" tag; expected "elif", "elseif", "else", or "endif"/,
+  );
+  assert.match(
+    renderFailure('{% fro value in values %}').message,
+    /Unknown template tag "fro"; did you mean "for"\?/,
+  );
+  assert.equal(
+    renderFailure('prefix ${{ value | uppre }}', { value: 'x' }).message,
+    'Template error at line 1, column 20: Unknown template filter "uppre"; ' +
+      'did you mean "upper"?',
+  );
+  assert.match(
+    renderFailure('prefix ${{ 2 is evne }}').message,
+    /Unknown template test "evne"; did you mean "even"\?/,
+  );
+  assert.equal(
+    renderFailure('prefix ${{ 4 | upper }}').message,
+    'Template error at line 1, column 16: Filter "upper" failed for number input: ' +
+      'Filter input must be a string',
+  );
+  assert.equal(
+    renderFailure('prefix ${{ value.missing() }}', { value: {} }).message,
+    'Template error at line 1, column 18: Template value "value.missing" resolved to ' +
+      'undefined and cannot be called',
+  );
+
+  const duplicate = renderFailure([
+    'head',
+    '{% block item %}a{% endblock %}',
+    '{% block item %}b{% endblock %}',
+  ].join('\n'));
+  assert.deepEqual(
+    { phase: duplicate.phase, code: duplicate.code, line: duplicate.line, column: duplicate.column },
+    { phase: 'parse', code: 'syntax_error', line: 3, column: 1 },
+  );
+  assert.match(
+    duplicate.message,
+    /Block "item" is declared more than once; the first declaration is at line 2, column 1/,
+  );
+
+  const capabilityEngine = createEngine({
+    globals: {
+      deploy() {
+        throw new Error('backend rejected request');
+      },
+    },
+  });
+  assert.throws(
+    () => capabilityEngine.render('prefix ${{ deploy() }}'),
+    error => (
+      error instanceof NunjitsuRenderError &&
+      error.message === 'Template error at line 1, column 12: ' +
+        'Template global "deploy" failed: backend rejected request'
+    ),
+  );
+
+  let limitError: NunjitsuLimitError | undefined;
+  assert.throws(
+    () => engine.render('${{ value }}', { value: 'long' }, { limits: { outputCodeUnits: 3 } }),
+    error => {
+      if (!(error instanceof NunjitsuLimitError)) {
+        return false;
+      }
+      limitError = error;
+      return true;
+    },
+  );
+  assert.deepEqual(
+    {
+      limit: limitError?.limit,
+      phase: limitError?.phase,
+      line: limitError?.line,
+      column: limitError?.column,
+      configured: limitError?.configured,
+      observed: limitError?.observed,
+    },
+    {
+      limit: 'outputCodeUnits',
+      phase: 'evaluate',
+      line: 1,
+      column: 1,
+      configured: 3,
+      observed: 4,
+    },
+  );
+  assert.equal(
+    limitError?.message,
+    'Template evaluation exceeded the output code unit limit of 3 (observed 4) ' +
+      'at line 1, column 1',
+  );
 });

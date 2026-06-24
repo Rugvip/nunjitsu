@@ -157,7 +157,7 @@ export class ExpressionParser {
     if (this.#consumeName('is')) {
       const negate = this.#consumeName('not');
       const right = this.#parseCompare();
-      const test = this.#make('Is', { left, right }, left);
+      const test = this.#make('Is', { left, right }, right);
       return negate ? this.#make('Not', { target: test }, left) : test;
     }
     return left;
@@ -321,7 +321,7 @@ export class ExpressionParser {
       args: this.#make('NodeList', {
         children: Object.freeze([input, ...supplied]),
       }, input),
-    }, input);
+    }, name);
   }
 
   #parseFilterName(): AstNode {
@@ -364,14 +364,14 @@ export class ExpressionParser {
         expression = this.#make('LookupVal', {
           target: expression,
           val: this.#literal(key.value, key),
-        }, expression);
+        }, key);
       } else if (this.#consume('[')) {
         const value = this.#nested(() => this.#parseSubscript());
         this.#expectValue(']');
         if (value.type === 'Literal' && typeof value.value === 'string') {
           this.#assertAllowedName(value.value, value);
         }
-        expression = this.#make('LookupVal', { target: expression, val: value }, expression);
+        expression = this.#make('LookupVal', { target: expression, val: value }, value);
       } else if (this.#consume('(')) {
         expression = this.#make('FunCall', {
           name: expression,
@@ -597,7 +597,14 @@ export class ExpressionParser {
   #nested<T>(parse: () => T): T {
     this.#depth += 1;
     if (this.#maximumDepth !== Number.POSITIVE_INFINITY && this.#depth > this.#maximumDepth) {
-      throw new NunjitsuLimitError('nestingDepth');
+      const token = this.#peek();
+      throw new NunjitsuLimitError('nestingDepth', {
+        phase: 'parse',
+        line: token.line + 1,
+        column: token.column + 1,
+        configured: this.#maximumDepth,
+        observed: this.#depth,
+      });
     }
     try {
       return parse();

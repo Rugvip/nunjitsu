@@ -5,6 +5,7 @@ import {
   type Engine,
   type EngineOptions,
   type NunjitsuRenderErrorDetails,
+  type NunjitsuLimitErrorDetails,
 } from 'nunjitsu';
 
 const options = { cookiecutterCompat: true } satisfies EngineOptions;
@@ -16,8 +17,14 @@ const details: NunjitsuRenderErrorDetails = {
   line: 1,
   column: 1,
 };
+const limitDetails: NunjitsuLimitErrorDetails = {
+  phase: 'evaluate',
+  line: 1,
+  column: 1,
+};
 
 void output;
 void details;
+void limitDetails;
 void NunjitsuLimitError;
 void NunjitsuRenderError;

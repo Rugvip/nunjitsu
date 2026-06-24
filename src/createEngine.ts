@@ -117,9 +117,13 @@ export class NunjitsuRenderError extends Error {
       column: undefined,
     },
   ) {
-    super(neutralizeDiagnosticMessage(
-      typeof message === 'string' ? message : 'Template rendering failed',
-    ));
+    const detail = typeof message === 'string' ? message : 'Template rendering failed';
+    const location = details.line === undefined
+      ? ''
+      : details.column === undefined
+        ? `Template error at line ${details.line}: `
+        : `Template error at line ${details.line}, column ${details.column}: `;
+    super(neutralizeDiagnosticMessage(`${location}${detail}`));
     this.name = 'NunjitsuRenderError';
     this.code = details.code;
     this.phase = details.phase;
