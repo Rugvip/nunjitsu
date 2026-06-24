@@ -14,6 +14,15 @@ const candidatesScript = fileURLToPath(new URL(
   '../../scripts/release/findReleaseCandidates.mjs',
   import.meta.url,
 ));
+const changesetConfigUrl = new URL('../../.changeset/config.json', import.meta.url);
+const changesetConfig = JSON.parse(readFileSync(
+  changesetConfigUrl,
+  'utf8',
+)) as { changelog: string };
+const changelogFormatter = new URL(
+  changesetConfig.changelog,
+  changesetConfigUrl,
+).href;
 const packageJson = JSON.parse(readFileSync(
   new URL('../../package.json', import.meta.url),
   'utf8',
@@ -117,4 +126,41 @@ test('rejects unsupported version transitions', () => {
 
   assert.notEqual(result.status, 0);
   assert.match(result.stderr, /changes package.json to unsupported version/);
+});
+
+test('formats changelog entries without commit hashes', () => {
+  const source = `
+    import formatter from ${JSON.stringify(changelogFormatter)};
+
+    const release = await formatter.getReleaseLine({
+      commit: 'abcdef1234567890',
+      summary: ${JSON.stringify(
+        'Improve template handling\nwith additional context.',
+      )},
+    });
+    const dependencies = await formatter.getDependencyReleaseLine(
+      [{ commit: 'abcdef1234567890' }],
+      [{ name: 'example', newVersion: '2.0.0' }],
+    );
+    const emptyDependencies = await formatter.getDependencyReleaseLine([], []);
+
+    process.stdout.write(JSON.stringify({
+      dependencies,
+      emptyDependencies,
+      release,
+    }));
+  `;
+  const result = spawnSync(
+    process.execPath,
+    ['--input-type=module', '--eval', source],
+    { encoding: 'utf8' },
+  );
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.deepEqual(JSON.parse(result.stdout), {
+    dependencies: '- Updated dependencies:\n  - example@2.0.0',
+    emptyDependencies: '',
+    release: '- Improve template handling\n  with additional context.',
+  });
+  assert.doesNotMatch(result.stdout, /abcdef1/);
 });

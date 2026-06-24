@@ -18,6 +18,10 @@ This consumes pending changesets, updates `package.json`, and writes the release
 notes to `CHANGELOG.md`. Review and commit those generated changes, then push
 them to `main`.
 
+The local changelog formatter writes each changeset summary as a bullet without
+including its Git commit hash. Dependency-only release notes list the updated
+package names and versions using the same plain format.
+
 ## Automatic release flow
 
 A push to `main` runs `.github/workflows/release.yml`. The workflow examines
