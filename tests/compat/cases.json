@@ -614,6 +614,12 @@
       "expected": "true|true|false|false|false|true|false|true|false|true"
     },
     {
+      "id": "runtime-safe-string-own-fields",
+      "template": "{% macro rendered() %}macro{% endmacro %}{% set safeValue=\"safe\"|safe %}{% set escapedValue=\"escape\"|escape %}{% set forcedValue=\"force\"|forceescape %}{% set macroValue=rendered() %}{{ safeValue.val }}:{{ escapedValue.val }}:{{ forcedValue.val }}:{{ macroValue.val }}|{{ \"length\" in safeValue }}:{{ \"val\" in safeValue }}:{{ \"safe\" in safeValue }}:{{ \"\" in safeValue }}:{{ 0 in safeValue }}:{{ \"0\" in safeValue }}:{{ \"missing\" in safeValue }}|{{ \"length\" not in safeValue }}:{{ \"safe\" not in safeValue }}|{{ [\"length\"] in safeValue }}:{{ (\"val\"|safe) in safeValue }}:{{ [] in safeValue }}|{{ \"a\" in \"cat\" }}:{{ \"\" in \"\" }}:{{ \"z\" not in \"cat\" }}",
+      "context": {},
+      "expected": "safe:escape:force:macro|true:true:false:false:false:false:false|false:true|true:true:false|true:true:true"
+    },
+    {
       "id": "runtime-empty-safe-string-truthiness",
       "template": "{% set safeEmpty = \"\" | safe %}{{ safeEmpty is truthy }}|{{ safeEmpty is falsy }}|{% if safeEmpty %}T{% else %}F{% endif %}|{{ \"T\" if safeEmpty else \"F\" }}|{{ not safeEmpty }}|{{ safeEmpty or \"O\" }}X|{{ safeEmpty and \"A\" }}|{{ (\"\" | escape) is truthy }}|{{ (\"\" | forceescape) is truthy }}",
       "context": {},

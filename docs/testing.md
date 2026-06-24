@@ -81,6 +81,9 @@ storage, array-only assignment resolution, record/string duplicate and extra
 targets, cross-branch temporary persistence, and fresh block, macro, and caller
 invocation boundaries,
 safe-string versus primitive-string multi-target compiler-branch selection,
+safe-string own-field lookup and membership versus primitive substring
+membership, numeric lookup adaptation, capability-bearing branch selection,
+and resistance to internal coercion hooks,
 exact dotted-filter capability dispatch and registry-name rejection,
 filter-block AST lowering, body-before-argument ordering, fail-before-capture
 validation, nested capture, and package-entrypoint dispatch,

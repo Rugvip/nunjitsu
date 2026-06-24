@@ -147,6 +147,9 @@ Template-controlled data is revalidated whenever its role changes:
   later template evaluation rather than becoming an absent value;
 - record membership uses the closed record's presence operation, keeping an
   allowed key containing `undefined` distinct from a missing or reserved key;
+- safe-string membership recognizes only the engine-owned `length` and `val`
+  fields after closed property-key conversion; it neither searches wrapped
+  content nor reflects inherited String or Object prototype properties;
 - equality dispatches explicitly by closed value kind; strict comparisons use
   identity and loose comparisons never invoke object coercion hooks;
 - switch selection uses closed strict identity, and callable identity comparison

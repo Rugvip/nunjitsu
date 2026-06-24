@@ -1510,10 +1510,6 @@ function constantLookupKey(node: AstNode): (
   return { found: false };
 }
 
-function isStringValue(value: RuntimeValue): boolean {
-  return typeof value === 'string' || value instanceof RuntimeSafeString;
-}
-
 function freshMemberCallable(value: RuntimeValue): RuntimeValue {
   return value instanceof RuntimeCallable
     ? new RuntimeCallable(value.callableKind, value.id)
@@ -1764,8 +1760,12 @@ function argumentSyntax(
 }
 
 function runtimeContains(container: RuntimeValue, needle: RuntimeValue): boolean {
-  if (isStringValue(container)) {
-    return renderRuntimeValue(container).includes(runtimeToString(needle));
+  if (typeof container === 'string') {
+    return container.includes(runtimeToString(needle));
+  }
+  if (container instanceof RuntimeSafeString) {
+    const propertyKey = runtimeToPropertyKey(needle);
+    return propertyKey === 'length' || propertyKey === 'val';
   }
   if (container instanceof RuntimeArray) {
     for (const value of container.presentValues()) {

@@ -28,6 +28,9 @@ Nunjitsu targets:
   arguments evaluated after body capture;
 - object-like truthiness for safe-string wrappers even when their wrapped text
   is empty, while explicit text length and iteration remain content-based;
+- closed safe-string own-field behavior: `length` and `val` are directly
+  readable and present to membership, while content substrings and numeric keys
+  are not members;
 - lexical and context shadowing when resolving callable globals;
 - presence-based macro defaults that preserve explicit null, undefined, and
   falsey arguments;
@@ -364,12 +367,14 @@ run of backslashes is rejected as an intentional fail-closed deviation from
 Nunjucks's ambiguous immediate-previous-character scanner; an odd run continues
 to escape the slash.
 
-Safe strings are internal text values rather than emulations of Nunjucks's
-prototype-bearing JavaScript `String` wrapper. Collection filters therefore
-treat them consistently as primitive UTF-16 text instead of reproducing wrapper
-indexing gaps that can yield `undefined`. Callable identities are also rejected
-where Nunjucks might stringify, serialize, or silently discard a JavaScript
-function; this preserves the closed capability boundary.
+Safe strings are internal text values rather than live emulations of Nunjucks's
+prototype-bearing JavaScript `String` wrapper. Their closed own `length` and
+`val` fields match the pinned wrapper, but inherited String and Object fields
+remain unavailable to lookup and membership. Collection filters continue to
+treat safe strings consistently as primitive UTF-16 text instead of reproducing
+wrapper indexing gaps that can yield `undefined`. Callable identities are also
+rejected where Nunjucks might stringify, serialize, or silently discard a
+JavaScript function; this preserves the closed capability boundary.
 
 Boolean conversion is the deliberate exception to text-like safe-string
 operations. A safe string is a sealed object-like runtime value and is always
@@ -377,6 +382,9 @@ truthy, including when it wraps empty text. Operations that explicitly inspect
 text length, numeric indices, or iteration continue to use the wrapped UTF-16
 content. This distinction also preserves Nunjucks's argument defaulting,
 selection filters, loop-else behavior, and fail-stop filter ordering.
+Numeric safe-string lookup is therefore a deliberate content-based adaptation,
+while numeric membership follows the pinned wrapper-object shape and remains
+false.
 
 ## Upstream test corpus
 

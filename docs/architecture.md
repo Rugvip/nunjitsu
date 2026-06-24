@@ -102,6 +102,9 @@ The interpreter evaluates the AST directly over engine-owned values and
 map-backed scopes. Identifiers, attributes, indices, operators, coercions,
 comparisons, and calls are explicit operations over closed value variants.
 They never delegate to JavaScript property lookup or implicit object coercion.
+Safe-string wrappers expose only the inert own fields `length` and `val`.
+Membership recognizes those fields through closed property-key conversion and
+never reflects inherited String or Object prototype names.
 
 The only callable values are sealed interpreter variants for inline macros,
 built-ins, and registered global functions. A template value cannot contain a

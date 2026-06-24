@@ -1259,10 +1259,15 @@ function hasRuntimeOwnValue(target: RuntimeValue, propertyKey: string): boolean 
     return propertyKey === 'length' ||
       runtimeArrayIndexFromPropertyKey(propertyKey, target.length) !== undefined;
   }
-  if (typeof target === 'string' || target instanceof RuntimeSafeString) {
-    const text = typeof target === 'string' ? target : target.value;
+  if (typeof target === 'string') {
+    const text = target;
     return propertyKey === 'length' ||
       runtimeArrayIndexFromPropertyKey(propertyKey, text.length) !== undefined;
+  }
+  if (target instanceof RuntimeSafeString) {
+    return propertyKey === 'val' ||
+      propertyKey === 'length' ||
+      runtimeArrayIndexFromPropertyKey(propertyKey, target.value.length) !== undefined;
   }
   return false;
 }
@@ -1281,13 +1286,23 @@ function readRuntimeOwnValue(
     const index = runtimeArrayIndexFromPropertyKey(propertyKey, target.length);
     return index === undefined ? undefined : target.at(index);
   }
-  if (typeof target === 'string' || target instanceof RuntimeSafeString) {
-    const text = typeof target === 'string' ? target : target.value;
+  if (typeof target === 'string') {
+    const text = target;
     if (propertyKey === 'length') {
       return text.length;
     }
     const index = runtimeArrayIndexFromPropertyKey(propertyKey, text.length);
     return index === undefined ? undefined : text[index];
+  }
+  if (target instanceof RuntimeSafeString) {
+    if (propertyKey === 'val') {
+      return target.value;
+    }
+    if (propertyKey === 'length') {
+      return target.value.length;
+    }
+    const index = runtimeArrayIndexFromPropertyKey(propertyKey, target.value.length);
+    return index === undefined ? undefined : target.value[index];
   }
   return undefined;
 }

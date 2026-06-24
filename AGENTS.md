@@ -255,6 +255,11 @@ Do not create additional packages without a documented architectural reason.
 - Treat every safe-string wrapper as truthy, including one containing empty
   text. Keep that wrapper truthiness separate from content-based text length,
   indexing, iteration, and string or numeric coercion.
+- Expose only the closed own safe-string fields `length` and `val`. Safe-string
+  membership tests those fields after closed property-key conversion rather
+  than searching wrapped content. Numeric membership remains false even though
+  the deliberate UTF-16 lookup model supports numeric code-unit indexing; never
+  reproduce inherited String or Object prototype membership.
 - Keep string-literal escapes fixed to Nunjucks v3.2.4: decode only `\\n`,
   `\\t`, and `\\r`, and treat every other backslash as quoting exactly its next
   source code unit. Do not add JavaScript hexadecimal or Unicode decoding, and

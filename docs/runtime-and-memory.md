@@ -121,6 +121,15 @@ string conversion, and numeric conversion continue to inspect the wrapped text.
 Filter flags and defaults use wrapper truthiness, while top-level empty-string
 iteration still has a numeric content length of zero.
 
+Direct safe-string lookup exposes `length` and the pinned Nunjucks own data
+field `val`; the latter returns the same primitive wrapped text. Membership
+likewise treats only `length` and `val` as present after closed property-key
+conversion. It does not search the wrapped content. Numeric membership remains
+false, matching Nunjucks's wrapper-object shape, while numeric lookup retains
+Nunjitsu's deliberate UTF-16 code-unit model. Inherited String and Object
+prototype fields are never represented, so method names and reserved names do
+not become present through membership.
+
 Closed coercion is separate from output rendering. Output continues to render
 null and undefined as empty strings, while semantic string and property-key
 conversion produces `"null"` and `"undefined"`. Safe strings unwrap directly;

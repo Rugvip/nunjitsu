@@ -15,6 +15,7 @@ import {
   RuntimeArray,
   RuntimeRecord,
   RuntimeRegex,
+  RuntimeSafeString,
   withRuntimeContextPath,
 } from '../../src/runtime/value.ts';
 
@@ -2325,6 +2326,151 @@ test('record membership tracks key presence independently of its value', () => {
   assert.equal(privilegedCalls, 0);
   assert.equal(oraclePrivilegedCalls, 0);
   assert.equal(engine.render('clean'), 'clean');
+});
+
+test('safe strings expose only closed own-field lookup and membership', () => {
+  for (const cookiecutterCompat of [false, true]) {
+    const events: string[] = [];
+    const oracleEvents: string[] = [];
+    const engine = createEngine({
+      cookiecutterCompat,
+      globals: {
+        mark(label, value) {
+          events.push(`mark:${String(label)}`);
+          return value;
+        },
+        privileged(label) {
+          events.push(`privileged:${String(label)}`);
+          return label;
+        },
+      },
+    });
+    const oracle = new nunjucks.Environment(undefined, { autoescape: false });
+    oracle.addGlobal('mark', (label: unknown, value: unknown) => {
+      oracleEvents.push(`mark:${String(label)}`);
+      return value;
+    });
+    oracle.addGlobal('privileged', (label: unknown) => {
+      oracleEvents.push(`privileged:${String(label)}`);
+      return label;
+    });
+
+    const matrixSource = [
+      '{% macro rendered() %}macro{% endmacro %}',
+      '{% set safeValue="safe"|safe %}',
+      '{% set escapedValue="escape"|escape %}',
+      '{% set forcedValue="force"|forceescape %}',
+      '{% set macroValue=rendered() %}',
+      '${{ safeValue.val }}:${{ escapedValue.val }}:',
+      '${{ forcedValue.val }}:${{ macroValue.val }}|',
+      '${{ "length" in safeValue }}:${{ "val" in safeValue }}:',
+      '${{ "safe" in safeValue }}:${{ "" in safeValue }}:',
+      '${{ 0 in safeValue }}:${{ "0" in safeValue }}:',
+      '${{ "missing" in safeValue }}|',
+      '${{ "length" not in safeValue }}:${{ "safe" not in safeValue }}|',
+      '${{ ["length"] in safeValue }}:${{ ("val"|safe) in safeValue }}:',
+      '${{ [] in safeValue }}|',
+      '${{ "a" in "cat" }}:${{ "" in "" }}:${{ "z" not in "cat" }}',
+    ].join('');
+    const engineMatrixSource = cookiecutterCompat
+      ? matrixSource.replaceAll('${{', '{{')
+      : matrixSource;
+    const oracleMatrixSource = matrixSource.replaceAll('${{', '{{');
+    const expectedMatrix = [
+      'safe:escape:force:macro',
+      'true:true:false:false:false:false:false',
+      'false:true',
+      'true:true:false',
+      'true:true:true',
+    ].join('|');
+    assert.equal(engine.render(engineMatrixSource), expectedMatrix);
+    assert.equal(oracle.renderString(oracleMatrixSource, {}), expectedMatrix);
+
+    const numericLookupSource = [
+      '{% set value="safe"|safe %}',
+      '${{ value[0] }}:${{ "0" in value }}',
+    ].join('');
+    const engineNumericLookupSource = cookiecutterCompat
+      ? numericLookupSource.replaceAll('${{', '{{')
+      : numericLookupSource;
+    assert.equal(engine.render(engineNumericLookupSource), 's:false');
+    assert.equal(
+      oracle.renderString(numericLookupSource.replaceAll('${{', '{{'), {}),
+      ':false',
+    );
+
+    const branchSource = [
+      '{% set value="admin"|safe %}',
+      '{% if mark("content", "admin") in value %}${{ privileged("content") }}{% endif %}',
+      '{% if mark("length", "length") in value %}${{ privileged("length") }}{% endif %}',
+      '{% if mark("missing", "missing") not in value %}${{ privileged("missing") }}{% endif %}',
+    ].join('');
+    const engineBranchSource = cookiecutterCompat
+      ? branchSource.replaceAll('${{', '{{')
+      : branchSource;
+    const oracleBranchSource = branchSource.replaceAll('${{', '{{');
+    assert.equal(engine.render(engineBranchSource), 'lengthmissing');
+    assert.equal(oracle.renderString(oracleBranchSource, {}), 'lengthmissing');
+    assert.deepEqual(events, [
+      'mark:content',
+      'mark:length',
+      'privileged:length',
+      'mark:missing',
+      'privileged:missing',
+    ]);
+    assert.deepEqual(oracleEvents, events);
+
+    const inheritedSource = [
+      '{% set value="safe"|safe %}',
+      '${{ "toString" in value }}:${{ "indexOf" in value }}:',
+      '${{ "constructor" in value }}:${{ "prototype" in value }}:',
+      '${{ "__proto__" in value }}|',
+      '${{ value.toString is undefined }}:${{ value.indexOf is undefined }}',
+    ].join('');
+    const engineInheritedSource = cookiecutterCompat
+      ? inheritedSource.replaceAll('${{', '{{')
+      : inheritedSource;
+    assert.equal(
+      engine.render(engineInheritedSource),
+      'false:false:false:false:false|true:true',
+    );
+
+    const coercionKeys = ['valueOf', 'toString', Symbol.toPrimitive] as const;
+    const descriptors = new Map<PropertyKey, PropertyDescriptor | undefined>();
+    let coercionHookCalls = 0;
+    for (const key of coercionKeys) {
+      descriptors.set(key, Object.getOwnPropertyDescriptor(RuntimeSafeString.prototype, key));
+      Object.defineProperty(RuntimeSafeString.prototype, key, {
+        configurable: true,
+        value() {
+          coercionHookCalls += 1;
+          throw new Error('Safe-string host coercion must not run');
+        },
+      });
+    }
+    try {
+      assert.equal(engine.render(engineMatrixSource), expectedMatrix);
+    } finally {
+      for (const [key, descriptor] of descriptors) {
+        if (descriptor) {
+          Object.defineProperty(RuntimeSafeString.prototype, key, descriptor);
+        } else {
+          Reflect.deleteProperty(RuntimeSafeString.prototype, key);
+        }
+      }
+    }
+    assert.equal(coercionHookCalls, 0);
+
+    const callableNeedleSource = [
+      '{% set value="safe"|safe %}',
+      '{% if privileged in value %}unexpected{% endif %}',
+    ].join('');
+    assert.throws(
+      () => engine.render(callableNeedleSource),
+      NunjitsuRenderError,
+    );
+    assert.equal(engine.render('clean'), 'clean');
+  }
 });
 
 test('callable identities stay sealed and regular expressions cross as inert data', () => {

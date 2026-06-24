@@ -1200,8 +1200,9 @@
     },
     {
       "upstream": {"id":"tests/compiler.js:55","file":"tests/compiler.js","test":"should compile the \"in\" operator for strings"},
-      "status": "not applicable",
-      "reason": "Requires automatic escaping, while the direct-string API fixes autoescape to false."
+      "status": "adapted",
+      "reason": "Primitive substring and safe-wrapper own-field membership are verified through rendered output with fixed autoescape false and without exposing inherited JavaScript prototypes.",
+      "cases": ["runtime-safe-string-own-fields"]
     },
     {
       "upstream": {"id":"tests/compiler.js:56","file":"tests/compiler.js","test":"should throw an error when using the \"in\" operator on unexpected types"},
