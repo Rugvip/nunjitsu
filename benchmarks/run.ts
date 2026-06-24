@@ -373,10 +373,10 @@ async function collectGarbage(): Promise<void> {
 }
 
 function parseOptions(arguments_: readonly string[]): BenchmarkOptions {
-  const warmup = parseNonNegativeInteger(optionValue(arguments_, 'warmup') ?? '20', 'warmup');
-  const iterations = parsePositiveInteger(optionValue(arguments_, 'iterations') ?? '100', 'iterations');
+  const warmup = parseNonNegativeInteger(optionValue(arguments_, 'warmup') ?? '5', 'warmup');
+  const iterations = parsePositiveInteger(optionValue(arguments_, 'iterations') ?? '20', 'iterations');
   const loops = parsePositiveInteger(
-    optionValue(arguments_, 'loops') ?? '10',
+    optionValue(arguments_, 'loops') ?? '3',
     'loops',
   );
   const caseOption = optionValue(arguments_, 'case');
