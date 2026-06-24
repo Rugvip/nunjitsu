@@ -1036,7 +1036,8 @@
     {
       "upstream": {"id":"tests/compiler.js:17","file":"tests/compiler.js","test":"should loop over simple arrays"},
       "status": "adapted",
-      "reason": "Observable loop behavior is verified through the synchronous direct-string API with fixed autoescape false."
+      "reason": "Observable loop behavior and local target shadowing are verified through the synchronous direct-string API with fixed autoescape false.",
+      "cases": ["compiler-runtime-local-shadowing"]
     },
     {
       "upstream": {"id":"tests/compiler.js:18","file":"tests/compiler.js","test":"should loop normally with an {% else %} tag and non-empty array"},
@@ -1058,7 +1059,8 @@
     {
       "upstream": {"id":"tests/compiler.js:22","file":"tests/compiler.js","test":"should support loop.index"},
       "status": "adapted",
-      "reason": "Loop metadata is verified through rendered output with fixed autoescape false."
+      "reason": "Loop metadata and its local shadowing behavior are verified through rendered output with fixed autoescape false.",
+      "cases": ["compiler-runtime-local-shadowing"]
     },
     {
       "upstream": {"id":"tests/compiler.js:23","file":"tests/compiler.js","test":"should support loop.index0"},

@@ -123,6 +123,13 @@ frame. Ordinary macros therefore do not close over loop variables, caller
 arguments, or outer-macro parameters. Synthetic callers retain only their
 explicit call-site value and lexical scopes.
 
+Dynamic locals preserve nearest-frame precedence across those layers. Loop
+targets and macro or caller formals are installed in both the runtime frame and
+the exact current lexical frame, replacing the local value on each binding
+without assigning into a parent. Loop metadata similarly shadows enclosing
+value bindings; the pinned compiler's direct macro slot named `loop` remains
+the one deliberate higher-priority case.
+
 Operation validation precedes attacker-controlled operands. Call blocks resolve
 and require a macro before evaluating arguments or registering their caller
 body. Filter and test names, including tests named through `select` and

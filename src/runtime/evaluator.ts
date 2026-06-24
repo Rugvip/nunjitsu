@@ -290,7 +290,7 @@ class Evaluator {
           invocationScope: macroContext.invocationScope,
         });
         const handle = new RuntimeCallable('macro', id);
-        macroContext.bindingScope.set(name, handle);
+        macroContext.bindingScope.setMacro(name, handle);
         if (macroContext.exportsMacros) {
           macroContext.invocationScope.set(name, handle);
         }
@@ -399,9 +399,14 @@ class Evaluator {
     let index = 0;
     for (const entry of entries.values) {
       const iteration = loopScope;
-      bindLoopTargets(targets, entry, iteration);
+      bindLoopTargets(
+        targets,
+        entry,
+        iteration,
+        loopMacroContext.bindingScope,
+      );
       const numericLength = runtimeToNumber(entries.length);
-      iteration.set('loop', new RuntimeRecord([
+      bindRuntimeFrameLocal('loop', new RuntimeRecord([
         ['index', index + 1],
         ['index0', index],
         ['revindex', numericLength - index],
@@ -409,7 +414,7 @@ class Evaluator {
         ['first', index === 0],
         ['last', index === numericLength - 1],
         ['length', entries.length],
-      ]));
+      ]), iteration, loopMacroContext.bindingScope);
       this.#evaluateNode(
         node.body,
         iteration,
@@ -1098,7 +1103,7 @@ class Evaluator {
               depth + 1,
             );
           if (!boundNames.has(name)) {
-            local.set(name, value);
+            bindRuntimeLocal(name, value, local, bodyMacroContext.bindingScope);
             boundNames.add(name);
           }
           formalIndex += 1;
@@ -1113,14 +1118,19 @@ class Evaluator {
           supplied = arguments_.keyword.get(name);
         }
         if (!boundNames.has(name)) {
-          local.set(name, supplied);
+          bindRuntimeLocal(name, supplied, local, bodyMacroContext.bindingScope);
           boundNames.add(name);
         }
         formalIndex += 1;
       }
     }
     if (!declaresCaller && arguments_.keyword.has('caller')) {
-      local.set('caller', arguments_.keyword.get('caller'));
+      bindRuntimeLocal(
+        'caller',
+        arguments_.keyword.get('caller'),
+        local,
+        bodyMacroContext.bindingScope,
+      );
     }
     return this.#capture(
       definition.node.body,
@@ -1429,13 +1439,41 @@ function bindLoopTargets(
   targets: readonly AstNode[],
   value: RuntimeValue,
   scope: RuntimeScope,
+  bindingScope: RuntimeScope,
 ): void {
   if (targets.length === 1) {
-    scope.set(symbolName(targets[0]!), value);
+    bindRuntimeLocal(symbolName(targets[0]!), value, scope, bindingScope);
     return;
   }
   for (const [index, target] of targets.entries()) {
-    scope.set(symbolName(target), destructureRuntimeValue(value, index));
+    bindRuntimeLocal(
+      symbolName(target),
+      destructureRuntimeValue(value, index),
+      scope,
+      bindingScope,
+    );
+  }
+}
+
+function bindRuntimeLocal(
+  name: string,
+  value: RuntimeValue,
+  scope: RuntimeScope,
+  bindingScope: RuntimeScope,
+): void {
+  scope.set(name, value);
+  bindingScope.set(name, value);
+}
+
+function bindRuntimeFrameLocal(
+  name: string,
+  value: RuntimeValue,
+  scope: RuntimeScope,
+  bindingScope: RuntimeScope,
+): void {
+  scope.set(name, value);
+  if (bindingScope.bindingKind(name) !== 'macro') {
+    bindingScope.set(name, value);
   }
 }
 

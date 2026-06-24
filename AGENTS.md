@@ -90,6 +90,11 @@ implementation and documentation aligned with the architecture in
   synthetic caller declarations remain local. Ordinary macros never capture
   loop, caller, or outer-macro locals; synthetic callers alone retain their
   confined call-site value and lexical scopes.
+- Mirror loop targets and macro or caller formals into both their runtime frame
+  and exact current lexical frame with local replacement semantics. Mirror
+  loop metadata over enclosing value bindings without overwriting a compiler-
+  local macro named `loop`, matching the pinned compiler. Never assign a
+  dynamically created local through to an outer lexical frame.
 - Reject macro declarations anywhere inside block-set or filter-block captures
   during complete parsing rather than inventing capture-specific macro scope.
 - Validate macro and caller declarations separately from ordinary calls. Every

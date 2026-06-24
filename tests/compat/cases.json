@@ -869,6 +869,12 @@
       "template": "{% set policy=false %}{% block first %}{% macro policy() %}I{% endmacro %}{% endblock %}{{ policy is callable }}:{% macro firstReader() %}{{ policy is callable }}{% endmacro %}{{ firstReader() }}|{% macro value() %}O{% endmacro %}{% block second %}{% macro value() %}I{% endmacro %}{% endblock %}{{ value() }}:{% macro secondReader() %}{{ value() }}{% endmacro %}{{ secondReader() }}",
       "context": {},
       "expected": "false:true|O:I"
+    },
+    {
+      "id": "compiler-runtime-local-shadowing",
+      "template": "{% set x=\"root\" %}{% for x in [1,2] %}{{ x }}{% endfor %}|{{ x }}|{% set loop=\"root\" %}{% for value in [1] %}{{ loop.index }}{% endfor %}|{{ loop }}|{% set item=\"root\" %}{% macro wrap() %}{{ caller(\"arg\") }}{% endmacro %}{% call(item) wrap() %}{{ item }}{% endcall %}",
+      "context": {},
+      "expected": "12|root|1|root|arg"
     }
   ]
 }

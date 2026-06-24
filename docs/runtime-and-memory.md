@@ -362,6 +362,14 @@ runtime frame. Loop and synthetic caller macro declarations remain local; `if`
 and `switch` retain the containing lexical/export policy. Synthetic callers
 alone retain their explicitly confined call-site value and lexical scopes.
 
+Every loop target and macro or synthetic-caller formal is written to both the
+runtime frame and current lexical frame through one local-binding operation.
+This makes single and destructured targets, per-iteration rebinding, and caller
+parameters shadow enclosing `set` or macro slots without mutating those parent
+slots. The `loop` metadata record also shadows enclosing value bindings. A
+compiler-local macro literally named `loop` retains Nunjucks's direct-slot
+precedence, so metadata does not replace that particular lexical macro.
+
 Block-set and filter-block captures reject nested macro declarations during
 complete parsing. Nunjucks's generated JavaScript has inconsistent failures for
 these placements, so the secure subset does not create capture-specific export

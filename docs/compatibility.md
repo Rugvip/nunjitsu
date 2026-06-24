@@ -37,6 +37,9 @@ Nunjitsu targets:
 - stable root lexical `set` and macro bindings alongside independently updated
   macro exports, so root expressions and separately evaluated block or macro
   bodies retain Nunjucks-compatible collision behavior;
+- nearest-frame precedence for single and destructured loop targets, loop
+  metadata, macro parameters, and synthetic caller parameters, including
+  per-iteration rebinding without mutation of enclosing lexical values;
 - Nunjucks-compatible UTF-16 code-unit semantics for string length, lookup,
   iteration, ordering, filters, replacement, and Jinja-compatible slicing;
 - pinned Jinja slice lookup semantics, including raw fractional and string

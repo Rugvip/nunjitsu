@@ -189,6 +189,9 @@ Template-controlled data is revalidated whenever its role changes:
   lexical policy binding, loop, caller, and outer-macro locals cannot be
   captured or exported accidentally, and macro declarations inside output
   captures are rejected before execution;
+- dynamically created loop targets, loop metadata, macro parameters, and caller
+  parameters are installed as current-frame locals before lookup, so an outer
+  policy binding cannot redirect a nearer value to a callable capability;
 - standalone blocks carry no inheritance chain and synthesize no `super`
   authority; call blocks target only macros, and their `caller` handle cannot
   cross or be silently discarded at capability or built-in boundaries;

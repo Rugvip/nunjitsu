@@ -774,6 +774,130 @@ test('preserves root lexical bindings across exported macro collisions', () => {
   }
 });
 
+test('gives runtime locals precedence over enclosing lexical bindings', () => {
+  const sources = [
+    '{% set x="root" %}{% for x in [1,2] %}${{ x }}{% endfor %}|${{ x }}',
+    [
+      '{% macro x() %}M{% endmacro %}',
+      '{% for x in [1,2] %}${{ x }}{% endfor %}|${{ x() }}',
+    ].join(''),
+    [
+      '{% set key="root-key" %}{% set value="root-value" %}',
+      '{% for key,value in [["a",1],["b",2]] %}',
+      '${{ key }}=${{ value }};{% endfor %}|${{ key }}:${{ value }}',
+    ].join(''),
+    [
+      '{% macro left() %}L{% endmacro %}{% macro right() %}R{% endmacro %}',
+      '{% for left,right in [[1,2]] %}${{ left }}:${{ right }}{% endfor %}|',
+      '${{ left() }}${{ right() }}',
+    ].join(''),
+    '{% set loop="root" %}{% for x in [1] %}${{ loop.index }}{% endfor %}|${{ loop }}',
+    [
+      '{% macro loop() %}M{% endmacro %}',
+      '{% for x in [1] %}${{ loop.index }}{% endfor %}|${{ loop() }}',
+    ].join(''),
+    [
+      '{% set x="root" %}',
+      '{% for x in [1,2] %}[${{ x }}:{% set x=9 %}${{ x }}]{% endfor %}',
+      '|${{ x }}',
+    ].join(''),
+    [
+      '{% set item="root" %}',
+      '{% for item in [1] %}O${{ item }}',
+      '{% for item in [2] %}I${{ item }}{% endfor %}',
+      'A${{ item }}{% endfor %}|${{ item }}',
+    ].join(''),
+    [
+      '{% set item="root" %}',
+      '{% block content %}{% for item in [1] %}${{ item }}{% endfor %}{% endblock %}',
+      '|${{ item }}',
+    ].join(''),
+    [
+      '{% set item="root" %}',
+      '{% macro render() %}{% for item in [1] %}${{ item }}{% endfor %}',
+      '|${{ item }}{% endmacro %}${{ render() }}|${{ item }}',
+    ].join(''),
+    [
+      '{% set item="root" %}',
+      '{% macro wrap() %}${{ caller("arg") }}{% endmacro %}',
+      '{% call(item) wrap() %}${{ item }}{% endcall %}',
+    ].join(''),
+    [
+      '{% set item="root" %}',
+      '{% macro wrap() %}${{ caller() }}{% endmacro %}',
+      '{% call(item="default") wrap() %}${{ item }}{% endcall %}',
+    ].join(''),
+  ];
+
+  for (const cookiecutterCompat of [false, true]) {
+    const engineEvents: string[] = [];
+    const oracleEvents: string[] = [];
+    const engine = createEngine({
+      cookiecutterCompat,
+      globals: {
+        mark(value) {
+          engineEvents.push(String(value));
+          return '';
+        },
+      },
+    });
+    const oracle = new nunjucks.Environment(undefined, { autoescape: false });
+    oracle.addGlobal('mark', (value: unknown) => {
+      oracleEvents.push(String(value));
+      return '';
+    });
+    const engineSource = (source: string) => cookiecutterCompat
+      ? source.replaceAll('${{', '{{')
+      : source;
+
+    for (const source of sources) {
+      assert.equal(
+        engine.render(engineSource(source)),
+        oracle.renderString(source.replaceAll('${{', '{{'), {}),
+        source,
+      );
+    }
+
+    const capabilitySource = [
+      '{% macro policy() %}${{ mark("outer") }}{% endmacro %}',
+      '{% for policy in [false] %}',
+      '{% if policy is callable %}${{ mark("unexpected") }}${{ policy() }}{% endif %}',
+      '{% endfor %}${{ policy() }}',
+    ].join('');
+    assert.equal(
+      engine.render(engineSource(capabilitySource)),
+      oracle.renderString(capabilitySource.replaceAll('${{', '{{'), {}),
+    );
+    assert.deepEqual(engineEvents, ['outer']);
+    assert.deepEqual(oracleEvents, engineEvents);
+    engineEvents.length = 0;
+    oracleEvents.length = 0;
+
+    const failingSources = [
+      [
+        '{% macro policy() %}${{ mark("outer") }}{% endmacro %}',
+        '{% for policy in [false] %}${{ policy() }}{% endfor %}',
+        '${{ mark("later") }}',
+      ].join(''),
+      [
+        '{% macro item() %}${{ mark("outer") }}{% endmacro %}',
+        '{% macro wrap() %}${{ caller(false) }}{% endmacro %}',
+        '{% call(item) wrap() %}${{ item() }}{% endcall %}',
+        '${{ mark("later") }}',
+      ].join(''),
+    ];
+    for (const source of failingSources) {
+      assert.throws(() => engine.render(engineSource(source)), NunjitsuRenderError);
+      assert.throws(
+        () => oracle.renderString(source.replaceAll('${{', '{{'), {}),
+      );
+      assert.deepEqual(engineEvents, []);
+      assert.deepEqual(oracleEvents, []);
+      assert.equal(engine.render('clean'), 'clean');
+    }
+  }
+});
+
 test('matches built-in filters, tests, globals, comments, and raw regions', () => {
   const engine = createEngine();
   assert.equal(
