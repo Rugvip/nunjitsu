@@ -92,9 +92,10 @@ defaults, arguments, collections, arithmetic nesting, both delimiter modes,
 valid grouping, and zero capability dispatch. Standard-library regressions
 compare collection and text input domains,
 nullish failure behavior, scalar length results, URL-encoding pair lookup,
-safe-string adaptations, keyword arguments, stateful globals, capability order,
-callable-laundering attempts, and type preservation across `range`, `sum`, and
-`joiner`. Cycler state tests distinguish initial, empty advance, repeated
+safe-string adaptations, ordinary keyword bags, macro-wrapped filter positional
+precedence, stateful globals, capability order, callable-laundering attempts,
+and type preservation across `range`, `sum`, and `joiner`. Cycler state tests
+distinguish initial, empty advance, repeated
 advance, explicit-undefined item, non-empty, and reset transitions. Shared
 numeric-filter cases cover original-value defaults, fractional
 repeat bounds, substring and replacement limits, URL label lengths, fractional

@@ -249,11 +249,15 @@ their native JSON behavior.
 
 Filter argument evaluation retains the parser's Nunjucks aggregate order:
 positional expressions are evaluated first, followed by keyword expressions.
-Only `int` and `sort` consume declared names from the keyword map. Before every
-other built-in runs, the evaluator lowers the map into one final positional
-`RuntimeRecord`, forces its `__keywords` entry to true, and includes that closed
-record in scratch accounting. No native JavaScript keyword object, prototype,
-property lookup, or getter participates in dispatch.
+The macro-wrapped `int` and `sort` filters normalize their declared parameters
+through the same closed `makeMacro` binder as template macros. Positionals fill
+formal slots first, missing slots consume matching keywords by presence, and
+remaining keywords or surplus positionals are ignored only after recursive
+callable rejection. Before every other built-in runs, the evaluator lowers the
+map into one final positional `RuntimeRecord`, forces its `__keywords` entry to
+true, and includes that closed record in scratch accounting. No native
+JavaScript keyword object, prototype, property lookup, or getter participates
+in dispatch.
 
 Jinja subscript slices retain the evaluated target and operate through closed
 direct length and own-key lookup. Bounds are not truncated or clamped. Negative

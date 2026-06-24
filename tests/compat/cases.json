@@ -717,9 +717,9 @@
     },
     {
       "id": "filters-macro-keyword-binding",
-      "template": "{{ \"10\"|int(base=2,ignored=7) }}|{{ [\"b\",\"a\"]|sort(reverse=true,ignored=7)|join }}",
+      "template": "{{ \"10\"|int(base=2,ignored=7) }}|{{ [\"b\",\"a\"]|sort(reverse=true,ignored=7)|join }}|{{ \"x\"|int(default=7,2) }}|{{ \"x\"|int(2,default=7) }}|{{ \"10\"|int(base=2,2,8) }}|{{ \"10\"|int(2,8,base=2) }}|{{ [1,2]|sort(reverse=true,false)|dump }}|{{ [1,2]|sort(false,reverse=true)|dump }}|{{ [\"a\",\"B\"]|sort(case_sensitive=true,false,false)|dump }}|{{ [{name:\"first\",x:2,y:1},{name:\"second\",x:1,y:2}]|sort(attribute=\"x\",false,false,\"y\")|join(\",\",\"name\") }}",
       "context": {},
-      "expected": "2|ba"
+      "expected": "2|ba|2|2|8|8|[1,2]|[1,2]|[\"a\",\"B\"]|first,second"
     },
     {
       "id": "filters-ordinary-keyword-bags-a",

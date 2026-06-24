@@ -303,10 +303,13 @@ Do not create additional packages without a documented architectural reason.
   input, and resolve supported keyword arguments by presence rather than
   nullishness.
 - Lower built-in filter keywords according to Nunjucks's two calling
-  conventions. Bind declared names only for macro-wrapped `int` and `sort`;
-  append every other filter's keywords as one closed final positional record
-  with an own `__keywords: true` marker. Preserve positional-then-keyword
-  evaluation order, reject callables recursively, and never use a host object.
+  conventions. Normalize macro-wrapped `int` and `sort` through the shared
+  closed `makeMacro` argument binder, so occupied positional slots take
+  precedence over same-named keywords; append every other filter's keywords as
+  one closed final positional record with an own `__keywords: true` marker.
+  Preserve positional-then-keyword evaluation order, reject callables
+  recursively before any ignored or surplus value is discarded, and never use
+  a host object.
 - Handle array-like records per operation rather than through the generic
   sequence path. Preserve direct `first`, raw-length `last`, indexed-loop
   `batch` and `groupby`, map-style `reverse` and `sort`, slice-style `select`

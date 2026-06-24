@@ -1,5 +1,6 @@
 import { randomInt } from 'node:crypto';
 
+import { normalizeMacroArguments } from './arguments.ts';
 import {
   runtimeAdd,
   runtimeArrayIndexFromPropertyKey,
@@ -82,6 +83,11 @@ const builtinTestArities = new Map<string, number>([
   ['upper', 0],
 ]);
 
+const macroFilterPositionalNames = new Map<string, readonly string[]>([
+  ['int', Object.freeze(['default', 'base'])],
+  ['sort', Object.freeze(['reverse', 'case_sensitive', 'attribute'])],
+]);
+
 /** Returns whether the pinned standard library exposes one filter name. */
 export function hasBuiltinFilter(name: string): boolean {
   return builtinFilters.has(name);
@@ -105,19 +111,37 @@ export function lowerBuiltinFilterArguments(
 ): {
   readonly positional: readonly RuntimeValue[];
   readonly keyword: ReadonlyMap<string, RuntimeValue>;
+  readonly scratch: readonly RuntimeValue[];
 } {
+  for (const value of positional) {
+    assertRuntimeValueHasNoCallable(value);
+  }
   for (const value of keyword.values()) {
     assertRuntimeValueHasNoCallable(value);
   }
-  if (name === 'int' || name === 'sort' || keyword.size === 0) {
-    return { positional, keyword };
+  const positionalNames = macroFilterPositionalNames.get(name);
+  if (positionalNames) {
+    const normalized = normalizeMacroArguments(
+      positionalNames,
+      [],
+      { positional, keyword },
+    );
+    return {
+      positional: normalized.positional,
+      keyword: new Map(),
+      scratch: Object.freeze([...positional, ...keyword.values()]),
+    };
+  }
+  if (keyword.size === 0) {
+    return { positional, keyword, scratch: positional };
   }
   const entries = Array.from(keyword.entries());
   entries.push(['__keywords', true]);
-  return {
-    positional: Object.freeze([...positional, new RuntimeRecord(entries)]),
-    keyword: new Map(),
-  };
+  const loweredPositional = Object.freeze([
+    ...positional,
+    new RuntimeRecord(entries),
+  ]);
+  return { positional: loweredPositional, keyword: new Map(), scratch: loweredPositional };
 }
 
 /** Applies one built-in and reserves projected indexed intermediates before allocation. */

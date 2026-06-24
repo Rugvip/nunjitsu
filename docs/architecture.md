@@ -148,6 +148,12 @@ consume their keyword before defaults run, while surplus positionals replace
 default-name entries in order. This keeps capability evaluation and callable
 selection aligned without generating JavaScript.
 
+The macro-wrapped `int` and `sort` filters use the same normalizer for their
+declared parameters after the piped input. A supplied positional value occupies
+its formal slot before a same-named keyword is considered. Every original value
+is recursively callable-checked before ignored keywords or surplus positionals
+are discarded.
+
 Operation validation precedes attacker-controlled operands. Call blocks resolve
 and require a macro before evaluating arguments or registering their caller
 body. Filter and test names, including tests named through `select` and

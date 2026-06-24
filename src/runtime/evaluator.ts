@@ -16,6 +16,7 @@ import { parseTemplate } from '../parser/index.ts';
 import type { NormalizedRenderLimits } from '../limits.ts';
 import { NunjitsuLimitError } from '../limits.ts';
 import type { TemplateContext } from '../values.ts';
+import { normalizeMacroArguments } from './arguments.ts';
 import {
   applyBuiltinFilter,
   applyBuiltinTest,
@@ -121,11 +122,6 @@ interface RuntimeIteration {
   readonly compilerBranch: 'array' | 'record';
   readonly length: RuntimeValue;
   readonly values: IterableIterator<RuntimeValue>;
-}
-
-interface NormalizedMacroArguments {
-  readonly positional: readonly RuntimeValue[];
-  readonly keyword: ReadonlyMap<string, RuntimeValue>;
 }
 
 type BuiltinGlobalName = 'range' | 'cycler' | 'joiner';
@@ -902,8 +898,7 @@ class Evaluator {
     );
     const scratchBytes = this.#assertScratch([
       input,
-      ...lowered.positional,
-      ...lowered.keyword.values(),
+      ...lowered.scratch,
     ]);
     return applyBuiltinFilter(
       builtinName,
@@ -1609,34 +1604,6 @@ function bindAssignment(target: AstNode, value: RuntimeValue, scope: RuntimeScop
     throw new Error(`Invalid assignment target ${target.type}`);
   }
   scope.assign(symbolName(target), value);
-}
-
-function normalizeMacroArguments(
-  positionalNames: readonly string[],
-  defaultNames: readonly string[],
-  arguments_: RuntimeArguments,
-): NormalizedMacroArguments {
-  const suppliedCount = arguments_.positional.length;
-  const positionalCount = positionalNames.length;
-  const keyword = new Map(arguments_.keyword);
-  if (suppliedCount > positionalCount) {
-    const positional = arguments_.positional.slice(0, positionalCount);
-    const surplus = arguments_.positional.slice(positionalCount);
-    for (let index = 0; index < surplus.length && index < defaultNames.length; index += 1) {
-      keyword.set(defaultNames[index]!, surplus[index]);
-    }
-    return { positional, keyword };
-  }
-  if (suppliedCount < positionalCount) {
-    const positional = arguments_.positional.slice();
-    for (let index = suppliedCount; index < positionalCount; index += 1) {
-      const name = positionalNames[index]!;
-      positional.push(keyword.get(name));
-      keyword.delete(name);
-    }
-    return { positional, keyword };
-  }
-  return { positional: arguments_.positional, keyword };
 }
 
 function iterableEntries(value: RuntimeValue, targetCount: number): RuntimeIteration {

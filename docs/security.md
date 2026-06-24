@@ -180,8 +180,10 @@ Template-controlled data is revalidated whenever its role changes:
   rather than coercing safe strings or other values into dispatch tokens;
 - ordinary built-in filter keywords become an interpreter-owned final
   positional record with a forced `__keywords` marker, while only `int` and
-  `sort` bind declared keyword names; all values remain subject to recursive
-  callable rejection and scratch accounting before dispatch;
+  `sort` use closed `makeMacro` normalization so occupied positional slots
+  override same-named keywords; all original values remain subject to
+  recursive callable rejection and scratch accounting before ignored or
+  surplus arguments are discarded and dispatch begins;
 - Jinja subscript slices use only closed length, ordering, addition, key
   conversion, and own lookup; each selected value is callable-checked before
   entering the result and each attempted result is work- and scratch-charged;

@@ -277,15 +277,19 @@ JSON omission or array-null behavior and remains distinct.
 
 Built-in filter keyword syntax follows the pinned compiler calling convention.
 `int` binds `default` and `base`, while `sort` binds `reverse`,
-`case_sensitive`, and `attribute`; unknown names remain evaluated but unused.
-Every other built-in receives one final positional `RuntimeRecord` containing
-all keyword values and an own `__keywords` marker set to true. Positional
-expressions, including those written after keyword syntax, evaluate first in
-their source order, followed by keyword expressions in source order. This
-preserves the intentionally unusual observable behavior of filters such as
-`default`, `center`, `join`, `select`, and `round` without exposing a host
-keyword object. The positive-integer restrictions for `batch` and `slice`
-remain deliberate deviations when such a bag reaches their count argument.
+`case_sensitive`, and `attribute`. They use the same closed `makeMacro`
+normalization as template macros: explicit positionals occupy their formal
+slots first, missing slots consume matching keywords by presence, and unknown
+or conflicting keywords remain evaluated but unused. Every other built-in
+receives one final positional `RuntimeRecord` containing all keyword values and
+an own `__keywords` marker set to true. Positional expressions, including those
+written after keyword syntax, evaluate first in their source order, followed by
+keyword expressions in source order. Every supplied value is recursively
+callable-checked before normalization can discard it. This preserves the
+intentionally unusual observable behavior of filters such as `default`,
+`center`, `join`, `select`, and `round` without exposing a host keyword object.
+The positive-integer restrictions for `batch` and `slice` remain deliberate
+deviations when such a bag reaches their count argument.
 
 Jinja subscript slicing is distinct from the `slice` filter. It operates
 directly on the original closed target rather than materializing and clamping a

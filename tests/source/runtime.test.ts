@@ -3294,6 +3294,34 @@ test('lowers built-in filter keyword arguments like Nunjucks', () => {
       '{{ "abcdef" | truncate(length=2) | dump }}|',
       '{{ 1.21 | round(method="ceil") | dump }}',
     ].join(''),
+    [
+      '{{ "x" | int(default=7, 2) }}|',
+      '{{ "x" | int(2, default=7) }}|',
+      '{{ "10" | int(base=2, 2, 8) }}|',
+      '{{ "10" | int(2, 8, base=2) }}|',
+      '{{ [1,2] | sort(reverse=true, false) | dump }}|',
+      '{{ [1,2] | sort(false, reverse=true) | dump }}|',
+      '{{ ["a","B"] | sort(case_sensitive=true, false, false) | dump }}|',
+      '{{ [{name:"first",x:2,y:1},{name:"second",x:1,y:2}]',
+      ' | sort(attribute="x", false, false, "y") | join(",", "name") }}',
+    ].join(''),
+    [
+      '{{ "x" | int(default=9, missing) | dump }}|',
+      '{{ "x" | int(default=9, null) | dump }}|',
+      '{{ "x" | int(default=9, false) | dump }}|',
+      '{{ "x" | int(default=9, 0) | dump }}|',
+      '{{ "x" | int(default=9, "") | dump }}|',
+      '{{ "x" | int(default=7, default=8) }}|',
+      '{{ [1,2] | sort(reverse=false, reverse=true) | dump }}|',
+      '{{ [{name:"first",x:2},{name:"second",x:1}]',
+      ' | sort(attribute="x", false, false, missing) | join(",", "name") }}|',
+      '{{ [{name:"first",x:2},{name:"second",x:1}]',
+      ' | sort(attribute="x", false, false, null) | join(",", "name") }}|',
+      '{{ [{name:"first",x:2},{name:"second",x:1}]',
+      ' | sort(attribute="x", false, false, 0) | join(",", "name") }}|',
+      '{{ [{name:"first",x:2},{name:"second",x:1}]',
+      ' | sort(attribute="x", false, false, "") | join(",", "name") }}',
+    ].join(''),
   ];
 
   for (const cookiecutterCompat of [false, true]) {
@@ -3311,6 +3339,18 @@ test('lowers built-in filter keyword arguments like Nunjucks', () => {
 
     const engineCalls: string[] = [];
     const oracleCalls: string[] = [];
+    let enginePrivilegedCalls = 0;
+    let oraclePrivilegedCalls = 0;
+    const markedValues = new Map<string, string | number | boolean>([
+      ['positional', 4],
+      ['keyword', 2],
+      ['int-positional', 7],
+      ['int-keyword', 9],
+      ['sort-positional', false],
+      ['sort-keyword', true],
+      ['attribute-positional', 'y'],
+      ['attribute-keyword', 'x'],
+    ]);
     const capabilityEngine = createEngine({
       cookiecutterCompat,
       globals: {
@@ -3321,13 +3361,11 @@ test('lowers built-in filter keyword arguments like Nunjucks', () => {
         mark(value) {
           const label = String(value);
           engineCalls.push(label);
-          if (label === 'positional') {
-            return 4;
-          }
-          if (label === 'keyword') {
-            return 2;
-          }
-          return false;
+          return markedValues.get(label) ?? false;
+        },
+        privileged() {
+          enginePrivilegedCalls += 1;
+          return 'privileged';
         },
       },
     });
@@ -3339,19 +3377,23 @@ test('lowers built-in filter keyword arguments like Nunjucks', () => {
     capabilityOracle.addGlobal('mark', (value: unknown) => {
       const label = String(value);
       oracleCalls.push(label);
-      if (label === 'positional') {
-        return 4;
-      }
-      if (label === 'keyword') {
-        return 2;
-      }
-      return false;
+      return markedValues.get(label) ?? false;
+    });
+    capabilityOracle.addGlobal('privileged', () => {
+      oraclePrivilegedCalls += 1;
+      return 'privileged';
     });
 
     const evaluationSource = [
       '{{ "10" | int(ignored=mark("int"), base=2) }}|',
       '{{ ["b","a"] | sort(ignored=mark("sort"), reverse=true) | join }}|',
-      '{{ "x" | center(width=mark("keyword"), mark("positional")) | dump }}',
+      '{{ "x" | center(width=mark("keyword"), mark("positional")) | dump }}|',
+      '{{ "bad" | int(default=mark("int-keyword"), mark("int-positional")) }}|',
+      '{{ [2,1] | sort(reverse=mark("sort-keyword"),',
+      ' mark("sort-positional")) | join }}|',
+      '{{ [{name:"first",x:2,y:1},{name:"second",x:1,y:2}]',
+      ' | sort(attribute=mark("attribute-keyword"), false, false,',
+      ' mark("attribute-positional")) | join(",", "name") }}',
     ].join('');
     const engineEvaluationSource = cookiecutterCompat
       ? evaluationSource
@@ -3360,8 +3402,35 @@ test('lowers built-in filter keyword arguments like Nunjucks', () => {
       capabilityEngine.render(engineEvaluationSource),
       capabilityOracle.renderString(evaluationSource, {}),
     );
-    assert.deepEqual(engineCalls, ['int', 'sort', 'positional', 'keyword']);
+    assert.deepEqual(engineCalls, [
+      'int',
+      'sort',
+      'positional',
+      'keyword',
+      'int-positional',
+      'int-keyword',
+      'sort-positional',
+      'sort-keyword',
+      'attribute-positional',
+      'attribute-keyword',
+    ]);
     assert.deepEqual(oracleCalls, engineCalls);
+
+    const branchSource = [
+      '{% if "x" | int(default=7, 2) == 7 %}{{ privileged() }}',
+      '{% else %}int-blocked{% endif %}|',
+      '{% if [1,2] | sort(reverse=true, false) | first == 2 %}',
+      '{{ privileged() }}{% else %}sort-blocked{% endif %}',
+    ].join('');
+    const engineBranchSource = cookiecutterCompat
+      ? branchSource
+      : branchSource.replaceAll('{{', '${{');
+    assert.equal(
+      capabilityEngine.render(engineBranchSource),
+      capabilityOracle.renderString(branchSource, {}),
+    );
+    assert.equal(enginePrivilegedCalls, 0);
+    assert.equal(oraclePrivilegedCalls, 0);
 
     for (const filter of ['select', 'reject']) {
       engineCalls.length = 0;
@@ -3401,7 +3470,11 @@ test('lowers built-in filter keyword arguments like Nunjucks', () => {
       '{{ "x" | center(__keywords=authority) }}{{ later() }}',
       '{{ missing | default(value=authority) }}{{ later() }}',
       '{{ "10" | int(ignored=authority) }}{{ later() }}',
+      '{{ "x" | int(default=authority, 2) }}{{ later() }}',
+      '{{ "x" | int(2, 10, authority) }}{{ later() }}',
       '{{ [2,1] | sort(ignored=authority) }}{{ later() }}',
+      '{{ [2,1] | sort(reverse=authority, false) }}{{ later() }}',
+      '{{ [2,1] | sort(false, false, missing, {nested:authority}) }}{{ later() }}',
     ];
     for (const source of callableSources) {
       const engineSource = cookiecutterCompat
@@ -3410,6 +3483,24 @@ test('lowers built-in filter keyword arguments like Nunjucks', () => {
       assert.throws(() => callableEngine.render(engineSource), NunjitsuRenderError);
       assert.equal(laterCalls, 0);
       assert.equal(callableEngine.render('clean'), 'clean');
+    }
+
+    for (const source of [
+      '{{ "x" | int(2, 10, "0123456789abcdef") }}',
+      '{{ [2,1] | sort(false, false, missing, "0123456789abcdef") | dump }}',
+    ]) {
+      const engineSource = cookiecutterCompat
+        ? source
+        : source.replaceAll('{{', '${{');
+      assert.throws(
+        () => capabilityEngine.render(
+          engineSource,
+          {},
+          { limits: { scratchBytes: 19 } },
+        ),
+        NunjitsuLimitError,
+      );
+      assert.equal(capabilityEngine.render('clean'), 'clean');
     }
   }
 });
