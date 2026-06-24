@@ -96,6 +96,15 @@ The interpreter owns all values:
   fixed parser-owned `gimy` flag and delimiter grammar has been validated; and
 - sealed callable variants created by the interpreter.
 
+`RuntimeArray` stores numeric length, closed values, and private index-presence
+metadata separately. A sparse hole and a present element containing closed
+`undefined` therefore have the same direct lookup result but distinct `has`
+results. Dense numeric iteration deliberately visits every position, while
+present-value iteration skips holes. Derived sparse arrays are constructed by
+defining own data properties, never by consuming a host iterator or assigning
+through an inherited numeric setter. No hole sentinel is part of
+`RuntimeValue` or visible to a template.
+
 String semantics follow Nunjucks and JavaScript UTF-16 code units consistently.
 Length, numeric lookup, loops, `list`, edge selection, reversal, replacement,
 and slicing may therefore expose the two surrogate halves of an astral code
@@ -153,6 +162,16 @@ JavaScript `String` wrapper implementation. The `string` filter rejects nullish
 input, `length` preserves absent results for unsupported scalars, and
 `urlencode` applies closed numeric pair lookup to every sequence entry rather
 than silently discarding malformed entries.
+
+Sparse arrays follow the native operation used by pinned Nunjucks. Membership,
+`sum`, selection, attribute selection/projection, URL encoding, and
+sorting callbacks traverse only present elements. `reverse`, `sort`, `list`,
+and `slice` preserve sparse positions, including holes moved by reversal or
+sorting. Loops, `batch`, direct and edge lookup, random selection, coercion, and
+attribute-free `join` access every numeric index and observe a hole as closed
+`undefined`; `batch` consequently densifies the position it reads. Work and
+scratch accounting continue to charge indexed positions rather than only
+present elements.
 
 Array-like records remain records with an own raw `length` and canonical
 numeric keys; they are not admitted to the shared array/string sequence helper.
@@ -292,6 +311,10 @@ JavaScript prototypes or accessed through `object[key]` inside the interpreter.
 copying, scopes, lookup, assignment, registries, and callback results.
 Node-detected proxies, including revoked and nested proxies, are rejected before
 array detection or reflective inspection, so copying never invokes their traps.
+Array copying inspects own numeric data descriptors and preserves missing
+descriptors as holes. Capability arguments reconstruct frozen arrays with the
+same absent indices; a present closed `undefined` continues to normalize to a
+present public `null` element under the existing public-value contract.
 
 One-shot renders discard their copied value graph after rendering. Callers that
 render several sources against the same data may explicitly prepare an opaque,

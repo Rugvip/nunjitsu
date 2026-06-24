@@ -38,9 +38,32 @@ export class RuntimeSafeString {
 export class RuntimeArray {
   readonly kind = 'array';
   readonly #items: readonly RuntimeValue[];
+  readonly #present: ReadonlySet<number> | undefined;
 
   constructor(items: readonly RuntimeValue[]) {
-    this.#items = Object.freeze(Array.from(items));
+    if (types.isProxy(items)) {
+      throw new TypeError('Proxy objects cannot be used as runtime arrays');
+    }
+    if (!Array.isArray(items)) {
+      throw new TypeError('Runtime arrays require an array');
+    }
+    const copied: RuntimeValue[] = [];
+    copied.length = items.length;
+    const present = new Set<number>();
+    for (let index = 0; index < items.length; index += 1) {
+      const descriptor = Object.getOwnPropertyDescriptor(items, `${index}`);
+      if (descriptor === undefined) {
+        defineOwnArrayIndex(copied, index, undefined);
+        continue;
+      }
+      if (!('value' in descriptor)) {
+        throw new TypeError('Runtime arrays cannot contain accessors');
+      }
+      defineOwnArrayIndex(copied, index, descriptor.value as RuntimeValue);
+      present.add(index);
+    }
+    this.#items = Object.freeze(copied);
+    this.#present = present.size === copied.length ? undefined : present;
     Object.freeze(this);
   }
 
@@ -54,9 +77,40 @@ export class RuntimeArray {
     return this.#items[index];
   }
 
-  /** Iterates immutable contained values. */
-  values(): IterableIterator<RuntimeValue> {
-    return this.#items.values();
+  /** Returns whether one numeric position is an own present element. */
+  has(index: number): boolean {
+    return Number.isInteger(index) &&
+      index >= 0 &&
+      index < this.#items.length &&
+      (this.#present === undefined || this.#present.has(index));
+  }
+
+  /** Iterates every numeric position, exposing holes as `undefined`. */
+  *values(): IterableIterator<RuntimeValue> {
+    for (let index = 0; index < this.#items.length; index += 1) {
+      yield this.#items[index];
+    }
+  }
+
+  /** Iterates only present elements, skipping sparse holes. */
+  *presentValues(): IterableIterator<RuntimeValue> {
+    for (let index = 0; index < this.#items.length; index += 1) {
+      if (this.has(index)) {
+        yield this.#items[index];
+      }
+    }
+  }
+
+  /** Returns a mutable sparse copy without exposing interpreter storage. */
+  copySparse(): RuntimeValue[] {
+    const output: RuntimeValue[] = [];
+    output.length = this.#items.length;
+    for (let index = 0; index < this.#items.length; index += 1) {
+      if (this.has(index)) {
+        defineOwnArrayIndex(output, index, this.#items[index]);
+      }
+    }
+    return output;
   }
 }
 
@@ -202,6 +256,16 @@ export function isCanonicalArrayIndex(name: string): boolean {
     `${index}` === name;
 }
 
+/** Defines one enumerable own array index without invoking an inherited setter. */
+export function defineOwnArrayIndex<T>(target: T[], index: number, value: T): void {
+  Object.defineProperty(target, index, {
+    configurable: true,
+    enumerable: true,
+    value,
+    writable: true,
+  });
+}
+
 /** Copies one public safe value graph into interpreter-owned values. */
 export function copyRuntimeValue(value: TemplateValue | undefined): RuntimeValue {
   return copyValue(value, new Set(), new Map());
@@ -264,7 +328,7 @@ export function assertRuntimeValueHasNoCallable(value: RuntimeValue): void {
     if (current instanceof RuntimeArray) {
       if (!visited.has(current)) {
         visited.add(current);
-        for (const item of current.values()) {
+        for (const item of current.presentValues()) {
           pending[pending.length] = item;
         }
       }
@@ -371,11 +435,16 @@ function copyValue(
       }
       validateArrayKeys(value);
       const items: RuntimeValue[] = [];
+      items.length = value.length;
       for (let index = 0; index < value.length; index += 1) {
         const descriptor = Object.getOwnPropertyDescriptor(value, String(index));
-        items.push(descriptor === undefined
-          ? undefined
-          : copyDataDescriptor(descriptor, ancestors, aliases));
+        if (descriptor !== undefined) {
+          defineOwnArrayIndex(
+            items,
+            index,
+            copyDataDescriptor(descriptor, ancestors, aliases),
+          );
+        }
       }
       const copied = new RuntimeArray(items);
       aliases.set(value, copied);
@@ -488,10 +557,17 @@ function toPublicValue(
   }
   if (value instanceof RuntimeArray) {
     const output: TemplateValue[] = [];
+    output.length = value.length;
     aliases.set(value, output);
-    for (const item of value.values()) {
-      const publicItem = toPublicValue(item, aliases);
-      output.push(publicItem === undefined ? null : publicItem);
+    for (let index = 0; index < value.length; index += 1) {
+      if (value.has(index)) {
+        const publicItem = toPublicValue(value.at(index), aliases);
+        defineOwnArrayIndex(
+          output,
+          index,
+          publicItem === undefined ? null : publicItem,
+        );
+      }
     }
     return Object.freeze(output);
   }

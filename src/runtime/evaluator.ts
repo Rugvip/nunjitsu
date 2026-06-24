@@ -1801,7 +1801,7 @@ function runtimeContains(container: RuntimeValue, needle: RuntimeValue): boolean
     return renderRuntimeValue(container).includes(runtimeToString(needle));
   }
   if (container instanceof RuntimeArray) {
-    for (const value of container.values()) {
+    for (const value of container.presentValues()) {
       if (runtimeStrictEqual(value, needle)) {
         return true;
       }

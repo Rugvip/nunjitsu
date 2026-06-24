@@ -115,6 +115,11 @@ Comment-scanner regressions cover unmatched and backslash-prefixed quotes,
 first-closer boundaries, adjacent and nested-looking comments, executable
 syntax after comments, whitespace controls and options, capability order, both
 delimiter modes, malformed input, and clean recovery.
+Sparse-array regressions use TypeScript fixtures because JSON cannot represent
+holes. They compare context, global result, filter result, membership,
+reduction, selection, attribute projection, reversal, sorting,
+listing, slicing, batching, loops, lookup, URL encoding, capability copies,
+resource limits, and explicit-undefined controls against pinned Nunjucks.
 Callable-argument tests cover direct, nested, renamed, positional, and surplus
 handles across registered capabilities, finite and disabled scratch accounting,
 stateful built-ins, ignored method arguments, and exact test arity while

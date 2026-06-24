@@ -113,6 +113,9 @@ Nunjitsu targets:
   fail-before-later-capability behavior over the closed value model;
 - operation-specific array-like record behavior for indexed collection filters,
   including sparse values and malformed-length failure ordering;
+- sparse-array index presence across context and capability boundaries, with
+  operation-specific hole skipping, preservation, and dense numeric access
+  matching Nunjucks's native array methods;
 - filter-specific direct-key and dotted getter-path attribute semantics over
   records, arrays, and strings;
 - JavaScript property enumeration order for literal, copied, updated, and

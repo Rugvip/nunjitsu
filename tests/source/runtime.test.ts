@@ -6,6 +6,7 @@ import {
   createEngine,
   NunjitsuLimitError,
   NunjitsuRenderError,
+  type TemplateValue,
 } from '../../src/index.ts';
 import {
   RuntimeArray,
@@ -1870,6 +1871,134 @@ test('matches empty cycler state transitions and capability branches', () => {
     );
     assert.deepEqual(engineEvents, []);
     assert.deepEqual(oracleEvents, engineEvents);
+    assert.equal(engine.render('clean'), 'clean');
+  }
+});
+
+test('preserves sparse array holes across runtime and capability boundaries', () => {
+  const sparse: number[] = [];
+  sparse.length = 2;
+  sparse[1] = 1;
+  const sparseRecords: Array<{ readonly x: number }> = [];
+  sparseRecords.length = 2;
+  sparseRecords[1] = { x: 1 };
+  const sparsePairs: Array<readonly [string, string]> = [];
+  sparsePairs.length = 2;
+  sparsePairs[1] = ['key', 'value'];
+  const explicitUndefined = [undefined, 1] as unknown as TemplateValue;
+
+  for (const cookiecutterCompat of [false, true]) {
+    const engineEvents: string[] = [];
+    const oracleEvents: string[] = [];
+    const engineCopies: Array<readonly [boolean, boolean, boolean]> = [];
+    const oracleCopies: Array<readonly [boolean, boolean]> = [];
+    const engine = createEngine({
+      cookiecutterCompat,
+      globals: {
+        sparseValue: sparse,
+        sparseResult() {
+          return sparse;
+        },
+        inspect(value) {
+          assert.ok(Array.isArray(value));
+          const first = Object.hasOwn(value, 0);
+          const second = Object.hasOwn(value, 1);
+          engineCopies.push([first, second, Object.isFrozen(value)]);
+          return `${first}:${second}`;
+        },
+        privileged() {
+          engineEvents.push('privileged');
+          return 'P';
+        },
+      },
+      filters: {
+        sparseResult() {
+          return sparse;
+        },
+        inspect(value) {
+          assert.ok(Array.isArray(value));
+          const first = Object.hasOwn(value, 0);
+          const second = Object.hasOwn(value, 1);
+          engineCopies.push([first, second, Object.isFrozen(value)]);
+          return `${first}:${second}`;
+        },
+      },
+    });
+    const oracle = new nunjucks.Environment(undefined, { autoescape: false });
+    oracle.addGlobal('sparseValue', sparse);
+    oracle.addGlobal('sparseResult', () => sparse);
+    oracle.addGlobal('inspect', (value: unknown) => {
+      assert.ok(Array.isArray(value));
+      const first = Object.hasOwn(value, 0);
+      const second = Object.hasOwn(value, 1);
+      oracleCopies.push([first, second]);
+      return `${first}:${second}`;
+    });
+    oracle.addGlobal('privileged', () => {
+      oracleEvents.push('privileged');
+      return 'P';
+    });
+    oracle.addFilter('sparseResult', () => sparse);
+    oracle.addFilter('inspect', (value: unknown) => {
+      assert.ok(Array.isArray(value));
+      const first = Object.hasOwn(value, 0);
+      const second = Object.hasOwn(value, 1);
+      oracleCopies.push([first, second]);
+      return `${first}:${second}`;
+    });
+
+    const source = [
+      '{% if missing in values %}${{ privileged() }}{% else %}blocked{% endif %}|',
+      '${{ missing in explicit }}|${{ values | sum }}|',
+      '${{ values | select("undefined") | length }}:',
+      '${{ explicit | select("undefined") | length }}|',
+      '${{ values | reject("undefined") | dump }}|',
+      '${{ records | selectattr("x") | dump }}:',
+      '${{ records | rejectattr("x") | dump }}|',
+      '${{ records | join(",", "x") }}:${{ records | sum("x") }}|',
+      '${{ values | reverse | select("undefined") | length }}:',
+      '${{ values | sort | select("undefined") | length }}:',
+      '${{ values | list | select("undefined") | length }}:',
+      '${{ values | slice(1) | first | select("undefined") | length }}|',
+      '${{ values | batch(2) | first | select("undefined") | length }}|',
+      '{% for value in values %}[${{ value is undefined }}]{% endfor %}|',
+      '${{ values[0] is undefined }}:${{ values[1] }}|',
+      '${{ pairs | urlencode }}|',
+      '${{ sparseValue | select("undefined") | length }}:',
+      '${{ sparseResult() | select("undefined") | length }}:',
+      '${{ values | sparseResult | select("undefined") | length }}|',
+      '${{ inspect(values) }}:${{ values | inspect }}',
+    ].join('');
+    const context = {
+      values: sparse,
+      explicit: explicitUndefined,
+      records: sparseRecords,
+      pairs: sparsePairs,
+    };
+    const engineSource = cookiecutterCompat
+      ? source.replaceAll('${{', '{{')
+      : source;
+    const oracleSource = source.replaceAll('${{', '{{');
+    assert.equal(
+      engine.render(engineSource, context),
+      oracle.renderString(oracleSource, context),
+    );
+    assert.deepEqual(engineEvents, []);
+    assert.deepEqual(oracleEvents, engineEvents);
+    assert.deepEqual(
+      engineCopies.map(([first, second]) => [first, second]),
+      oracleCopies,
+    );
+    assert.ok(engineCopies.every(([, , frozen]) => frozen));
+
+    assert.throws(
+      () => engine.render(
+        '{% for value in values %}${{ value }}{% endfor %}',
+        { values: Array(20) as TemplateValue },
+        { limits: { workUnits: 5 } },
+      ),
+      NunjitsuLimitError,
+    );
     assert.equal(engine.render('clean'), 'clean');
   }
 });

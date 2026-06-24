@@ -11,6 +11,7 @@ import {
 } from './coercion.ts';
 import {
   assertRuntimeValueHasNoCallable,
+  defineOwnArrayIndex,
   isReservedName,
   renderRuntimeValue,
   runtimeTruthy,
@@ -205,7 +206,7 @@ export function applyBuiltinFilter(
       return input instanceof RuntimeSafeString ? new RuntimeSafeString(reversed) : reversed;
     }
     if (input instanceof RuntimeArray) {
-      return new RuntimeArray(Array.from(input.values()).reverse());
+      return new RuntimeArray(input.copySparse().reverse());
     }
     if (input instanceof RuntimeRecord) {
       return new RuntimeArray(
@@ -483,7 +484,9 @@ function selectRuntimeValues(
   }
   const values = input instanceof RuntimeRecord
     ? sliceRuntimeRecordValues(input, reserveIndexedValues)
-    : runtimeSequenceValues(input);
+    : input instanceof RuntimeArray
+      ? Array.from(input.presentValues())
+      : runtimeSequenceValues(input);
   if (!values) {
     return new RuntimeArray([]);
   }
@@ -568,7 +571,9 @@ function sliceRuntimeValues(
   input: RuntimeValue,
   positional: readonly RuntimeValue[],
 ): RuntimeValue {
-  const values = runtimeSequenceValues(input);
+  const values = input instanceof RuntimeArray
+    ? input.copySparse()
+    : runtimeSequenceValues(input);
   if (!values) {
     throw new TypeError('slice requires a sequence');
   }
@@ -636,9 +641,12 @@ function urlencodeRuntimeValue(input: RuntimeValue): string {
       output.push(urlencodeRuntimePair(key, value));
     }
   } else if (input instanceof RuntimeArray) {
-    for (const value of input.values()) {
-      const [key, item] = urlencodeRuntimeEntry(value);
-      output.push(urlencodeRuntimePair(key, item));
+    output.length = input.length;
+    for (let index = 0; index < input.length; index += 1) {
+      if (input.has(index)) {
+        const [key, item] = urlencodeRuntimeEntry(input.at(index));
+        defineOwnArrayIndex(output, index, urlencodeRuntimePair(key, item));
+      }
     }
   }
   return output.join('&');
@@ -795,8 +803,11 @@ function toJsonValue(value: RuntimeValue): unknown {
   }
   if (value instanceof RuntimeArray) {
     const output = Object.setPrototypeOf([], null) as unknown[];
-    for (const item of value.values()) {
-      output[output.length] = toJsonValue(item);
+    output.length = value.length;
+    for (let index = 0; index < value.length; index += 1) {
+      if (value.has(index)) {
+        defineOwnArrayIndex(output, index, toJsonValue(value.at(index)));
+      }
     }
     return output;
   }
@@ -827,11 +838,20 @@ function joinRuntimeValues(
   const separator = runtimeTruthy(separatorValue) ? runtimeToString(separatorValue) : '';
   const attribute = optionalDirectAttributeKey(positional[1]);
   const output: string[] = [];
-  for (const value of input.values()) {
+  output.length = input.length;
+  for (let index = 0; index < input.length; index += 1) {
+    if (attribute !== undefined && !input.has(index)) {
+      continue;
+    }
+    const value = input.at(index);
     const item = attribute === undefined
       ? value
       : lookupRuntimeAttribute(value, attribute);
-    output.push(item === undefined || item === null ? '' : runtimeToString(item));
+    defineOwnArrayIndex(
+      output,
+      index,
+      item === undefined || item === null ? '' : runtimeToString(item),
+    );
   }
   return output.join(separator);
 }
@@ -845,7 +865,7 @@ function sumRuntimeValues(
   }
   const attribute = optionalDirectAttributeKey(positional[0]);
   let reduced: RuntimeValue = 0;
-  for (const value of input.values()) {
+  for (const value of input.presentValues()) {
     reduced = runtimeAdd(
       reduced,
       attribute === undefined
@@ -864,7 +884,9 @@ function sortRuntimeValues(
 ): RuntimeValue {
   const values = input instanceof RuntimeRecord
     ? mapRuntimeRecordValues(input, reserveIndexedValues)
-    : runtimeSequenceValues(input);
+    : input instanceof RuntimeArray
+      ? input.copySparse()
+      : runtimeSequenceValues(input);
   if (!values) {
     return new RuntimeArray([]);
   }
@@ -891,7 +913,7 @@ function selectRuntimeAttributes(
   }
   const attribute = directAttributeKey(positional[0]);
   const output: RuntimeValue[] = [];
-  for (const value of input.values()) {
+  for (const value of input.presentValues()) {
     const matches = runtimeTruthy(lookupRuntimeAttribute(value, attribute));
     if (matches === select) {
       output.push(value);

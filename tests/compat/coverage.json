@@ -413,6 +413,22 @@
       "upstream": ["tests/globals.js:2"]
     },
     {
+      "id": "sparse-array-semantics",
+      "file": "tests/source/runtime.test.ts",
+      "test": "preserves sparse array holes across runtime and capability boundaries",
+      "upstream": [
+        "tests/compiler.js:17",
+        "tests/filters.js:23",
+        "tests/filters.js:47",
+        "tests/filters.js:48",
+        "tests/filters.js:50",
+        "tests/filters.js:52",
+        "tests/filters.js:53",
+        "tests/filters.js:54",
+        "tests/filters.js:61"
+      ]
+    },
+    {
       "id": "native-global-edge-coercion",
       "file": "tests/source/runtime.test.ts",
       "test": "matches closed standard-library coercion and input domains",

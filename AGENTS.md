@@ -233,6 +233,11 @@ Do not create additional packages without a documented architectural reason.
 - Use presence-aware map and record operations when semantics depend on whether
   a key exists. Never infer presence from a retrieved value because
   interpreter-owned records may store `undefined`.
+- Preserve sparse array-index presence separately from stored values. A hole
+  and a present `undefined` both read as absent values through direct lookup,
+  but `RuntimeArray.has`, present-entry traversal, membership, filters, derived
+  arrays, and capability copies must retain the distinction without exposing a
+  hole sentinel or invoking inherited iteration and setter hooks.
 - Make every `RuntimeRecord` enumerate canonical JavaScript array-index keys
   from `0` through `4294967294` in ascending numeric order, followed by other
   string keys in first-insertion order. Replacing a key changes only its value.
@@ -310,6 +315,13 @@ Do not create additional packages without a documented architectural reason.
   method-dependent filters such as `join`, `slice`, `sum`, and attribute
   selection. Reserve projected indexed work and scratch slots before iterating
   or allocating sparse record positions.
+- Handle sparse interpreter arrays per operation. Membership, reductions,
+  selection, attribute projection, URL encoding, and sort callbacks
+  skip holes; reverse, sort, list, and slice preserve hole positions; loops,
+  batch, direct and edge lookup, random selection, coercion, and attribute-free
+  join access every numeric position. Capability arguments preserve holes as
+  absent frozen indices while present `undefined` retains its established
+  public normalization.
 - Keep attribute semantics filter-specific. `join` and `sum` use one truthy
   direct key; `selectattr` and `rejectattr` always use one direct key, including
   the omitted `undefined` key, apply direct truthiness only, and ignore surplus

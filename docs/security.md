@@ -101,7 +101,16 @@ sets, weak collections, promises, errors, and other exotic objects are
 rejected. Proxies and cycles are rejected recursively. Repeated non-cyclic
 aliases may retain identity through internal graph references. Accepted arrays
 are copied by inspecting own indexed data descriptors; the copier never
-consumes an inherited iteration protocol.
+consumes an inherited iteration protocol. Missing descriptors remain private
+sparse holes rather than being converted into present `undefined` elements.
+The interpreter stores presence independently, keeps its dense backing indices
+as own data properties, and never exposes a template-visible sentinel.
+
+Capability argument arrays preserve holes as absent frozen indices. Present
+closed `undefined` elements retain their existing conversion to present public
+`null` values, so host callbacks can distinguish index presence without
+receiving interpreter state or live caller arrays. Capability results cross the
+same descriptor-copy boundary.
 
 Prepared contexts retain this copied graph across renders without retaining the
 host objects it came from. They are opaque, bound to one engine, and immutable.
@@ -273,6 +282,13 @@ callable identities at any nesting depth rather than converting them to JSON
 for serialization only, matching RegExp's empty enumerable JSON shape without
 creating a native RegExp, exposing pattern data, or consulting either internal
 or native regex prototypes.
+
+Sparse-array consumers select dense numeric or present-entry traversal
+explicitly. This prevents holes from becoming values that satisfy membership,
+selection, or policy checks while retaining Nunjucks behavior for loops, edge
+lookup, batching, reversal, sorting, slicing, and URL encoding. Own indices on
+transient arrays are defined through data descriptors so inherited numeric
+setters cannot observe construction.
 
 When another operation or a capability argument requires regex text, one
 engine-owned helper creates the inert canonical Nunjucks spelling. It escapes
