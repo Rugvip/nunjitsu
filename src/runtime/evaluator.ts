@@ -915,20 +915,9 @@ class Evaluator {
     macroContext: MacroBindingContext,
     depth: number,
   ): boolean {
-    const test = node.right;
-    let name: string;
-    let argumentsNode: AstNode | undefined;
-    if (test.type === 'FunCall') {
-      name = symbolName(test.name);
-      argumentsNode = test.args;
-    } else if (test.type === 'Symbol') {
-      name = symbolName(test);
-    } else if (test.type === 'Literal') {
-      const input = this.#evaluateExpression(node.left, scope, macroContext, depth + 1);
-      const expected = this.#evaluateExpression(test, scope, macroContext, depth + 1);
-      return runtimeStrictEqual(input, expected);
-    } else {
-      throw new Error(`Invalid template test ${test.type}`);
+    const { name, argumentsNode } = staticTestInvocation(node.right);
+    if (isReservedName(name)) {
+      throw new Error(`Template test ${name} is reserved`);
     }
     if (!hasBuiltinTest(name)) {
       throw new Error(`Unknown template test ${name}`);
@@ -1452,6 +1441,82 @@ function symbolName(node: AstNode): string {
     throw new Error('Invalid or reserved template symbol');
   }
   return name;
+}
+
+interface StaticTestInvocation {
+  readonly name: string;
+  readonly argumentsNode?: AstNode;
+}
+
+function staticTestInvocation(node: AstNode): StaticTestInvocation {
+  if (node.type === 'FunCall' || node.type === 'Filter') {
+    return {
+      name: directStaticTestName(node.name),
+      argumentsNode: node.args,
+    };
+  }
+  return { name: directStaticTestName(node) };
+}
+
+function directStaticTestName(node: AstNode): string {
+  switch (node.type) {
+    case 'Literal': {
+      const value = node.value;
+      return isRegexLiteral(value)
+        ? runtimeToString(new RuntimeRegex(value.source, value.flags))
+        : runtimeToString(value);
+    }
+    case 'Symbol':
+      return symbolName(node);
+    case 'Root':
+    case 'NodeList':
+    case 'Output':
+    case 'TemplateData':
+    case 'Group':
+    case 'Array':
+    case 'Dict':
+    case 'KeywordArgs':
+    case 'Pair':
+    case 'LookupVal':
+    case 'Slice':
+    case 'If':
+    case 'InlineIf':
+    case 'For':
+    case 'Macro':
+    case 'Caller':
+    case 'FunCall':
+    case 'Filter':
+    case 'CallBlock':
+    case 'Block':
+    case 'Set':
+    case 'Switch':
+    case 'Case':
+    case 'Capture':
+    case 'In':
+    case 'Is':
+    case 'Or':
+    case 'And':
+    case 'Add':
+    case 'Concat':
+    case 'Sub':
+    case 'Mul':
+    case 'Div':
+    case 'Mod':
+    case 'Pow':
+    case 'Not':
+    case 'Neg':
+    case 'Pos':
+    case 'Floor':
+    case 'Compare':
+    case 'CompareOperand':
+      return 'undefined';
+    default:
+      return assertNeverStaticTestNode(node);
+  }
+}
+
+function assertNeverStaticTestNode(node: never): never {
+  throw new Error('Unexpected static test node');
 }
 
 function diagnosticCallablePath(node: AstNode): string | undefined {

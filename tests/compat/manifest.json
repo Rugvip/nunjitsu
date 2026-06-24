@@ -149,7 +149,7 @@
       "upstream": {"id":"tests/parser.js:6","file":"tests/parser.js","test":"should parse operators with correct precedence"},
       "status": "adapted",
       "reason": "Boolean, comparison, membership, test, and observable not grouping are exercised through rendered results rather than AST nesting.",
-      "cases": ["compiler-inline-if-group","compiler-mixed-comparison-precedence","compiler-membership-test-precedence","compiler-observable-not-grouping","runtime-empty-safe-string-truthiness"]
+      "cases": ["compiler-inline-if-group","compiler-mixed-comparison-precedence","compiler-membership-test-precedence","compiler-static-test-rhs","compiler-observable-not-grouping","runtime-empty-safe-string-truthiness"]
     },
     {
       "upstream": {"id":"tests/parser.js:7","file":"tests/parser.js","test":"should parse blocks"},

@@ -97,6 +97,51 @@ test('preserves non-empty expression groups and rejects empty groups', () => {
   }
 });
 
+test('parses Nunjucks test right-hand sides through the comparison tier', () => {
+  const expressions = [
+    'missing is "undefined"',
+    'value is "sameas"(other)',
+    'missing is [capability()]',
+    'missing is {value: capability()}',
+    'missing is (capability())',
+    'missing is holder[capability()]',
+    'missing is -capability()',
+    'missing is capability() + 1',
+    'missing is capability() == true',
+    'missing is capability() | sameas',
+    'missing is not [capability()]',
+    '(missing is [capability()]) in [true]',
+  ];
+  for (const cookiecutterCompat of [false, true]) {
+    const options = cookiecutterCompat
+      ? { trimBlocks: false, lstripBlocks: false, cookiecutterCompat }
+      : undefined;
+    for (const expression of expressions) {
+      const source = cookiecutterCompat
+        ? `{{ ${expression} }}`
+        : `\${{ ${expression} }}`;
+      const ast = parseTemplate(source, options);
+      assertDataOnly(ast);
+    }
+    const comparisonSource = cookiecutterCompat
+      ? '{{ missing is capability() == true }}'
+      : '${{ missing is capability() == true }}';
+    const comparison = findField(parseTemplate(comparisonSource, options), value => (
+      Boolean(value && typeof value === 'object' && !Array.isArray(value)) &&
+      (value as { type?: unknown }).type === 'Is'
+    )) as { readonly right?: AstNode };
+    assert.equal(comparison.right?.type, 'Compare');
+  }
+
+  for (const source of [
+    '${{ value is }}',
+    '${{ value is not }}',
+    '{% if false %}${{ value is [broken(] }}{% endif %}',
+  ]) {
+    assert.throws(() => parseTemplate(source), NunjitsuParseError, source);
+  }
+});
+
 test('rejects reserved names in every expression form', () => {
   for (const source of [
     '${{ constructor }}',

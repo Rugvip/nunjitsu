@@ -313,6 +313,16 @@ arm require explicit parentheses. Dictionary literal keys accept only strings
 and ordinary identifiers so invalid key forms fail during complete-source
 parsing, before evaluation or capability dispatch.
 
+An `is` or `is not` right-hand side is parsed through the comparison tier. Test
+dispatch then reproduces the pinned compiler's static field selection through
+an exhaustive AST-kind switch: a direct symbol or literal supplies its closed
+spelling, a call or filter supplies the direct static spelling of its `name`
+plus its existing argument node, and every other variant selects the built-in
+`undefined` test. Array, dictionary, group, lookup, unary, arithmetic, and
+comparison expressions in that position therefore remain inert instead of
+executing merely to choose a test. No property reflection or dynamic value
+lookup participates in this selection.
+
 Switch parsing requires at least one `case` or `default` structural arm after
 comments are removed. Arm bodies may be empty, and consecutive empty cases
 retain Nunjucks fallthrough behavior. An arm-free switch is rejected before any
@@ -484,6 +494,13 @@ never becomes a member lookup. `select` and `reject` validate their named test
 once before inspecting the input sequence, including when that sequence is
 empty or an unsupported scalar. Known operations retain source-order operand
 evaluation.
+
+For direct `is` syntax, the statically selected name is checked for reserved
+spelling and existence before the left operand runs. Its parser-carried call or
+filter arguments then pass the same exact positional-arity and keyword policy
+as ordinary test arguments before any such argument expression runs. This keeps
+the deliberate callable and surplus-argument restrictions even where pinned
+Nunjucks would rely on JavaScript ignoring an extra function argument.
 
 A synchronous filter block lowers to `Output(Filter(Capture(body), ...args))`.
 Resolution and registered-filter keyword validation happen before `Capture`.

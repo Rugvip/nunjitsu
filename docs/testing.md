@@ -55,7 +55,9 @@ characters, explicit coverage of every Unicode `Bidi_Control` character, and
 truncation, inert capability exception handling, legacy RegExp state isolation
 at capability and nested-render boundaries, render-exit cleanup, mixed-operator
 grouping and operand order, comparison, membership, test, and prefix-`not`
-grouping, nested inline-conditional and dictionary-key parser acceptance,
+grouping, static test-name extraction from literal, call, filter, and inert
+composite right-hand sides, ignored-expression capability order, exact-arity
+controls, nested inline-conditional and dictionary-key parser acceptance,
 parenthesized comma-expression value selection, side-effect order, empty-group
 rejection, and callable-discard prevention,
 `elif`/`elseif` block chains and malformed continuation rejection,

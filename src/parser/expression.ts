@@ -156,15 +156,7 @@ export class ExpressionParser {
     const left = this.#parseCompare();
     if (this.#consumeName('is')) {
       const negate = this.#consumeName('not');
-      const testName = this.#expect('name');
-      if (testName.value === 'none') {
-        const test = this.#make('Is', { left, right: this.#literal(null, testName) }, left);
-        return negate ? this.#make('Not', { target: test }, left) : test;
-      }
-      const symbol = this.#symbol(testName);
-      const right = this.#consume('(')
-        ? this.#make('FunCall', { name: symbol, args: this.#argumentList() }, symbol)
-        : symbol;
+      const right = this.#parseCompare();
       const test = this.#make('Is', { left, right }, left);
       return negate ? this.#make('Not', { target: test }, left) : test;
     }

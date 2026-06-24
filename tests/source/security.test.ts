@@ -2263,6 +2263,166 @@ test('validates operations before evaluating attacker-controlled operands', () =
   assert.deepEqual(events, ['mark:argument', 'mark:body']);
 });
 
+test('extracts test invocations statically without evaluating ignored right-hand sides', () => {
+  for (const cookiecutterCompat of [false, true]) {
+    const engineEvents: string[] = [];
+    const oracleEvents: string[] = [];
+    const engine = createEngine({
+      cookiecutterCompat,
+      globals: {
+        argument() {
+          engineEvents.push('argument');
+          return 1;
+        },
+        ignored() {
+          engineEvents.push('ignored');
+          return 1;
+        },
+        later() {
+          engineEvents.push('later');
+          return '';
+        },
+        leftMissing() {
+          engineEvents.push('leftMissing');
+          return undefined;
+        },
+        leftNumber() {
+          engineEvents.push('leftNumber');
+          return 1;
+        },
+      },
+    });
+    const oracle = new nunjucks.Environment(undefined, { autoescape: false });
+    oracle.addGlobal('argument', () => {
+      oracleEvents.push('argument');
+      return 1;
+    });
+    oracle.addGlobal('ignored', () => {
+      oracleEvents.push('ignored');
+      return 1;
+    });
+    oracle.addGlobal('later', () => {
+      oracleEvents.push('later');
+      return '';
+    });
+    oracle.addGlobal('leftMissing', () => {
+      oracleEvents.push('leftMissing');
+      return undefined;
+    });
+    oracle.addGlobal('leftNumber', () => {
+      oracleEvents.push('leftNumber');
+      return 1;
+    });
+    const engineSource = (source: string): string => cookiecutterCompat
+      ? source
+      : source.replaceAll('{{', '${{');
+
+    const staticMatrix = [
+      '{{ 1 is "number" }}',
+      '{{ 1 is "sameas"(1) }}',
+      '{{ missing is [1] }}',
+      '{{ missing is {a:1} }}',
+      '{{ missing is (number) }}',
+      '{{ missing is holder.value }}',
+      '{{ missing is holder["value"] }}',
+      '{{ missing is -number }}',
+      '{{ missing is number + 1 }}',
+      '{{ missing is number == true }}',
+      '{{ missing is not [1] }}',
+      '{{ (missing is [1]) in [true] }}',
+      '{{ 1 is 1 | sameas }}',
+      '{{ null is none }}',
+    ].join('|');
+    assert.equal(
+      engine.render(engineSource(staticMatrix)),
+      oracle.renderString(staticMatrix, {}),
+    );
+
+    const ignoredSource = [
+      '{{ missing is [ignored()] }}',
+      '{{ missing is {value: ignored()} }}',
+      '{{ missing is (ignored()) }}',
+      '{{ missing is holder[ignored()] }}',
+      '{{ missing is -ignored() }}',
+      '{{ missing is ignored() + 1 }}',
+      '{{ missing is ignored() == true }}',
+      '{{ leftMissing() is ignored() + 1 }}',
+    ].join('|');
+    engineEvents.length = 0;
+    oracleEvents.length = 0;
+    assert.equal(
+      engine.render(engineSource(ignoredSource)),
+      oracle.renderString(ignoredSource, {}),
+    );
+    assert.deepEqual(engineEvents, ['leftMissing']);
+    assert.deepEqual(oracleEvents, engineEvents);
+
+    const carriedSource = [
+      '{{ leftNumber() is "sameas"(argument()) }}',
+      '{{ leftNumber() is argument() | sameas }}',
+    ].join('|');
+    engineEvents.length = 0;
+    oracleEvents.length = 0;
+    assert.equal(
+      engine.render(engineSource(carriedSource)),
+      oracle.renderString(carriedSource, {}),
+    );
+    assert.deepEqual(engineEvents, [
+      'leftNumber',
+      'argument',
+      'leftNumber',
+      'argument',
+    ]);
+    assert.deepEqual(oracleEvents, engineEvents);
+
+    for (const unknownSource of [
+      '{{ leftNumber() is "missingTest" }}{{ later() }}',
+      '{{ leftNumber() is 1 }}{{ later() }}',
+      '{{ leftNumber() is true }}{{ later() }}',
+      '{{ leftNumber() is r/a/ }}{{ later() }}',
+    ]) {
+      engineEvents.length = 0;
+      oracleEvents.length = 0;
+      assert.throws(
+        () => engine.render(engineSource(unknownSource)),
+        NunjitsuRenderError,
+        unknownSource,
+      );
+      assert.throws(() => oracle.renderString(unknownSource, {}), unknownSource);
+      assert.deepEqual(engineEvents, [], unknownSource);
+      assert.deepEqual(oracleEvents, [], unknownSource);
+    }
+
+    for (const source of [
+      '{{ leftNumber() is argument() | number }}{{ later() }}',
+      '{{ leftMissing() is [sameas](argument()) }}{{ later() }}',
+      '{{ leftNumber() is "constructor" }}{{ later() }}',
+      '{% macro secret() %}secret{% endmacro %}{{ 1 is secret | divisibleby }}{{ later() }}',
+    ]) {
+      engineEvents.length = 0;
+      assert.throws(
+        () => engine.render(engineSource(source)),
+        NunjitsuRenderError,
+        source,
+      );
+      assert.deepEqual(engineEvents, [], source);
+      assert.equal(engine.render('clean'), 'clean');
+    }
+
+    engineEvents.length = 0;
+    assert.throws(
+      () => engine.render(
+        engineSource('{{ missing is [ignored()] }}'),
+        {},
+        { limits: { astNodes: 2 } },
+      ),
+      NunjitsuLimitError,
+    );
+    assert.deepEqual(engineEvents, []);
+    assert.equal(engine.render('clean'), 'clean');
+  }
+});
+
 test('record membership tracks key presence independently of its value', () => {
   let policyCalls = 0;
   let privilegedCalls = 0;

@@ -158,6 +158,12 @@
       "expected": "false|false|true|true|true|false"
     },
     {
+      "id": "compiler-static-test-rhs",
+      "template": "{{ 1 is \"number\" }}|{{ 1 is \"sameas\"(1) }}|{{ missing is [1] }}|{{ missing is {a:1} }}|{{ missing is (number) }}|{{ missing is foo.bar }}|{{ missing is -number }}|{{ missing is number + 1 }}|{{ missing is number == true }}|{{ missing is not [1] }}|{{ (missing is [1]) in [true] }}|{{ 1 is 1 | sameas }}",
+      "context": {},
+      "expected": "true|true|true|true|true|true|true|true|true|false|true|true"
+    },
+    {
       "id": "compiler-observable-not-grouping",
       "template": "{{ not 1 + 1 }}|{{ not 4 - 2 }}|{{ not 0 * 0 }}|{{ not 4 / 2 }}|{{ not 5 % 2 }}|{{ not 0 ~ 1 }}|{{ not 1 == 2 }}|{{ not 1 != 2 }}|{{ not 1 === 1 }}|{{ not 1 !== 2 }}|{{ not 1 < 2 }}|{{ not 1 <= 2 }}|{{ not 2 > 1 }}|{{ not 2 >= 1 }}|{{ not 5 // 2 }}|{{ not 2 ** 3 }}|{{ not 1 | int }}|{{ not 1 in [true] }}|{{ not 1 is number }}|{{ not (1 + 1) }}|{{ not not 1 + 1 }}",
       "context": {},

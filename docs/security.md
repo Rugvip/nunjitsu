@@ -193,9 +193,12 @@ Template-controlled data is revalidated whenever its role changes:
 - numeric ordering compares closed converted values directly rather than by
   subtraction, so equal infinities cannot fail open into a different branch
   while `NaN` remains unordered;
-- assignment, macro, direct filter, direct test, and global names originate
-  from validated parser symbols and resolve through private maps; dynamic test
-  names accepted by `select` and `reject` are checked against the closed
+- assignment, macro, direct filter, and global names originate from validated
+  parser symbols and resolve through private maps; direct tests statically
+  select a closed name and optional argument node through an exhaustive AST
+  switch, map all composite shapes without a direct name or value to the
+  built-in `undefined` test, and never evaluate those ignored shapes; dynamic
+  test names accepted by `select` and `reject` are checked against the closed
   registry before iteration, while attribute selectors perform only direct
   truthiness and safely discard surplus values;
 - macro calls bind only declared formal names at their fixed positions and the

@@ -77,6 +77,10 @@ Nunjitsu targets:
 - observable comparison, membership, test, and prefix-`not` grouping, including
   Nunjucks's generated-code behavior where it differs from conventional unary
   precedence;
+- compiler-static `is` and `is not` right-hand sides, including quoted test
+  names, call- and filter-carried arguments, and inert aggregate, group,
+  lookup, unary, arithmetic, and comparison shapes that select the built-in
+  `undefined` test without evaluating the shape;
 - parenthesized comma-expression groups that evaluate children left to right
   and return the final value, with empty groups rejected before execution;
 - compiler-derived rejection of repeated unparenthesized `--` and `++` unary

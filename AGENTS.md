@@ -71,6 +71,12 @@ implementation and documentation aligned with the architecture in
   before evaluating arguments, and register the caller body only afterwards.
   Resolve filter and test existence before evaluating their operands or
   arguments, including tests named through `select` and `reject`.
+- Parse the right-hand side of `is` and `is not` through the comparison tier,
+  then derive the test name and carried argument list statically from the AST
+  like pinned Nunjucks. Direct symbol and literal values select their closed
+  spelling, calls and filters expose only their direct `name` and `args`, and
+  every other node selects the built-in `undefined` test. Never evaluate an
+  ignored composite test-name expression or use reflection to discover fields.
 - Do not represent inheritance-only block chains or synthesize a `super`
   callable. Standalone blocks have one body and isolated scope; an explicitly
   registered global named `super` remains an ordinary capability. Call blocks

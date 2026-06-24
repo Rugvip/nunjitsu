@@ -75,6 +75,12 @@ Conditional blocks accept both `elif` and `elseif` as equivalent expression-
 bearing continuations. `else if` remains invalid structural syntax, and every
 branch is parsed before evaluator construction even when it cannot execute.
 
+The `is` and `is not` right-hand side uses the same comparison tier as pinned
+Nunjucks. The parser retains that complete data-only expression; the interpreter
+later selects a test only from the node's direct static `name` or `value` shape.
+This preserves observable grouping without compiling JavaScript or treating the
+expression as a dynamic lookup.
+
 Structural delimiter, keyword, assignment, and executable-tag-end discovery
 share one balanced code scanner. It skips strings with the pinned escape rules
 and skips only exact identifier-boundary `r/` literals through the parser-owned
@@ -166,6 +172,14 @@ safe-check surplus arguments before ignoring them. Non-macro targets also
 establish their positional and keyword policy before evaluating unsupported
 arguments, then recursively reject callable authority from every accepted value
 before dispatch.
+
+Direct test syntax follows Nunjucks's compiler-static selection without
+reflecting over AST objects. Symbols and literal values provide one closed test
+spelling; calls and filters may additionally carry their parser-owned argument
+list; every other right-hand-side variant selects `undefined`. Composite
+expressions used only to select that fallback are never evaluated. The selected
+test still passes reserved-name, existence, exact-arity, and callable checks
+before its left operand or carried arguments execute.
 
 Filter blocks resolve the exact built-in or registered filter and establish its
 keyword policy before capturing their body. For a valid invocation, body
