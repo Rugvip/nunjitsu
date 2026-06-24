@@ -1,7 +1,8 @@
 # Nunjitsu
 
 Nunjitsu is a secure native TypeScript template engine for direct string
-rendering. It supports a focused subset of Nunjucks 3.2.4 through a closed,
+rendering. It supports a focused subset of
+[Nunjucks 3.2.4](https://mozilla.github.io/nunjucks/) through a closed,
 synchronous interpreter rather than generated JavaScript.
 
 Use Nunjitsu when templates may be untrusted and the application needs explicit
@@ -10,8 +11,10 @@ Node.js 22 or newer and accepts inline template source only; filesystem loading,
 precompilation, streaming, browser execution, and asynchronous callbacks are
 outside its scope.
 
-See the [compatibility guide](docs/compatibility.md) for supported template
-syntax and the [security model](docs/security.md) for trust-boundary details.
+Use the [Nunjucks templating documentation](https://mozilla.github.io/nunjucks/templating.html)
+as the general syntax reference, then check the local
+[compatibility guide](docs/compatibility.md) for the subset supported by
+Nunjitsu. See the [security model](docs/security.md) for trust-boundary details.
 
 ## Installation
 
