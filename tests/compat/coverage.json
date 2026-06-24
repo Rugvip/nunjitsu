@@ -144,6 +144,12 @@
       "upstream": ["tests/compiler.js:83"]
     },
     {
+      "id": "nested-loop-slot-lifetime",
+      "file": "tests/source/runtime.test.ts",
+      "test": "preserves loop compiler state across repeated entries",
+      "upstream": ["tests/compiler.js:17", "tests/compiler.js:20", "tests/compiler.js:22"]
+    },
+    {
       "id": "callable-identity",
       "file": "tests/source/runtime.test.ts",
       "test": "matches Nunjucks canonical global and fresh member callable identities",

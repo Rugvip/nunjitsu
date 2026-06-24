@@ -97,6 +97,12 @@ implementation and documentation aligned with the architecture in
   parsing; multi-target `loop` bindings remain direct and must not be
   overwritten by metadata. Never discard or transform a callable while
   installing runtime locals.
+- Separate loop visibility from compiler-slot storage lifetime. Loop targets,
+  declarations, and control temporaries belong to the enclosing root, block,
+  macro, or caller invocation and persist when the same loop AST is re-entered;
+  runtime value frames and loop metadata remain entry-local. Keep separate
+  multi-target array and record branch mappings, use the final record mapping
+  for `else`, and bound duplicated static planning with the work limit.
 - Reject macro declarations anywhere inside block-set or filter-block captures
   during complete parsing rather than inventing capture-specific macro scope.
 - Validate macro and caller declarations separately from ordinary calls. Every

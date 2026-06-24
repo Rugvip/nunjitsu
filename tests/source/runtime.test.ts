@@ -1218,6 +1218,125 @@ test('preserves inherited compiler slots across defaulted caller parameters', ()
   }
 });
 
+test('preserves loop compiler state across repeated entries', () => {
+  const sources = [
+    [
+      '{% for flag in [true,false] %}{% for value in [1] %}',
+      '{% if flag %}{% macro guard() %}G{% endmacro %}{% endif %}',
+      '[${{ guard is callable }}]',
+      '{% if guard is not callable %}${{ mark("conditional-macro") }}{% endif %}',
+      '{% endfor %}{% endfor %}',
+    ].join(''),
+    [
+      '{% macro guard() %}G{% endmacro %}',
+      '{% for values in [[guard],[]] %}{% for item in values %}',
+      '${{ item() }}{% else %}[${{ item is callable }}]',
+      '{% if item is not callable %}${{ mark("single-target") }}{% endif %}',
+      '{% endfor %}{% endfor %}',
+    ].join(''),
+    [
+      '{% macro guard() %}G{% endmacro %}',
+      '{% for values in [{safe:guard},{}] %}{% for key,value in values %}',
+      '[${{ key }}=${{ value() }}]{% else %}',
+      '[${{ key }}=${{ value is callable }}]',
+      '{% if value is not callable %}${{ mark("record-target") }}{% endif %}',
+      '{% endfor %}{% endfor %}',
+    ].join(''),
+    [
+      '{% macro guard() %}G{% endmacro %}',
+      '{% for values in [[[guard,1]],[]] %}{% for item,value in values %}',
+      '[${{ item() }}=${{ value }}]{% else %}',
+      '[${{ item is undefined }}=${{ value is undefined }}]',
+      '{% if item is callable %}${{ mark("array-target") }}{% endif %}',
+      '{% endfor %}{% endfor %}',
+    ].join(''),
+    [
+      '{% for values in [[[true,1]],{}] %}{% for flag,value in values %}',
+      '{% if flag %}{% macro guard() %}G{% endmacro %}{% endif %}',
+      '[${{ guard is callable }}]{% else %}[${{ guard is callable }}]',
+      '{% endfor %}{% endfor %}',
+    ].join(''),
+    [
+      '{% for values in ["a",""] %}{% for item in values %}${{ item }}',
+      '{% else %}${{ mark("empty-string") }}{% endfor %}{% endfor %}',
+    ].join(''),
+    [
+      '{% for values in [[1],null,false,"",missing] %}',
+      '{% for item in values %}${{ item }}',
+      '{% else %}${{ mark("falsy-value") }}{% endfor %}{% endfor %}',
+    ].join(''),
+    [
+      '{% for flag in [true,false] %}{% for middle in [1] %}',
+      '{% for inner in [1] %}',
+      '{% if flag %}{% macro guard() %}G{% endmacro %}{% endif %}',
+      '[${{ guard is callable }}]',
+      '{% if guard is not callable %}${{ mark("three-level") }}{% endif %}',
+      '{% endfor %}{% endfor %}{% endfor %}',
+    ].join(''),
+    [
+      '{% for flag in [true,false] %}{% block repeated %}',
+      '{% if flag %}{% macro guard() %}G{% endmacro %}{% endif %}',
+      '[${{ guard is callable }}]{% endblock %}{% endfor %}|',
+      '{% macro probe(flag) %}',
+      '{% if flag %}{% macro guard() %}G{% endmacro %}{% endif %}',
+      '[${{ guard is callable }}]{% endmacro %}',
+      '${{ probe(true) }}${{ probe(false) }}|',
+      '{% macro wrapper() %}${{ caller(true) }}${{ caller(false) }}{% endmacro %}',
+      '{% call(flag) wrapper() %}',
+      '{% if flag %}{% macro guard() %}G{% endmacro %}{% endif %}',
+      '[${{ guard is callable }}]{% endcall %}',
+    ].join(''),
+  ];
+
+  for (const cookiecutterCompat of [false, true]) {
+    const engineEvents: string[] = [];
+    const oracleEvents: string[] = [];
+    const engine = createEngine({
+      cookiecutterCompat,
+      globals: {
+        mark(value) {
+          engineEvents.push(String(value));
+          return '';
+        },
+      },
+    });
+    const oracle = new nunjucks.Environment(undefined, { autoescape: false });
+    oracle.addGlobal('mark', (value: unknown) => {
+      oracleEvents.push(String(value));
+      return '';
+    });
+    const engineSource = (source: string) => cookiecutterCompat
+      ? source.replaceAll('${{', '{{')
+      : source;
+
+    for (const source of sources) {
+      assert.equal(
+        engine.render(engineSource(source)),
+        oracle.renderString(source.replaceAll('${{', '{{'), {}),
+        source,
+      );
+      assert.deepEqual(engineEvents, []);
+      assert.deepEqual(oracleEvents, []);
+    }
+
+    const failingSource = [
+      '{% for flag in [true,false] %}{% for value in [1] %}',
+      '{% if flag %}{% macro guard() %}G{% endmacro %}{% endif %}',
+      '{% endfor %}{% endfor %}${{ missing() }}${{ mark("later") }}',
+    ].join('');
+    assert.throws(
+      () => engine.render(engineSource(failingSource)),
+      NunjitsuRenderError,
+    );
+    assert.throws(
+      () => oracle.renderString(failingSource.replaceAll('${{', '{{'), {}),
+    );
+    assert.deepEqual(engineEvents, []);
+    assert.deepEqual(oracleEvents, []);
+    assert.equal(engine.render('clean'), 'clean');
+  }
+});
+
 test('matches built-in filters, tests, globals, comments, and raw regions', () => {
   const engine = createEngine();
   assert.equal(

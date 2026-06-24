@@ -1037,7 +1037,7 @@
       "upstream": {"id":"tests/compiler.js:17","file":"tests/compiler.js","test":"should loop over simple arrays"},
       "status": "adapted",
       "reason": "Observable loop behavior and local target shadowing are verified through the synchronous direct-string API with fixed autoescape false.",
-      "cases": ["compiler-runtime-local-shadowing","compiler-static-lexical-slots"]
+      "cases": ["compiler-runtime-local-shadowing","compiler-static-lexical-slots","compiler-nested-loop-slot-lifetime"]
     },
     {
       "upstream": {"id":"tests/compiler.js:18","file":"tests/compiler.js","test":"should loop normally with an {% else %} tag and non-empty array"},

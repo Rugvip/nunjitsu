@@ -4,7 +4,7 @@ export interface RenderLimits {
   sourceCodeUnits: number;
   /** Maximum total immutable AST nodes parsed across one render. */
   astNodes: number;
-  /** Maximum evaluator work units. */
+  /** Maximum duplicated static-planning work and evaluator work units per phase. */
   workUnits: number;
   /** Maximum nested interpreter evaluation depth. */
   nestingDepth: number;

@@ -76,6 +76,8 @@ root, block, macro, caller, loop, conditional, and switch frames, including
 positional-versus-defaulted `loop` bindings and capability-shadowing failures,
 defaulted caller collisions with inherited direct slots versus runtime-only
 context and `set` bindings,
+nested-loop compiler-slot and length persistence, branch-specific multi-target
+storage, and fresh block, macro, and caller invocation boundaries,
 exact dotted-filter capability dispatch and registry-name rejection,
 filter-block AST lowering, body-before-argument ordering, fail-before-capture
 validation, nested capture, and package-entrypoint dispatch,

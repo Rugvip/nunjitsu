@@ -119,11 +119,15 @@ only its exact slot. Inactive declarations therefore still shadow context and
 capabilities, while duplicate declarations retain source-ordered slot identity.
 
 Root, standalone block, ordinary macro, synthetic caller, and loop bodies have
-explicit frame boundaries. `if` and `switch` share their containing plan. Loops
-inherit outer direct slots, synthetic callers retain their confined call-site
-slots, and blocks or ordinary macros resolve otherwise-unbound names through
-runtime frames and current exports. Positional formals and loop targets are
-direct slots; defaulted formals and loop metadata remain runtime bindings.
+explicit visibility boundaries. `if` and `switch` share their containing plan.
+Loops inherit outer direct slots and store their own direct and control
+temporaries in the enclosing compiled-function invocation, so repeated entry
+does not reset generated `var` state. Multi-target array and record branches
+have distinct visibility plans, with `else` using the record plan. Synthetic
+callers retain their confined call-site slots, and blocks or ordinary macros
+resolve otherwise-unbound names through runtime frames and current exports.
+Positional formals and loop targets are direct slots; defaulted formals and loop
+metadata remain runtime bindings.
 Defaulted synthetic-caller formals preserve any inherited call-site direct
 mapping instead of replacing it with their runtime binding. Assignment
 preserves an existing direct slot independently of the assigned value kind. A

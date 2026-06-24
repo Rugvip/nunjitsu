@@ -38,6 +38,8 @@ import {
 } from './coercion.ts';
 import { RuntimeEvaluationError } from './RuntimeEvaluationError.ts';
 import {
+  CompiledFramePlan,
+  LexicalScopePlan,
   LexicalSlotPlan,
   planLexicalSlots,
   RuntimeLexicalFrame,
@@ -100,6 +102,7 @@ const indexedValueScratchBytes = 32;
 
 interface MacroDefinition {
   readonly node: AstCallableBodyNode;
+  readonly framePlan: CompiledFramePlan;
   readonly scope: RuntimeScope;
   readonly lexicalFrame?: RuntimeLexicalFrame;
   readonly invocationScope: RuntimeScope;
@@ -107,6 +110,7 @@ interface MacroDefinition {
 
 interface MacroBindingContext {
   readonly lexicalFrame: RuntimeLexicalFrame;
+  readonly lexicalPlan: LexicalScopePlan;
   readonly invocationScope: RuntimeScope;
   readonly exportsMacros: boolean;
   readonly exportsAssignments: boolean;
@@ -169,7 +173,10 @@ export function evaluateRuntimeTemplate(
     astNodes: options.limits.astNodes,
     nestingDepth: options.limits.nestingDepth,
   });
-  return new Evaluator(options, planLexicalSlots(ast)).render(ast, context);
+  return new Evaluator(
+    options,
+    planLexicalSlots(ast, options.limits.workUnits),
+  ).render(ast, context);
 }
 
 class Evaluator {
@@ -200,8 +207,10 @@ class Evaluator {
     }
     const exportScope = contextScope.child(true);
     const scope = exportScope.child(true);
+    const rootFrame = this.#lexicalSlots.rootFrame();
     const macroContext = createMacroBindingContext(
-      new RuntimeLexicalFrame(this.#lexicalSlots.rootSlots()),
+      new RuntimeLexicalFrame(rootFrame.slots),
+      rootFrame.scope,
       exportScope,
       true,
       true,
@@ -293,11 +302,12 @@ class Evaluator {
         const id = this.#nextCallableId++;
         this.#macros.set(id, {
           node,
+          framePlan: macroContext.lexicalPlan.callableFrame(node),
           scope: macroContext.invocationScope,
           invocationScope: macroContext.invocationScope,
         });
         const handle = new RuntimeCallable('macro', id);
-        const slot = this.#lexicalSlots.slot(node);
+        const slot = macroContext.lexicalPlan.slot(node);
         if (slot === undefined) {
           throw new Error(`Missing lexical slot for macro ${name}`);
         }
@@ -355,8 +365,10 @@ class Evaluator {
     depth: number,
   ): void {
     const blockScope = scope.child(true);
+    const blockFrame = macroContext.lexicalPlan.blockFrame(node);
     const blockMacroContext = createMacroBindingContext(
-      new RuntimeLexicalFrame(this.#lexicalSlots.frameSlots(node)),
+      new RuntimeLexicalFrame(blockFrame.slots),
+      blockFrame.scope,
       macroContext.invocationScope,
       true,
       false,
@@ -401,15 +413,23 @@ class Evaluator {
     }
     const entries = iterableEntries(value, targets.length);
     const loopScope = scope.child();
+    const loopPlan = macroContext.lexicalPlan.loop(node);
+    const bodyPlan = loopPlan.body(
+      targets.length,
+      value instanceof RuntimeArray,
+    );
     const loopMacroContext = createMacroBindingContext(
-      new RuntimeLexicalFrame(
-        this.#lexicalSlots.frameSlots(node),
-        macroContext.lexicalFrame,
-      ),
+      macroContext.lexicalFrame,
+      bodyPlan,
       macroContext.invocationScope,
       false,
       false,
     );
+    let loopLength = macroContext.lexicalFrame.get(loopPlan.lengthSlot);
+    if (runtimeTruthy(value)) {
+      loopLength = entries.length;
+      macroContext.lexicalFrame.set(loopPlan.lengthSlot, loopLength);
+    }
     let index = 0;
     for (const entry of entries.values) {
       const iteration = loopScope;
@@ -418,9 +438,9 @@ class Evaluator {
         entry,
         iteration,
         loopMacroContext.lexicalFrame,
-        this.#lexicalSlots,
+        loopMacroContext.lexicalPlan,
       );
-      const numericLength = runtimeToNumber(entries.length);
+      const numericLength = runtimeToNumber(loopLength);
       bindRuntimeFrameLocal('loop', new RuntimeRecord([
         ['index', index + 1],
         ['index0', index],
@@ -428,7 +448,7 @@ class Evaluator {
         ['revindex0', numericLength - index - 1],
         ['first', index === 0],
         ['last', index === numericLength - 1],
-        ['length', entries.length],
+        ['length', loopLength],
       ]), iteration);
       this.#evaluateNode(
         node.body,
@@ -440,8 +460,21 @@ class Evaluator {
       index += 1;
     }
     const otherwise = node.else_;
-    if (!runtimeTruthy(entries.length) && otherwise) {
-      this.#evaluateNode(otherwise, loopScope, loopMacroContext, output, depth + 1);
+    if (!runtimeTruthy(loopLength) && otherwise) {
+      const otherwiseMacroContext = createMacroBindingContext(
+        macroContext.lexicalFrame,
+        loopPlan.otherwise(targets.length),
+        macroContext.invocationScope,
+        false,
+        false,
+      );
+      this.#evaluateNode(
+        otherwise,
+        loopScope,
+        otherwiseMacroContext,
+        output,
+        depth + 1,
+      );
     }
   }
 
@@ -470,7 +503,7 @@ class Evaluator {
         targets[0]!,
         value,
         macroContext.lexicalFrame,
-        this.#lexicalSlots,
+        macroContext.lexicalPlan,
       );
       this.#exportAssignment(targets[0]!, value, macroContext);
       return;
@@ -481,7 +514,7 @@ class Evaluator {
         target,
         value,
         macroContext.lexicalFrame,
-        this.#lexicalSlots,
+        macroContext.lexicalPlan,
       );
       this.#exportAssignment(target, value, macroContext);
     }
@@ -539,7 +572,7 @@ class Evaluator {
       }
       case 'Symbol': {
         const name = symbolName(node);
-        const slot = this.#lexicalSlots.slot(node);
+        const slot = macroContext.lexicalPlan.slot(node);
         if (slot !== undefined) {
           return macroContext.lexicalFrame.get(slot);
         }
@@ -711,6 +744,7 @@ class Evaluator {
       case 'Caller':
         return this.#registerCaller(
           node,
+          macroContext.lexicalPlan.callableFrame(node),
           scope,
           macroContext.lexicalFrame,
           macroContext.invocationScope,
@@ -943,6 +977,7 @@ class Evaluator {
       'caller',
       this.#registerCaller(
         node.caller,
+        macroContext.lexicalPlan.callableFrame(node.caller),
         scope,
         macroContext.lexicalFrame,
         macroContext.invocationScope,
@@ -1062,12 +1097,19 @@ class Evaluator {
 
   #registerCaller(
     node: AstCallableBodyNode,
+    framePlan: CompiledFramePlan,
     scope: RuntimeScope,
     lexicalFrame: RuntimeLexicalFrame,
     invocationScope: RuntimeScope,
   ): RuntimeCallable {
     const id = this.#nextCallableId++;
-    this.#macros.set(id, { node, scope, lexicalFrame, invocationScope });
+    this.#macros.set(id, {
+      node,
+      framePlan,
+      scope,
+      lexicalFrame,
+      invocationScope,
+    });
     return new RuntimeCallable('caller', id);
   }
 
@@ -1084,15 +1126,17 @@ class Evaluator {
     const bodyMacroContext = definition.node.type === 'Caller'
       ? createMacroBindingContext(
         new RuntimeLexicalFrame(
-          this.#lexicalSlots.frameSlots(definition.node),
+          definition.framePlan.slots,
           definition.lexicalFrame,
         ),
+        definition.framePlan.scope,
         definition.invocationScope,
         false,
         false,
       )
       : createMacroBindingContext(
-        new RuntimeLexicalFrame(this.#lexicalSlots.frameSlots(definition.node)),
+        new RuntimeLexicalFrame(definition.framePlan.slots),
+        definition.framePlan.scope,
         definition.invocationScope,
         true,
         false,
@@ -1137,7 +1181,7 @@ class Evaluator {
               value,
               local,
               bodyMacroContext.lexicalFrame,
-              this.#lexicalSlots,
+              bodyMacroContext.lexicalPlan,
             );
             boundNames.add(name);
           }
@@ -1159,7 +1203,7 @@ class Evaluator {
             supplied,
             local,
             bodyMacroContext.lexicalFrame,
-            this.#lexicalSlots,
+            bodyMacroContext.lexicalPlan,
           );
           boundNames.add(name);
         }
@@ -1481,7 +1525,7 @@ function bindLoopTargets(
   value: RuntimeValue,
   scope: RuntimeScope,
   lexicalFrame: RuntimeLexicalFrame,
-  lexicalSlots: LexicalSlotPlan,
+  lexicalPlan: LexicalScopePlan,
 ): void {
   if (targets.length === 1) {
     const target = targets[0]!;
@@ -1491,7 +1535,7 @@ function bindLoopTargets(
       value,
       scope,
       lexicalFrame,
-      lexicalSlots,
+      lexicalPlan,
     );
     return;
   }
@@ -1502,7 +1546,7 @@ function bindLoopTargets(
       destructureRuntimeValue(value, index),
       scope,
       lexicalFrame,
-      lexicalSlots,
+      lexicalPlan,
     );
   }
 }
@@ -1513,10 +1557,10 @@ function bindRuntimeLocal(
   value: RuntimeValue,
   scope: RuntimeScope,
   lexicalFrame: RuntimeLexicalFrame,
-  lexicalSlots: LexicalSlotPlan,
+  lexicalPlan: LexicalScopePlan,
 ): void {
   scope.set(name, value);
-  const slot = lexicalSlots.slot(target);
+  const slot = lexicalPlan.slot(target);
   if (slot !== undefined) {
     lexicalFrame.set(slot, value);
   }
@@ -1534,9 +1578,9 @@ function bindLexicalAssignment(
   target: AstNode,
   value: RuntimeValue,
   lexicalFrame: RuntimeLexicalFrame,
-  lexicalSlots: LexicalSlotPlan,
+  lexicalPlan: LexicalScopePlan,
 ): void {
-  const slot = lexicalSlots.slot(target);
+  const slot = lexicalPlan.slot(target);
   if (slot !== undefined) {
     lexicalFrame.set(slot, value);
   }
@@ -1745,12 +1789,14 @@ function validateUniqueBlocks(ast: AstNode): void {
 
 function createMacroBindingContext(
   lexicalFrame: RuntimeLexicalFrame,
+  lexicalPlan: LexicalScopePlan,
   invocationScope: RuntimeScope,
   exportsMacros: boolean,
   exportsAssignments: boolean,
 ): MacroBindingContext {
   return Object.freeze({
     lexicalFrame,
+    lexicalPlan,
     invocationScope,
     exportsMacros,
     exportsAssignments,

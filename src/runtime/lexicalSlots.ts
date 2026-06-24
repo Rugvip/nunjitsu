@@ -1,54 +1,152 @@
-import type { AstCallableBodyNode, AstNode } from '../parser/ast.ts';
+import type {
+  AstBlockNode,
+  AstCallableBodyNode,
+  AstForNode,
+  AstNode,
+} from '../parser/ast.ts';
+import { NunjitsuLimitError } from '../limits.ts';
 import type { RuntimeValue } from './value.ts';
 
-/** Mutable slot inventory used only while building one frame plan. */
-interface MutableLexicalFramePlan {
+/** Mutable slot inventory used only while building one compiled frame plan. */
+interface MutableCompiledFramePlan {
   readonly slots: number[];
 }
 
 /** One static traversal state with the slots visible at its current position. */
 interface LexicalFrameState {
-  readonly plan: MutableLexicalFramePlan;
+  readonly frame: MutableCompiledFramePlan;
+  readonly scope: LexicalScopePlan;
   readonly bindings: Map<string, number>;
 }
 
-/** Static compiler-slot assignments for one complete immutable AST. */
-export class LexicalSlotPlan {
-  readonly #rootSlots: readonly number[];
-  readonly #frameSlots: WeakMap<AstNode, readonly number[]>;
-  readonly #nodeSlots: WeakMap<AstNode, number>;
-
-  constructor(
-    rootSlots: readonly number[],
-    frameSlots: WeakMap<AstNode, readonly number[]>,
-    nodeSlots: WeakMap<AstNode, number>,
-  ) {
-    this.#rootSlots = rootSlots;
-    this.#frameSlots = frameSlots;
-    this.#nodeSlots = nodeSlots;
-  }
-
-  /** Returns the slots owned by the root compiled frame. */
-  rootSlots(): readonly number[] {
-    return this.#rootSlots;
-  }
-
-  /** Returns the slots owned by one nested compiled frame. */
-  frameSlots(node: AstNode): readonly number[] {
-    const slots = this.#frameSlots.get(node);
-    if (!slots) {
-      throw new Error(`Missing lexical frame plan for ${node.type}`);
-    }
-    return slots;
-  }
+/** Static bindings and nested execution plans for one compiled source region. */
+export class LexicalScopePlan {
+  readonly #nodeSlots = new WeakMap<AstNode, number>();
+  readonly #callableFrames = new WeakMap<AstCallableBodyNode, CompiledFramePlan>();
+  readonly #blockFrames = new WeakMap<AstBlockNode, CompiledFramePlan>();
+  readonly #loops = new WeakMap<AstForNode, LexicalLoopPlan>();
 
   /** Returns the direct slot selected for one reference or binding node. */
   slot(node: AstNode): number | undefined {
     return this.#nodeSlots.get(node);
   }
+
+  /** Returns the compiled frame created for one macro or synthetic caller. */
+  callableFrame(node: AstCallableBodyNode): CompiledFramePlan {
+    const frame = this.#callableFrames.get(node);
+    if (!frame) {
+      throw new Error(`Missing callable frame plan for ${node.type}`);
+    }
+    return frame;
+  }
+
+  /** Returns the compiled frame created for one standalone block. */
+  blockFrame(node: AstBlockNode): CompiledFramePlan {
+    const frame = this.#blockFrames.get(node);
+    if (!frame) {
+      throw new Error('Missing block frame plan');
+    }
+    return frame;
+  }
+
+  /** Returns the branch-specific plan and control slot for one loop. */
+  loop(node: AstForNode): LexicalLoopPlan {
+    const loop = this.#loops.get(node);
+    if (!loop) {
+      throw new Error('Missing loop plan');
+    }
+    return loop;
+  }
+
+  /** Records one direct slot during static planning. */
+  bindSlot(node: AstNode, slot: number): void {
+    this.#nodeSlots.set(node, slot);
+  }
+
+  /** Records one callable frame during static planning. */
+  bindCallableFrame(node: AstCallableBodyNode, frame: CompiledFramePlan): void {
+    this.#callableFrames.set(node, frame);
+  }
+
+  /** Records one block frame during static planning. */
+  bindBlockFrame(node: AstBlockNode, frame: CompiledFramePlan): void {
+    this.#blockFrames.set(node, frame);
+  }
+
+  /** Records one loop plan during static planning. */
+  bindLoop(node: AstForNode, loop: LexicalLoopPlan): void {
+    this.#loops.set(node, loop);
+  }
 }
 
-/** One invocation-local set of statically allocated compiler slots. */
+/** Slots and root visibility plan owned by one compiled-function invocation. */
+export class CompiledFramePlan {
+  readonly slots: readonly number[];
+  readonly scope: LexicalScopePlan;
+
+  constructor(slots: readonly number[], scope: LexicalScopePlan) {
+    this.slots = slots;
+    this.scope = scope;
+  }
+}
+
+/** Branch-specific visibility and persistent length state for one loop node. */
+export class LexicalLoopPlan {
+  readonly lengthSlot: number;
+  readonly #single: LexicalScopePlan | undefined;
+  readonly #array: LexicalScopePlan | undefined;
+  readonly #record: LexicalScopePlan | undefined;
+
+  constructor(
+    lengthSlot: number,
+    single: LexicalScopePlan | undefined,
+    array: LexicalScopePlan | undefined,
+    record: LexicalScopePlan | undefined,
+  ) {
+    this.lengthSlot = lengthSlot;
+    this.#single = single;
+    this.#array = array;
+    this.#record = record;
+  }
+
+  /** Selects the body plan emitted for the runtime container branch. */
+  body(targetCount: number, arrayInput: boolean): LexicalScopePlan {
+    const scope = targetCount === 1
+      ? this.#single
+      : arrayInput
+        ? this.#array
+        : this.#record;
+    if (!scope) {
+      throw new Error('Missing loop body plan');
+    }
+    return scope;
+  }
+
+  /** Selects the final compiler mapping used by a loop else body. */
+  otherwise(targetCount: number): LexicalScopePlan {
+    const scope = targetCount === 1 ? this.#single : this.#record;
+    if (!scope) {
+      throw new Error('Missing loop else plan');
+    }
+    return scope;
+  }
+}
+
+/** Static compiler-slot assignments for one complete immutable AST. */
+export class LexicalSlotPlan {
+  readonly #root: CompiledFramePlan;
+
+  constructor(root: CompiledFramePlan) {
+    this.#root = root;
+  }
+
+  /** Returns the compiled frame that owns root render storage. */
+  rootFrame(): CompiledFramePlan {
+    return this.#root;
+  }
+}
+
+/** One invocation-local storage chain for statically allocated compiler slots. */
 export class RuntimeLexicalFrame {
   readonly #parent: RuntimeLexicalFrame | undefined;
   readonly #values = new Map<number, RuntimeValue>();
@@ -71,7 +169,7 @@ export class RuntimeLexicalFrame {
     throw new Error(`Unknown lexical slot ${slot}`);
   }
 
-  /** Replaces one exact slot in the frame that owns it. */
+  /** Replaces one exact slot in the compiled frame that owns it. */
   set(slot: number, value: RuntimeValue): void {
     if (this.#values.has(slot)) {
       this.#values.set(slot, value);
@@ -86,22 +184,43 @@ export class RuntimeLexicalFrame {
 }
 
 /** Assigns stable direct slots according to Nunjucks compiler traversal order. */
-export function planLexicalSlots(ast: AstNode): LexicalSlotPlan {
-  const frameSlots = new WeakMap<AstNode, readonly number[]>();
-  const nodeSlots = new WeakMap<AstNode, number>();
-  const frames: Array<readonly [AstNode, MutableLexicalFramePlan]> = [];
+export function planLexicalSlots(
+  ast: AstNode,
+  maximumExpansionWork = Number.POSITIVE_INFINITY,
+): LexicalSlotPlan {
+  const frames: MutableCompiledFramePlan[] = [];
+  const visitedNodes = new WeakSet<AstNode>();
   let nextSlot = 0;
+  let expansionWork = 0;
 
-  const createFrame = (
-    owner: AstNode,
+  const createCompiledFrame = (
     inherited?: ReadonlyMap<string, number>,
-  ): LexicalFrameState => {
-    const plan: MutableLexicalFramePlan = { slots: [] };
-    frames.push([owner, plan]);
+  ): { readonly plan: CompiledFramePlan; readonly state: LexicalFrameState } => {
+    const mutable: MutableCompiledFramePlan = { slots: [] };
+    const scope = new LexicalScopePlan();
+    const plan = new CompiledFramePlan(mutable.slots, scope);
+    frames.push(mutable);
     return {
       plan,
-      bindings: new Map(inherited),
+      state: {
+        frame: mutable,
+        scope,
+        bindings: new Map(inherited),
+      },
     };
+  };
+
+  const createRegion = (state: LexicalFrameState): LexicalFrameState => ({
+    frame: state.frame,
+    scope: new LexicalScopePlan(),
+    bindings: new Map(state.bindings),
+  });
+
+  const createAnonymousSlot = (state: LexicalFrameState): number => {
+    const slot = nextSlot;
+    nextSlot += 1;
+    state.frame.slots.push(slot);
+    return slot;
   };
 
   const createSlot = (
@@ -109,11 +228,9 @@ export function planLexicalSlots(ast: AstNode): LexicalSlotPlan {
     name: string,
     node: AstNode,
   ): number => {
-    const slot = nextSlot;
-    nextSlot += 1;
-    state.plan.slots.push(slot);
+    const slot = createAnonymousSlot(state);
     state.bindings.set(name, slot);
-    nodeSlots.set(node, slot);
+    state.scope.bindSlot(node, slot);
     return slot;
   };
 
@@ -123,15 +240,16 @@ export function planLexicalSlots(ast: AstNode): LexicalSlotPlan {
     }
     const slot = state.bindings.get(node.value);
     if (slot !== undefined) {
-      nodeSlots.set(node, slot);
+      state.scope.bindSlot(node, slot);
     }
   };
 
   const planCallable = (
     node: AstCallableBodyNode,
     inherited?: ReadonlyMap<string, number>,
-  ): void => {
-    const state = createFrame(node, inherited);
+  ): CompiledFramePlan => {
+    const callable = createCompiledFrame(inherited);
+    const state = callable.state;
     if (node.args.type !== 'NodeList') {
       throw new Error('Invalid callable argument list');
     }
@@ -143,10 +261,7 @@ export function planLexicalSlots(ast: AstNode): LexicalSlotPlan {
             throw new Error('Invalid callable default');
           }
           visit(pair.value, state);
-          const name = pair.key.value;
-          if (!boundNames.has(name)) {
-            boundNames.add(name);
-          }
+          boundNames.add(pair.key.value);
         }
       } else {
         if (argument.type !== 'Symbol') {
@@ -160,6 +275,7 @@ export function planLexicalSlots(ast: AstNode): LexicalSlotPlan {
       }
     }
     visit(node.body, state);
+    return callable.plan;
   };
 
   const visitPairValue = (node: AstNode, state: LexicalFrameState): void => {
@@ -172,7 +288,28 @@ export function planLexicalSlots(ast: AstNode): LexicalSlotPlan {
     visit(node.value, state);
   };
 
+  const planLoopTargets = (node: AstForNode, state: LexicalFrameState): void => {
+    const targets = node.name.type === 'Array' ? node.name.children : [node.name];
+    for (const target of targets) {
+      if (target.type !== 'Symbol') {
+        throw new Error(`Invalid loop target ${target.type}`);
+      }
+      createSlot(state, target.value, target);
+    }
+  };
+
   function visit(node: AstNode, state: LexicalFrameState): void {
+    if (visitedNodes.has(node)) {
+      expansionWork += 1;
+      if (
+        maximumExpansionWork !== Number.POSITIVE_INFINITY &&
+        expansionWork > maximumExpansionWork
+      ) {
+        throw new NunjitsuLimitError('workUnits');
+      }
+    } else {
+      visitedNodes.add(node);
+    }
     switch (node.type) {
       case 'Root':
       case 'NodeList':
@@ -214,18 +351,39 @@ export function planLexicalSlots(ast: AstNode): LexicalSlotPlan {
         return;
       case 'For': {
         visit(node.arr, state);
-        const loopState = createFrame(node, state.bindings);
+        const lengthSlot = createAnonymousSlot(state);
         const targets = node.name.type === 'Array' ? node.name.children : [node.name];
-        for (const target of targets) {
-          if (target.type !== 'Symbol') {
-            throw new Error(`Invalid loop target ${target.type}`);
+        if (targets.length === 1) {
+          const bodyState = createRegion(state);
+          planLoopTargets(node, bodyState);
+          visit(node.body, bodyState);
+          if (node.else_) {
+            visit(node.else_, bodyState);
           }
-          createSlot(loopState, target.value, target);
+          state.scope.bindLoop(
+            node,
+            new LexicalLoopPlan(lengthSlot, bodyState.scope, undefined, undefined),
+          );
+          return;
         }
-        visit(node.body, loopState);
+        const arrayState = createRegion(state);
+        planLoopTargets(node, arrayState);
+        visit(node.body, arrayState);
+        const recordState = createRegion(state);
+        planLoopTargets(node, recordState);
+        visit(node.body, recordState);
         if (node.else_) {
-          visit(node.else_, loopState);
+          visit(node.else_, recordState);
         }
+        state.scope.bindLoop(
+          node,
+          new LexicalLoopPlan(
+            lengthSlot,
+            undefined,
+            arrayState.scope,
+            recordState.scope,
+          ),
+        );
         return;
       }
       case 'Macro': {
@@ -233,12 +391,12 @@ export function planLexicalSlots(ast: AstNode): LexicalSlotPlan {
           throw new Error('Invalid macro name');
         }
         const slot = createSlot(state, node.name.value, node);
-        nodeSlots.set(node.name, slot);
-        planCallable(node);
+        state.scope.bindSlot(node.name, slot);
+        state.scope.bindCallableFrame(node, planCallable(node));
         return;
       }
       case 'Caller':
-        planCallable(node, state.bindings);
+        state.scope.bindCallableFrame(node, planCallable(node, state.bindings));
         return;
       case 'FunCall':
         visit(node.name, state);
@@ -249,11 +407,15 @@ export function planLexicalSlots(ast: AstNode): LexicalSlotPlan {
         return;
       case 'CallBlock':
         visit(node.call, state);
-        planCallable(node.caller, state.bindings);
+        state.scope.bindCallableFrame(
+          node.caller,
+          planCallable(node.caller, state.bindings),
+        );
         return;
       case 'Block': {
-        const blockState = createFrame(node);
-        visit(node.body, blockState);
+        const block = createCompiledFrame();
+        visit(node.body, block.state);
+        state.scope.bindBlockFrame(node, block.plan);
         return;
       }
       case 'Set':
@@ -318,14 +480,10 @@ export function planLexicalSlots(ast: AstNode): LexicalSlotPlan {
     }
   }
 
-  const rootState = createFrame(ast);
-  visit(ast, rootState);
-  for (const [owner, frame] of frames) {
-    frameSlots.set(owner, Object.freeze(Array.from(frame.slots)));
+  const root = createCompiledFrame();
+  visit(ast, root.state);
+  for (const frame of frames) {
+    Object.freeze(frame.slots);
   }
-  const rootSlots = frameSlots.get(ast);
-  if (!rootSlots) {
-    throw new Error('Missing root lexical frame plan');
-  }
-  return new LexicalSlotPlan(rootSlots, frameSlots, nodeSlots);
+  return new LexicalSlotPlan(root.plan);
 }

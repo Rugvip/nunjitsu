@@ -367,6 +367,17 @@ their explicitly confined call-site slots and value scope. Assignment through
 an existing macro, positional-formal, or loop-target slot preserves that slot
 identity even when the new value is not callable.
 
+Loop syntax pushes a static visibility region and a fresh runtime value scope,
+but its generated direct slots are stored in the enclosing compiled-function
+invocation. Re-entering the same nested loop therefore retains conditional
+macro slots, prior target values, and its last assigned length temporary.
+Falsey inputs do not replace that length, matching the pinned compiler's
+guarded assignment before `else` selection. New root, block, ordinary macro,
+and synthetic-caller invocations allocate fresh storage. Multi-target loops
+carry separate array-branch and record-branch plans; their `else` body uses the
+final record-branch mapping. Repeated static planning caused by those duplicated
+branches is bounded by the render work limit.
+
 Positional macro and synthetic-caller formals and loop targets receive direct
 slots as well as runtime bindings. Defaulted formals remain runtime-frame-only,
 matching the pinned compiler. A defaulted synthetic-caller formal creates no
