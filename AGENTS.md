@@ -217,14 +217,19 @@ Do not create additional packages without a documented architectural reason.
 - Keep parser whitespace domains explicit. Code tokens accept only space, tab,
   LF, CR, and NBSP; unsupported ECMAScript whitespace in code is rejected.
   Explicit `-` controls and `lstripBlocks` use the full ECMAScript whitespace
-  set. Do not use general `trim`, `trimStart`, or `\s` for code parsing.
+  set. For `lstripBlocks`, only LF resets the current template-data line; CR is
+  ordinary indentation whitespace after the latest LF or within a leading
+  all-whitespace prefix. Do not use general `trim`, `trimStart`, or `\s` for
+  code parsing.
 - Scan raw and verbatim regions with same-name nesting depth. Preserve nested
   markers and mixed raw/verbatim markers as literal text, require the outer
   same-name closer, preserve content after a top-level opening `-%}`, and reject
   hyphenated closing markers. Inside a raw region, recognize markers with the
   full template-data whitespace set and no left or right hyphen; safely reject
   a terminal closer containing LF or CRLF while allowing multiline non-terminal
-  nested markers.
+  nested markers. Never apply `trimBlocks` after the terminal raw or verbatim
+  closer. A right hyphen on the opening marker preserves raw content but trims
+  template whitespace following that terminal closer.
 - Inspect input records through own property descriptors and reject accessors.
   Do not invoke getters while copying accepted plain records.
 - Reject Node-detected proxies before array detection or any reflective value
@@ -292,7 +297,8 @@ Do not create additional packages without a documented architectural reason.
 - Treat comment contents as opaque template data. Quotes, backslashes,
   identifiers, regexes, delimiters, and nested-looking comment openers have no
   syntax there; the first exact `#}` closes the comment before ordinary right
-  trim handling.
+  trim handling. Reject an exact `#}` encountered in ordinary template data;
+  `%}` and `}}` remain text outside their corresponding open regions.
 - Compare validated primitive strings with direct UTF-16 relational operators.
   Do not use locale-aware collation or `Intl` inside template semantics.
 - Centralize property-key, primitive, number, string, addition, relational, and

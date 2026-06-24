@@ -511,6 +511,18 @@ function scanTemplate(source: string, options: ParseOptions): readonly TemplateT
 
   while (index < source.length) {
     const opening = nextOpening(source, index, variableStart);
+    const unexpectedCommentEnd = source.indexOf('#}', index);
+    if (
+      unexpectedCommentEnd >= 0 &&
+      (!opening || unexpectedCommentEnd < opening.index)
+    ) {
+      const position = sourcePosition(source, unexpectedCommentEnd);
+      throw new NunjitsuParseError(
+        'Unexpected end of comment',
+        position.line,
+        position.column,
+      );
+    }
     if (!opening) {
       appendText(source.slice(index));
       break;
@@ -578,11 +590,9 @@ function scanTemplate(source: string, options: ParseOptions): readonly TemplateT
         }
         appendText(source.slice(index, closing.start));
         advance(source.slice(index, closing.end));
-        if (options.trimBlocks) {
-          const newline = leadingNewlinePattern.exec(source.slice(index))?.[0];
-          if (newline) {
-            advance(newline);
-          }
+        if (rightTrim) {
+          const whitespace = optionalLeadingWhitespacePattern.exec(source.slice(index))![0];
+          advance(whitespace);
         }
         continue;
       }
@@ -715,7 +725,7 @@ function scanRawMarker(
 }
 
 function stripBlockIndent(value: string): string {
-  const newline = Math.max(value.lastIndexOf('\n'), value.lastIndexOf('\r'));
+  const newline = value.lastIndexOf('\n');
   const suffix = value.slice(newline + 1);
   return indentationPattern.test(suffix) ? value.slice(0, newline + 1) : value;
 }

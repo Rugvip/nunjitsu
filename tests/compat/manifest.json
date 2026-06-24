@@ -424,7 +424,7 @@
       "upstream": {"id":"tests/lexer.js:19","file":"tests/lexer.js","test":"should parse comments"},
       "status": "adapted",
       "reason": "Opaque comment termination and applicable observable language behavior are exercised through the synchronous direct-string API.",
-      "cases": ["lexer-comment-opaque-termination"]
+      "cases": ["lexer-comment-opaque-termination","lexer-comment-closer-controls"]
     },
     {
       "upstream": {"id":"tests/lexer.js:20","file":"tests/lexer.js","test":"should allow changing the variable start and end"},

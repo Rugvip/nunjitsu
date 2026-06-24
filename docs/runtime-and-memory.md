@@ -28,8 +28,20 @@ render.
 Comment bodies are opaque during template scanning. The first exact `#}` closes
 the comment regardless of quotes, backslashes, expression-like content, or a
 nested-looking `{#`; left and right whitespace controls are applied only after
-that boundary is identified. Executable tags continue to use the code-aware
-scanner for strings and regex literals.
+that boundary is identified. An exact `#}` in ordinary template data is an
+unexpected closer and fails complete parsing, but closers inside strings,
+regexes, raw regions, and verbatim regions remain contained by their owning
+scanner. Executable tags continue to use the code-aware scanner for strings and
+regex literals.
+
+`lstripBlocks` uses LF as its sole template-data line reset. The suffix after
+the latest LF, or the complete leading prefix when no LF exists, is stripped
+only when it consists entirely of ECMAScript whitespace. CR therefore remains
+part of a CRLF ending but behaves as ordinary removable indentation after LF;
+an embedded bare CR does not hide preceding non-whitespace text. Terminal raw
+and verbatim closers do not participate in `trimBlocks`. A right hyphen on the
+opening raw marker retains its pinned behavior: raw content is preserved and
+template whitespace following the terminal closer is removed.
 
 Macro and call-block declarations apply a stricter policy than ordinary call
 arguments: positional formals must be symbols and default keys must be

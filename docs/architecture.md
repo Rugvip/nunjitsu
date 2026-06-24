@@ -66,6 +66,10 @@ tracks same-name nesting depth; mixed marker names remain literal content and
 only an ordinary, non-hyphenated matching closing marker ends the outer region.
 Once inside raw content, marker recognition uses the full template-data
 whitespace set and treats either whitespace-control hyphen as literal text.
+`lstripBlocks` measures a template-data line from the latest LF, treating CR as
+ordinary indentation whitespace. A terminal raw or verbatim closer bypasses
+`trimBlocks`; only a right hyphen on its opening marker trims template whitespace
+after that closer.
 
 Default variables use `${{` and `}}` delimiters. Cookiecutter mode
 uses `{{` and `}}` with the supported Jinja compatibility behavior. Block and
@@ -87,7 +91,9 @@ and skips only exact identifier-boundary `r/` literals through the parser-owned
 regex scanner. Parentheses inside a regex therefore cannot close a call-block
 caller signature, while division expressions remain ordinary code. Comment
 contents use a separate opaque scan to the first exact `#}`; quotes,
-backslashes, and nested-looking openers have no syntax inside them.
+backslashes, and nested-looking openers have no syntax inside them. The same
+exact closer in ordinary template data is rejected during complete scanning,
+while `%}` and `}}` remain ordinary text outside their open regions.
 
 Synchronous filter blocks reuse the ordinary expression-filter path. The
 parser represents their body as an immutable `Capture` passed as the first

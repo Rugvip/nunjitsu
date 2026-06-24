@@ -379,7 +379,7 @@
     {
       "id": "lexer-unterminated-comment-validation",
       "file": "tests/source/security.test.ts",
-      "test": "rejects unterminated opaque comments before capability dispatch",
+      "test": "rejects unterminated and unexpected comment closers before capability dispatch",
       "upstream": ["tests/lexer.js:19"]
     },
     {

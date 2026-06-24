@@ -120,9 +120,15 @@ line terminators, output and closed operations, capability copies, unchanged
 matching and JSON behavior, and resistance to internal or native prototype
 hooks.
 Comment-scanner regressions cover unmatched and backslash-prefixed quotes,
-first-closer boundaries, adjacent and nested-looking comments, executable
-syntax after comments, whitespace controls and options, capability order, both
-delimiter modes, malformed input, and clean recovery.
+first-closer boundaries, adjacent and nested-looking comments, unexpected
+ordinary-data closers, contained literal, regex, raw, and verbatim controls,
+executable syntax after comments, whitespace controls and options, capability
+order, both delimiter modes, malformed input, and clean recovery. Whitespace
+regressions cover LF-only `lstripBlocks` boundaries, leading and embedded CR,
+LFCR and CRLF sequences, repeated CR, full template whitespace, and every
+trim/lstrip combination. Raw regressions separately preserve newline data after
+terminal closers under `trimBlocks` and the opening right-hyphen effect across
+LF, CRLF, LFCR, and bare CR.
 Sparse-array regressions use TypeScript fixtures because JSON cannot represent
 holes. They compare context, global result, filter result, membership,
 reduction, selection, attribute projection, reversal, sorting,

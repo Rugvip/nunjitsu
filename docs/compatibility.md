@@ -113,8 +113,14 @@ Nunjitsu targets:
   raw regions;
 - separate Nunjucks whitespace domains for full template-data trimming and the
   restricted space, tab, LF, CR, and NBSP code-token set;
+- LF-based `lstripBlocks` line boundaries where CR remains template-data
+  whitespace, plus terminal raw and verbatim closers that bypass `trimBlocks`
+  while retaining the opening right-hyphen whitespace effect;
 - depth-aware same-name raw and verbatim regions, including literal mixed
   markers and pinned opening/closing whitespace-control behavior;
+- unexpected exact comment closers in ordinary template data, with `#}` kept
+  inert inside code literals, comments, raw, and verbatim and with stray `%}`
+  or `}}` retained as text;
 - built-in filters, tests, and globals used by direct string templates;
 - pinned built-in input domains, nullish normalization, keyword arguments, and
   fail-before-later-capability behavior over the closed value model;
@@ -327,14 +333,18 @@ controls and `lstripBlocks` remove the full ECMAScript whitespace set, including
 NBSP, Unicode spacing characters, vertical tab, form feed, and BOM. Inside
 expressions and structural tags, only space, tab, LF, CR, and NBSP are code
 whitespace; other spacing characters are rejected rather than normalized or
-silently skipped. The same rules apply in default and Cookiecutter modes.
+silently skipped. Only LF resets the current template-data line for
+`lstripBlocks`; CR is ordinary removable indentation after LF or in a leading
+all-whitespace prefix. The same rules apply in default and Cookiecutter modes.
 
 Raw and verbatim regions count nested openers of their own name and close only
 when that depth returns to zero. Nested markers remain in rendered text, and a
 `raw` marker inside `verbatim` or a `verbatim` marker inside `raw` has no special
 meaning. An opening `{%- raw %}` or `{%- verbatim %}` applies ordinary left
-trimming, while an opening right hyphen does not trim raw content. Hyphenated
-closing markers are rejected, matching pinned Nunjucks v3.2.4.
+trimming, while an opening right hyphen does not trim raw content and instead
+removes template whitespace after the terminal closer. Terminal raw and
+verbatim closers do not participate in `trimBlocks`. Hyphenated closing markers
+are rejected, matching pinned Nunjucks v3.2.4.
 
 Top-level raw openers use the ordinary code-token whitespace grammar. After
 raw mode begins, inner same-name markers instead accept the full ECMAScript

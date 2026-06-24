@@ -1742,6 +1742,7 @@ test('matches opaque Nunjucks comment termination', () => {
     'A{# " #}{% if true %}${{ value }}{% endif %}"{# second #}C',
     'A{# first\n" \n#}B',
     'A \n\t{#- " -#} \n B',
+    'A${{ "#}" }}|${{ r/#}/ }}|{% raw %}#}{% endraw %}|%}|}}',
   ];
   const optionCases = [
     { trimBlocks: false, lstripBlocks: false },
@@ -5240,6 +5241,45 @@ test('matches Nunjucks code and template-data whitespace domains', () => {
         lstripOracle.renderString(source, {}),
       );
     }
+
+    const linePrefixes = [
+      '\r ',
+      'A\r ',
+      'A\n\r ',
+      'A\r\n ',
+      'A\n\r\r\u2003',
+      'A\r\r\u2003',
+      'A\n\u000b\u2003',
+    ];
+    const blockBodies = [
+      '{% if true %}X{% endif %}',
+      '{% raw %}X{% endraw %}',
+      '{% filter upper %}x{% endfilter %}',
+    ];
+    for (const trimBlocks of [false, true]) {
+      for (const lstripBlocks of [false, true]) {
+        const boundaryEngine = createEngine({
+          cookiecutterCompat,
+          trimBlocks,
+          lstripBlocks,
+        });
+        const boundaryOracle = new nunjucks.Environment(undefined, {
+          autoescape: false,
+          trimBlocks,
+          lstripBlocks,
+        });
+        for (const prefix of linePrefixes) {
+          for (const block of blockBodies) {
+            const source = `${prefix}${block}`;
+            assert.equal(
+              boundaryEngine.render(engineSource(source)),
+              boundaryOracle.renderString(source, {}),
+              `${JSON.stringify({ trimBlocks, lstripBlocks })} ${JSON.stringify(source)}`,
+            );
+          }
+        }
+      }
+    }
   }
 });
 
@@ -5332,6 +5372,36 @@ test('matches nested raw scanning and raw whitespace controls', () => {
       assert.throws(() => engine.render(source), NunjitsuRenderError);
       assert.throws(() => oracle.renderString(source, {}));
       assert.equal(engine.render('clean'), 'clean');
+    }
+
+    for (const trimBlocks of [false, true]) {
+      for (const lstripBlocks of [false, true]) {
+        const optionEngine = createEngine({
+          cookiecutterCompat,
+          trimBlocks,
+          lstripBlocks,
+        });
+        const optionOracle = new nunjucks.Environment(undefined, {
+          autoescape: false,
+          trimBlocks,
+          lstripBlocks,
+        });
+        for (const name of ['raw', 'verbatim']) {
+          for (const newline of ['\n', '\r\n', '\n\r', '\r']) {
+            for (const source of [
+              `{% ${name} %}A{% end${name} %}${newline}B`,
+              `A \t\n{%- ${name} %}X{% end${name} %}${newline}B`,
+              `{% ${name} -%} \t\nX{% end${name} %}${newline}B`,
+            ]) {
+              assert.equal(
+                optionEngine.render(source),
+                optionOracle.renderString(source, {}),
+                `${JSON.stringify({ trimBlocks, lstripBlocks })} ${JSON.stringify(source)}`,
+              );
+            }
+          }
+        }
+      }
     }
   }
 });

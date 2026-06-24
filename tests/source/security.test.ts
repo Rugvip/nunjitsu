@@ -1062,12 +1062,16 @@ test('rejects malformed structural tags before any template capability executes'
   }
 });
 
-test('rejects unterminated opaque comments before capability dispatch', () => {
+test('rejects unterminated and unexpected comment closers before capability dispatch', () => {
   const malformedComments = [
     '${{ before() }}{# "',
     "${{ before() }}{# '",
     '${{ before() }}{# \\',
     '${{ before() }}{# outer {# nested',
+    '${{ before() }}#}',
+    '${{ before() }}A-#}B',
+    '${{ before() }}A{# valid #}#}',
+    '${{ before() }}{% if true %}body{% endif %}#}',
   ];
   const optionCases = [
     { trimBlocks: false, lstripBlocks: false },
@@ -1126,6 +1130,18 @@ test('rejects unterminated opaque comments before capability dispatch', () => {
         assert.deepEqual(oracleEvents, [], source);
         assert.equal(engine.render('clean'), 'clean', source);
       }
+
+      engineEvents.length = 0;
+      assert.throws(
+        () => engine.render(
+          cookiecutterCompat ? '{{ before() }}#}' : '${{ before() }}#}',
+          {},
+          { limits: { sourceCodeUnits: 1 } },
+        ),
+        NunjitsuLimitError,
+      );
+      assert.deepEqual(engineEvents, []);
+      assert.equal(engine.render('clean'), 'clean');
     }
   }
 });

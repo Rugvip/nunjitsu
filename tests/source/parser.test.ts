@@ -317,6 +317,15 @@ test('scans delimiters only outside literals and rejects malformed complete inpu
     ),
     '{{ untouched }}',
   );
+  for (const source of [
+    '{{ "#}" }}',
+    '{{ r/#}/ }}',
+    '{% if "#}" %}ok{% endif %}',
+    '{% raw %}#}{% endraw %}',
+    '{% verbatim %}#}{% endverbatim %}',
+  ]) {
+    assert.doesNotThrow(() => parseTemplate(source, cookiecutter), source);
+  }
 
   for (const source of [
     '{{',
@@ -325,6 +334,10 @@ test('scans delimiters only outside literals and rejects malformed complete inpu
     '{% for value values %}{% endfor %}',
     '{% raw %}',
     '{% endfor %}',
+    '#}',
+    'A{# valid #}#}',
+    '{{ value }}#}',
+    '{% if true %}ok{% endif %}#}',
   ]) {
     assert.throws(() => parseTemplate(source, cookiecutter), NunjitsuParseError, source);
   }

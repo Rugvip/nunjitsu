@@ -806,6 +806,12 @@
       "expected": "AB\"C|V\"|AB"
     },
     {
+      "id": "lexer-comment-closer-controls",
+      "template": "{{ \"#}\" }}|{{ r/#}/ }}|{% raw %}#}{% endraw %}|%}|}}",
+      "context": {},
+      "expected": "#}|/#}/|#}|%}|}}"
+    },
+    {
       "id": "parser-raw-regions",
       "template": "{% raw %}{{ broken{% if %}{# comment #}{% endraw %}|{% raw %}A{% endraw %}{% raw %}B{% endraw %}",
       "context": {},
