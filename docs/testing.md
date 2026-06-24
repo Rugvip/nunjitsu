@@ -1,172 +1,80 @@
 # Testing
 
+The default test command validates source behavior, compatibility, security,
+benchmarks, package builds, declarations, and both module formats:
+
+```sh
+pnpm test
+```
+
+Development requires Node.js 22.18 or newer and the pnpm version pinned in
+`package.json`.
+
 ## Test layers
 
-1. Parser tests cover the closed grammar, fixed delimiters, malformed
-   input, complete validation, and immutable data-only ASTs.
-2. Interpreter tests cover copied values, scopes, lookup, coercion, operators,
-   calls, limits, output, and cleanup.
-3. Compatibility tests execute applicable attributed Nunjucks v3.2.4 behavior
-   through the secure direct-string API.
-4. Public API tests cover filters, globals, rendering modes, errors, ESM and
-   CommonJS package conditions, cross-format loading, and declarations through
-   modern NodeNext, bundler, and legacy TypeScript resolution.
-5. Security tests exercise JavaScript escape gadgets, prototype pollution,
-   accessors, exotic values, callback results, malformed syntax, and static
-   checks for prohibited implementation primitives.
-6. Benchmarks compare synchronous inline parsing and expression evaluation with
-   pinned Nunjucks in isolated processes.
+| Layer | Location | Purpose |
+| --- | --- | --- |
+| Source | `tests/source/` | Parser, interpreter, public API, security, and release tooling |
+| Compatibility | `tests/compat/` | Attributed Nunjucks v3.2.4 cases and coverage mapping |
+| Package | `tests/package/` | Built ESM, CommonJS, exports, and TypeScript declarations |
+| Benchmarks | `benchmarks/` | Output-equivalent inline rendering against pinned Nunjucks |
 
-## Continuous integration
+Useful focused commands are:
 
-GitHub Actions runs the complete test matrix on the current Node.js 22 and 24
-releases for every pull request and every push to `main`.
+```sh
+pnpm test:source
+pnpm typecheck
+pnpm test:package
+pnpm benchmark:quick
+```
 
-All CI matrix jobs install with the `packageManager`-pinned pnpm version and
-`pnpm install --frozen-lockfile`. CI has read-only repository permissions,
-cancels superseded runs for the same ref, and does not receive publishing
-permissions or credentials.
+## Adding coverage
 
-## Compatibility corpus
+Put ordinary rendering parity in `tests/compat/cases.json`. This keeps the case
+language-neutral and runs it against both Nunjitsu and pinned Nunjucks. Update
+the manifest or coverage mapping whenever an upstream case changes
+classification.
 
-`tests/compat/cases.json` contains data-only cases adapted from Nunjucks 3.2.4.
-The manifest retains provenance for all upstream cases and marks behavior
-outside the secure direct-string contract as not applicable. Applicable cases
-must render through the same synchronous public API used by applications.
-Every ported or adapted manifest entry must have executable coverage. Pure
-rendering belongs in the language-neutral case corpus; behavior requiring
-trusted capabilities, non-JSON fixtures, errors, or boundary assertions may
-link to an exact source test through `tests/compat/coverage.json`. Validation
-also requires reasons for every adapted or inapplicable classification. The
-language-neutral cases execute against both Nunjitsu and the pinned Nunjucks
-development oracle so expected output cannot drift independently.
+Use `tests/source/` when a case needs registered capabilities, non-JSON values,
+errors, resource limits, or security-boundary assertions. Security failures
+should prove that no later capability executes, no partial output is returned,
+and a subsequent render starts cleanly.
 
-## Security regression suite
+Use `tests/package/` only for behavior that depends on the built package:
+exports, module resolution, declarations, or ESM/CommonJS interoperability.
 
-The suite covers reserved prototype names, ambient Node globals, constructor
-gadgets, method calls, implicit coercion, accessors, exotic objects, cyclic
-values, trap-free rejection of nested and revoked proxies, inherited iteration
-and serialization hooks, capability identity confusion, fixed-position macro
-binding, undeclared keyword isolation, undefined-valued record membership,
-UTF-16 string operations, deterministic ordering, and isolated surrogate
-handling, strict and loose equality, malformed syntax, public error
-classification, centralized coercion and canonical indices, diagnostic control
-characters, explicit coverage of every Unicode `Bidi_Control` character, and
-truncation, inert capability exception handling, legacy RegExp state isolation
-at capability and nested-render boundaries, render-exit cleanup, mixed-operator
-grouping and operand order, comparison, membership, test, and prefix-`not`
-grouping, static test-name extraction from literal, call, filter, and inert
-composite right-hand sides, ignored-expression capability order, exact-arity
-controls, nested inline-conditional and dictionary-key parser acceptance,
-parenthesized comma-expression value selection, side-effect order, empty-group
-rejection, and callable-discard prevention,
-`elif`/`elseif` block chains and malformed continuation rejection,
-container- and target-sensitive loop planning, raw record-length metadata,
-flat-target validation, nullish destructuring failures before capability
-dispatch, canonical and fresh-member callable identities, strict switch
-matching and case evaluation order, arm-free switch rejection, empty-arm and
-fallthrough preservation, callable-boundary rejection, structured
-cause-free public diagnostics, declaration-specific formal validation,
-lexical macro export and invocation frames across root, blocks, loops, macros,
-callers, conditionals, and switches, plus capture-declaration rejection,
-root lexical bindings versus block and macro exports, declaration-order
-collisions, strict callable identity, and capability-guard preservation,
-runtime-local shadowing for loop targets and metadata, nested iteration, macro
-and caller formals, per-iteration rebinding, and fail-stop callable collisions,
-static compiler-slot allocation for inactive and duplicate declarations across
-root, block, macro, caller, loop, conditional, and switch frames, including
-positional-versus-defaulted `loop` bindings and capability-shadowing failures,
-defaulted caller collisions with inherited direct slots versus runtime-only
-context and `set` bindings,
-nested-loop compiler-slot and length persistence, branch-specific multi-target
-storage, array-only assignment resolution, record/string duplicate and extra
-targets, cross-branch temporary persistence, and fresh block, macro, and caller
-invocation boundaries,
-safe-string versus primitive-string multi-target compiler-branch selection,
-safe-string own-field lookup and membership versus primitive substring
-membership, numeric lookup adaptation, capability-bearing branch selection,
-and resistance to internal coercion hooks,
-exact dotted-filter capability dispatch and registry-name rejection,
-filter-block AST lowering, body-before-argument ordering, fail-before-capture
-validation, nested capture, and package-entrypoint dispatch,
-post-default and post-keyword positional ordering, structural-tag remainder and
-duplicate macro and caller formal normalization with default side effects,
-named-block checks, raw-mode entry validation, and render state cleanup after
-failures. Repeated-unary regressions cover active and inactive expressions,
-defaults, arguments, collections, arithmetic nesting, both delimiter modes,
-valid grouping, and zero capability dispatch. Standard-library regressions
-compare collection and text input domains,
-nullish failure behavior, scalar length results, URL-encoding pair lookup,
-safe-string adaptations, ordinary keyword bags, macro-wrapped filter positional
-precedence, stateful globals, capability order, callable-laundering attempts,
-truthy-attribute `join` and `sum` projection across scalar, string, sparse, and
-array-like inputs, empty-safe-string `indent` identity and padding across its
-width and first-line matrix, and type preservation across `range`, `sum`, and
-`joiner`. Cycler state tests
-distinguish initial, empty advance, repeated
-advance, explicit-undefined item, non-empty, and reset transitions. Shared
-numeric-filter cases cover original-value defaults, fractional
-repeat bounds, substring and replacement limits, URL label lengths, fractional
-precision, and number/string JSON indentation. Standalone-block tests cover
-unresolved `super`, alias/container and capture paths, configured-name
-behavior, macro-only call-block targets, and caller-handle confinement.
-Validation-order tests cover effectful call-block
-targets, non-macro targets, unknown filters and tests, empty selection inputs,
-known-operation operand order, ignored attribute-selection arguments, no partial
-output, and clean recovery. Call-block signature regressions compare regex
-parentheses, nested expression containers, division ambiguity, malformed regex
-fail-stop behavior, and both variable-delimiter modes against the pinned oracle.
-Regex coercion regressions cover empty patterns, every `gimy` permutation, raw
-line terminators, output and closed operations, capability copies, unchanged
-matching and JSON behavior, and resistance to internal or native prototype
-hooks.
-Comment-scanner regressions cover unmatched and backslash-prefixed quotes,
-first-closer boundaries, adjacent and nested-looking comments, unexpected
-ordinary-data closers, contained literal, regex, raw, and verbatim controls,
-executable syntax after comments, whitespace controls and options, capability
-order, both delimiter modes, malformed input, and clean recovery. Whitespace
-regressions cover LF-only `lstripBlocks` boundaries, leading and embedded CR,
-LFCR and CRLF sequences, repeated CR, prior blocks, comments, variables, and
-empty raw regions, full template whitespace, and every trim/lstrip combination.
-Raw regressions separately cover immediate newlines after ordinary and
-right-hyphen openers, nested regions, preserved newline data after terminal
-closers, and the opening right-hyphen effect across LF, CRLF, LFCR, and bare CR.
-Sparse-array regressions use TypeScript fixtures because JSON cannot represent
-holes. They compare context, global result, filter result, membership,
-reduction, selection, attribute projection, reversal, sorting,
-listing, slicing, batching, loops, lookup, URL encoding, capability copies,
-resource limits, and explicit-undefined controls against pinned Nunjucks.
-Callable-argument tests cover direct, nested, renamed, positional, and surplus
-handles across registered capabilities, finite and disabled scratch accounting,
-stateful built-ins, ignored method arguments, and exact test arity while
-retaining valid macro forwarding and identity checks. Static checks reject
-dynamic execution and host reflection in parser and interpreter modules.
+## Compatibility inventory
 
-## Fuzzing policy
+The inventory is pinned to Nunjucks v3.2.4. When intentionally changing that
+baseline or regenerating its inventory, verify it against an exact upstream
+checkout with:
 
-The tokenizer, parser, input copier, and evaluator are appropriate fuzz targets
-for security-sensitive changes. Added fuzz coverage must assert that arbitrary
-source either produces a bounded data-only AST or a structured error, parsing
-never executes host behavior, evaluation accesses only closed value kinds, and
-failures leave the next render clean. Fuzz artifacts remain local build output;
-stable regressions belong in the source test suite.
+```sh
+node scripts/compat/verifyNunjucksInventory.mjs <path-to-nunjucks-v3.2.4>
+```
+
+Never mark an upstream case skipped without a manifest entry and a reason tied
+to the documented compatibility contract.
 
 ## Benchmarks
 
-The comparison harness renders output-equivalent workloads in separate
-processes with fresh parsing on every operation. The cases cover independent
-comment-heavy templates, computed expressions, many distinct tiny templates,
-deep constant and computed lookups, macro and scope churn, built-in filter
-pipelines, and repeated rendering while a prepared context evolves. Context
-preparation is reported as setup rather than repeated rendering work; the
-evolving case measures each immutable path update and following render. Public
-and internal prepared-context tests distinguish a missing path segment from a
-present `undefined` value and verify failed updates leave snapshots unchanged.
-By default, the harness runs 10 loops over the complete case list. Each
-case/engine pair starts in fresh isolated workers during every loop and performs
-20 warmup operations followed by 100 individually timed operations. Median,
-p95, mean, and throughput use all 1,000 raw timing samples per case and engine
-rather than first aggregating the samples within each loop. Reported setup and
-retained memory are averages across loop workers; peak RSS is their maximum.
-Callback benchmarks are intentionally excluded because the direct-string API
-is synchronous and callback overhead is not a separate target.
+Run the full comparison with:
+
+```sh
+pnpm benchmark
+```
+
+The harness measures fresh inline parsing and rendering in isolated processes.
+Cases cover static and comment-heavy templates, expressions, lookups, macros,
+built-in filters, and evolving prepared contexts. Nunjitsu and Nunjucks must
+produce equivalent output for every comparison.
+
+Benchmark timings are diagnostic, not pass/fail thresholds. The CI smoke run
+checks correctness and harness health without asserting noisy performance
+ratios.
+
+## Continuous integration
+
+GitHub Actions runs `pnpm test` on Node.js 22 and 24 for pull requests and
+pushes to `main`. CI installs from the lockfile with read-only repository
+permissions. Publishing uses separate release workflows and credentials.

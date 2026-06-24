@@ -112,8 +112,8 @@ engine.render(source, context, {
 });
 ```
 
-See [Runtime and interpreter](docs/runtime-and-memory.md#cooperative-limits) for
-the limit fields, defaults, and guarantees.
+See [Security](docs/security.md#resource-limits) for the limit fields, defaults,
+and guarantees.
 
 ### Prepared contexts
 
