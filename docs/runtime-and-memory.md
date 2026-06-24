@@ -181,7 +181,10 @@ nullish values. Safe strings remain engine-owned text for these operations;
 only the pinned map-before-method path of truthy-attribute `join` and `sum`
 reproduces their JavaScript-wrapper numeric lookup gap. An empty safe string
 therefore projects no values, while a non-empty wrapper reaches a missing
-numeric value and fails attribute lookup. The `string` filter rejects nullish
+numeric value and fails attribute lookup. `indent` distinguishes a normalized
+primitive empty string from an empty safe wrapper before its strict early
+return; the wrapper proceeds through line processing and receives a fresh safe
+result. The `string` filter rejects nullish
 input, `length` preserves absent results for unsupported scalars, and
 `urlencode` applies closed numeric pair lookup to every sequence entry rather
 than silently discarding malformed entries.
@@ -251,8 +254,10 @@ fresh safe-string values through explicit safeness copying.
 Numeric filter arguments follow the same rule without sharing one generic
 integer conversion. `center`, `indent`, and `truncate` select defaults from the
 original closed value before numeric use. Spacing reproduces Nunjucks's finite
-repeat-loop rounding with a hard bound; truncation uses closed numeric values at
-the `substring` and `lastIndexOf` operations. Replacement preserves exact `-1`
+repeat-loop rounding with a hard bound; empty safe-string indentation still
+reaches that bound instead of taking the primitive-empty shortcut. Truncation
+uses closed numeric values at the `substring` and `lastIndexOf` operations.
+Replacement preserves exact `-1`
 as its unlimited sentinel and compares an integer counter against every other
 bound without pre-truncation. URL labels model `substr`, round precision flows
 directly into exponentiation, and JSON indentation accepts only closed number

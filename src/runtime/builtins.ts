@@ -263,8 +263,9 @@ export function applyBuiltinFilter(
     );
   }
   if (name === 'indent') {
-    const text = normalizedRuntimeText(input);
-    if (text === '') {
+    const normalized = normalizeRuntimeTextInput(input);
+    const text = runtimeText(normalized);
+    if (typeof normalized === 'string' && normalized === '') {
       return '';
     }
     const widthValue = runtimeTruthy(positional[0]) ? positional[0] : 4;
@@ -274,7 +275,7 @@ export function applyBuiltinFilter(
     for (let index = indentFirst ? 0 : 1; index < lines.length; index += 1) {
       lines[index] = `${indentation}${lines[index]}`;
     }
-    return copySafeness(input, lines.join('\n'));
+    return copySafeness(normalized, lines.join('\n'));
   }
   if (name === 'length') {
     return runtimeLength(input);

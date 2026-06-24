@@ -534,6 +534,12 @@
       ]
     },
     {
+      "id": "indent-empty-safe-string",
+      "file": "tests/source/runtime.test.ts",
+      "test": "preserves empty safe strings through Nunjucks indent short-circuits",
+      "upstream": ["tests/filters.js:22"]
+    },
+    {
       "id": "empty-safe-string-slice-failure",
       "file": "tests/source/security.test.ts",
       "test": "empty safe-string slice fills fail before later capabilities",

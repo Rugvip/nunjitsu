@@ -374,9 +374,11 @@ Do not create additional packages without a documented architectural reason.
   primitive string; non-regex replacement must preserve raw replacement state
   and unchanged coerced-input identity. `center` and `truncate` must inspect
   the original closed direct length before requiring text, and `wordcount`
-  must test closed falsiness before requiring text. Return unchanged values and
-  existing safe strings directly where Nunjucks short-circuits; transformed
-  output receives a fresh safe identity.
+  must test closed falsiness before requiring text. `indent` short-circuits only
+  a normalized primitive empty string; an empty safe string must continue
+  through splitting and safeness copying. Return unchanged values and existing
+  safe strings directly where Nunjucks short-circuits; transformed output
+  receives a fresh safe identity.
 - Preserve filter arguments through original-value defaulting and apply the
   operation-specific numeric rule only where Nunjucks performs it. Do not share
   one integer normalization across repeat-loop bounds, substring positions,

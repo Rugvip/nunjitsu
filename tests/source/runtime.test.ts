@@ -2218,6 +2218,133 @@ test('matches Nunjucks empty safe-string truthiness', () => {
   }
 });
 
+test('preserves empty safe strings through Nunjucks indent short-circuits', () => {
+  const safeInputs = [
+    ['safe', '"" | safe'],
+    ['escape', '"" | escape'],
+    ['forceescape', '"" | forceescape'],
+    ['macro', 'empty()'],
+  ] as const;
+  const controls = [
+    ['primitive-empty', '""'],
+    ['safe-nonempty', '"x" | safe'],
+  ] as const;
+  const widths = [
+    ['missing', 'missing'],
+    ['null', 'null'],
+    ['false', 'false'],
+    ['true', 'true'],
+    ['zero', '0'],
+    ['one', '1'],
+    ['two', '2'],
+    ['fractional', '2.5'],
+    ['negative', '-1'],
+    ['nan', '0 / 0'],
+    ['empty', '""'],
+    ['numeric-string', '"2"'],
+    ['invalid-string', '"bad"'],
+    ['array', '[]'],
+    ['record', '{}'],
+    ['safe-empty', '"" | safe'],
+  ] as const;
+  const indentFirstValues = [
+    ['missing', 'missing'],
+    ['null', 'null'],
+    ['false', 'false'],
+    ['true', 'true'],
+    ['zero', '0'],
+    ['one', '1'],
+    ['empty', '""'],
+    ['string', '"x"'],
+    ['array', '[]'],
+    ['record', '{}'],
+    ['safe-empty', '"" | safe'],
+  ] as const;
+
+  for (const cookiecutterCompat of [false, true]) {
+    const engine = createEngine({ cookiecutterCompat });
+    const oracle = new nunjucks.Environment(undefined, { autoescape: false });
+    for (const [inputName, input] of [...safeInputs, ...controls]) {
+      for (const [widthName, width] of widths) {
+        for (const [indentFirstName, indentFirst] of indentFirstValues) {
+          const prefix = inputName === 'macro'
+            ? '{% macro empty() %}{% endmacro %}'
+            : '';
+          const source = [
+            prefix,
+            `[{{ (${input}) | indent(${width}, ${indentFirst}) }}]|`,
+            `{{ ((${input}) | indent(${width}, ${indentFirst})) is escaped }}`,
+          ].join('');
+          const engineSource = cookiecutterCompat
+            ? source
+            : source.replaceAll('{{', '${{');
+          assert.equal(
+            engine.render(engineSource),
+            oracle.renderString(source, {}),
+            `${inputName}/${widthName}/${indentFirstName}`,
+          );
+        }
+      }
+    }
+
+    const engineEvents: string[] = [];
+    const oracleEvents: string[] = [];
+    const markedValues = new Map<string, string | number | boolean>([
+      ['width', 2.5],
+      ['flag', true],
+      ['keyword', 'ignored'],
+    ]);
+    const capabilityEngine = createEngine({
+      cookiecutterCompat,
+      globals: {
+        mark(value) {
+          const label = String(value);
+          engineEvents.push(label);
+          return markedValues.get(label) ?? label;
+        },
+        privileged(value) {
+          engineEvents.push(`privileged:${String(value)}`);
+          return value;
+        },
+      },
+    });
+    const capabilityOracle = new nunjucks.Environment(undefined, { autoescape: false });
+    capabilityOracle.addGlobal('mark', (value: unknown) => {
+      const label = String(value);
+      oracleEvents.push(label);
+      return markedValues.get(label) ?? label;
+    });
+    capabilityOracle.addGlobal('privileged', (value: unknown) => {
+      oracleEvents.push(`privileged:${String(value)}`);
+      return value;
+    });
+    const capabilitySource = [
+      '{% macro empty() %}{% endmacro %}',
+      '[{{ empty() | indent(ignored=mark("keyword"), mark("width")) }}]|',
+      '{% set indented = empty() | indent(mark("width"), mark("flag")) %}',
+      '{% if indented is escaped %}{{ privileged("escaped") }}{% endif %}|',
+      '{% if indented | length == 3 %}{{ privileged("length") }}{% endif %}',
+    ].join('');
+    const engineCapabilitySource = cookiecutterCompat
+      ? capabilitySource
+      : capabilitySource.replaceAll('{{', '${{');
+    assert.equal(
+      capabilityEngine.render(engineCapabilitySource),
+      capabilityOracle.renderString(capabilitySource, {}),
+    );
+    assert.deepEqual(engineEvents, [
+      'width',
+      'keyword',
+      'width',
+      'flag',
+      'privileged:escaped',
+      'privileged:length',
+    ]);
+    assert.deepEqual(oracleEvents, engineEvents);
+    assert.equal(capabilityEngine.render('clean'), 'clean');
+  }
+});
+
 test('matches Nunjucks array-like record filter semantics', () => {
   const oracle = new nunjucks.Environment(undefined, { autoescape: false });
   const sources = [
@@ -3600,6 +3727,14 @@ test('lowers built-in filter keyword arguments like Nunjucks', () => {
     const callableSources = [
       '{{ "x" | center(width=authority) }}{{ later() }}',
       '{{ "x" | center(__keywords=authority) }}{{ later() }}',
+      [
+        '{% macro empty() %}{% endmacro %}',
+        '{{ empty() | indent(authority, true) }}{{ later() }}',
+      ].join(''),
+      [
+        '{% macro empty() %}{% endmacro %}',
+        '{{ empty() | indent(4, ignored=authority) }}{{ later() }}',
+      ].join(''),
       '{{ missing | default(value=authority) }}{{ later() }}',
       '{{ "10" | int(ignored=authority) }}{{ later() }}',
       '{{ "x" | int(default=authority, 2) }}{{ later() }}',
@@ -5477,6 +5612,7 @@ test('wraps parse and evaluation failures without retaining render state', () =>
     'before${{ [1] | dictsort }}after',
     'before${{ [{"key":"__proto__"}] | groupby("key") }}after',
     'before${{ "x" | center(1 / 0) }}after',
+    'before${{ ("" | safe) | indent(1 / 0, true) }}after',
     'before${{ "' + String.fromCharCode(0xd800) + '" | urlencode }}after',
     'before${{ "x" | unknownFilter }}after',
   ];

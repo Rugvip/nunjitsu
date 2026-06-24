@@ -638,6 +638,12 @@
       "expected": "[]|fallback|\"x\"|\"a\\nb\"|\"!\"|\"ab!\"|\"a\\nb\"|[2,1]|[\"B\",\"a\"]|[[\"A\",2],[\"b\",1]]|22|22|2|0|2|0"
     },
     {
+      "id": "filters-indent-empty-safe-string",
+      "template": "{% macro empty() %}{% endmacro %}{{ ((\"\"|safe)|indent) is escaped }}:{{ ((\"\"|escape)|indent) is escaped }}:{{ ((\"\"|forceescape)|indent) is escaped }}:{{ (empty()|indent) is escaped }}|[{{ (\"\"|safe)|indent(missing,true) }}]:[{{ (\"\"|safe)|indent(2.5,true) }}]:[{{ (\"\"|safe)|indent(-1,true) }}]:[{{ (\"\"|safe)|indent(\"bad\",true) }}]|{{ ((\"\"|safe)|indent(4,false)) is escaped }}:[{{ (\"\"|safe)|indent(4,false) }}]|{{ (\"\"|indent(4,true)) is escaped }}:[{{ \"\"|indent(4,true) }}]|{{ ((\"x\"|safe)|indent(2,true)) is escaped }}:[{{ (\"x\"|safe)|indent(2,true) }}]",
+      "context": {},
+      "expected": "true:true:true:true|[    ]:[   ]:[]:[]|true:[]|false:[]|true:[  x]"
+    },
+    {
       "id": "globals-empty-safe-string-truthiness",
       "template": "{% set separator = joiner(\"\" | safe) %}{{ separator() }}{{ separator() }}X|{{ range(0, 2, \"\" | safe) | dump }}|{% for value in {\"0\":\"A\",length:\"\" | safe} %}B{% else %}E{% endfor %}|{% for value in \"\" | safe %}B{% else %}E{% endfor %}",
       "context": {},

@@ -1379,7 +1379,7 @@
     {
       "upstream": {"id":"tests/filters.js:22","file":"tests/filters.js","test":"indent"},
       "status": "ported",
-      "cases": ["filters-numeric-center-indent","filters-empty-safe-string-truthiness","filters-ordinary-keyword-bags-a"]
+      "cases": ["filters-numeric-center-indent","filters-empty-safe-string-truthiness","filters-indent-empty-safe-string","filters-ordinary-keyword-bags-a"]
     },
     {
       "upstream": {"id":"tests/filters.js:23","file":"tests/filters.js","test":"join"},

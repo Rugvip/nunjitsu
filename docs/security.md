@@ -174,6 +174,9 @@ Template-controlled data is revalidated whenever its role changes:
   deciding whether text operations are needed, and `wordcount` checks closed
   falsiness first; callable identities are still rejected recursively before
   any unchanged array or record can pass through;
+- `indent` retains the normalized closed value kind through its strict empty
+  check, so an empty safe wrapper preserves safe identity and reaches bounded
+  spacing while a primitive empty string still returns immediately;
 - regex replacement validates closed primitive-string or safe-string input before
   numeric or generic string conversion, returns only an ordinary string, and
   stops evaluation before later capabilities for every other input kind;

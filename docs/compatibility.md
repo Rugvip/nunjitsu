@@ -28,6 +28,8 @@ Nunjitsu targets:
   arguments evaluated after body capture;
 - object-like truthiness for safe-string wrappers even when their wrapped text
   is empty, while explicit text length and iteration remain content-based;
+- strict primitive-empty `indent` short-circuiting that preserves empty safe
+  wrappers and applies requested first-line padding;
 - closed safe-string own-field behavior: `length` and `val` are directly
   readable and present to membership, while content substrings and numeric keys
   are not members;
@@ -398,6 +400,12 @@ treat safe strings consistently as primitive UTF-16 text instead of reproducing
 wrapper indexing gaps that can yield `undefined`. Callable identities are also
 rejected where Nunjucks might stringify, serialize, or silently discard a
 JavaScript function; this preserves the closed capability boundary.
+
+`indent` retains the wrapper kind through its strict empty-input check. A
+primitive empty string returns immediately, while an empty safe wrapper still
+splits into one empty line, applies a truthy first-line indentation request,
+and returns a fresh safe result. Finite spacing uses the same pinned numeric
+rules and remains subject to the ordinary hard bound.
 
 Boolean conversion is the deliberate exception to text-like safe-string
 operations. A safe string is a sealed object-like runtime value and is always

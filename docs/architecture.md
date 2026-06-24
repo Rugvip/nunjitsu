@@ -178,6 +178,12 @@ use their raw own length. The falsey-attribute forms still require an array.
 This reproduces observable dispatch without consulting host iteration,
 properties, methods, or coercion hooks.
 
+Text-filter normalization retains the closed value kind until the pinned
+operation has applied its own short-circuit. `indent` therefore returns early
+only for a normalized primitive empty string. An empty safe-string wrapper
+continues through line splitting and safeness copying, preserving its identity
+class and producing first-line padding when requested.
+
 Operation validation precedes attacker-controlled operands. Call blocks resolve
 and require a macro before evaluating arguments or registering their caller
 body. Filter and test names, including tests named through `select` and
