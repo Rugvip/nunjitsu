@@ -1061,6 +1061,74 @@ test('rejects malformed structural tags before any template capability executes'
   }
 });
 
+test('rejects unterminated opaque comments before capability dispatch', () => {
+  const malformedComments = [
+    '${{ before() }}{# "',
+    "${{ before() }}{# '",
+    '${{ before() }}{# \\',
+    '${{ before() }}{# outer {# nested',
+  ];
+  const optionCases = [
+    { trimBlocks: false, lstripBlocks: false },
+    { trimBlocks: true, lstripBlocks: false },
+    { trimBlocks: false, lstripBlocks: true },
+    { trimBlocks: true, lstripBlocks: true },
+  ];
+
+  for (const cookiecutterCompat of [false, true]) {
+    for (const options of optionCases) {
+      const engineEvents: string[] = [];
+      const oracleEvents: string[] = [];
+      const engine = createEngine({
+        cookiecutterCompat,
+        ...options,
+        globals: {
+          before() {
+            engineEvents.push('before');
+            return '';
+          },
+        },
+      });
+      const oracle = new nunjucks.Environment(undefined, {
+        autoescape: false,
+        ...options,
+      });
+      oracle.addGlobal('before', () => {
+        oracleEvents.push('before');
+        return '';
+      });
+
+      for (const source of malformedComments) {
+        const engineSource = cookiecutterCompat
+          ? source.replaceAll('${{', '{{')
+          : source;
+        let caught: NunjitsuRenderError | undefined;
+        assert.throws(
+          () => engine.render(engineSource),
+          error => {
+            if (!(error instanceof NunjitsuRenderError)) {
+              return false;
+            }
+            caught = error;
+            return true;
+          },
+          source,
+        );
+        assert.equal(caught?.phase, 'parse', source);
+        assert.equal(caught?.code, 'syntax_error', source);
+        assert.equal(caught?.cause, undefined, source);
+        assert.throws(
+          () => oracle.renderString(source.replaceAll('${{', '{{'), {}),
+          source,
+        );
+        assert.deepEqual(engineEvents, [], source);
+        assert.deepEqual(oracleEvents, [], source);
+        assert.equal(engine.render('clean'), 'clean', source);
+      }
+    }
+  }
+});
+
 test('rejects macro declarations inside captured output before execution', () => {
   for (const cookiecutterCompat of [false, true]) {
     const events: string[] = [];

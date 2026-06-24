@@ -7,10 +7,9 @@ export function findCodeTerminator(
   source: string,
   start: number,
   terminator: string,
-  scanRegex: boolean,
 ): number {
   for (let index = start; index <= source.length - terminator.length;) {
-    const skipped = skipCodeToken(source, index, scanRegex);
+    const skipped = skipCodeToken(source, index);
     if (skipped !== undefined) {
       index = skipped;
     } else if (source.startsWith(terminator, index)) {
@@ -30,7 +29,7 @@ export function findMatchingCodeDelimiter(source: string, start: number): number
   }
   const stack = [opening];
   for (let index = start + 1; index < source.length;) {
-    const skipped = skipCodeToken(source, index, true);
+    const skipped = skipCodeToken(source, index);
     if (skipped !== undefined) {
       index = skipped;
       continue;
@@ -56,7 +55,7 @@ export function findMatchingCodeDelimiter(source: string, start: number): number
 export function findTopLevelCodeCharacter(source: string, expected: string): number {
   let depth = 0;
   for (let index = 0; index < source.length;) {
-    const skipped = skipCodeToken(source, index, true);
+    const skipped = skipCodeToken(source, index);
     if (skipped !== undefined) {
       index = skipped;
       continue;
@@ -120,14 +119,10 @@ export function splitTopLevelCodeKeyword(
 function skipCodeToken(
   source: string,
   index: number,
-  scanRegex: boolean,
 ): number | undefined {
   const stringEnd = skipQuotedString(source, index);
   if (stringEnd !== undefined) {
     return stringEnd;
-  }
-  if (!scanRegex) {
-    return undefined;
   }
   const identifier = scanIdentifier(source, index);
   if (!identifier) {

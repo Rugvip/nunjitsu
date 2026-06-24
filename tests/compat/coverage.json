@@ -323,6 +323,18 @@
       "upstream": ["tests/lexer.js:19"]
     },
     {
+      "id": "lexer-opaque-comment-termination",
+      "file": "tests/source/runtime.test.ts",
+      "test": "matches opaque Nunjucks comment termination",
+      "upstream": ["tests/lexer.js:19"]
+    },
+    {
+      "id": "lexer-unterminated-comment-validation",
+      "file": "tests/source/security.test.ts",
+      "test": "rejects unterminated opaque comments before capability dispatch",
+      "upstream": ["tests/lexer.js:19"]
+    },
+    {
       "id": "native-test-library",
       "file": "tests/source/runtime.test.ts",
       "test": "implements the closed Nunjucks filter and test standard library",

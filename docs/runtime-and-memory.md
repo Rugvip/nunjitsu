@@ -25,6 +25,12 @@ Full parsing reports syntax errors in inactive branches and unused macros.
 Template-loading and extension nodes are rejected. No AST or source survives a
 render.
 
+Comment bodies are opaque during template scanning. The first exact `#}` closes
+the comment regardless of quotes, backslashes, expression-like content, or a
+nested-looking `{#`; left and right whitespace controls are applied only after
+that boundary is identified. Executable tags continue to use the code-aware
+scanner for strings and regex literals.
+
 Macro and call-block declarations apply a stricter policy than ordinary call
 arguments: positional formals must be symbols and default keys must be
 parser-created allowed names. Ordinary formals are stored before the defaulted

@@ -770,6 +770,12 @@
       "expected": "AX|AB|Y"
     },
     {
+      "id": "lexer-comment-opaque-termination",
+      "template": "A{# \" #}B\"{# second #}C|{# \" #}{{ value }}\"{# second #}|A{# outer {# inner #}B",
+      "context": {"value":"V"},
+      "expected": "AB\"C|V\"|AB"
+    },
+    {
       "id": "parser-raw-regions",
       "template": "{% raw %}{{ broken{% if %}{# comment #}{% endraw %}|{% raw %}A{% endraw %}{% raw %}B{% endraw %}",
       "context": {},

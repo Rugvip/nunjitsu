@@ -75,11 +75,13 @@ Conditional blocks accept both `elif` and `elseif` as equivalent expression-
 bearing continuations. `else if` remains invalid structural syntax, and every
 branch is parsed before evaluator construction even when it cannot execute.
 
-Structural delimiter, keyword, assignment, and tag-end discovery share one
-balanced code scanner. It skips strings with the pinned escape rules and skips
-only exact identifier-boundary `r/` literals through the parser-owned regex
-scanner. Parentheses inside a regex therefore cannot close a call-block caller
-signature, while division expressions remain ordinary code.
+Structural delimiter, keyword, assignment, and executable-tag-end discovery
+share one balanced code scanner. It skips strings with the pinned escape rules
+and skips only exact identifier-boundary `r/` literals through the parser-owned
+regex scanner. Parentheses inside a regex therefore cannot close a call-block
+caller signature, while division expressions remain ordinary code. Comment
+contents use a separate opaque scan to the first exact `#}`; quotes,
+backslashes, and nested-looking openers have no syntax inside them.
 
 Synchronous filter blocks reuse the ordinary expression-filter path. The
 parser represents their body as an immutable `Capture` passed as the first

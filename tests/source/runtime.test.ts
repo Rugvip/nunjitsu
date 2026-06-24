@@ -632,6 +632,75 @@ test('matches built-in filters, tests, globals, comments, and raw regions', () =
   );
 });
 
+test('matches opaque Nunjucks comment termination', () => {
+  const sources = [
+    'A{# " #}B',
+    "A{# ' #}B",
+    'A{# \\" #}B',
+    'A{# \\\\" #}B',
+    'A{# " #}B"{# second #}C',
+    'A{# outer {# inner #}B',
+    'A{# " #}${{ value }}"{# second #}C',
+    'A{# " #}{% if true %}${{ value }}{% endif %}"{# second #}C',
+    'A{# first\n" \n#}B',
+    'A \n\t{#- " -#} \n B',
+  ];
+  const optionCases = [
+    { trimBlocks: false, lstripBlocks: false },
+    { trimBlocks: true, lstripBlocks: false },
+    { trimBlocks: false, lstripBlocks: true },
+    { trimBlocks: true, lstripBlocks: true },
+  ];
+
+  for (const cookiecutterCompat of [false, true]) {
+    for (const options of optionCases) {
+      const engineEvents: string[] = [];
+      const oracleEvents: string[] = [];
+      const engine = createEngine({
+        cookiecutterCompat,
+        ...options,
+        globals: {
+          mark(value) {
+            engineEvents.push(String(value));
+            return '';
+          },
+        },
+      });
+      const oracle = new nunjucks.Environment(undefined, {
+        autoescape: false,
+        ...options,
+      });
+      oracle.addGlobal('mark', (value: unknown) => {
+        oracleEvents.push(String(value));
+        return '';
+      });
+      const engineSource = (source: string) => cookiecutterCompat
+        ? source.replaceAll('${{', '{{')
+        : source;
+
+      for (const source of sources) {
+        assert.equal(
+          engine.render(engineSource(source), { value: 'V' }),
+          oracle.renderString(source.replaceAll('${{', '{{'), { value: 'V' }),
+          `${JSON.stringify(options)} ${source}`,
+        );
+      }
+
+      const capabilitySource = [
+        '{# " #}${{ mark("first") }}"{# second #}',
+        '${{ mark("second") }}',
+      ].join('');
+      assert.equal(
+        engine.render(engineSource(capabilitySource)),
+        oracle.renderString(capabilitySource.replaceAll('${{', '{{'), {}),
+      );
+      assert.deepEqual(engineEvents, ['first', 'second']);
+      assert.deepEqual(oracleEvents, engineEvents);
+      assert.equal(engine.render('clean'), 'clean');
+    }
+  }
+});
+
 test('matches stateful range, cycler, and joiner globals', () => {
   const engine = createEngine({ cookiecutterCompat: true });
   assert.equal(

@@ -94,6 +94,10 @@ Regex coercion regressions cover empty patterns, every `gimy` permutation, raw
 line terminators, output and closed operations, capability copies, unchanged
 matching and JSON behavior, and resistance to internal or native prototype
 hooks.
+Comment-scanner regressions cover unmatched and backslash-prefixed quotes,
+first-closer boundaries, adjacent and nested-looking comments, executable
+syntax after comments, whitespace controls and options, capability order, both
+delimiter modes, malformed input, and clean recovery.
 Callable-argument tests cover direct, nested, renamed, positional, and surplus
 handles across registered capabilities, finite and disabled scratch accounting,
 stateful built-ins, ignored method arguments, and exact test arity while

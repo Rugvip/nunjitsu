@@ -242,9 +242,14 @@ Do not create additional packages without a documented architectural reason.
   `gimy` order without consulting `RegExp.prototype` or another host hook. Keep
   the original validated source and flags for approved regex matching.
 - Use the shared parser-owned balanced code scanner for structural delimiter,
-  keyword, assignment, and tag-end discovery. It must skip strings and exact
-  `r/` literals through the same lexical helpers as expression parsing; do not
-  add local character scanners that can reinterpret regex parentheses.
+  keyword, assignment, and executable-tag-end discovery. It must skip strings
+  and exact `r/` literals through the same lexical helpers as expression
+  parsing; do not add local character scanners that can reinterpret regex
+  parentheses.
+- Treat comment contents as opaque template data. Quotes, backslashes,
+  identifiers, regexes, delimiters, and nested-looking comment openers have no
+  syntax there; the first exact `#}` closes the comment before ordinary right
+  trim handling.
 - Compare validated primitive strings with direct UTF-16 relational operators.
   Do not use locale-aware collation or `Intl` inside template semantics.
 - Centralize property-key, primitive, number, string, addition, relational, and

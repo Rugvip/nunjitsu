@@ -524,7 +524,9 @@ function scanTemplate(source: string, options: ParseOptions): readonly TemplateT
       advance('-');
     }
     const close = opening.kind === 'block' ? '%}' : opening.kind === 'comment' ? '#}' : '}}';
-    const end = findTagEnd(source, index, close, opening.kind !== 'comment');
+    const end = opening.kind === 'comment'
+      ? source.indexOf(close, index)
+      : findCodeTerminator(source, index, close);
     if (end < 0) {
       throw new NunjitsuParseError(`Unterminated ${opening.kind} tag`, startLine, startColumn);
     }
@@ -606,15 +608,6 @@ function nextOpening(
   ].filter(candidate => candidate.index >= 0);
   candidates.sort((left, right) => left.index - right.index);
   return candidates[0];
-}
-
-function findTagEnd(
-  source: string,
-  start: number,
-  close: string,
-  scanRegex: boolean,
-): number {
-  return findCodeTerminator(source, start, close, scanRegex);
 }
 
 function sourcePosition(

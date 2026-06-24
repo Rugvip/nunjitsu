@@ -14,7 +14,8 @@ implemented by the closed native TypeScript runtime.
 
 Nunjitsu targets:
 
-- `${{ ... }}` interpolation, `{% ... %}` statements, and `{# ... #}` comments;
+- `${{ ... }}` interpolation, `{% ... %}` statements, and opaque `{# ... #}`
+  comments that close at the first exact `#}` without quote or nesting syntax;
 - Cookiecutter `{{ ... }}` mode and its `jsonify` alias;
 - expressions, truthiness, scoping, loops, inline macros, call blocks, and
   rendering semantics used within one source;
