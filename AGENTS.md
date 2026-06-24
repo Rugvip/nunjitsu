@@ -322,6 +322,10 @@ Do not create additional packages without a documented architectural reason.
   and addition, `sum` with ordered closed addition, and `joiner` separators as
   original runtime values; never normalize their state eagerly to numbers or
   strings.
+- Preserve the pinned `cycler` state machine: `current` starts as `null`, every
+  `next()` advances the index even when the item list is empty, an empty or
+  explicit-undefined item produces `undefined`, and `reset()` restores the
+  initial `null` state.
 - Keep `sort` and `dictsort` comparators operation-specific. `sort` uses
   pairwise string lowercase normalization plus closed relational ordering;
   `dictsort` independently uppercases strings and applies closed greater-than,

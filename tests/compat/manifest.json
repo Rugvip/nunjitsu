@@ -1727,7 +1727,8 @@
     {
       "upstream": {"id":"tests/globals.js:2","file":"tests/globals.js","test":"should have cycler"},
       "status": "ported",
-      "reason": "Primitive cycler behavior is ported; retaining sealed callable authority is an intentional security deviation outside the upstream assertions."
+      "reason": "Primitive cycler behavior is ported; retaining sealed callable authority is an intentional security deviation outside the upstream assertions.",
+      "cases": ["globals-empty-cycler-state"]
     },
     {
       "upstream": {"id":"tests/globals.js:3","file":"tests/globals.js","test":"should have joiner"},

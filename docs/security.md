@@ -160,6 +160,9 @@ Template-controlled data is revalidated whenever its role changes:
   comparison or addition at the same observable points as pinned Nunjucks, so
   eager numeric or string conversion cannot change strict branches or switch
   selection;
+- empty cyclers advance from their initial `null` state to closed `undefined`
+  on `next()` and return to `null` only on reset, preventing stale state from
+  selecting a capability branch that Nunjucks would skip;
 - numeric filter arguments retain their closed values through default
   selection and use filter-specific repeat, substring, replacement, URL,
   exponent, and JSON-spacing semantics, preventing eager normalization from

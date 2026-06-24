@@ -1322,6 +1322,7 @@ class Evaluator {
         return undefined;
       }
       if (owner.values.length === 0) {
+        owner.index = 0;
         return undefined;
       }
       owner.index = (owner.index + 1) % owner.values.length;

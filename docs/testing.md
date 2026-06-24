@@ -92,7 +92,9 @@ compare collection and text input domains,
 nullish failure behavior, scalar length results, URL-encoding pair lookup,
 safe-string adaptations, keyword arguments, stateful globals, capability order,
 callable-laundering attempts, and type preservation across `range`, `sum`, and
-`joiner`. Shared numeric-filter cases cover original-value defaults, fractional
+`joiner`. Cycler state tests distinguish initial, empty advance, repeated
+advance, explicit-undefined item, non-empty, and reset transitions. Shared
+numeric-filter cases cover original-value defaults, fractional
 repeat bounds, substring and replacement limits, URL label lengths, fractional
 precision, and number/string JSON indentation. Standalone-block tests cover
 unresolved `super`, alias/container and capture paths, configured-name

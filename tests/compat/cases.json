@@ -542,6 +542,12 @@
       "expected": "[0]|[0,1]|[false]|[null,1]|[\"1\"]|[1]"
     },
     {
+      "id": "globals-empty-cycler-state",
+      "template": "{% set empty = cycler() %}{{ empty.current is null }}:{{ empty.current is undefined }}|{% set first = empty.next() %}{{ first is undefined }}:{{ empty.current is undefined }}|{% set second = empty.next() %}{{ second is undefined }}:{{ empty.current is undefined }}|{% set reset = empty.reset() %}{{ reset is undefined }}:{{ empty.current is null }}|{% set afterReset = empty.next() %}{{ afterReset is undefined }}:{{ empty.current is undefined }}|{% set missingCycle = cycler(missing) %}{{ missingCycle.current is null }}:{% set missingValue = missingCycle.next() %}{{ missingValue is undefined }}:{{ missingCycle.current is undefined }}",
+      "context": {},
+      "expected": "true:false|true:true|true:true|true:true|true:true|true:true:true"
+    },
+    {
       "id": "filters-sum-preserves-addition-types",
       "template": "{{ [1,2] | sum(null, \"1\") | dump }}|{{ [1,\"2\"] | sum | dump }}|{{ [[1],[2]] | sum | dump }}|{{ [{\"x\":1}] | sum | dump }}|{{ [null] | sum | dump }}|{{ [true,false] | sum | dump }}|{{ [missing] | sum | dump }}",
       "context": {},

@@ -34,6 +34,8 @@ Nunjitsu targets:
 - Nunjucks-compatible duplicate macro and synthetic-caller formals, including
   keyword consumption, surplus positional remapping, sequential shared-slot
   binding, and required default-expression side effects;
+- stateful `cycler` transitions, including the distinct initial `null`,
+  post-empty-`next()` `undefined`, and post-`reset()` `null` states;
 - lexical macro export frames across root, blocks, loops, ordinary macros,
   conditionals, switches, and synthetic callers, without dynamic capture of
   loop variables or outer-macro arguments;

@@ -179,6 +179,11 @@ addition. `sum` reduces elements from numeric zero through closed addition and
 only then adds the original start value. `joiner` retains its original truthy
 separator value and returns that exact closed value after its first call.
 Coercion therefore occurs only at a later operation that actually requires it.
+`cycler` starts with a `null` current value, advances to `undefined` when
+`next()` is called with no items, remains there across repeated calls, and
+returns to `null` only through `reset()`. A one-item cycler containing the
+closed absent value follows the same post-advance state without being confused
+with an empty cycler.
 
 Collection sorting keeps operation-specific comparison rules. `sort` applies
 pairwise lowercase normalization only to string-like values and otherwise uses

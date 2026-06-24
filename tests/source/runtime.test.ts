@@ -1671,6 +1671,59 @@ test('matches stateful range, cycler, and joiner globals', () => {
   );
 });
 
+test('matches empty cycler state transitions and capability branches', () => {
+  for (const cookiecutterCompat of [false, true]) {
+    const engineEvents: string[] = [];
+    const oracleEvents: string[] = [];
+    const engine = createEngine({
+      cookiecutterCompat,
+      globals: {
+        mark(value) {
+          engineEvents.push(String(value));
+          return value;
+        },
+      },
+    });
+    const oracle = new nunjucks.Environment(undefined, { autoescape: false });
+    oracle.addGlobal('mark', (value: unknown) => {
+      oracleEvents.push(String(value));
+      return value;
+    });
+    const source = [
+      '{% set empty = cycler() %}',
+      '${{ empty.current is null }}:${{ empty.current is undefined }}|',
+      '{% set first = empty.next() %}',
+      '${{ first is undefined }}:${{ empty.current is undefined }}|',
+      '{% set second = empty.next() %}',
+      '${{ second is undefined }}:${{ empty.current is undefined }}|',
+      '{% set reset = empty.reset() %}',
+      '${{ reset is undefined }}:${{ empty.current is null }}|',
+      '{% set afterReset = empty.next() %}',
+      '${{ afterReset is undefined }}:${{ empty.current is undefined }}|',
+      '{% if empty.current is null %}${{ mark("unexpected") }}{% endif %}',
+      '{% set missingCycle = cycler(missing) %}',
+      '${{ missingCycle.current is null }}:',
+      '{% set missingValue = missingCycle.next() %}',
+      '${{ missingValue is undefined }}:${{ missingCycle.current is undefined }}|',
+      '{% set values = cycler("a", "b") %}',
+      '${{ values.current is null }}:${{ values.next() }}:${{ values.current }}:',
+      '${{ values.next() }}:${{ values.current }}:',
+      '${{ values.reset() is undefined }}:${{ values.current is null }}',
+    ].join('');
+    const engineSource = cookiecutterCompat
+      ? source.replaceAll('${{', '{{')
+      : source;
+    const oracleSource = source.replaceAll('${{', '{{');
+    assert.equal(
+      engine.render(engineSource),
+      oracle.renderString(oracleSource, {}),
+    );
+    assert.deepEqual(engineEvents, []);
+    assert.deepEqual(oracleEvents, engineEvents);
+    assert.equal(engine.render('clean'), 'clean');
+  }
+});
+
 test('preserves closed value types through range, sum, and joiner', () => {
   const engine = createEngine({ cookiecutterCompat: true });
   const oracle = new nunjucks.Environment(undefined, { autoescape: false });

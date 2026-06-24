@@ -401,6 +401,12 @@
       ]
     },
     {
+      "id": "empty-cycler-state",
+      "file": "tests/source/runtime.test.ts",
+      "test": "matches empty cycler state transitions and capability branches",
+      "upstream": ["tests/globals.js:2"]
+    },
+    {
       "id": "native-global-edge-coercion",
       "file": "tests/source/runtime.test.ts",
       "test": "matches closed standard-library coercion and input domains",
