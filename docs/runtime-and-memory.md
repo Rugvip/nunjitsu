@@ -350,25 +350,32 @@ receiver, or exposing a host function. Callable-valued built-in members follow
 the same rule, while stateful method lookup remains fresh. These maps and
 handles belong to one evaluator and are discarded after the render.
 
-Macro binding keeps compiled-function lexical slots, runtime value frames, and
-the shared export scope distinct. Root `set` and macro declarations update both
-their stable declaration-ordered lexical slot and the shared exports. A macro
-declared in a block or ordinary macro body updates that body's local lexical
-slot and the shared exports without replacing an existing root slot. Root
-expressions therefore keep their original local binding, while ordinary macro
-bodies use fresh frames and observe the newest export. Block value frames still
-inherit root or loop `set` values, but root macro slots are not part of that
-runtime frame. Loop and synthetic caller macro declarations remain local; `if`
-and `switch` retain the containing lexical/export policy. Synthetic callers
-alone retain their explicitly confined call-site value and lexical scopes.
+Before evaluation, a static binding pass assigns numeric compiler-slot IDs to
+macro declarations and every symbol reference that Nunjucks would compile as a
+direct local. Root, block, ordinary macro, synthetic caller, and loop bodies
+own separate slot plans; `if` and `switch` traverse in their containing plan.
+Each runtime invocation allocates its planned slots as `undefined`. Reaching a
+macro declaration initializes only that declaration's slot, so a reference
+bound to an inactive or later duplicate declaration remains `undefined` and
+cannot fall through to context or a registered global.
 
-Every loop target and macro or synthetic-caller formal is written to both the
-runtime frame and current lexical frame through one local-binding operation.
-This makes single and destructured targets, per-iteration rebinding, and caller
-parameters shadow enclosing `set` or macro slots without mutating those parent
-slots. The `loop` metadata record also shadows enclosing value bindings. A
-compiler-local macro literally named `loop` retains Nunjucks's direct-slot
-precedence, so metadata does not replace that particular lexical macro.
+Compiler slots, runtime value frames, and the shared export scope remain
+distinct. Macro exports update independently without replacing a root direct
+slot. Ordinary macro and block frames start without their caller's slots;
+loops inherit the containing slot frame, while synthetic callers retain only
+their explicitly confined call-site slots and value scope. Assignment through
+an existing macro, positional-formal, or loop-target slot preserves that slot
+identity even when the new value is not callable.
+
+Positional macro and synthetic-caller formals and loop targets receive direct
+slots as well as runtime bindings. Defaulted formals remain runtime-frame-only,
+matching the pinned compiler. Loop metadata is installed only in the runtime
+frame: it shadows ordinary enclosing values but never overwrites a direct
+parameter, target, or reassigned macro slot. A single loop target named `loop`
+is rejected during complete parsing because pinned Nunjucks installs metadata
+by mutating or replacing that iteration value, which the closed value model
+cannot reproduce without discarding values or behavior. A `loop` name in a
+multi-target destructuring remains a normal direct slot.
 
 Block-set and filter-block captures reject nested macro declarations during
 complete parsing. Nunjucks's generated JavaScript has inconsistent failures for

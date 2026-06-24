@@ -80,21 +80,20 @@ implementation and documentation aligned with the architecture in
   presence second, never value nullishness or a conditional positional cursor.
   Ignore undeclared keywords except for the explicit call-block `caller`
   binding. Evaluate defaults only for genuinely absent arguments.
-- Track compiled-function lexical bindings, runtime value frames, and shared
-  exported template bindings separately. Root expressions retain declaration-
-  ordered lexical `set` and macro slots even when a block or macro body exports
-  a replacement; separately compiled block and ordinary macro bodies resolve
-  through their own lexical frame, runtime frame, then current exports. Root,
-  standalone block, nested block, and ordinary macro bodies export macro
-  declarations; `if` and `switch` inherit their containing frame. Loop and
-  synthetic caller declarations remain local. Ordinary macros never capture
-  loop, caller, or outer-macro locals; synthetic callers alone retain their
-  confined call-site value and lexical scopes.
-- Mirror loop targets and macro or caller formals into both their runtime frame
-  and exact current lexical frame with local replacement semantics. Mirror
-  loop metadata over enclosing value bindings without overwriting a compiler-
-  local macro named `loop`, matching the pinned compiler. Never assign a
-  dynamically created local through to an outer lexical frame.
+- Assign numeric compiler slots in a static post-parse pass before evaluation.
+  Preserve source-ordered slot selection across inactive and duplicate macro
+  declarations; initialize every frame's slots to `undefined`, initialize only
+  declarations that execute, and never fall through from a selected undefined
+  slot to context or registered globals. Root, block, ordinary macro, synthetic
+  caller, and loop bodies own explicit frame plans; `if` and `switch` share the
+  containing plan. Loops inherit outer slots, while blocks and ordinary macros
+  resolve unbound names through runtime frames and current exports.
+- Give positional macro and caller formals and loop targets direct slots, while
+  keeping defaulted formals and loop metadata runtime-frame-only. Preserve slot
+  identity when `set` reassigns a macro, positional formal, or loop target.
+  Reject a single loop target named `loop` during complete parsing; multi-target
+  `loop` bindings remain direct and must not be overwritten by metadata. Never
+  discard or transform a callable while installing runtime locals.
 - Reject macro declarations anywhere inside block-set or filter-block captures
   during complete parsing rather than inventing capture-specific macro scope.
 - Validate macro and caller declarations separately from ordinary calls. Every

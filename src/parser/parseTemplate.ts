@@ -227,6 +227,13 @@ class TemplateParser {
       this.#fail('For tag requires an in expression', token);
     }
     const targets = this.#targets(split.left, token);
+    if (
+      targets.length === 1 &&
+      targets[0]?.type === 'Symbol' &&
+      targets[0].value === 'loop'
+    ) {
+      this.#fail('A single loop target cannot be named loop', token);
+    }
     const name = targets.length === 1
       ? targets[0]!
       : this.#make('Array', { children: targets }, token);

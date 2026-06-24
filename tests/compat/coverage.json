@@ -132,6 +132,12 @@
       "upstream": ["tests/compiler.js:17", "tests/compiler.js:20", "tests/compiler.js:22", "tests/compiler.js:83"]
     },
     {
+      "id": "static-lexical-slots",
+      "file": "tests/source/runtime.test.ts",
+      "test": "binds static compiler slots before capability resolution",
+      "upstream": ["tests/compiler.js:17", "tests/compiler.js:74", "tests/compiler.js:75", "tests/compiler.js:83"]
+    },
+    {
       "id": "callable-identity",
       "file": "tests/source/runtime.test.ts",
       "test": "matches Nunjucks canonical global and fresh member callable identities",

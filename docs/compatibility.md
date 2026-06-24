@@ -37,6 +37,9 @@ Nunjitsu targets:
 - stable root lexical `set` and macro bindings alongside independently updated
   macro exports, so root expressions and separately evaluated block or macro
   bodies retain Nunjucks-compatible collision behavior;
+- statically allocated compiler slots for inactive and duplicate macro
+  declarations, positional formals, and loop targets, preventing an undefined
+  local from falling through to context or registered capabilities;
 - nearest-frame precedence for single and destructured loop targets, loop
   metadata, macro parameters, and synthetic caller parameters, including
   per-iteration rebinding without mutation of enclosing lexical values;
@@ -139,6 +142,13 @@ Macro declarations inside block-set and filter-block captures are rejected
 during complete parsing. Pinned Nunjucks encounters generated-code scope errors
 for some such placements; Nunjitsu consistently fails closed rather than
 exposing capture-dependent declaration behavior.
+
+A `for` statement with the single target name `loop` is rejected during
+complete parsing. Pinned Nunjucks reuses that value as its loop-metadata object,
+which mutates objects, discards values, or throws for primitives and macro
+functions. Nunjitsu does not reproduce that behavior inside the immutable
+closed value graph. Multi-target destructuring may still bind one position to
+`loop`; its compiler-direct slot is kept distinct from runtime loop metadata.
 
 Call blocks accept only direct or static constant-key macro references. They
 reject effectful target expressions during parsing and reject non-macro targets

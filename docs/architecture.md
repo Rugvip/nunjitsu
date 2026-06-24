@@ -110,25 +110,24 @@ normal scope and closed-value lookup before dispatch. Registered capabilities
 carry an evaluator-owned identity mapped privately to one exact host callback;
 call-site syntax never selects host authority.
 
-Macro declarations use three separate map-backed layers: lexical bindings for
-one compiled-function-equivalent body, runtime value frames, and shared
-exported template bindings. Root expressions retain declaration-ordered local
-`set` and macro slots even when an independently evaluated block or macro body
-exports the same name. Block bodies inherit runtime frame values but not root
-macro slots; ordinary macro bodies start with a fresh frame and resolve
-unbound names through current exports. Root, standalone block, nested block,
-and ordinary macro bodies export macro names. Loops and synthetic caller bodies
-keep declarations local, while `if` and `switch` inherit their surrounding
-frame. Ordinary macros therefore do not close over loop variables, caller
-arguments, or outer-macro parameters. Synthetic callers retain only their
-explicit call-site value and lexical scopes.
+Macro binding uses a static slot plan, runtime value frames, and shared exports
+as separate layers. After parsing and before evaluation, the planner follows
+the pinned compiler's declaration traversal and assigns data-only numeric slot
+IDs to direct declarations and references. Every compiled-function-equivalent
+frame allocates its slots as `undefined`; executing a declaration initializes
+only its exact slot. Inactive declarations therefore still shadow context and
+capabilities, while duplicate declarations retain source-ordered slot identity.
 
-Dynamic locals preserve nearest-frame precedence across those layers. Loop
-targets and macro or caller formals are installed in both the runtime frame and
-the exact current lexical frame, replacing the local value on each binding
-without assigning into a parent. Loop metadata similarly shadows enclosing
-value bindings; the pinned compiler's direct macro slot named `loop` remains
-the one deliberate higher-priority case.
+Root, standalone block, ordinary macro, synthetic caller, and loop bodies have
+explicit frame boundaries. `if` and `switch` share their containing plan. Loops
+inherit outer direct slots, synthetic callers retain their confined call-site
+slots, and blocks or ordinary macros resolve otherwise-unbound names through
+runtime frames and current exports. Positional formals and loop targets are
+direct slots; defaulted formals and loop metadata remain runtime bindings.
+Assignment preserves an existing direct slot independently of the assigned
+value kind. A single target named `loop` is rejected because upstream mutates
+that iteration value to install metadata; multi-target `loop` bindings remain
+ordinary direct slots.
 
 Operation validation precedes attacker-controlled operands. Call blocks resolve
 and require a macro before evaluating arguments or registering their caller

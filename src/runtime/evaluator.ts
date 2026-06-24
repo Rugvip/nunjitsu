@@ -37,6 +37,11 @@ import {
   runtimeToString,
 } from './coercion.ts';
 import { RuntimeEvaluationError } from './RuntimeEvaluationError.ts';
+import {
+  LexicalSlotPlan,
+  planLexicalSlots,
+  RuntimeLexicalFrame,
+} from './lexicalSlots.ts';
 import { RuntimeScope } from './scope.ts';
 import { stringCodeUnits } from './stringCodeUnits.ts';
 import {
@@ -96,12 +101,12 @@ const indexedValueScratchBytes = 32;
 interface MacroDefinition {
   readonly node: AstCallableBodyNode;
   readonly scope: RuntimeScope;
-  readonly bindingScope?: RuntimeScope;
+  readonly lexicalFrame?: RuntimeLexicalFrame;
   readonly invocationScope: RuntimeScope;
 }
 
 interface MacroBindingContext {
-  readonly bindingScope: RuntimeScope;
+  readonly lexicalFrame: RuntimeLexicalFrame;
   readonly invocationScope: RuntimeScope;
   readonly exportsMacros: boolean;
   readonly exportsAssignments: boolean;
@@ -164,11 +169,12 @@ export function evaluateRuntimeTemplate(
     astNodes: options.limits.astNodes,
     nestingDepth: options.limits.nestingDepth,
   });
-  return new Evaluator(options).render(ast, context);
+  return new Evaluator(options, planLexicalSlots(ast)).render(ast, context);
 }
 
 class Evaluator {
   readonly #options: EvaluateOptions;
+  readonly #lexicalSlots: LexicalSlotPlan;
   readonly #macros = new Map<number, MacroDefinition>();
   readonly #builtinCallables = new Map<number, BuiltinCallableDefinition>();
   readonly #capabilityNames = new Map<number, string>();
@@ -179,8 +185,9 @@ class Evaluator {
   #outputCodeUnits = 0;
   #capabilityCalls = 0;
 
-  constructor(options: EvaluateOptions) {
+  constructor(options: EvaluateOptions, lexicalSlots: LexicalSlotPlan) {
     this.#options = options;
+    this.#lexicalSlots = lexicalSlots;
   }
 
   render(
@@ -194,7 +201,7 @@ class Evaluator {
     const exportScope = contextScope.child(true);
     const scope = exportScope.child(true);
     const macroContext = createMacroBindingContext(
-      new RuntimeScope(),
+      new RuntimeLexicalFrame(this.#lexicalSlots.rootSlots()),
       exportScope,
       true,
       true,
@@ -290,7 +297,11 @@ class Evaluator {
           invocationScope: macroContext.invocationScope,
         });
         const handle = new RuntimeCallable('macro', id);
-        macroContext.bindingScope.setMacro(name, handle);
+        const slot = this.#lexicalSlots.slot(node);
+        if (slot === undefined) {
+          throw new Error(`Missing lexical slot for macro ${name}`);
+        }
+        macroContext.lexicalFrame.set(slot, handle);
         if (macroContext.exportsMacros) {
           macroContext.invocationScope.set(name, handle);
         }
@@ -345,7 +356,7 @@ class Evaluator {
   ): void {
     const blockScope = scope.child(true);
     const blockMacroContext = createMacroBindingContext(
-      new RuntimeScope(),
+      new RuntimeLexicalFrame(this.#lexicalSlots.frameSlots(node)),
       macroContext.invocationScope,
       true,
       false,
@@ -391,7 +402,10 @@ class Evaluator {
     const entries = iterableEntries(value, targets.length);
     const loopScope = scope.child();
     const loopMacroContext = createMacroBindingContext(
-      macroContext.bindingScope.child(),
+      new RuntimeLexicalFrame(
+        this.#lexicalSlots.frameSlots(node),
+        macroContext.lexicalFrame,
+      ),
       macroContext.invocationScope,
       false,
       false,
@@ -403,7 +417,8 @@ class Evaluator {
         targets,
         entry,
         iteration,
-        loopMacroContext.bindingScope,
+        loopMacroContext.lexicalFrame,
+        this.#lexicalSlots,
       );
       const numericLength = runtimeToNumber(entries.length);
       bindRuntimeFrameLocal('loop', new RuntimeRecord([
@@ -414,7 +429,7 @@ class Evaluator {
         ['first', index === 0],
         ['last', index === numericLength - 1],
         ['length', entries.length],
-      ]), iteration, loopMacroContext.bindingScope);
+      ]), iteration);
       this.#evaluateNode(
         node.body,
         iteration,
@@ -451,13 +466,23 @@ class Evaluator {
     }
     if (targets.length === 1) {
       bindAssignment(targets[0]!, value, scope);
-      bindAssignment(targets[0]!, value, macroContext.bindingScope);
+      bindLexicalAssignment(
+        targets[0]!,
+        value,
+        macroContext.lexicalFrame,
+        this.#lexicalSlots,
+      );
       this.#exportAssignment(targets[0]!, value, macroContext);
       return;
     }
     for (const target of targets) {
       bindAssignment(target, value, scope);
-      bindAssignment(target, value, macroContext.bindingScope);
+      bindLexicalAssignment(
+        target,
+        value,
+        macroContext.lexicalFrame,
+        this.#lexicalSlots,
+      );
       this.#exportAssignment(target, value, macroContext);
     }
   }
@@ -514,9 +539,9 @@ class Evaluator {
       }
       case 'Symbol': {
         const name = symbolName(node);
-        const binding = macroContext.bindingScope.get(name);
-        if (binding !== undefined || macroContext.bindingScope.has(name)) {
-          return binding;
+        const slot = this.#lexicalSlots.slot(node);
+        if (slot !== undefined) {
+          return macroContext.lexicalFrame.get(slot);
         }
         const value = scope.get(name);
         if (value !== undefined || scope.has(name)) {
@@ -687,7 +712,7 @@ class Evaluator {
         return this.#registerCaller(
           node,
           scope,
-          macroContext.bindingScope,
+          macroContext.lexicalFrame,
           macroContext.invocationScope,
         );
       default:
@@ -919,7 +944,7 @@ class Evaluator {
       this.#registerCaller(
         node.caller,
         scope,
-        macroContext.bindingScope,
+        macroContext.lexicalFrame,
         macroContext.invocationScope,
       ),
     );
@@ -1038,11 +1063,11 @@ class Evaluator {
   #registerCaller(
     node: AstCallableBodyNode,
     scope: RuntimeScope,
-    bindingScope: RuntimeScope,
+    lexicalFrame: RuntimeLexicalFrame,
     invocationScope: RuntimeScope,
   ): RuntimeCallable {
     const id = this.#nextCallableId++;
-    this.#macros.set(id, { node, scope, bindingScope, invocationScope });
+    this.#macros.set(id, { node, scope, lexicalFrame, invocationScope });
     return new RuntimeCallable('caller', id);
   }
 
@@ -1058,13 +1083,16 @@ class Evaluator {
     const local = definition.scope.child(true);
     const bodyMacroContext = definition.node.type === 'Caller'
       ? createMacroBindingContext(
-        definition.bindingScope?.child(true) ?? new RuntimeScope(),
+        new RuntimeLexicalFrame(
+          this.#lexicalSlots.frameSlots(definition.node),
+          definition.lexicalFrame,
+        ),
         definition.invocationScope,
         false,
         false,
       )
       : createMacroBindingContext(
-        new RuntimeScope(),
+        new RuntimeLexicalFrame(this.#lexicalSlots.frameSlots(definition.node)),
         definition.invocationScope,
         true,
         false,
@@ -1103,7 +1131,14 @@ class Evaluator {
               depth + 1,
             );
           if (!boundNames.has(name)) {
-            bindRuntimeLocal(name, value, local, bodyMacroContext.bindingScope);
+            bindRuntimeLocal(
+              pair.key,
+              name,
+              value,
+              local,
+              bodyMacroContext.lexicalFrame,
+              this.#lexicalSlots,
+            );
             boundNames.add(name);
           }
           formalIndex += 1;
@@ -1118,18 +1153,24 @@ class Evaluator {
           supplied = arguments_.keyword.get(name);
         }
         if (!boundNames.has(name)) {
-          bindRuntimeLocal(name, supplied, local, bodyMacroContext.bindingScope);
+          bindRuntimeLocal(
+            argument,
+            name,
+            supplied,
+            local,
+            bodyMacroContext.lexicalFrame,
+            this.#lexicalSlots,
+          );
           boundNames.add(name);
         }
         formalIndex += 1;
       }
     }
     if (!declaresCaller && arguments_.keyword.has('caller')) {
-      bindRuntimeLocal(
+      bindRuntimeFrameLocal(
         'caller',
         arguments_.keyword.get('caller'),
         local,
-        bodyMacroContext.bindingScope,
       );
     }
     return this.#capture(
@@ -1439,41 +1480,65 @@ function bindLoopTargets(
   targets: readonly AstNode[],
   value: RuntimeValue,
   scope: RuntimeScope,
-  bindingScope: RuntimeScope,
+  lexicalFrame: RuntimeLexicalFrame,
+  lexicalSlots: LexicalSlotPlan,
 ): void {
   if (targets.length === 1) {
-    bindRuntimeLocal(symbolName(targets[0]!), value, scope, bindingScope);
+    const target = targets[0]!;
+    bindRuntimeLocal(
+      target,
+      symbolName(target),
+      value,
+      scope,
+      lexicalFrame,
+      lexicalSlots,
+    );
     return;
   }
   for (const [index, target] of targets.entries()) {
     bindRuntimeLocal(
+      target,
       symbolName(target),
       destructureRuntimeValue(value, index),
       scope,
-      bindingScope,
+      lexicalFrame,
+      lexicalSlots,
     );
   }
 }
 
 function bindRuntimeLocal(
+  target: AstNode,
   name: string,
   value: RuntimeValue,
   scope: RuntimeScope,
-  bindingScope: RuntimeScope,
+  lexicalFrame: RuntimeLexicalFrame,
+  lexicalSlots: LexicalSlotPlan,
 ): void {
   scope.set(name, value);
-  bindingScope.set(name, value);
+  const slot = lexicalSlots.slot(target);
+  if (slot !== undefined) {
+    lexicalFrame.set(slot, value);
+  }
 }
 
 function bindRuntimeFrameLocal(
   name: string,
   value: RuntimeValue,
   scope: RuntimeScope,
-  bindingScope: RuntimeScope,
 ): void {
   scope.set(name, value);
-  if (bindingScope.bindingKind(name) !== 'macro') {
-    bindingScope.set(name, value);
+}
+
+function bindLexicalAssignment(
+  target: AstNode,
+  value: RuntimeValue,
+  lexicalFrame: RuntimeLexicalFrame,
+  lexicalSlots: LexicalSlotPlan,
+): void {
+  const slot = lexicalSlots.slot(target);
+  if (slot !== undefined) {
+    lexicalFrame.set(slot, value);
   }
 }
 
@@ -1679,13 +1744,13 @@ function validateUniqueBlocks(ast: AstNode): void {
 }
 
 function createMacroBindingContext(
-  bindingScope: RuntimeScope,
+  lexicalFrame: RuntimeLexicalFrame,
   invocationScope: RuntimeScope,
   exportsMacros: boolean,
   exportsAssignments: boolean,
 ): MacroBindingContext {
   return Object.freeze({
-    bindingScope,
+    lexicalFrame,
     invocationScope,
     exportsMacros,
     exportsAssignments,

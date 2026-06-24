@@ -1,13 +1,12 @@
 import { isReservedName, type RuntimeValue } from './value.ts';
 
-/** One mutable binding stored entirely inside an interpreter scope. */
+/** One mutable binding stored entirely inside a runtime value frame. */
 interface ScopeEntry {
   value: RuntimeValue;
   writable: boolean;
-  kind: 'value' | 'macro';
 }
 
-/** One interpreter-owned lexical scope containing no host object prototype. */
+/** One interpreter-owned runtime value frame containing no host prototype. */
 export class RuntimeScope {
   readonly #parent: RuntimeScope | undefined;
   readonly #isolateWrites: boolean;
@@ -18,7 +17,7 @@ export class RuntimeScope {
     this.#isolateWrites = isolateWrites;
   }
 
-  /** Creates a child lexical scope. */
+  /** Creates a child runtime value frame. */
   child(isolateWrites = false): RuntimeScope {
     return new RuntimeScope(this, isolateWrites);
   }
@@ -26,19 +25,13 @@ export class RuntimeScope {
   /** Defines or replaces one value in this exact scope. */
   set(name: string, value: RuntimeValue): void {
     assertAllowedName(name);
-    this.#entries.set(name, { value, writable: true, kind: 'value' });
-  }
-
-  /** Defines or replaces one compiler-local macro binding in this exact scope. */
-  setMacro(name: string, value: RuntimeValue): void {
-    assertAllowedName(name);
-    this.#entries.set(name, { value, writable: true, kind: 'macro' });
+    this.#entries.set(name, { value, writable: true });
   }
 
   /** Defines one read-only context binding. */
   setReadonly(name: string, value: RuntimeValue): void {
     assertAllowedName(name);
-    this.#entries.set(name, { value, writable: false, kind: 'value' });
+    this.#entries.set(name, { value, writable: false });
   }
 
   /** Resolves a value through explicit scope parents only. */
@@ -63,7 +56,6 @@ export class RuntimeScope {
     const entry = this.#entries.get(name);
     if (entry?.writable) {
       entry.value = value;
-      entry.kind = 'value';
       return;
     }
     if (this.#parent?.canAssign(name)) {
@@ -79,14 +71,6 @@ export class RuntimeScope {
       return false;
     }
     return this.#entries.has(name) || (this.#parent?.has(name) ?? false);
-  }
-
-  /** Returns the nearest binding's declaration kind. */
-  bindingKind(name: string): 'value' | 'macro' | undefined {
-    if (isReservedName(name)) {
-      return undefined;
-    }
-    return this.#entries.get(name)?.kind ?? this.#parent?.bindingKind(name);
   }
 
   /** Returns bindings defined in this exact scope. */
@@ -112,9 +96,8 @@ export class RuntimeScope {
     if (entry) {
       entry.value = value;
       entry.writable = true;
-      entry.kind = 'value';
     } else {
-      this.#entries.set(name, { value, writable: true, kind: 'value' });
+      this.#entries.set(name, { value, writable: true });
     }
   }
 }

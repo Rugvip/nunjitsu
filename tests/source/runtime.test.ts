@@ -898,6 +898,173 @@ test('gives runtime locals precedence over enclosing lexical bindings', () => {
   }
 });
 
+test('binds static compiler slots before capability resolution', () => {
+  const matchingSources = [
+    [
+      '{% if true %}{% macro policy() %}A{% endmacro %}',
+      '{% else %}{% macro policy() %}B{% endmacro %}{% endif %}',
+      '${{ policy is undefined }}',
+    ].join(''),
+    [
+      '{% if false %}{% macro policy() %}A{% endmacro %}',
+      '{% else %}{% macro policy() %}B{% endmacro %}{% endif %}',
+      '${{ policy() }}',
+    ].join(''),
+    [
+      '{% macro check(loop) %}{% for value in [1] %}',
+      '{% if loop.index %}${{ mark("unexpected-macro-parameter") }}{% endif %}',
+      '{% endfor %}{% endmacro %}${{ check({index:false}) }}',
+    ].join(''),
+    [
+      '{% macro wrap() %}${{ caller({index:false}) }}{% endmacro %}',
+      '{% call(loop) wrap() %}{% for value in [1] %}',
+      '{% if loop.index %}${{ mark("unexpected-caller-parameter") }}{% endif %}',
+      '{% endfor %}{% endcall %}',
+    ].join(''),
+    [
+      '{% macro loop() %}M{% endmacro %}{% set loop={index:false} %}',
+      '{% for value in [1] %}',
+      '{% if loop.index %}${{ mark("unexpected-reassigned-slot") }}{% endif %}',
+      '{% endfor %}',
+    ].join(''),
+    [
+      '{% macro check(loop={index:false}) %}{% for value in [1] %}',
+      '{% if loop.index %}${{ mark("defaulted-macro-parameter") }}{% endif %}',
+      '{% endfor %}{% endmacro %}${{ check() }}',
+    ].join(''),
+    [
+      '{% macro wrap() %}${{ caller() }}{% endmacro %}',
+      '{% call(loop={index:false}) wrap() %}{% for value in [1] %}',
+      '{% if loop.index %}${{ mark("defaulted-caller-parameter") }}{% endif %}',
+      '{% endfor %}{% endcall %}',
+    ].join(''),
+    [
+      '{% macro action() %}A{% endmacro %}',
+      '{% for loop,value in [[action,1]] %}',
+      '${{ loop is callable }}:${{ value }}{% endfor %}',
+    ].join(''),
+  ];
+  const failingSources = [
+    [
+      '{% if false %}{% macro policy() %}local{% endmacro %}{% endif %}',
+      '${{ policy() }}${{ mark("later") }}',
+    ].join(''),
+    [
+      '{% if true %}active{% else %}',
+      '{% macro policy() %}local{% endmacro %}{% endif %}',
+      '${{ policy() }}${{ mark("later") }}',
+    ].join(''),
+    [
+      '{% if false %}{% macro policy() %}local{% endmacro %}',
+      '{% elseif true %}${{ policy() }}{% endif %}${{ mark("later") }}',
+    ].join(''),
+    [
+      '{% if false %}{% macro policy() %}local{% endmacro %}',
+      '{% elif true %}${{ policy() }}{% endif %}${{ mark("later") }}',
+    ].join(''),
+    [
+      '{% switch 1 %}{% case 1 %}active{% case 2 %}',
+      '{% macro policy() %}local{% endmacro %}{% endswitch %}',
+      '${{ policy() }}${{ mark("later") }}',
+    ].join(''),
+    [
+      '{% switch 1 %}{% case 1 %}active{% default %}',
+      '{% macro policy() %}local{% endmacro %}{% endswitch %}',
+      '${{ policy() }}${{ mark("later") }}',
+    ].join(''),
+    [
+      '{% block outer %}{% if false %}',
+      '{% macro policy() %}local{% endmacro %}{% endif %}',
+      '${{ policy() }}{% endblock %}${{ mark("later") }}',
+    ].join(''),
+    [
+      '{% macro wrapper() %}{% if false %}',
+      '{% macro policy() %}local{% endmacro %}{% endif %}',
+      '${{ policy() }}{% endmacro %}${{ wrapper() }}${{ mark("later") }}',
+    ].join(''),
+    [
+      '{% macro wrapper() %}${{ caller() }}{% endmacro %}',
+      '{% call wrapper() %}{% if false %}',
+      '{% macro policy() %}local{% endmacro %}{% endif %}',
+      '${{ policy() }}{% endcall %}${{ mark("later") }}',
+    ].join(''),
+    [
+      '{% for value in [1] %}{% if false %}',
+      '{% macro policy() %}local{% endmacro %}{% endif %}',
+      '${{ policy() }}{% endfor %}${{ mark("later") }}',
+    ].join(''),
+  ];
+
+  for (const cookiecutterCompat of [false, true]) {
+    const engineEvents: string[] = [];
+    const oracleEvents: string[] = [];
+    const engine = createEngine({
+      cookiecutterCompat,
+      globals: {
+        mark(value) {
+          engineEvents.push(String(value));
+          return '';
+        },
+        policy() {
+          engineEvents.push('global-policy');
+          return 'global';
+        },
+      },
+    });
+    const oracle = new nunjucks.Environment(undefined, { autoescape: false });
+    oracle.addGlobal('mark', (value: unknown) => {
+      oracleEvents.push(String(value));
+      return '';
+    });
+    oracle.addGlobal('policy', () => {
+      oracleEvents.push('global-policy');
+      return 'global';
+    });
+    const engineSource = (source: string) => cookiecutterCompat
+      ? source.replaceAll('${{', '{{')
+      : source;
+
+    for (const source of matchingSources) {
+      assert.equal(
+        engine.render(engineSource(source)),
+        oracle.renderString(source.replaceAll('${{', '{{'), {}),
+        source,
+      );
+    }
+    assert.deepEqual(
+      engineEvents,
+      ['defaulted-macro-parameter', 'defaulted-caller-parameter'],
+    );
+    assert.deepEqual(oracleEvents, engineEvents);
+    engineEvents.length = 0;
+    oracleEvents.length = 0;
+
+    for (const source of failingSources) {
+      assert.throws(() => engine.render(engineSource(source)), NunjitsuRenderError);
+      assert.throws(
+        () => oracle.renderString(source.replaceAll('${{', '{{'), {}),
+      );
+      assert.deepEqual(engineEvents, []);
+      assert.deepEqual(oracleEvents, []);
+      assert.equal(engine.render('clean'), 'clean');
+    }
+
+    const unsupportedLoopTarget = [
+      '{% macro action() %}A{% endmacro %}',
+      '${{ mark("before") }}',
+      '{% for loop in [action,mark("iterable")] %}',
+      '${{ loop is callable }}{% endfor %}',
+      '${{ mark("after") }}',
+    ].join('');
+    assert.throws(
+      () => engine.render(engineSource(unsupportedLoopTarget)),
+      NunjitsuRenderError,
+    );
+    assert.deepEqual(engineEvents, []);
+    assert.equal(engine.render('clean'), 'clean');
+  }
+});
+
 test('matches built-in filters, tests, globals, comments, and raw regions', () => {
   const engine = createEngine();
   assert.equal(

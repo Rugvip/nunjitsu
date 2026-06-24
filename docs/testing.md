@@ -71,6 +71,9 @@ root lexical bindings versus block and macro exports, declaration-order
 collisions, strict callable identity, and capability-guard preservation,
 runtime-local shadowing for loop targets and metadata, nested iteration, macro
 and caller formals, per-iteration rebinding, and fail-stop callable collisions,
+static compiler-slot allocation for inactive and duplicate declarations across
+root, block, macro, caller, loop, conditional, and switch frames, including
+positional-versus-defaulted `loop` bindings and capability-shadowing failures,
 exact dotted-filter capability dispatch and registry-name rejection,
 filter-block AST lowering, body-before-argument ordering, fail-before-capture
 validation, nested capture, and package-entrypoint dispatch,
