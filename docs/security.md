@@ -184,6 +184,10 @@ Template-controlled data is revalidated whenever its role changes:
 - macro calls bind only declared formal names at their fixed positions and the
   explicit call-block `caller` keyword; unmatched keywords cannot introduce
   locals or callable identities;
+- duplicate macro and caller formals use closed Nunjucks argument normalization:
+  missing ordinary formals consume keywords, surplus positionals replace
+  default-name entries, and every duplicate binds sequentially, so default
+  capability calls and the final callable selection cannot be skipped;
 - macro declaration visibility is assigned by a static numeric-slot pass before
   evaluation; inactive and duplicate declarations retain compiler-selected
   `undefined` slots instead of falling through to a registered capability,

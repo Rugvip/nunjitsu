@@ -398,6 +398,12 @@
       "expected": "[2,]|[2,1]"
     },
     {
+      "id": "compiler-duplicate-formal-binding",
+      "template": "{% macro ordinary(v,v) %}[{{ v is undefined }}:{{ v | dump }}]{% endmacro %}{{ ordinary() }}|{{ ordinary(1) }}|{{ ordinary(1,2) }}|{{ ordinary(v=3) }}|{{ ordinary(v=4,5) }}|{% macro defaults(v=1,v=2) %}[{{ v }}]{% endmacro %}{{ defaults() }}|{{ defaults(3) }}|{{ defaults(3,4) }}|{{ defaults(v=5) }}|{% macro mixed(v,v=9) %}[{{ v | dump }}]{% endmacro %}{{ mixed() }}|{{ mixed(1) }}|{{ mixed(v=2) }}|{{ mixed(v=2,3) }}|{% macro empty() %}{{ caller() }}{% endmacro %}{% call(v,v) empty() %}[{{ v is undefined }}:{{ v | dump }}]{% endcall %}|{% macro one() %}{{ caller(1) }}{% endmacro %}{% call(v,v) one() %}[{{ v is undefined }}:{{ v | dump }}]{% endcall %}|{% macro two() %}{{ caller(1,2) }}{% endmacro %}{% call(v,v) two() %}[{{ v is undefined }}:{{ v | dump }}]{% endcall %}|{% call(v=1,v=2) empty() %}[{{ v }}]{% endcall %}|{% call(v=1,v=2) two() %}[{{ v }}]{% endcall %}",
+      "context": {},
+      "expected": "[true:]|[true:]|[false:2]|[true:]|[false:4]|[2]|[3]|[4]|[5]|[]|[1]|[2]|[3]|[true:]|[true:]|[false:2]|[2]|[2]"
+    },
+    {
       "id": "compiler-macro-explicit-values-skip-default",
       "template": "{% macro render(value=\"DEFAULT\") %}[{{ value }}]{% endmacro %}{{ render(null) }}|{{ render(value=null) }}|{{ render(missing) }}|{{ render(value=missing) }}|{{ render(false) }}|{{ render(value=false) }}|{{ render(0) }}|{{ render(value=0) }}|{{ render(\"\") }}|{{ render(value=\"\") }}|{{ render() }}",
       "context": {},

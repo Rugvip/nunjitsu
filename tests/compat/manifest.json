@@ -591,7 +591,7 @@
     {
       "upstream": {"id":"tests/compiler.js:64","file":"tests/compiler.js","test":"should compile macros with optional args"},
       "status": "ported",
-      "cases": ["compiler-macro-optional-positional","compiler-post-default-formal-order"]
+      "cases": ["compiler-macro-optional-positional","compiler-post-default-formal-order","compiler-duplicate-formal-binding"]
     },
     {
       "upstream": {"id":"tests/compiler.js:65","file":"tests/compiler.js","test":"should compile macros with args that can be passed to filters"},
@@ -687,7 +687,7 @@
     {
       "upstream": {"id":"tests/compiler.js:83","file":"tests/compiler.js","test":"should compile call blocks with args"},
       "status": "ported",
-      "cases": ["compiler-call-block-arguments","compiler-call-block-regex-signature","compiler-caller-post-default-formal-order","compiler-static-lexical-slots","compiler-caller-default-inherited-slots"]
+      "cases": ["compiler-call-block-arguments","compiler-call-block-regex-signature","compiler-caller-post-default-formal-order","compiler-static-lexical-slots","compiler-caller-default-inherited-slots","compiler-duplicate-formal-binding"]
     },
     {
       "upstream": {"id":"tests/compiler.js:84","file":"tests/compiler.js","test":"should compile call blocks using imported macros"},

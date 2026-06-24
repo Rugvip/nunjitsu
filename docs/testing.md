@@ -83,6 +83,7 @@ exact dotted-filter capability dispatch and registry-name rejection,
 filter-block AST lowering, body-before-argument ordering, fail-before-capture
 validation, nested capture, and package-entrypoint dispatch,
 post-default and post-keyword positional ordering, structural-tag remainder and
+duplicate macro and caller formal normalization with default side effects,
 named-block checks, raw-mode entry validation, and render state cleanup after
 failures. Repeated-unary regressions cover active and inactive expressions,
 defaults, arguments, collections, arithmetic nesting, both delimiter modes,

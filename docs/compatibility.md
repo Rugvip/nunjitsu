@@ -31,6 +31,9 @@ Nunjitsu targets:
 - lexical and context shadowing when resolving callable globals;
 - presence-based macro defaults that preserve explicit null, undefined, and
   falsey arguments;
+- Nunjucks-compatible duplicate macro and synthetic-caller formals, including
+  keyword consumption, surplus positional remapping, sequential shared-slot
+  binding, and required default-expression side effects;
 - lexical macro export frames across root, blocks, loops, ordinary macros,
   conditionals, switches, and synthetic callers, without dynamic capture of
   loop variables or outer-macro arguments;
@@ -93,8 +96,9 @@ Nunjitsu targets:
 - switch statements with at least one `case` or `default`, including empty arm
   bodies and empty-case fallthrough; comments alone do not constitute an arm;
 - declaration-specific macro and caller validation, Nunjucks positional/default
-  ordering, positional call arguments after keywords, and complete structural
-  tag validation including named blocks and raw regions;
+  ordering, duplicate-formal normalization, positional call arguments after
+  keywords, and complete structural tag validation including named blocks and
+  raw regions;
 - separate Nunjucks whitespace domains for full template-data trimming and the
   restricted space, tab, LF, CR, and NBSP code-token set;
 - depth-aware same-name raw and verbatim regions, including literal mixed

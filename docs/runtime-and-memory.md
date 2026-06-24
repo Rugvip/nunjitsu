@@ -400,19 +400,24 @@ complete parsing. Nunjucks's generated JavaScript has inconsistent failures for
 these placements, so the secure subset does not create capture-specific export
 or closure semantics.
 
-Macro binding assigns each positional value only to the formal parameter at the
-same index, then consults the matching keyword only when that position is
-absent. Positional values take Nunjucks-compatible precedence when both forms
-target one parameter. Explicit `null`, absent-value `undefined`, `false`, zero,
-and empty strings remain supplied values. A default expression is evaluated
-only when neither the formal position nor its keyword was supplied, so defaults
-cannot introduce capability side effects for explicit values.
+Macro and synthetic-caller calls first reproduce Nunjucks's closed
+`makeMacro` normalization. Positionals fill ordinary formals in order. Missing
+ordinary formals consume same-named keywords, while surplus positionals are
+assigned to default-formal names in order and overwrite a keyword of the same
+name. The resulting ordinary values and remaining keyword map are then bound
+without invoking JavaScript coercion. Explicit `null`, absent-value
+`undefined`, `false`, zero, and empty strings remain supplied values. A default
+expression executes only when its name is absent from the normalized keyword
+map.
 
-When a declaration repeats a formal name, the first formal owns the visible
-binding. Later duplicates still consume their formal positions and evaluate a
-genuinely needed default, but cannot overwrite that first binding. This
-reproduces Nunjucks's generated declaration behavior without weakening the
-closed scope model.
+Duplicate ordinary formals bind sequentially through one direct compiler slot,
+so the final positional occurrence controls body references. Duplicate
+defaulted formals bind sequentially in the runtime frame and the last binding
+is visible when no ordinary direct slot shadows it. An ordinary slot continues
+to take precedence over a same-named default binding, but the default expression
+still executes when normalization leaves it absent. This preserves Nunjucks's
+capability calls, exceptions, callable selection, and synthetic-caller behavior
+without generating JavaScript.
 
 Undeclared keyword arguments do not become macro locals. The sole exception is
 the `caller` keyword synthesized by call blocks, which is installed explicitly

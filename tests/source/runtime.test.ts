@@ -567,6 +567,123 @@ test('matches Nunjucks declaration ordering and post-keyword positional macro ca
   assert.equal(engine.render('clean'), 'clean');
 });
 
+test('matches Nunjucks duplicate macro and caller formal binding', () => {
+  for (const cookiecutterCompat of [false, true]) {
+    const engineEvents: string[] = [];
+    const oracleEvents: string[] = [];
+    const engine = createEngine({
+      cookiecutterCompat,
+      globals: {
+        probe(value) {
+          engineEvents.push(`probe:${value}`);
+          return value;
+        },
+        policy() {
+          engineEvents.push('policy');
+          return 'P';
+        },
+        fail() {
+          engineEvents.push('fail');
+          throw new Error('failed default');
+        },
+        later() {
+          engineEvents.push('later');
+          return 'later';
+        },
+      },
+    });
+    const oracle = new nunjucks.Environment(undefined, { autoescape: false });
+    oracle.addGlobal('probe', (value: unknown) => {
+      oracleEvents.push(`probe:${value}`);
+      return value;
+    });
+    oracle.addGlobal('policy', () => {
+      oracleEvents.push('policy');
+      return 'P';
+    });
+    oracle.addGlobal('fail', () => {
+      oracleEvents.push('fail');
+      throw new Error('failed default');
+    });
+    oracle.addGlobal('later', () => {
+      oracleEvents.push('later');
+      return 'later';
+    });
+
+    const source = [
+      '{% macro ordinary(value,value) %}[${{ value is undefined }}:${{ value | dump }}]{% endmacro %}',
+      '${{ ordinary() }}|${{ ordinary(1) }}|${{ ordinary(1,2) }}|',
+      '${{ ordinary(1,2,3) }}|${{ ordinary(value=3) }}|${{ ordinary(value=4,5) }}|',
+      '{% macro separated(a,b,a) %}[${{ a | dump }},${{ b | dump }}]{% endmacro %}',
+      '${{ separated(1,2,3) }}|${{ separated(a=4,b=5) }}|',
+      '{% macro defaults(value=probe("d1"),value=probe("d2")) %}[${{ value }}]{% endmacro %}',
+      '${{ defaults() }}|${{ defaults("p1") }}|${{ defaults("p1","p2") }}|',
+      '${{ defaults(value="k") }}|${{ defaults(value="k","p1","p2") }}|',
+      '{% macro mixed(value,value=probe("mixed")) %}[${{ value | dump }}]{% endmacro %}',
+      '${{ mixed(value=8) }}|',
+      '{% macro dispatch(value,value) %}',
+      '{% if value is callable %}${{ value() }}{% else %}-{% endif %}',
+      '{% endmacro %}',
+      '${{ dispatch(policy) }}${{ dispatch(false,policy) }}${{ dispatch(policy,false) }}|',
+      '{% macro emptyWrap() %}${{ caller() }}{% endmacro %}',
+      '{% call(value,value) emptyWrap() %}[${{ value is undefined }}:${{ value | dump }}]{% endcall %}|',
+      '{% macro oneWrap() %}${{ caller(1) }}{% endmacro %}',
+      '{% call(value,value) oneWrap() %}[${{ value is undefined }}:${{ value | dump }}]{% endcall %}|',
+      '{% macro twoWrap() %}${{ caller(1,2) }}{% endmacro %}',
+      '{% call(value,value) twoWrap() %}[${{ value is undefined }}:${{ value | dump }}]{% endcall %}|',
+      '{% macro keywordWrap() %}${{ caller(value=8) }}{% endmacro %}',
+      '{% call(value,value=probe("caller")) keywordWrap() %}',
+      '[${{ value | dump }}]{% endcall %}|',
+      '{% macro defaultWrap() %}${{ caller() }}{% endmacro %}',
+      '{% call(value=probe("caller-d1"),value=probe("caller-d2")) defaultWrap() %}',
+      '[${{ value }}]{% endcall %}|',
+      '{% macro surplusWrap() %}${{ caller("c1","c2") }}{% endmacro %}',
+      '{% call(value=probe("unused-d1"),value=probe("unused-d2")) surplusWrap() %}',
+      '[${{ value }}]{% endcall %}',
+    ].join('');
+    const engineSource = cookiecutterCompat
+      ? source.replaceAll('${{', '{{')
+      : source;
+    const oracleSource = source.replaceAll('${{', '{{');
+    assert.equal(
+      engine.render(engineSource),
+      oracle.renderString(oracleSource, {}),
+    );
+    assert.deepEqual(engineEvents, [
+      'probe:d1',
+      'probe:d2',
+      'probe:mixed',
+      'policy',
+      'probe:caller',
+      'probe:caller-d1',
+      'probe:caller-d2',
+    ]);
+    assert.deepEqual(engineEvents, oracleEvents);
+
+    engineEvents.length = 0;
+    oracleEvents.length = 0;
+    const failingSource = [
+      'partial',
+      '{% macro mixed(value,value=fail()) %}${{ value }}{% endmacro %}',
+      '${{ mixed(value=8) }}',
+      '${{ later() }}',
+    ].join('');
+    const engineFailingSource = cookiecutterCompat
+      ? failingSource.replaceAll('${{', '{{')
+      : failingSource;
+    assert.throws(
+      () => engine.render(engineFailingSource),
+      NunjitsuRenderError,
+    );
+    assert.throws(
+      () => oracle.renderString(failingSource.replaceAll('${{', '{{'), {}),
+    );
+    assert.deepEqual(engineEvents, ['fail']);
+    assert.deepEqual(oracleEvents, engineEvents);
+    assert.equal(engine.render('clean'), 'clean');
+  }
+});
+
 test('matches Nunjucks lexical macro declaration frames', () => {
   for (const cookiecutterCompat of [false, true]) {
     const engineEvents: string[] = [];

@@ -76,10 +76,13 @@ implementation and documentation aligned with the architecture in
   registered global named `super` remains an ordinary capability. Call blocks
   may target only template macros, and their internal `caller` handle must not
   be forwarded to or discarded by capabilities or built-ins.
-- Bind macro arguments by fixed formal position first and matching keyword
-  presence second, never value nullishness or a conditional positional cursor.
-  Ignore undeclared keywords except for the explicit call-block `caller`
-  binding. Evaluate defaults only for genuinely absent arguments.
+- Normalize macro and caller arguments with Nunjucks's `makeMacro` semantics
+  before binding: fill missing ordinary formals from and consume matching
+  keywords, map surplus positionals onto default-formal names in order, then
+  bind every formal sequentially. Never use value nullishness to determine
+  presence. Ignore undeclared keywords except for the explicit call-block
+  `caller` binding, and evaluate defaults only for genuinely absent normalized
+  values.
 - Assign numeric compiler slots in a static post-parse pass before evaluation.
   Preserve source-ordered slot selection across inactive and duplicate macro
   declarations; initialize every frame's slots to `undefined`, initialize only
@@ -111,8 +114,10 @@ implementation and documentation aligned with the architecture in
 - Validate macro and caller declarations separately from ordinary calls. Every
   positional formal must be a symbol; default keys must be parser-created
   allowed names. Store ordinary formals before defaulted formals, allow source
-  positionals after defaults or call keywords, and retain the first binding for
-  duplicate formal names while preserving applicable default evaluation.
+  positionals after defaults or call keywords, bind duplicate ordinary formals
+  sequentially through one direct slot, and bind duplicate defaults
+  sequentially in the runtime frame while preserving applicable default
+  evaluation.
 - Never retain template sources, ASTs, values, or output state between renders
   by default. Retain values only through an explicit caller-owned prepared
   context snapshot; keep snapshots immutable and engine-bound, and copy every

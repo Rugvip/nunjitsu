@@ -183,6 +183,12 @@
       ]
     },
     {
+      "id": "duplicate-formal-binding",
+      "file": "tests/source/runtime.test.ts",
+      "test": "matches Nunjucks duplicate macro and caller formal binding",
+      "upstream": ["tests/compiler.js:64", "tests/compiler.js:83"]
+    },
+    {
       "id": "macro-lexical-frames",
       "file": "tests/source/runtime.test.ts",
       "test": "matches Nunjucks lexical macro declaration frames",

@@ -123,6 +123,11 @@ interface RuntimeIteration {
   readonly values: IterableIterator<RuntimeValue>;
 }
 
+interface NormalizedMacroArguments {
+  readonly positional: readonly RuntimeValue[];
+  readonly keyword: ReadonlyMap<string, RuntimeValue>;
+}
+
 type BuiltinGlobalName = 'range' | 'cycler' | 'joiner';
 
 type BuiltinCallableDefinition =
@@ -1147,9 +1152,9 @@ class Evaluator {
       throw new Error('Invalid macro arguments');
     }
     const argumentNodes = args.children;
-    let formalIndex = 0;
+    const positionalNames: string[] = [];
+    const defaultNames: string[] = [];
     let declaresCaller = false;
-    const boundNames = new Set<string>();
     for (const argument of argumentNodes) {
       if (argument.type === 'KeywordArgs') {
         for (const pair of argument.children) {
@@ -1157,64 +1162,61 @@ class Evaluator {
             throw new Error('Invalid macro default');
           }
           const name = symbolName(pair.key);
+          defaultNames.push(name);
           declaresCaller ||= name === 'caller';
-          let supplied: RuntimeValue = undefined;
-          let hasSupplied = false;
-          if (formalIndex < arguments_.positional.length) {
-            supplied = arguments_.positional[formalIndex];
-            hasSupplied = true;
-          } else if (arguments_.keyword.has(name)) {
-            supplied = arguments_.keyword.get(name);
-            hasSupplied = true;
+        }
+      } else {
+        const name = symbolName(argument);
+        positionalNames.push(name);
+        declaresCaller ||= name === 'caller';
+      }
+    }
+    const normalized = normalizeMacroArguments(
+      positionalNames,
+      defaultNames,
+      arguments_,
+    );
+    let positionalIndex = 0;
+    for (const argument of argumentNodes) {
+      if (argument.type === 'KeywordArgs') {
+        for (const pair of argument.children) {
+          if (pair.type !== 'Pair') {
+            throw new Error('Invalid macro default');
           }
-          const value = hasSupplied
-            ? supplied
+          const name = symbolName(pair.key);
+          const value = normalized.keyword.has(name)
+            ? normalized.keyword.get(name)
             : this.#evaluateExpression(
               pair.value,
               local,
               bodyMacroContext,
               depth + 1,
             );
-          if (!boundNames.has(name)) {
-            bindRuntimeLocal(
-              pair.key,
-              name,
-              value,
-              local,
-              bodyMacroContext.lexicalFrame,
-              bodyMacroContext.lexicalPlan,
-            );
-            boundNames.add(name);
-          }
-          formalIndex += 1;
-        }
-      } else {
-        const name = symbolName(argument);
-        declaresCaller ||= name === 'caller';
-        let supplied: RuntimeValue = undefined;
-        if (formalIndex < arguments_.positional.length) {
-          supplied = arguments_.positional[formalIndex];
-        } else if (arguments_.keyword.has(name)) {
-          supplied = arguments_.keyword.get(name);
-        }
-        if (!boundNames.has(name)) {
           bindRuntimeLocal(
-            argument,
+            pair.key,
             name,
-            supplied,
+            value,
             local,
             bodyMacroContext.lexicalFrame,
             bodyMacroContext.lexicalPlan,
           );
-          boundNames.add(name);
         }
-        formalIndex += 1;
+      } else {
+        bindRuntimeLocal(
+          argument,
+          symbolName(argument),
+          normalized.positional[positionalIndex],
+          local,
+          bodyMacroContext.lexicalFrame,
+          bodyMacroContext.lexicalPlan,
+        );
+        positionalIndex += 1;
       }
     }
-    if (!declaresCaller && arguments_.keyword.has('caller')) {
+    if (!declaresCaller && normalized.keyword.has('caller')) {
       bindRuntimeFrameLocal(
         'caller',
-        arguments_.keyword.get('caller'),
+        normalized.keyword.get('caller'),
         local,
       );
     }
@@ -1592,6 +1594,34 @@ function bindAssignment(target: AstNode, value: RuntimeValue, scope: RuntimeScop
     throw new Error(`Invalid assignment target ${target.type}`);
   }
   scope.assign(symbolName(target), value);
+}
+
+function normalizeMacroArguments(
+  positionalNames: readonly string[],
+  defaultNames: readonly string[],
+  arguments_: RuntimeArguments,
+): NormalizedMacroArguments {
+  const suppliedCount = arguments_.positional.length;
+  const positionalCount = positionalNames.length;
+  const keyword = new Map(arguments_.keyword);
+  if (suppliedCount > positionalCount) {
+    const positional = arguments_.positional.slice(0, positionalCount);
+    const surplus = arguments_.positional.slice(positionalCount);
+    for (let index = 0; index < surplus.length && index < defaultNames.length; index += 1) {
+      keyword.set(defaultNames[index]!, surplus[index]);
+    }
+    return { positional, keyword };
+  }
+  if (suppliedCount < positionalCount) {
+    const positional = arguments_.positional.slice();
+    for (let index = suppliedCount; index < positionalCount; index += 1) {
+      const name = positionalNames[index]!;
+      positional.push(keyword.get(name));
+      keyword.delete(name);
+    }
+    return { positional, keyword };
+  }
+  return { positional: arguments_.positional, keyword };
 }
 
 function iterableEntries(value: RuntimeValue, targetCount: number): RuntimeIteration {

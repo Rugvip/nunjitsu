@@ -137,6 +137,14 @@ single target named `loop` is rejected because upstream mutates that iteration
 value to install metadata; multi-target `loop` bindings remain ordinary direct
 slots.
 
+Macro and synthetic-caller invocation normalizes positional and keyword values
+through a closed equivalent of Nunjucks's `makeMacro` before installing them.
+Duplicate ordinary formals sequentially update one direct slot; duplicate
+defaults sequentially update the runtime frame. Missing ordinary formals
+consume their keyword before defaults run, while surplus positionals replace
+default-name entries in order. This keeps capability evaluation and callable
+selection aligned without generating JavaScript.
+
 Operation validation precedes attacker-controlled operands. Call blocks resolve
 and require a macro before evaluating arguments or registering their caller
 body. Filter and test names, including tests named through `select` and

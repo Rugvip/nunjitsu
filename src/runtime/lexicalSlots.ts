@@ -253,7 +253,7 @@ export function planLexicalSlots(
     if (node.args.type !== 'NodeList') {
       throw new Error('Invalid callable argument list');
     }
-    const boundNames = new Set<string>();
+    const positionalSlots = new Map<string, number>();
     for (const argument of node.args.children) {
       if (argument.type === 'KeywordArgs') {
         for (const pair of argument.children) {
@@ -261,16 +261,17 @@ export function planLexicalSlots(
             throw new Error('Invalid callable default');
           }
           visit(pair.value, state);
-          boundNames.add(pair.key.value);
         }
       } else {
         if (argument.type !== 'Symbol') {
           throw new Error('Invalid callable formal');
         }
         const name = argument.value;
-        if (!boundNames.has(name)) {
-          createSlot(state, name, argument);
-          boundNames.add(name);
+        const existing = positionalSlots.get(name);
+        if (existing === undefined) {
+          positionalSlots.set(name, createSlot(state, name, argument));
+        } else {
+          state.scope.bindSlot(argument, existing);
         }
       }
     }
