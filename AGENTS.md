@@ -103,12 +103,14 @@ implementation and documentation aligned with the architecture in
 - Separate loop visibility from compiler-slot storage lifetime. Loop targets,
   declarations, and control temporaries belong to the enclosing root, block,
   macro, or caller invocation and persist when the same loop AST is re-entered;
-  runtime value frames and loop metadata remain entry-local. Keep separate
-  multi-target array and record branch mappings, use the final record mapping
-  for `else`, and bound duplicated static planning with the work limit. Return
-  compiler-branch classification from the same closed iteration planner that
-  produces loop values: arrays and safe strings use the array branch; records,
-  primitive strings, and other values use the record branch.
+  runtime value frames and loop metadata remain entry-local. Multi-target array
+  branches bind every target only to direct slots. Record and primitive-string
+  branches inherit the completed array mapping, replace and runtime-bind only
+  the first two key/value targets, and retain third-and-later array slots for
+  the body and `else`. Bound duplicated static planning with the work limit.
+  Return compiler-branch classification from the same closed iteration planner
+  that produces loop values: arrays and safe strings use the array branch;
+  records, primitive strings, and other values use the record branch.
 - Reject macro declarations anywhere inside block-set or filter-block captures
   during complete parsing rather than inventing capture-specific macro scope.
 - Validate macro and caller declarations separately from ordinary calls. Every

@@ -1454,6 +1454,156 @@ test('preserves loop compiler state across repeated entries', () => {
   }
 });
 
+test('matches Nunjucks branch-specific multi-target loop scopes', () => {
+  const sources = [
+    [
+      '{% set allowed=true %}',
+      '{% for allowed,value in [[1,2]] %}{% set allowed=false %}{% endfor %}',
+      '{% if allowed %}${{ privileged() }}{% else %}blocked{% endif %}',
+    ].join(''),
+    [
+      '{% for key,value,key in {x:1} %}',
+      '{% if key is undefined %}${{ privileged() }}{% else %}blocked{% endif %}',
+      '{% endfor %}',
+    ].join(''),
+    [
+      '{% for source in [[[1,2,3]],{x:4}] %}',
+      '{% for a,b,c in source %}',
+      '[${{ a | dump }},${{ b | dump }},${{ c | dump }}]',
+      '{% endfor %}{% endfor %}',
+    ].join(''),
+    [
+      '{% set a="outer-a" %}{% set b="outer-b" %}',
+      '{% for a,b in [[1,2]] %}{% set a="A" %}{% set b="B" %}',
+      '[${{ a }},${{ b }}]{% endfor %}|[${{ a }},${{ b }}]',
+    ].join(''),
+    [
+      '{% set a="outer-a" %}{% set b="outer-b" %}{% set c="outer-c" %}',
+      '{% for a,b,c in [[1,2,3]] %}',
+      '{% set a="A" %}{% set b="B" %}{% set c="C" %}',
+      '[${{ a }},${{ b }},${{ c }}]{% endfor %}|',
+      '[${{ a }},${{ b }},${{ c }}]',
+    ].join(''),
+    [
+      '{% set a="outer-a" %}{% set b="outer-b" %}',
+      '{% set c="outer-c" %}{% set d="outer-d" %}',
+      '{% for a,b,c,d in [[1,2,3,4]] %}',
+      '{% set a="A" %}{% set b="B" %}{% set c="C" %}{% set d="D" %}',
+      '[${{ a }},${{ b }},${{ c }},${{ d }}]{% endfor %}|',
+      '[${{ a }},${{ b }},${{ c }},${{ d }}]',
+    ].join(''),
+    [
+      '{% for a,b,c in [[1,2,3]] %}{% set a="A" %}{% set c="C" %}',
+      '[${{ a }},${{ b }},${{ c }}]{% endfor %}|',
+      '[${{ a is undefined }},${{ c is undefined }}]',
+    ].join(''),
+    [
+      '{% set first="outer-first" %}{% set second="outer-second" %}',
+      '{% for first,second in "x" | safe %}',
+      '{% set first="changed" %}{% set second="changed-second" %}',
+      '[${{ first }},${{ second }}]',
+      '{% endfor %}|[${{ first }},${{ second }}]',
+    ].join(''),
+    '{% for key,key,extra in {x:1} %}[${{ key | dump }},${{ extra | dump }}]{% endfor %}',
+    '{% for key,value,key in {x:1} %}[${{ key | dump }},${{ value | dump }}]{% endfor %}',
+    '{% for key,value,value in {x:1} %}[${{ key | dump }},${{ value | dump }}]{% endfor %}',
+    '{% for index,index,extra in "x" %}[${{ index | dump }},${{ extra | dump }}]{% endfor %}',
+    '{% for index,character,index in "x" %}[${{ index | dump }},${{ character }}]{% endfor %}',
+    '{% for index,character,character in "x" %}[${{ index | dump }},${{ character }}]{% endfor %}',
+    [
+      '{% for source in [[[1,2,3]],"x"] %}{% for a,b,c in source %}',
+      '[${{ a | dump }},${{ b | dump }},${{ c | dump }}]',
+      '{% endfor %}{% endfor %}',
+    ].join(''),
+    [
+      '{% for source in [{x:4},[[1,2,3]]] %}{% for a,b,c in source %}',
+      '[${{ a | dump }},${{ b | dump }},${{ c | dump }}]',
+      '{% endfor %}{% endfor %}',
+    ].join(''),
+    [
+      '{% for source in [[[1,2,3]],{x:4},[[5,6,7]],{y:8}] %}',
+      '{% for a,b,c in source %}',
+      '[${{ a | dump }},${{ b | dump }},${{ c | dump }}]',
+      '{% endfor %}{% endfor %}',
+    ].join(''),
+    [
+      '{% for source in [[[1,2,3]],{}] %}{% for a,b,c in source %}',
+      'body{% else %}',
+      '[${{ a | dump }},${{ b | dump }},${{ c | dump }}]',
+      '{% endfor %}{% endfor %}',
+    ].join(''),
+    [
+      '{% macro render(sources) %}{% for source in sources %}',
+      '{% for a,b,c in source %}',
+      '[${{ a | dump }},${{ b | dump }},${{ c | dump }}]',
+      '{% endfor %}{% endfor %}{% endmacro %}',
+      '${{ render([[[1,2,3]],{x:4}]) }}',
+    ].join(''),
+    [
+      '{% macro wrapper(sources) %}${{ caller(sources) }}{% endmacro %}',
+      '{% call(sources) wrapper([[[1,2,3]],{x:4}]) %}',
+      '{% for source in sources %}{% for a,b,c in source %}',
+      '[${{ a | dump }},${{ b | dump }},${{ c | dump }}]',
+      '{% endfor %}{% endfor %}{% endcall %}',
+    ].join(''),
+  ];
+
+  for (const cookiecutterCompat of [false, true]) {
+    const engineEvents: string[] = [];
+    const oracleEvents: string[] = [];
+    const engine = createEngine({
+      cookiecutterCompat,
+      globals: {
+        privileged() {
+          engineEvents.push('privileged');
+          return 'P';
+        },
+        later() {
+          engineEvents.push('later');
+          return 'later';
+        },
+      },
+    });
+    const oracle = new nunjucks.Environment(undefined, { autoescape: false });
+    oracle.addGlobal('privileged', () => {
+      oracleEvents.push('privileged');
+      return 'P';
+    });
+    oracle.addGlobal('later', () => {
+      oracleEvents.push('later');
+      return 'later';
+    });
+    const engineSource = (source: string) => cookiecutterCompat
+      ? source.replaceAll('${{', '{{')
+      : source;
+
+    for (const source of sources) {
+      assert.equal(
+        engine.render(engineSource(source)),
+        oracle.renderString(source.replaceAll('${{', '{{'), {}),
+        source,
+      );
+      assert.deepEqual(engineEvents, []);
+      assert.deepEqual(oracleEvents, engineEvents);
+    }
+
+    const failingSource = [
+      '{% for a,b in [null] %}${{ privileged() }}{% endfor %}',
+      '${{ later() }}',
+    ].join('');
+    assert.throws(
+      () => engine.render(engineSource(failingSource)),
+      NunjitsuRenderError,
+    );
+    assert.throws(
+      () => oracle.renderString(failingSource.replaceAll('${{', '{{'), {}),
+    );
+    assert.deepEqual(engineEvents, []);
+    assert.deepEqual(oracleEvents, engineEvents);
+    assert.equal(engine.render('clean'), 'clean');
+  }
+});
+
 test('selects safe-string loop compiler branches with iteration semantics', () => {
   const cases = [
     {

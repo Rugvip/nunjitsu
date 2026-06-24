@@ -156,6 +156,12 @@
       "upstream": ["tests/compiler.js:17", "tests/compiler.js:20"]
     },
     {
+      "id": "multi-target-branch-scopes",
+      "file": "tests/source/runtime.test.ts",
+      "test": "matches Nunjucks branch-specific multi-target loop scopes",
+      "upstream": ["tests/compiler.js:17", "tests/compiler.js:19", "tests/compiler.js:21"]
+    },
+    {
       "id": "callable-identity",
       "file": "tests/source/runtime.test.ts",
       "test": "matches Nunjucks canonical global and fresh member callable identities",

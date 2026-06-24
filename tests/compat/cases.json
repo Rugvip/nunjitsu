@@ -911,6 +911,12 @@
       "template": "{% for values in [\"a\"|safe,[]] %}{% for first,second in values %}{% macro safeArray() %}G{% endmacro %}{% else %}[{{ safeArray is callable }}]{% endfor %}{% endfor %}|{% for values in [\"a\"|safe,\"\"|safe] %}{% for first,second in values %}{% macro safeEmpty() %}G{% endmacro %}{% else %}[{{ safeEmpty is callable }}]{% endfor %}{% endfor %}|{% for values in [\"a\",[]] %}{% for first,second in values %}{% macro primitive() %}G{% endmacro %}{% else %}[{{ primitive is callable }}]{% endfor %}{% endfor %}|{% for values in [[[\"a\",1]],[]] %}{% for first,second in values %}{% macro arrayValue() %}G{% endmacro %}{% else %}[{{ arrayValue is callable }}]{% endfor %}{% endfor %}|{% for values in [{first:1},{}] %}{% for first,second in values %}{% macro recordValue() %}G{% endmacro %}{% else %}[{{ recordValue is callable }}]{% endfor %}{% endfor %}|{% for values in [\"a\"|safe,\"\"|safe] %}{% for item in values %}{% macro singleValue() %}G{% endmacro %}{% else %}[{{ singleValue is callable }}]{% endfor %}{% endfor %}",
       "context": {},
       "expected": "[false]|[false]|[true]|[false]|[true]|[true]"
+    },
+    {
+      "id": "compiler-multi-target-branch-scopes",
+      "template": "{% set allowed=true %}{% for allowed,value in [[1,2]] %}{% set allowed=false %}{% endfor %}[{{ allowed }}]|{% for key,value,key in {x:1} %}[{{ key | dump }},{{ value | dump }}]{% endfor %}|{% for source in [[[1,2,3]],{x:4},[[5,6,7]],\"z\"] %}{% for a,b,c in source %}[{{ a | dump }},{{ b | dump }},{{ c | dump }}]{% endfor %}{% endfor %}|{% for source in [[[1,2,3]],{}] %}{% for a,b,c in source %}body{% else %}[{{ a | dump }},{{ b | dump }},{{ c | dump }}]{% endfor %}{% endfor %}",
+      "context": {},
+      "expected": "[false]|[\"x\",1]|[1,2,3][\"x\",4,3][5,6,7][\"0\",\"z\",7]|body[,,3]"
     }
   ]
 }

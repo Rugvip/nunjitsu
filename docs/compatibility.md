@@ -56,6 +56,9 @@ Nunjitsu targets:
   and record mappings and record-mapped `else` bodies;
 - array-branch selection for multi-target safe-string loops after iterable
   conversion, while primitive strings retain record-branch behavior;
+- branch-specific multi-target target scopes: arrays use direct-only bindings,
+  record/string branches runtime-bind only key and value while inheriting extra
+  array temporaries, and `else` uses the final record mapping;
 - Nunjucks-compatible UTF-16 code-unit semantics for string length, lookup,
   iteration, ordering, filters, replacement, and Jinja-compatible slicing;
 - pinned Jinja slice lookup semantics, including raw fractional and string

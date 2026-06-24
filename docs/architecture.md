@@ -123,13 +123,16 @@ explicit visibility boundaries. `if` and `switch` share their containing plan.
 Loops inherit outer direct slots and store their own direct and control
 temporaries in the enclosing compiled-function invocation, so repeated entry
 does not reset generated `var` state. Multi-target array and record branches
-have distinct visibility plans, with `else` using the record plan. One closed
-iteration planner selects both iteration behavior and branch identity: arrays
-and safe strings use the array plan, while records and primitive strings use
-the record plan. Synthetic callers retain their confined call-site slots, and
-blocks or ordinary macros resolve otherwise-unbound names through runtime
-frames and current exports. Positional formals and loop targets are direct
-slots; defaulted formals and loop metadata remain runtime bindings.
+have distinct visibility plans. The array plan creates direct slots for every
+target without target-name runtime locals. The later record plan inherits that
+completed mapping, replaces and runtime-binds only its first two key/value
+targets, retains any extra array slots, and owns `else`. One closed iteration
+planner selects both iteration behavior and branch identity: arrays and safe
+strings use the array plan, while records and primitive strings use the record
+plan. Synthetic callers retain their confined call-site slots, and blocks or
+ordinary macros resolve otherwise-unbound names through runtime frames and
+current exports. Positional formals and loop targets are direct slots;
+defaulted formals and loop metadata remain runtime bindings.
 Defaulted synthetic-caller formals preserve any inherited call-site direct
 mapping instead of replacing it with their runtime binding. Assignment
 preserves an existing direct slot independently of the assigned value kind. A

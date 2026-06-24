@@ -1037,7 +1037,7 @@
       "upstream": {"id":"tests/compiler.js:17","file":"tests/compiler.js","test":"should loop over simple arrays"},
       "status": "adapted",
       "reason": "Observable loop behavior and local target shadowing are verified through the synchronous direct-string API with fixed autoescape false.",
-      "cases": ["compiler-runtime-local-shadowing","compiler-static-lexical-slots","compiler-nested-loop-slot-lifetime","compiler-safe-string-loop-branch"]
+      "cases": ["compiler-runtime-local-shadowing","compiler-static-lexical-slots","compiler-nested-loop-slot-lifetime","compiler-safe-string-loop-branch","compiler-multi-target-branch-scopes"]
     },
     {
       "upstream": {"id":"tests/compiler.js:18","file":"tests/compiler.js","test":"should loop normally with an {% else %} tag and non-empty array"},
@@ -1048,13 +1048,13 @@
       "upstream": {"id":"tests/compiler.js:19","file":"tests/compiler.js","test":"should execute the {% else %} block when looping over an empty array"},
       "status": "adapted",
       "reason": "Loop else selection is verified for empty arrays and raw array-like record lengths with fixed autoescape false.",
-      "cases": ["compiler-single-target-record-else"]
+      "cases": ["compiler-single-target-record-else","compiler-multi-target-branch-scopes"]
     },
     {
       "upstream": {"id":"tests/compiler.js:21","file":"tests/compiler.js","test":"should do loop over key-values of a literal in-template Object"},
       "status": "adapted",
       "reason": "Literal record key-value iteration is verified through closed values with fixed autoescape false.",
-      "cases": ["compiler-multi-target-record-loop"]
+      "cases": ["compiler-multi-target-record-loop","compiler-multi-target-branch-scopes"]
     },
     {
       "upstream": {"id":"tests/compiler.js:22","file":"tests/compiler.js","test":"should support loop.index"},

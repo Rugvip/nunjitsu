@@ -442,6 +442,7 @@ class Evaluator {
       bindLoopTargets(
         targets,
         entry,
+        entries.compilerBranch,
         iteration,
         loopMacroContext.lexicalFrame,
         loopMacroContext.lexicalPlan,
@@ -1527,6 +1528,7 @@ function freshMemberCallable(value: RuntimeValue): RuntimeValue {
 function bindLoopTargets(
   targets: readonly AstNode[],
   value: RuntimeValue,
+  compilerBranch: RuntimeIteration['compilerBranch'],
   scope: RuntimeScope,
   lexicalFrame: RuntimeLexicalFrame,
   lexicalPlan: LexicalScopePlan,
@@ -1543,7 +1545,19 @@ function bindLoopTargets(
     );
     return;
   }
-  for (const [index, target] of targets.entries()) {
+  if (compilerBranch === 'array') {
+    for (const [index, target] of targets.entries()) {
+      bindLexicalAssignment(
+        target,
+        destructureRuntimeValue(value, index),
+        lexicalFrame,
+        lexicalPlan,
+      );
+    }
+    return;
+  }
+  for (let index = 0; index < targets.length && index < 2; index += 1) {
+    const target = targets[index]!;
     bindRuntimeLocal(
       target,
       symbolName(target),

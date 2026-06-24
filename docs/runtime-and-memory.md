@@ -379,15 +379,23 @@ macro slots, prior target values, and its last assigned length temporary.
 Falsey inputs do not replace that length, matching the pinned compiler's
 guarded assignment before `else` selection. New root, block, ordinary macro,
 and synthetic-caller invocations allocate fresh storage. Multi-target loops
-carry separate array-branch and record-branch plans; their `else` body uses the
-final record-branch mapping. Repeated static planning caused by those duplicated
-branches is bounded by the render work limit. The iteration planner owns both
-the value iterator and compiler-branch classification: arrays and safe strings
-select the array plan after iterable-wrapper conversion, while records,
-primitive strings, and other values select the record plan.
+first plan the complete array branch, with every target receiving a distinct
+direct slot and no ordinary target name entering the runtime frame. The record
+branch inherits that completed mapping, replaces and runtime-binds only the
+first two key/value targets, and retains third-and-later array slots. Its final
+mapping also owns the `else` body. Consequently, target assignments in an array
+branch may resolve to an existing outer runtime binding while updating the
+local direct slot, and record/string execution can observe extra array
+temporaries from an earlier entry of the same loop AST. Repeated static planning
+caused by the duplicated body is bounded by the render work limit. The
+iteration planner owns both the value iterator and compiler-branch
+classification: arrays and safe strings select the array plan after
+iterable-wrapper conversion, while records, primitive strings, and other values
+select the record plan.
 
-Positional macro and synthetic-caller formals and loop targets receive direct
-slots as well as runtime bindings. Defaulted formals remain runtime-frame-only,
+Positional macro and synthetic-caller formals and single loop targets receive
+direct slots as well as runtime bindings. Multi-target runtime binding follows
+the branch-specific rules above. Defaulted formals remain runtime-frame-only,
 matching the pinned compiler. A defaulted synthetic-caller formal creates no
 slot and does not remove an inherited call-site slot of the same name; body
 references keep the inherited direct binding even though argument/default

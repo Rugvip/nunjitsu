@@ -289,8 +289,10 @@ export function planLexicalSlots(
     visit(node.value, state);
   };
 
-  const planLoopTargets = (node: AstForNode, state: LexicalFrameState): void => {
-    const targets = node.name.type === 'Array' ? node.name.children : [node.name];
+  const planLoopTargets = (
+    targets: readonly AstNode[],
+    state: LexicalFrameState,
+  ): void => {
     for (const target of targets) {
       if (target.type !== 'Symbol') {
         throw new Error(`Invalid loop target ${target.type}`);
@@ -356,7 +358,7 @@ export function planLexicalSlots(
         const targets = node.name.type === 'Array' ? node.name.children : [node.name];
         if (targets.length === 1) {
           const bodyState = createRegion(state);
-          planLoopTargets(node, bodyState);
+          planLoopTargets(targets, bodyState);
           visit(node.body, bodyState);
           if (node.else_) {
             visit(node.else_, bodyState);
@@ -368,10 +370,10 @@ export function planLexicalSlots(
           return;
         }
         const arrayState = createRegion(state);
-        planLoopTargets(node, arrayState);
+        planLoopTargets(targets, arrayState);
         visit(node.body, arrayState);
-        const recordState = createRegion(state);
-        planLoopTargets(node, recordState);
+        const recordState = createRegion(arrayState);
+        planLoopTargets(targets.slice(0, 2), recordState);
         visit(node.body, recordState);
         if (node.else_) {
           visit(node.else_, recordState);
