@@ -80,12 +80,16 @@ implementation and documentation aligned with the architecture in
   presence second, never value nullishness or a conditional positional cursor.
   Ignore undeclared keywords except for the explicit call-block `caller`
   binding. Evaluate defaults only for genuinely absent arguments.
-- Track macro name binding separately from value lookup. Root, standalone block,
-  nested block, and ordinary macro bodies export declarations to the template
-  macro frame; `if` and `switch` inherit it. Loop and synthetic caller bodies
-  keep declarations local. Ordinary macros use the template scope as their
-  invocation parent and never capture loop, caller, or outer-macro locals;
-  synthetic callers alone retain their confined call-site value scope.
+- Track compiled-function lexical bindings, runtime value frames, and shared
+  exported template bindings separately. Root expressions retain declaration-
+  ordered lexical `set` and macro slots even when a block or macro body exports
+  a replacement; separately compiled block and ordinary macro bodies resolve
+  through their own lexical frame, runtime frame, then current exports. Root,
+  standalone block, nested block, and ordinary macro bodies export macro
+  declarations; `if` and `switch` inherit their containing frame. Loop and
+  synthetic caller declarations remain local. Ordinary macros never capture
+  loop, caller, or outer-macro locals; synthetic callers alone retain their
+  confined call-site value and lexical scopes.
 - Reject macro declarations anywhere inside block-set or filter-block captures
   during complete parsing rather than inventing capture-specific macro scope.
 - Validate macro and caller declarations separately from ordinary calls. Every

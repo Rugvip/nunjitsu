@@ -34,6 +34,9 @@ Nunjitsu targets:
 - lexical macro export frames across root, blocks, loops, ordinary macros,
   conditionals, switches, and synthetic callers, without dynamic capture of
   loop variables or outer-macro arguments;
+- stable root lexical `set` and macro bindings alongside independently updated
+  macro exports, so root expressions and separately evaluated block or macro
+  bodies retain Nunjucks-compatible collision behavior;
 - Nunjucks-compatible UTF-16 code-unit semantics for string length, lookup,
   iteration, ordering, filters, replacement, and Jinja-compatible slicing;
 - pinned Jinja slice lookup semantics, including raw fractional and string

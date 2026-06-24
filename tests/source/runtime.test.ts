@@ -617,6 +617,163 @@ test('matches Nunjucks lexical macro declaration frames', () => {
   }
 });
 
+test('preserves root lexical bindings across exported macro collisions', () => {
+  const sources = [
+    [
+      '{% set policy=false %}',
+      '{% block content %}{% macro policy() %}I{% endmacro %}',
+      'inside=${{ policy is callable }}{% endblock %}',
+      'root=${{ policy is callable }}|',
+      '{% macro reader() %}${{ policy is callable }}{% endmacro %}',
+      'reader=${{ reader() }}',
+    ].join(''),
+    [
+      '{% macro policy() %}O{% endmacro %}',
+      '{% block content %}{% macro policy() %}I{% endmacro %}',
+      'inside=${{ policy() }}{% endblock %}',
+      'root=${{ policy() }}|',
+      '{% macro reader() %}${{ policy() }}{% endmacro %}',
+      'reader=${{ reader() }}',
+    ].join(''),
+    [
+      '{% set policy=false %}',
+      '{% macro install() %}{% macro policy() %}I{% endmacro %}{% endmacro %}',
+      '${{ install() }}root=${{ policy is callable }}|',
+      '{% macro reader() %}${{ policy is callable }}{% endmacro %}',
+      'reader=${{ reader() }}',
+    ].join(''),
+    [
+      '{% macro policy() %}O{% endmacro %}',
+      '{% macro install() %}{% macro policy() %}I{% endmacro %}{% endmacro %}',
+      '${{ install() }}root=${{ policy() }}|',
+      '{% macro reader() %}${{ policy() }}{% endmacro %}',
+      'reader=${{ reader() }}',
+    ].join(''),
+    [
+      '{% set policy=false %}',
+      '{% block outer %}{% block inner %}',
+      '{% macro policy() %}I{% endmacro %}',
+      '{% endblock %}{% endblock %}',
+      'root=${{ policy is callable }}|',
+      '{% block read %}${{ policy is callable }}{% endblock %}|',
+      '{% macro reader() %}${{ policy is callable }}{% endmacro %}',
+      'reader=${{ reader() }}',
+    ].join(''),
+    [
+      '{% macro policy() %}O{% endmacro %}',
+      '{% block outer %}{% block inner %}',
+      '{% macro policy() %}I{% endmacro %}',
+      '{% endblock %}{% endblock %}',
+      'root=${{ policy() }}|',
+      '{% block read %}${{ policy() }}{% endblock %}|',
+      '{% macro reader() %}${{ policy() }}{% endmacro %}',
+      'reader=${{ reader() }}',
+    ].join(''),
+    [
+      '{% set policy=false %}',
+      '{% for item in [1] %}{% block inner %}',
+      '{% macro policy() %}I{% endmacro %}',
+      '{% endblock %}{% endfor %}',
+      'root=${{ policy is callable }}|',
+      '{% macro reader() %}${{ policy() }}{% endmacro %}',
+      'reader=${{ reader() }}',
+    ].join(''),
+    [
+      '{% block content %}{% macro policy() %}I{% endmacro %}{% endblock %}',
+      '{% set policy=false %}',
+      'root=${{ policy is callable }}|',
+      '{% macro reader() %}${{ policy is callable }}{% endmacro %}',
+      'reader=${{ reader() }}',
+    ].join(''),
+    [
+      '{% block content %}{% macro policy() %}I{% endmacro %}{% endblock %}',
+      '{% macro policy() %}O{% endmacro %}',
+      'root=${{ policy() }}|',
+      '{% macro reader() %}${{ policy() }}{% endmacro %}',
+      'reader=${{ reader() }}',
+    ].join(''),
+    [
+      '{% macro policy() %}O{% endmacro %}{% set original=policy %}',
+      '{% block content %}{% macro policy() %}I{% endmacro %}{% endblock %}',
+      'root=${{ policy === original }}:${{ policy() }}|',
+      '{% macro reader(value) %}${{ policy === value }}:${{ policy() }}{% endmacro %}',
+      'reader=${{ reader(original) }}',
+    ].join(''),
+    [
+      '{% macro policy() %}A{% endmacro %}',
+      '{% macro policy() %}B{% endmacro %}',
+      'root=${{ policy() }}|',
+      '{% macro reader() %}${{ policy() }}{% endmacro %}',
+      'reader=${{ reader() }}',
+    ].join(''),
+    [
+      '{% macro policy() %}O{% endmacro %}',
+      '{% for item in [1] %}{% macro policy() %}L{% endmacro %}{% endfor %}',
+      '{% macro wrapper() %}${{ caller() }}{% endmacro %}',
+      '{% call wrapper() %}{% macro policy() %}C{% endmacro %}{% endcall %}',
+      'root=${{ policy() }}|',
+      '{% macro reader() %}${{ policy() }}{% endmacro %}',
+      'reader=${{ reader() }}',
+    ].join(''),
+  ];
+
+  for (const cookiecutterCompat of [false, true]) {
+    const engineEvents: string[] = [];
+    const oracleEvents: string[] = [];
+    const engine = createEngine({
+      cookiecutterCompat,
+      globals: {
+        mark(value) {
+          engineEvents.push(String(value));
+          return '';
+        },
+      },
+    });
+    const oracle = new nunjucks.Environment(undefined, { autoescape: false });
+    oracle.addGlobal('mark', (value: unknown) => {
+      oracleEvents.push(String(value));
+      return '';
+    });
+    const engineSource = (source: string) => cookiecutterCompat
+      ? source.replaceAll('${{', '{{')
+      : source;
+
+    for (const source of sources) {
+      assert.equal(
+        engine.render(engineSource(source)),
+        oracle.renderString(source.replaceAll('${{', '{{'), {}),
+        source,
+      );
+    }
+
+    const policySource = [
+      '{% set policy=false %}',
+      '{% block content %}{% macro policy() %}',
+      '${{ mark("unexpected") }}{% endmacro %}{% endblock %}',
+      '{% if policy is callable %}${{ policy() }}{% endif %}',
+    ].join('');
+    assert.equal(
+      engine.render(engineSource(policySource)),
+      oracle.renderString(policySource.replaceAll('${{', '{{'), {}),
+    );
+    assert.deepEqual(engineEvents, []);
+    assert.deepEqual(oracleEvents, []);
+
+    const failingSource = [
+      '{% set policy=false %}',
+      '{% block content %}{% macro policy() %}I{% endmacro %}{% endblock %}',
+      '${{ policy() }}${{ mark("later") }}',
+    ].join('');
+    assert.throws(() => engine.render(engineSource(failingSource)), NunjitsuRenderError);
+    assert.throws(
+      () => oracle.renderString(failingSource.replaceAll('${{', '{{'), {}),
+    );
+    assert.deepEqual(engineEvents, []);
+    assert.deepEqual(oracleEvents, []);
+    assert.equal(engine.render('clean'), 'clean');
+  }
+});
+
 test('matches built-in filters, tests, globals, comments, and raw regions', () => {
   const engine = createEngine();
   assert.equal(

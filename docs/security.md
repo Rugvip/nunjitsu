@@ -184,10 +184,11 @@ Template-controlled data is revalidated whenever its role changes:
 - macro calls bind only declared formal names at their fixed positions and the
   explicit call-block `caller` keyword; unmatched keywords cannot introduce
   locals or callable identities;
-- macro declaration visibility follows an explicit lexical macro frame rather
-  than the dynamically active value or block scope; loop, caller, and outer-
-  macro locals cannot be captured or exported accidentally, and macro
-  declarations inside output captures are rejected before execution;
+- macro declaration visibility separates local lexical bindings, runtime value
+  frames, and shared exports; exported replacements cannot overwrite a root
+  lexical policy binding, loop, caller, and outer-macro locals cannot be
+  captured or exported accidentally, and macro declarations inside output
+  captures are rejected before execution;
 - standalone blocks carry no inheritance chain and synthesize no `super`
   authority; call blocks target only macros, and their `caller` handle cannot
   cross or be silently discarded at capability or built-in boundaries;

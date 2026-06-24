@@ -67,6 +67,8 @@ fallthrough preservation, callable-boundary rejection, structured
 cause-free public diagnostics, declaration-specific formal validation,
 lexical macro export and invocation frames across root, blocks, loops, macros,
 callers, conditionals, and switches, plus capture-declaration rejection,
+root lexical bindings versus block and macro exports, declaration-order
+collisions, strict callable identity, and capability-guard preservation,
 exact dotted-filter capability dispatch and registry-name rejection,
 filter-block AST lowering, body-before-argument ordering, fail-before-capture
 validation, nested capture, and package-entrypoint dispatch,

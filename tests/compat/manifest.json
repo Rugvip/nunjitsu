@@ -642,12 +642,12 @@
       "upstream": {"id":"tests/compiler.js:74","file":"tests/compiler.js","test":"should compile macro calls inside blocks"},
       "status": "adapted",
       "reason": "Macro calls and lexical declarations inside standalone inline blocks are verified with fixed autoescape false.",
-      "cases": ["compiler-macro-lexical-frames"]
+      "cases": ["compiler-macro-lexical-frames","compiler-macro-export-collisions"]
     },
     {
       "upstream": {"id":"tests/compiler.js:75","file":"tests/compiler.js","test":"should compile macros defined in one block and called in another"},
       "status": "ported",
-      "cases": ["compiler-macro-defined-across-blocks","compiler-macro-lexical-frames"]
+      "cases": ["compiler-macro-defined-across-blocks","compiler-macro-lexical-frames","compiler-macro-export-collisions"]
     },
     {
       "upstream": {"id":"tests/compiler.js:76","file":"tests/compiler.js","test":"should compile macros that include other templates"},

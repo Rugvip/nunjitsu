@@ -110,13 +110,18 @@ normal scope and closed-value lookup before dispatch. Registered capabilities
 carry an evaluator-owned identity mapped privately to one exact host callback;
 call-site syntax never selects host authority.
 
-Macro declaration frames are lexical and separate from ordinary value scopes.
-Root, standalone block, nested block, and ordinary macro bodies export macro
-names to the render's template frame. Loops and synthetic caller bodies keep
-declarations local, while `if` and `switch` inherit their surrounding macro
-frame. Ordinary macro invocations use the template frame as their parent and
-therefore do not close over loop variables, caller arguments, or outer-macro
-parameters. Synthetic callers retain only their explicit call-site value scope.
+Macro declarations use three separate map-backed layers: lexical bindings for
+one compiled-function-equivalent body, runtime value frames, and shared
+exported template bindings. Root expressions retain declaration-ordered local
+`set` and macro slots even when an independently evaluated block or macro body
+exports the same name. Block bodies inherit runtime frame values but not root
+macro slots; ordinary macro bodies start with a fresh frame and resolve
+unbound names through current exports. Root, standalone block, nested block,
+and ordinary macro bodies export macro names. Loops and synthetic caller bodies
+keep declarations local, while `if` and `switch` inherit their surrounding
+frame. Ordinary macros therefore do not close over loop variables, caller
+arguments, or outer-macro parameters. Synthetic callers retain only their
+explicit call-site value and lexical scopes.
 
 Operation validation precedes attacker-controlled operands. Call blocks resolve
 and require a macro before evaluating arguments or registering their caller

@@ -96,12 +96,15 @@ const indexedValueScratchBytes = 32;
 interface MacroDefinition {
   readonly node: AstCallableBodyNode;
   readonly scope: RuntimeScope;
+  readonly bindingScope?: RuntimeScope;
   readonly invocationScope: RuntimeScope;
 }
 
 interface MacroBindingContext {
   readonly bindingScope: RuntimeScope;
   readonly invocationScope: RuntimeScope;
+  readonly exportsMacros: boolean;
+  readonly exportsAssignments: boolean;
 }
 
 /** One non-materializing view over values accepted by a template loop. */
@@ -188,8 +191,14 @@ class Evaluator {
     for (const [name, value] of context.entries()) {
       contextScope.setReadonly(name, value);
     }
-    const scope = contextScope.child(true);
-    const macroContext = createMacroBindingContext(scope, scope);
+    const exportScope = contextScope.child(true);
+    const scope = exportScope.child(true);
+    const macroContext = createMacroBindingContext(
+      new RuntimeScope(),
+      exportScope,
+      true,
+      true,
+    );
     const output: OutputTarget = [];
     try {
       this.#renderTemplate(ast, scope, macroContext, output, 0);
@@ -280,7 +289,11 @@ class Evaluator {
           scope: macroContext.invocationScope,
           invocationScope: macroContext.invocationScope,
         });
-        macroContext.bindingScope.set(name, new RuntimeCallable('macro', id));
+        const handle = new RuntimeCallable('macro', id);
+        macroContext.bindingScope.set(name, handle);
+        if (macroContext.exportsMacros) {
+          macroContext.invocationScope.set(name, handle);
+        }
         return;
       }
       case 'CallBlock':
@@ -330,13 +343,16 @@ class Evaluator {
     output: OutputTarget,
     depth: number,
   ): void {
+    const blockScope = scope.child(true);
     const blockMacroContext = createMacroBindingContext(
+      new RuntimeScope(),
       macroContext.invocationScope,
-      macroContext.invocationScope,
+      true,
+      false,
     );
     this.#evaluateNode(
       node.body,
-      scope.child(true),
+      blockScope,
       blockMacroContext,
       output,
       depth + 1,
@@ -375,8 +391,10 @@ class Evaluator {
     const entries = iterableEntries(value, targets.length);
     const loopScope = scope.child();
     const loopMacroContext = createMacroBindingContext(
-      loopScope,
+      macroContext.bindingScope.child(),
       macroContext.invocationScope,
+      false,
+      false,
     );
     let index = 0;
     for (const entry of entries.values) {
@@ -428,10 +446,24 @@ class Evaluator {
     }
     if (targets.length === 1) {
       bindAssignment(targets[0]!, value, scope);
+      bindAssignment(targets[0]!, value, macroContext.bindingScope);
+      this.#exportAssignment(targets[0]!, value, macroContext);
       return;
     }
     for (const target of targets) {
       bindAssignment(target, value, scope);
+      bindAssignment(target, value, macroContext.bindingScope);
+      this.#exportAssignment(target, value, macroContext);
+    }
+  }
+
+  #exportAssignment(
+    target: AstNode,
+    value: RuntimeValue,
+    macroContext: MacroBindingContext,
+  ): void {
+    if (macroContext.exportsAssignments) {
+      macroContext.invocationScope.set(symbolName(target), value);
     }
   }
 
@@ -477,6 +509,10 @@ class Evaluator {
       }
       case 'Symbol': {
         const name = symbolName(node);
+        const binding = macroContext.bindingScope.get(name);
+        if (binding !== undefined || macroContext.bindingScope.has(name)) {
+          return binding;
+        }
         const value = scope.get(name);
         if (value !== undefined || scope.has(name)) {
           return value;
@@ -643,7 +679,12 @@ class Evaluator {
       case 'Capture':
         return this.#capture(node.body, scope.child(), macroContext, depth + 1, false);
       case 'Caller':
-        return this.#registerCaller(node, scope, macroContext.invocationScope);
+        return this.#registerCaller(
+          node,
+          scope,
+          macroContext.bindingScope,
+          macroContext.invocationScope,
+        );
       default:
         throw new Error(`Unexpected expression node ${node.type}`);
     }
@@ -870,7 +911,12 @@ class Evaluator {
     const keyword = new Map(ordinaryArguments.keyword);
     keyword.set(
       'caller',
-      this.#registerCaller(node.caller, scope, macroContext.invocationScope),
+      this.#registerCaller(
+        node.caller,
+        scope,
+        macroContext.bindingScope,
+        macroContext.invocationScope,
+      ),
     );
     const arguments_ = Object.freeze({
       positional: ordinaryArguments.positional,
@@ -987,10 +1033,11 @@ class Evaluator {
   #registerCaller(
     node: AstCallableBodyNode,
     scope: RuntimeScope,
+    bindingScope: RuntimeScope,
     invocationScope: RuntimeScope,
   ): RuntimeCallable {
     const id = this.#nextCallableId++;
-    this.#macros.set(id, { node, scope, invocationScope });
+    this.#macros.set(id, { node, scope, bindingScope, invocationScope });
     return new RuntimeCallable('caller', id);
   }
 
@@ -1005,10 +1052,17 @@ class Evaluator {
     }
     const local = definition.scope.child(true);
     const bodyMacroContext = definition.node.type === 'Caller'
-      ? createMacroBindingContext(local, definition.invocationScope)
+      ? createMacroBindingContext(
+        definition.bindingScope?.child(true) ?? new RuntimeScope(),
+        definition.invocationScope,
+        false,
+        false,
+      )
       : createMacroBindingContext(
+        new RuntimeScope(),
         definition.invocationScope,
-        definition.invocationScope,
+        true,
+        false,
       );
     const args = definition.node.args;
     if (args.type !== 'NodeList') {
@@ -1589,8 +1643,15 @@ function validateUniqueBlocks(ast: AstNode): void {
 function createMacroBindingContext(
   bindingScope: RuntimeScope,
   invocationScope: RuntimeScope,
+  exportsMacros: boolean,
+  exportsAssignments: boolean,
 ): MacroBindingContext {
-  return Object.freeze({ bindingScope, invocationScope });
+  return Object.freeze({
+    bindingScope,
+    invocationScope,
+    exportsMacros,
+    exportsAssignments,
+  });
 }
 
 function visitAst(node: AstNode, visitor: (node: AstNode) => void): void {

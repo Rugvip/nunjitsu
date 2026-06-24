@@ -350,15 +350,17 @@ receiver, or exposing a host function. Callable-valued built-in members follow
 the same rule, while stateful method lookup remains fresh. These maps and
 handles belong to one evaluator and are discarded after the render.
 
-Macro binding uses a separate immutable lexical context containing a name-
-binding scope and an invocation-parent scope. Root and standalone block frames
-export names to the template scope, including nested blocks and blocks reached
-from loops. Ordinary macro bodies use the same export frame. Loop bodies and
-synthetic caller bodies bind macros locally, but ordinary macros declared there
-still invoke against the template scope and cannot capture loop, caller, or
-outer-macro locals. `if` and `switch` preserve the current macro frame.
-Synthetic callers are the sole callable bodies whose invocation parent retains
-their explicitly confined call-site scope.
+Macro binding keeps compiled-function lexical slots, runtime value frames, and
+the shared export scope distinct. Root `set` and macro declarations update both
+their stable declaration-ordered lexical slot and the shared exports. A macro
+declared in a block or ordinary macro body updates that body's local lexical
+slot and the shared exports without replacing an existing root slot. Root
+expressions therefore keep their original local binding, while ordinary macro
+bodies use fresh frames and observe the newest export. Block value frames still
+inherit root or loop `set` values, but root macro slots are not part of that
+runtime frame. Loop and synthetic caller macro declarations remain local; `if`
+and `switch` retain the containing lexical/export policy. Synthetic callers
+alone retain their explicitly confined call-site value and lexical scopes.
 
 Block-set and filter-block captures reject nested macro declarations during
 complete parsing. Nunjucks's generated JavaScript has inconsistent failures for

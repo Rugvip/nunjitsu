@@ -863,6 +863,12 @@
       "template": "{% macro root() %}R{% endmacro %}{{ root() }}|{{ root is callable }}||{% block outerA %}{% macro blockMacro() %}B{% endmacro %}{{ blockMacro() }}{% endblock %}|{{ blockMacro is callable }}|{{ blockMacro() }}||{% block outerB %}{% block innerB %}{% macro nestedBlockMacro() %}N{% endmacro %}{{ nestedBlockMacro() }}{% endblock %}{% endblock %}|{{ nestedBlockMacro is callable }}|{{ nestedBlockMacro() }}||{% for item in [7] %}{% macro loopMacro() %}[{{ item }}]{% endmacro %}{{ loopMacro() }}{% endfor %}|{{ loopMacro is callable }}||{% macro outer(value) %}{% macro nestedMacro() %}[{{ value }}]{% endmacro %}{{ nestedMacro() }}{% endmacro %}{{ outer(7) }}|{{ nestedMacro is callable }}|{{ nestedMacro() }}||{% for item in [7] %}{% block innerC %}{% macro blockInLoop() %}[{{ item }}]{% endmacro %}{{ blockInLoop() }}{% endblock %}{% endfor %}|{{ blockInLoop is callable }}|{{ blockInLoop() }}||{% block outerD %}{% for item in [7] %}{% macro loopInBlock() %}[{{ item }}]{% endmacro %}{{ loopInBlock() }}{% endfor %}{% endblock %}|{{ loopInBlock is callable }}||{% macro wrapper() %}{{ caller() }}{% endmacro %}{% call wrapper() %}{% macro callerMacro() %}C{% endmacro %}{{ callerMacro() }}{% endcall %}|{{ callerMacro is callable }}||{% set shared=\"root\" %}{% macro showValue() %}[{{ shared }}]{% endmacro %}{% block outerE %}{% set shared=\"block\" %}{{ showValue() }}{% endblock %}|{{ showValue() }}||{% if true %}{% macro ifMacro() %}I{% endmacro %}{% endif %}{{ ifMacro is callable }}|{{ ifMacro() }}||{% switch 1 %}{% case 1 %}{% macro switchMacro() %}S{% endmacro %}{% endswitch %}{{ switchMacro is callable }}|{{ switchMacro() }}",
       "context": {},
       "expected": "R|true||B|true|B||N|true|N||[]|false||[]|true|[]||[]|true|[]||[]|false||C|false||[root]|[root]||true|I||true|S"
+    },
+    {
+      "id": "compiler-macro-export-collisions",
+      "template": "{% set policy=false %}{% block first %}{% macro policy() %}I{% endmacro %}{% endblock %}{{ policy is callable }}:{% macro firstReader() %}{{ policy is callable }}{% endmacro %}{{ firstReader() }}|{% macro value() %}O{% endmacro %}{% block second %}{% macro value() %}I{% endmacro %}{% endblock %}{{ value() }}:{% macro secondReader() %}{{ value() }}{% endmacro %}{{ secondReader() }}",
+      "context": {},
+      "expected": "false:true|O:I"
     }
   ]
 }
