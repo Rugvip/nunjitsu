@@ -1,5 +1,14 @@
 # nunjitsu
 
+## 0.2.0
+
+### Minor Changes
+
+- Replace the generic engine API with named template-renderer exports, including
+  `createTemplateRenderer`, `TemplateRenderer`, the corresponding option,
+  context, and limit types, and `TemplateRenderError` and `TemplateLimitError`.
+  The package continues to provide named exports only.
+
 ## 0.1.1
 
 ### Patch Changes
