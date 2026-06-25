@@ -1,14 +1,14 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { normalizeRenderLimits } from '../../src/limits.ts';
+import { normalizeTemplateRenderLimits } from '../../src/limits.ts';
 import { evaluateTemplate } from '../../src/runtime/evaluator.ts';
 
 const options = {
   cookiecutterCompat: false,
   trimBlocks: false,
   lstripBlocks: false,
-  limits: normalizeRenderLimits(undefined),
+  limits: normalizeTemplateRenderLimits(undefined),
 };
 
 test('evaluates closed expressions, scopes, loops, and assignments synchronously', () => {

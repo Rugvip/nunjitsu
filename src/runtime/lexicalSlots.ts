@@ -4,7 +4,7 @@ import type {
   AstForNode,
   AstNode,
 } from '../parser/ast.ts';
-import { NunjitsuLimitError } from '../limits.ts';
+import { TemplateLimitError } from '../limits.ts';
 import type { RuntimeValue } from './value.ts';
 
 /** Mutable slot inventory used only while building one compiled frame plan. */
@@ -308,7 +308,7 @@ export function planLexicalSlots(
         maximumExpansionWork !== Number.POSITIVE_INFINITY &&
         expansionWork > maximumExpansionWork
       ) {
-        throw new NunjitsuLimitError('workUnits', {
+        throw new TemplateLimitError('workUnits', {
           phase: 'evaluate',
           configured: maximumExpansionWork,
           observed: expansionWork,

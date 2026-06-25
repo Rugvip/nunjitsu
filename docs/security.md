@@ -14,7 +14,7 @@ Assume an attacker controls the complete template source and every value passed
 through an untrusted context. The attacker may deliberately trigger unusual
 syntax, coercion, recursion, large outputs, errors, and capability calls.
 
-The engine is responsible for preventing that input from:
+The renderer is responsible for preventing that input from:
 
 - executing generated or dynamically constructed JavaScript;
 - reaching host globals, prototypes, constructors, getters, methods, or module
@@ -29,7 +29,7 @@ Templates execute only through parser and interpreter operations implemented by
 Nunjitsu. The runtime does not use `eval`, `Function`, `node:vm`, generated
 JavaScript, or template-controlled dynamic imports.
 
-Every context and capability result is recursively copied into engine-owned
+Every context and capability result is recursively copied into renderer-owned
 values. Scopes and records are private and map-backed, and all lookup,
 coercion, comparison, iteration, and call behavior is implemented by closed
 value kind. The names `constructor`, `prototype`, and `__proto__` are reserved
@@ -59,7 +59,7 @@ original snapshot.
 ## Capabilities
 
 Filters and global functions are trusted application code. Registering one
-grants every template rendered by that engine permission to invoke it with
+grants every template rendered by that renderer permission to invoke it with
 attacker-controlled arguments.
 
 Keep capabilities narrow:
@@ -93,7 +93,7 @@ Every render starts with cooperative limits:
 | `scratchBytes` | `67_108_864` | Estimated data supplied to one filter |
 | `capabilityCalls` | `4_096` | Registered filter and global calls |
 
-Applications can override individual values through `RenderOptions.limits`.
+Applications can override individual values through `TemplateRenderOptions.limits`.
 Each override must be a non-negative safe integer or `Infinity`.
 
 These checks are availability safeguards, not a hard memory limit, exact CPU
@@ -103,11 +103,11 @@ strong resource containment or protection from bugs in trusted capabilities.
 ## Failures and diagnostics
 
 API validation errors are reported before template evaluation. Parser and
-runtime failures use `NunjitsuRenderError`; exhausted resource limits use
-`NunjitsuLimitError`. Rendering is fail-stop and never returns partial output.
+runtime failures use `TemplateRenderError`; exhausted resource limits use
+`TemplateLimitError`. Rendering is fail-stop and never returns partial output.
 
-Public render errors contain engine-owned, bounded, single-line diagnostics and
-safe template coordinates when available. They do not retain the internal
+Public render errors contain renderer-owned, bounded, single-line diagnostics
+and safe template coordinates when available. They do not retain the internal
 exception or a capability-thrown object as `cause`. Applications should still
 avoid returning diagnostics directly to untrusted clients because a trusted
 capability may include sensitive information in its own error message.

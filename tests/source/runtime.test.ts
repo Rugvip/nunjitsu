@@ -3,9 +3,9 @@ import test from 'node:test';
 import nunjucks from 'nunjucks';
 
 import {
-  createEngine,
-  NunjitsuLimitError,
-  NunjitsuRenderError,
+  createTemplateRenderer,
+  TemplateLimitError,
+  TemplateRenderError,
   type TemplateValue,
 } from '../../src/index.ts';
 import {
@@ -16,7 +16,7 @@ import {
 } from '../../src/runtime/value.ts';
 
 test('renders control flow, loops, macros, call blocks, and assignments', () => {
-  const engine = createEngine();
+  const engine = createTemplateRenderer();
   const source = [
     '{% set prefix = "item" %}',
     '{% macro row(value, suffix="!") %}${{ prefix }}:${{ value }}${{ suffix }}{% endmacro %}',
@@ -67,7 +67,7 @@ test('matches Nunjucks regex literals in call-block signatures', () => {
     { value: 'r / 2', body: '${{ value }}' },
   ];
   for (const cookiecutterCompat of [false, true]) {
-    const engine = createEngine({ cookiecutterCompat });
+    const engine = createTemplateRenderer({ cookiecutterCompat });
     const oracle = new nunjucks.Environment(undefined, { autoescape: false });
     for (const case_ of cases) {
       const source = [
@@ -105,7 +105,7 @@ test('matches Nunjucks elif and elseif conditional chains', () => {
     '{% if false -%}\nif{% elseif true -%}\nelseif{% else -%}\nelse{% endif %}',
   ];
   for (const cookiecutterCompat of [false, true]) {
-    const engine = createEngine({ cookiecutterCompat });
+    const engine = createTemplateRenderer({ cookiecutterCompat });
     const oracle = new nunjucks.Environment(undefined, { autoescape: false });
     for (const source of sources) {
       assert.equal(engine.render(source), oracle.renderString(source, {}), source);
@@ -117,7 +117,7 @@ test('matches Nunjucks elif and elseif conditional chains', () => {
 test('matches Nunjucks record loop planning and multi-target destructuring', () => {
   const engineCalls: string[] = [];
   const oracleCalls: string[] = [];
-  const engine = createEngine({
+  const engine = createTemplateRenderer({
     globals: {
       records() {
         engineCalls.push('records');
@@ -242,7 +242,7 @@ test('matches Nunjucks record loop planning and multi-target destructuring', () 
       { record: { length: Number.POSITIVE_INFINITY } },
       { limits: { workUnits: 100 } },
     ),
-    NunjitsuLimitError,
+    TemplateLimitError,
   );
   assert.equal(engine.render('clean'), 'clean');
 });
@@ -250,7 +250,7 @@ test('matches Nunjucks record loop planning and multi-target destructuring', () 
 test('rejects invalid targets and nullish destructuring before loop bodies execute', () => {
   let engineCalls = 0;
   let oracleCalls = 0;
-  const engine = createEngine({
+  const engine = createTemplateRenderer({
     globals: {
       privileged() {
         engineCalls += 1;
@@ -271,7 +271,7 @@ test('rejects invalid targets and nullish destructuring before loop bodies execu
     '{% set [a,b] %}${{ privileged() }}{% endset %}${{ privileged() }}',
   ];
   for (const source of invalidTargets) {
-    assert.throws(() => engine.render(source), NunjitsuRenderError);
+    assert.throws(() => engine.render(source), TemplateRenderError);
     assert.throws(() => oracle.renderString(source.replaceAll('${{', '{{'), {}));
     assert.equal(engineCalls, 0);
     assert.equal(oracleCalls, 0);
@@ -300,7 +300,7 @@ test('rejects invalid targets and nullish destructuring before loop bodies execu
     },
   ];
   for (const { source, context } of nullishCases) {
-    assert.throws(() => engine.render(source, context), NunjitsuRenderError);
+    assert.throws(() => engine.render(source, context), TemplateRenderError);
     assert.throws(() => oracle.renderString(source.replaceAll('${{', '{{'), context ?? {}));
     assert.equal(engineCalls, 0);
     assert.equal(oracleCalls, 0);
@@ -311,7 +311,7 @@ test('rejects invalid targets and nullish destructuring before loop bodies execu
 test('matches Nunjucks canonical global and fresh member callable identities', () => {
   let engineCalls = 0;
   let oracleCalls = 0;
-  const engine = createEngine({
+  const engine = createTemplateRenderer({
     globals: {
       p() {
         engineCalls += 1;
@@ -379,7 +379,7 @@ test('uses strict closed identity for switch matching and preserves evaluation o
   const oracleCalls: string[] = [];
   let privilegedCalls = 0;
   let oraclePrivilegedCalls = 0;
-  const engine = createEngine({
+  const engine = createTemplateRenderer({
     globals: {
       p() {
         throw new Error('p must not be called');
@@ -506,7 +506,7 @@ test('uses strict closed identity for switch matching and preserves evaluation o
     '{% case later() %}WRONG',
     '{% default %}D{% endswitch %}',
   ].join('');
-  assert.throws(() => engine.render(failingSource), NunjitsuRenderError);
+  assert.throws(() => engine.render(failingSource), TemplateRenderError);
   assert.throws(() => oracle.renderString(failingSource.replaceAll('${{', '{{'), {}));
   assert.deepEqual(engineCalls, ['value', 'a', 'value', 'fail']);
   assert.deepEqual(oracleCalls, engineCalls);
@@ -516,7 +516,7 @@ test('uses strict closed identity for switch matching and preserves evaluation o
 test('matches Nunjucks declaration ordering and post-keyword positional macro calls', () => {
   let engineDefaultCalls = 0;
   let oracleDefaultCalls = 0;
-  const engine = createEngine({
+  const engine = createTemplateRenderer({
     globals: {
       defaultValue() {
         engineDefaultCalls += 1;
@@ -563,7 +563,7 @@ test('matches Nunjucks declaration ordering and post-keyword positional macro ca
       {},
       { limits: { astNodes: 1 } },
     ),
-    NunjitsuLimitError,
+    TemplateLimitError,
   );
   assert.equal(engine.render('clean'), 'clean');
 });
@@ -572,7 +572,7 @@ test('matches Nunjucks duplicate macro and caller formal binding', () => {
   for (const cookiecutterCompat of [false, true]) {
     const engineEvents: string[] = [];
     const oracleEvents: string[] = [];
-    const engine = createEngine({
+    const engine = createTemplateRenderer({
       cookiecutterCompat,
       globals: {
         probe(value) {
@@ -674,7 +674,7 @@ test('matches Nunjucks duplicate macro and caller formal binding', () => {
       : failingSource;
     assert.throws(
       () => engine.render(engineFailingSource),
-      NunjitsuRenderError,
+      TemplateRenderError,
     );
     assert.throws(
       () => oracle.renderString(failingSource.replaceAll('${{', '{{'), {}),
@@ -689,7 +689,7 @@ test('matches Nunjucks lexical macro declaration frames', () => {
   for (const cookiecutterCompat of [false, true]) {
     const engineEvents: string[] = [];
     const oracleEvents: string[] = [];
-    const engine = createEngine({
+    const engine = createTemplateRenderer({
       cookiecutterCompat,
       globals: {
         mark(value) {
@@ -838,7 +838,7 @@ test('preserves root lexical bindings across exported macro collisions', () => {
   for (const cookiecutterCompat of [false, true]) {
     const engineEvents: string[] = [];
     const oracleEvents: string[] = [];
-    const engine = createEngine({
+    const engine = createTemplateRenderer({
       cookiecutterCompat,
       globals: {
         mark(value) {
@@ -882,7 +882,7 @@ test('preserves root lexical bindings across exported macro collisions', () => {
       '{% block content %}{% macro policy() %}I{% endmacro %}{% endblock %}',
       '${{ policy() }}${{ mark("later") }}',
     ].join('');
-    assert.throws(() => engine.render(engineSource(failingSource)), NunjitsuRenderError);
+    assert.throws(() => engine.render(engineSource(failingSource)), TemplateRenderError);
     assert.throws(
       () => oracle.renderString(failingSource.replaceAll('${{', '{{'), {}),
     );
@@ -950,7 +950,7 @@ test('gives runtime locals precedence over enclosing lexical bindings', () => {
   for (const cookiecutterCompat of [false, true]) {
     const engineEvents: string[] = [];
     const oracleEvents: string[] = [];
-    const engine = createEngine({
+    const engine = createTemplateRenderer({
       cookiecutterCompat,
       globals: {
         mark(value) {
@@ -1005,7 +1005,7 @@ test('gives runtime locals precedence over enclosing lexical bindings', () => {
       ].join(''),
     ];
     for (const source of failingSources) {
-      assert.throws(() => engine.render(engineSource(source)), NunjitsuRenderError);
+      assert.throws(() => engine.render(engineSource(source)), TemplateRenderError);
       assert.throws(
         () => oracle.renderString(source.replaceAll('${{', '{{'), {}),
       );
@@ -1116,7 +1116,7 @@ test('binds static compiler slots before capability resolution', () => {
   for (const cookiecutterCompat of [false, true]) {
     const engineEvents: string[] = [];
     const oracleEvents: string[] = [];
-    const engine = createEngine({
+    const engine = createTemplateRenderer({
       cookiecutterCompat,
       globals: {
         mark(value) {
@@ -1158,7 +1158,7 @@ test('binds static compiler slots before capability resolution', () => {
     oracleEvents.length = 0;
 
     for (const source of failingSources) {
-      assert.throws(() => engine.render(engineSource(source)), NunjitsuRenderError);
+      assert.throws(() => engine.render(engineSource(source)), TemplateRenderError);
       assert.throws(
         () => oracle.renderString(source.replaceAll('${{', '{{'), {}),
       );
@@ -1176,7 +1176,7 @@ test('binds static compiler slots before capability resolution', () => {
     ].join('');
     assert.throws(
       () => engine.render(engineSource(unsupportedLoopTarget)),
-      NunjitsuRenderError,
+      TemplateRenderError,
     );
     assert.deepEqual(engineEvents, []);
     assert.equal(engine.render('clean'), 'clean');
@@ -1276,7 +1276,7 @@ test('preserves inherited compiler slots across defaulted caller parameters', ()
   for (const cookiecutterCompat of [false, true]) {
     const engineEvents: string[] = [];
     const oracleEvents: string[] = [];
-    const engine = createEngine({
+    const engine = createTemplateRenderer({
       cookiecutterCompat,
       globals: {
         mark(value) {
@@ -1325,7 +1325,7 @@ test('preserves inherited compiler slots across defaulted caller parameters', ()
     ].join('');
     assert.throws(
       () => engine.render(engineSource(failingSource)),
-      NunjitsuRenderError,
+      TemplateRenderError,
     );
     assert.throws(
       () => oracle.renderString(failingSource.replaceAll('${{', '{{'), {}),
@@ -1409,7 +1409,7 @@ test('preserves loop compiler state across repeated entries', () => {
   for (const cookiecutterCompat of [false, true]) {
     const engineEvents: string[] = [];
     const oracleEvents: string[] = [];
-    const engine = createEngine({
+    const engine = createTemplateRenderer({
       cookiecutterCompat,
       globals: {
         mark(value) {
@@ -1444,7 +1444,7 @@ test('preserves loop compiler state across repeated entries', () => {
     ].join('');
     assert.throws(
       () => engine.render(engineSource(failingSource)),
-      NunjitsuRenderError,
+      TemplateRenderError,
     );
     assert.throws(
       () => oracle.renderString(failingSource.replaceAll('${{', '{{'), {}),
@@ -1552,7 +1552,7 @@ test('matches Nunjucks branch-specific multi-target loop scopes', () => {
   for (const cookiecutterCompat of [false, true]) {
     const engineEvents: string[] = [];
     const oracleEvents: string[] = [];
-    const engine = createEngine({
+    const engine = createTemplateRenderer({
       cookiecutterCompat,
       globals: {
         privileged() {
@@ -1594,7 +1594,7 @@ test('matches Nunjucks branch-specific multi-target loop scopes', () => {
     ].join('');
     assert.throws(
       () => engine.render(engineSource(failingSource)),
-      NunjitsuRenderError,
+      TemplateRenderError,
     );
     assert.throws(
       () => oracle.renderString(failingSource.replaceAll('${{', '{{'), {}),
@@ -1666,7 +1666,7 @@ test('selects safe-string loop compiler branches with iteration semantics', () =
   for (const cookiecutterCompat of [false, true]) {
     const engineEvents: string[] = [];
     const oracleEvents: string[] = [];
-    const engine = createEngine({
+    const engine = createTemplateRenderer({
       cookiecutterCompat,
       globals: {
         mark(value) {
@@ -1704,7 +1704,7 @@ test('selects safe-string loop compiler branches with iteration semantics', () =
     ].join('');
     assert.throws(
       () => engine.render(engineSource(failingSource)),
-      NunjitsuRenderError,
+      TemplateRenderError,
     );
     assert.throws(
       () => oracle.renderString(failingSource.replaceAll('${{', '{{'), {}),
@@ -1716,7 +1716,7 @@ test('selects safe-string loop compiler branches with iteration semantics', () =
 });
 
 test('matches built-in filters, tests, globals, comments, and raw regions', () => {
-  const engine = createEngine();
+  const engine = createTemplateRenderer();
   assert.equal(
     engine.render([
       '{# omitted #}',
@@ -1755,7 +1755,7 @@ test('matches opaque Nunjucks comment termination', () => {
     for (const options of optionCases) {
       const engineEvents: string[] = [];
       const oracleEvents: string[] = [];
-      const engine = createEngine({
+      const engine = createTemplateRenderer({
         cookiecutterCompat,
         ...options,
         globals: {
@@ -1801,7 +1801,7 @@ test('matches opaque Nunjucks comment termination', () => {
 });
 
 test('matches stateful range, cycler, and joiner globals', () => {
-  const engine = createEngine({ cookiecutterCompat: true });
+  const engine = createTemplateRenderer({ cookiecutterCompat: true });
   assert.equal(
     engine.render('{% for i in range(10, 5, -2.5) %}{{ i }}{% endfor %}'),
     '107.5',
@@ -1827,7 +1827,7 @@ test('matches empty cycler state transitions and capability branches', () => {
   for (const cookiecutterCompat of [false, true]) {
     const engineEvents: string[] = [];
     const oracleEvents: string[] = [];
-    const engine = createEngine({
+    const engine = createTemplateRenderer({
       cookiecutterCompat,
       globals: {
         mark(value) {
@@ -1893,7 +1893,7 @@ test('preserves sparse array holes across runtime and capability boundaries', ()
     const oracleEvents: string[] = [];
     const engineCopies: Array<readonly [boolean, boolean, boolean]> = [];
     const oracleCopies: Array<readonly [boolean, boolean]> = [];
-    const engine = createEngine({
+    const engine = createTemplateRenderer({
       cookiecutterCompat,
       globals: {
         sparseValue: sparse,
@@ -1998,14 +1998,14 @@ test('preserves sparse array holes across runtime and capability boundaries', ()
         { values: Array(20) as TemplateValue },
         { limits: { workUnits: 5 } },
       ),
-      NunjitsuLimitError,
+      TemplateLimitError,
     );
     assert.equal(engine.render('clean'), 'clean');
   }
 });
 
 test('preserves closed value types through range, sum, and joiner', () => {
-  const engine = createEngine({ cookiecutterCompat: true });
+  const engine = createTemplateRenderer({ cookiecutterCompat: true });
   const oracle = new nunjucks.Environment(undefined, { autoescape: false });
   const sources = [
     '{{ range(1, missing) | dump }}|{{ range(2, missing, -1) | dump }}|',
@@ -2033,7 +2033,7 @@ test('preserves closed value types through range, sum, and joiner', () => {
 });
 
 test('matches Nunjucks sort and dictsort comparison semantics', () => {
-  const engine = createEngine({ cookiecutterCompat: true });
+  const engine = createTemplateRenderer({ cookiecutterCompat: true });
   const oracle = new nunjucks.Environment(undefined, { autoescape: false });
   const sources = [
     '{{ [2, "10"] | sort | dump }}',
@@ -2063,7 +2063,7 @@ test('matches Nunjucks sort and dictsort comparison semantics', () => {
 
   let engineCalls = 0;
   let oracleCalls = 0;
-  const capabilityEngine = createEngine({
+  const capabilityEngine = createTemplateRenderer({
     cookiecutterCompat: true,
     globals: {
       privileged() {
@@ -2091,7 +2091,7 @@ test('matches Nunjucks sort and dictsort comparison semantics', () => {
 });
 
 test('matches Nunjucks replacement and safe-string identity semantics', () => {
-  const engine = createEngine({ cookiecutterCompat: true });
+  const engine = createTemplateRenderer({ cookiecutterCompat: true });
   const oracle = new nunjucks.Environment(undefined, { autoescape: false });
   const sources = [
     '{{ 123 | replace("x", "y", 0) | dump }}',
@@ -2166,7 +2166,7 @@ test('matches Nunjucks empty safe-string truthiness', () => {
   ];
 
   for (const cookiecutterCompat of [false, true]) {
-    const engine = createEngine({ cookiecutterCompat });
+    const engine = createTemplateRenderer({ cookiecutterCompat });
     for (const source of sources) {
       const engineSource = cookiecutterCompat
         ? source
@@ -2180,7 +2180,7 @@ test('matches Nunjucks empty safe-string truthiness', () => {
 
     const engineCalls: string[] = [];
     const oracleCalls: string[] = [];
-    const capabilityEngine = createEngine({
+    const capabilityEngine = createTemplateRenderer({
       cookiecutterCompat,
       globals: {
         later() {
@@ -2262,7 +2262,7 @@ test('preserves empty safe strings through Nunjucks indent short-circuits', () =
   ] as const;
 
   for (const cookiecutterCompat of [false, true]) {
-    const engine = createEngine({ cookiecutterCompat });
+    const engine = createTemplateRenderer({ cookiecutterCompat });
     const oracle = new nunjucks.Environment(undefined, { autoescape: false });
     for (const [inputName, input] of [...safeInputs, ...controls]) {
       for (const [widthName, width] of widths) {
@@ -2294,7 +2294,7 @@ test('preserves empty safe strings through Nunjucks indent short-circuits', () =
       ['flag', true],
       ['keyword', 'ignored'],
     ]);
-    const capabilityEngine = createEngine({
+    const capabilityEngine = createTemplateRenderer({
       cookiecutterCompat,
       globals: {
         mark(value) {
@@ -2403,7 +2403,7 @@ test('matches Nunjucks array-like record filter semantics', () => {
   ];
 
   for (const cookiecutterCompat of [false, true]) {
-    const engine = createEngine({ cookiecutterCompat });
+    const engine = createTemplateRenderer({ cookiecutterCompat });
     for (const source of sources) {
       const engineSource = cookiecutterCompat
         ? source
@@ -2417,7 +2417,7 @@ test('matches Nunjucks array-like record filter semantics', () => {
 
     let engineCalls = 0;
     let oracleCalls = 0;
-    const branchEngine = createEngine({
+    const branchEngine = createTemplateRenderer({
       cookiecutterCompat,
       globals: {
         privileged() {
@@ -2504,7 +2504,7 @@ test('matches Nunjucks join and sum attribute projection semantics', () => {
       ['attribute', 'x'],
       ['keyword', 'ignored'],
     ]);
-    const engine = createEngine({
+    const engine = createTemplateRenderer({
       cookiecutterCompat,
       globals: {
         empty() {
@@ -2727,7 +2727,7 @@ test('matches filter-specific Nunjucks attribute lookup semantics', () => {
   ];
 
   for (const cookiecutterCompat of [false, true]) {
-    const engine = createEngine({ cookiecutterCompat });
+    const engine = createTemplateRenderer({ cookiecutterCompat });
     for (const source of sources) {
       const engineSource = cookiecutterCompat
         ? source
@@ -2765,7 +2765,7 @@ test('ignores surplus selectattr tests after safe argument evaluation', () => {
   for (const cookiecutterCompat of [false, true]) {
     const engineEvents: string[] = [];
     const oracleEvents: string[] = [];
-    const engine = createEngine({
+    const engine = createTemplateRenderer({
       cookiecutterCompat,
       globals: {
         mark(value) {
@@ -2825,12 +2825,12 @@ test('ignores surplus selectattr tests after safe argument evaluation', () => {
     assert.deepEqual(oracleEvents, engineEvents);
 
     const nullishSource = '{{ [null] | selectattr("allowed", "missing") | dump }}';
-    assert.throws(() => engine.render(engineSource(nullishSource)), NunjitsuRenderError);
+    assert.throws(() => engine.render(engineSource(nullishSource)), TemplateRenderError);
     assert.throws(() => oracle.renderString(nullishSource, {}));
     assert.equal(engine.render('clean'), 'clean');
 
     let laterCalls = 0;
-    const callableEngine = createEngine({
+    const callableEngine = createTemplateRenderer({
       cookiecutterCompat,
       globals: {
         authority() {
@@ -2849,7 +2849,7 @@ test('ignores surplus selectattr tests after safe argument evaluation', () => {
     ]) {
       assert.throws(
         () => callableEngine.render(engineSource(source), { rows }),
-        NunjitsuRenderError,
+        TemplateRenderError,
       );
       assert.equal(laterCalls, 0);
       assert.equal(callableEngine.render('clean'), 'clean');
@@ -2878,7 +2878,7 @@ test('enumerates record keys in Nunjucks property order', () => {
   ];
 
   for (const cookiecutterCompat of [false, true]) {
-    const engine = createEngine({ cookiecutterCompat });
+    const engine = createTemplateRenderer({ cookiecutterCompat });
     for (const source of sources) {
       const engineSource = cookiecutterCompat
         ? source
@@ -2892,7 +2892,7 @@ test('enumerates record keys in Nunjucks property order', () => {
 
     const engineCalls: string[] = [];
     const oracleCalls: string[] = [];
-    const capabilityEngine = createEngine({
+    const capabilityEngine = createTemplateRenderer({
       cookiecutterCompat,
       globals: {
         observe(value) {
@@ -2920,7 +2920,7 @@ test('enumerates record keys in Nunjucks property order', () => {
     assert.deepEqual(engineCalls, ['1', '2', 'x']);
     assert.deepEqual(oracleCalls, engineCalls);
 
-    const preparedEngine = createEngine({ cookiecutterCompat });
+    const preparedEngine = createTemplateRenderer({ cookiecutterCompat });
     const prepared = preparedEngine.prepareContext({
       record: { x: 'initial', 10: 'ten' },
     });
@@ -2963,7 +2963,7 @@ test('enumerates record keys in Nunjucks property order', () => {
 });
 
 test('implements the closed Nunjucks filter and test standard library', () => {
-  const engine = createEngine({ cookiecutterCompat: true });
+  const engine = createTemplateRenderer({ cookiecutterCompat: true });
   const filterCases: Array<readonly [string, string]> = [
     ['{{ -3 | abs }}', '3'],
     ['{{ [1,2,3] | batch(2, 0) | dump }}', '[[1,2],[3]]'],
@@ -3042,7 +3042,7 @@ test('implements the closed Nunjucks filter and test standard library', () => {
 });
 
 test('matches closed standard-library coercion and input domains', () => {
-  const engine = createEngine({ cookiecutterCompat: true });
+  const engine = createTemplateRenderer({ cookiecutterCompat: true });
   const oracle = new nunjucks.Environment(undefined, { autoescape: false });
   const outcome = (render: () => string): readonly ['output', string] | readonly ['error'] => {
     try {
@@ -3195,7 +3195,7 @@ test('matches closed standard-library coercion and input domains', () => {
 
   const resetValues: unknown[] = [];
   const oracleResetValues: unknown[] = [];
-  const resetEngine = createEngine({
+  const resetEngine = createTemplateRenderer({
     cookiecutterCompat: true,
     filters: {
       inspect(value) {
@@ -3265,7 +3265,7 @@ test('matches Nunjucks text-filter short-circuit order', () => {
   for (const cookiecutterCompat of [false, true]) {
     const engineCalls: string[] = [];
     const oracleCalls: string[] = [];
-    const engine = createEngine({
+    const engine = createTemplateRenderer({
       cookiecutterCompat,
       globals: {
         observe(value) {
@@ -3319,7 +3319,7 @@ test('matches Nunjucks text-filter short-circuit order', () => {
     }
 
     let laterCalls = 0;
-    const callableEngine = createEngine({
+    const callableEngine = createTemplateRenderer({
       cookiecutterCompat,
       globals: {
         authority() {
@@ -3347,7 +3347,7 @@ test('matches Nunjucks text-filter short-circuit order', () => {
       const engineSource = cookiecutterCompat
         ? source
         : source.replaceAll('{{', '${{');
-      assert.throws(() => callableEngine.render(engineSource), NunjitsuRenderError);
+      assert.throws(() => callableEngine.render(engineSource), TemplateRenderError);
       assert.equal(laterCalls, 0);
       assert.equal(callableEngine.render('clean'), 'clean');
     }
@@ -3404,7 +3404,7 @@ test('matches Nunjucks strict built-in option types', () => {
   ];
 
   for (const cookiecutterCompat of [false, true]) {
-    const engine = createEngine({ cookiecutterCompat });
+    const engine = createTemplateRenderer({ cookiecutterCompat });
     for (const source of successSources) {
       const engineSource = cookiecutterCompat
         ? source
@@ -3418,7 +3418,7 @@ test('matches Nunjucks strict built-in option types', () => {
 
     const engineCalls: string[] = [];
     const oracleCalls: string[] = [];
-    const capabilityEngine = createEngine({
+    const capabilityEngine = createTemplateRenderer({
       cookiecutterCompat,
       globals: {
         before() {
@@ -3489,7 +3489,7 @@ test('matches Nunjucks strict built-in option types', () => {
     assert.deepEqual(oracleCalls, engineCalls);
 
     let laterCalls = 0;
-    const callableEngine = createEngine({
+    const callableEngine = createTemplateRenderer({
       cookiecutterCompat,
       globals: {
         authority() {
@@ -3510,7 +3510,7 @@ test('matches Nunjucks strict built-in option types', () => {
       const engineSource = cookiecutterCompat
         ? source
         : source.replaceAll('{{', '${{');
-      assert.throws(() => callableEngine.render(engineSource), NunjitsuRenderError);
+      assert.throws(() => callableEngine.render(engineSource), TemplateRenderError);
       assert.equal(laterCalls, 0);
       assert.equal(callableEngine.render('clean'), 'clean');
     }
@@ -3584,7 +3584,7 @@ test('lowers built-in filter keyword arguments like Nunjucks', () => {
   ];
 
   for (const cookiecutterCompat of [false, true]) {
-    const engine = createEngine({ cookiecutterCompat });
+    const engine = createTemplateRenderer({ cookiecutterCompat });
     for (const source of successSources) {
       const engineSource = cookiecutterCompat
         ? source
@@ -3610,7 +3610,7 @@ test('lowers built-in filter keyword arguments like Nunjucks', () => {
       ['attribute-positional', 'y'],
       ['attribute-keyword', 'x'],
     ]);
-    const capabilityEngine = createEngine({
+    const capabilityEngine = createTemplateRenderer({
       cookiecutterCompat,
       globals: {
         later() {
@@ -3712,7 +3712,7 @@ test('lowers built-in filter keyword arguments like Nunjucks', () => {
     }
 
     let laterCalls = 0;
-    const callableEngine = createEngine({
+    const callableEngine = createTemplateRenderer({
       cookiecutterCompat,
       globals: {
         authority() {
@@ -3747,7 +3747,7 @@ test('lowers built-in filter keyword arguments like Nunjucks', () => {
       const engineSource = cookiecutterCompat
         ? source
         : source.replaceAll('{{', '${{');
-      assert.throws(() => callableEngine.render(engineSource), NunjitsuRenderError);
+      assert.throws(() => callableEngine.render(engineSource), TemplateRenderError);
       assert.equal(laterCalls, 0);
       assert.equal(callableEngine.render('clean'), 'clean');
     }
@@ -3765,7 +3765,7 @@ test('lowers built-in filter keyword arguments like Nunjucks', () => {
           {},
           { limits: { scratchBytes: 19 } },
         ),
-        NunjitsuLimitError,
+        TemplateLimitError,
       );
       assert.equal(capabilityEngine.render('clean'), 'clean');
     }
@@ -3779,7 +3779,7 @@ test('selects random values without consuming the host Math.random stream', t =>
     throw new Error('Math.random must not be called during rendering');
   });
 
-  const engine = createEngine({ cookiecutterCompat: true });
+  const engine = createTemplateRenderer({ cookiecutterCompat: true });
   assert.equal(engine.render('{{ [] | random | default("empty") }}'), 'empty');
   assert.equal(engine.render('{{ ["only"] | random }}'), 'only');
   assert.equal(engine.render('{{ {"0":"record",length:1} | random }}'), 'record');
@@ -3793,7 +3793,7 @@ test('selects random values without consuming the host Math.random stream', t =>
 
 test('dispatches only registered synchronous filters and globals', () => {
   const callbackInputs: unknown[] = [];
-  const engine = createEngine({
+  const engine = createTemplateRenderer({
     filters: {
       append(input, suffix) {
         callbackInputs.push(input, suffix);
@@ -3826,7 +3826,7 @@ test('dispatches only registered synchronous filters and globals', () => {
     /Template value "missingGlobal" resolved to undefined and cannot be called/,
   );
 
-  const invalid = createEngine({
+  const invalid = createTemplateRenderer({
     filters: {
       promise() {
         return Promise.resolve('blocked') as never;
@@ -3854,7 +3854,7 @@ test('matches synchronous Nunjucks filter blocks', () => {
   for (const cookiecutterCompat of [false, true]) {
     const engineEvents: string[] = [];
     const oracleEvents: string[] = [];
-    const engine = createEngine({
+    const engine = createTemplateRenderer({
       cookiecutterCompat,
       filters: {
         plain(value) {
@@ -3930,7 +3930,7 @@ test('matches synchronous Nunjucks filter blocks', () => {
     assert.deepEqual(oracleEvents, engineEvents);
     assert.equal(engine.render('clean'), 'clean');
 
-    const whitespaceEngine = createEngine({
+    const whitespaceEngine = createTemplateRenderer({
       cookiecutterCompat,
       trimBlocks: true,
       lstripBlocks: true,
@@ -3954,7 +3954,7 @@ test('matches synchronous Nunjucks filter blocks', () => {
 });
 
 test('supports Cookiecutter variables, jsonify, slices, and Jinja constants', () => {
-  const engine = createEngine({ cookiecutterCompat: true });
+  const engine = createTemplateRenderer({ cookiecutterCompat: true });
   assert.equal(
     engine.render([
       '{{ cookiecutter.name }}|',
@@ -4005,7 +4005,7 @@ test('coerces inert regex values with Nunjucks canonical spelling', () => {
   for (const cookiecutterCompat of [false, true]) {
     const engineEvents: string[] = [];
     const oracleEvents: string[] = [];
-    const engine = createEngine({
+    const engine = createTemplateRenderer({
       cookiecutterCompat,
       filters: {
         observeRegex(input) {
@@ -4072,7 +4072,7 @@ test('coerces inert regex values with Nunjucks canonical spelling', () => {
     assert.deepEqual(engineEvents, oracleEvents);
     assert.throws(
       () => engine.render(engineSource('{{ r/x/gg }}')),
-      NunjitsuRenderError,
+      TemplateRenderError,
     );
     assert.equal(engine.render('clean'), 'clean');
   }
@@ -4097,7 +4097,7 @@ test('serializes inert regex values with Nunjucks JSON shapes', () => {
   for (const cookiecutterCompat of [false, true]) {
     let engineCalls = 0;
     let oracleCalls = 0;
-    const engine = createEngine({
+    const engine = createTemplateRenderer({
       cookiecutterCompat,
       globals: {
         privileged() {
@@ -4144,7 +4144,7 @@ test('serializes inert regex values with Nunjucks JSON shapes', () => {
     assert.equal(engine.render('clean'), 'clean');
   }
 
-  const cookiecutterEngine = createEngine({ cookiecutterCompat: true });
+  const cookiecutterEngine = createTemplateRenderer({ cookiecutterCompat: true });
   const jsonifySource = '{{ [r//yimg,{value:r/nested/}] | jsonify }}';
   const dumpSource = '{{ [r//yimg,{value:r/nested/}] | dump }}';
   const jsonifyOutput = cookiecutterEngine.render(jsonifySource);
@@ -4155,7 +4155,7 @@ test('serializes inert regex values with Nunjucks JSON shapes', () => {
 });
 
 test('matches all upstream Jinja array slice cases', () => {
-  const engine = createEngine({ cookiecutterCompat: true });
+  const engine = createTemplateRenderer({ cookiecutterCompat: true });
   const context = { arr: ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'], n: 1 };
   const cases: Array<readonly [string, string]> = [
     ['arr[1:4]', 'bcd'],
@@ -4220,7 +4220,7 @@ test('matches pinned Jinja slice coercion and lookup semantics', () => {
     ];
 
     for (const cookiecutterCompat of [false, true]) {
-      const engine = createEngine({ cookiecutterCompat });
+      const engine = createTemplateRenderer({ cookiecutterCompat });
       for (const source of sources) {
         const engineSource = cookiecutterCompat
           ? source
@@ -4242,7 +4242,7 @@ test('matches pinned Jinja slice coercion and lookup semantics', () => {
 
       const engineCalls: string[] = [];
       const oracleCalls: string[] = [];
-      const capabilityEngine = createEngine({
+      const capabilityEngine = createTemplateRenderer({
         cookiecutterCompat,
         globals: {
           privileged() {
@@ -4273,7 +4273,7 @@ test('matches pinned Jinja slice coercion and lookup semantics', () => {
       assert.deepEqual(oracleCalls, engineCalls);
 
       let laterCalls = 0;
-      const callableEngine = createEngine({
+      const callableEngine = createTemplateRenderer({
         cookiecutterCompat,
         globals: {
           authority() {
@@ -4294,7 +4294,7 @@ test('matches pinned Jinja slice coercion and lookup semantics', () => {
         const engineSource = cookiecutterCompat
           ? source
           : source.replaceAll('{{', '${{');
-        assert.throws(() => callableEngine.render(engineSource), NunjitsuRenderError);
+        assert.throws(() => callableEngine.render(engineSource), TemplateRenderError);
         assert.equal(laterCalls, 0);
         assert.equal(callableEngine.render('clean'), 'clean');
       }
@@ -4304,7 +4304,7 @@ test('matches pinned Jinja slice coercion and lookup semantics', () => {
         : '${{ ["a","b"][::missing] | dump }}';
       assert.throws(
         () => engine.render(nonProgressingSource),
-        NunjitsuRenderError,
+        TemplateRenderError,
       );
       assert.equal(engine.render('clean'), 'clean');
 
@@ -4313,12 +4313,12 @@ test('matches pinned Jinja slice coercion and lookup semantics', () => {
         : '${{ true[0:100] | dump }}';
       assert.throws(
         () => engine.render(longSource, {}, { limits: { workUnits: 40 } }),
-        NunjitsuLimitError,
+        TemplateLimitError,
       );
       assert.equal(engine.render('clean'), 'clean');
       assert.throws(
         () => engine.render(longSource, {}, { limits: { scratchBytes: 64 } }),
-        NunjitsuLimitError,
+        TemplateLimitError,
       );
       assert.equal(engine.render('clean'), 'clean');
     }
@@ -4328,7 +4328,7 @@ test('matches pinned Jinja slice coercion and lookup semantics', () => {
 });
 
 test('matches applicable upstream runtime edge cases', () => {
-  const engine = createEngine({ cookiecutterCompat: true });
+  const engine = createTemplateRenderer({ cookiecutterCompat: true });
   assert.equal(
     engine.render([
       '{% macro foo(bar, baz) %}{{ bar }} {{ baz }}{% endmacro %}',
@@ -4355,7 +4355,7 @@ test('matches Nunjucks mixed-operator grouping and evaluation order', () => {
   const oracleCalls: string[] = [];
   let privilegedCalls = 0;
   let oraclePrivilegedCalls = 0;
-  const engine = createEngine({
+  const engine = createTemplateRenderer({
     globals: {
       mark(name, value) {
         if (typeof name === 'string') {
@@ -4419,7 +4419,7 @@ test('matches Nunjucks mixed-operator grouping and evaluation order', () => {
   calls.length = 0;
   oracleCalls.length = 0;
   const failureSource = '${{ mark("before", 1) + fail() + mark("after", 2) }}';
-  assert.throws(() => engine.render(failureSource), NunjitsuRenderError);
+  assert.throws(() => engine.render(failureSource), TemplateRenderError);
   assert.throws(() => oracle.renderString(failureSource.replaceAll('${{', '{{'), {}));
   assert.deepEqual(calls, ['before', 'fail']);
   assert.deepEqual(oracleCalls, calls);
@@ -4431,7 +4431,7 @@ test('matches Nunjucks comparison, membership, test, and not grouping', () => {
   const oracleCalls: string[] = [];
   let privilegedCalls = 0;
   let oraclePrivilegedCalls = 0;
-  const engine = createEngine({
+  const engine = createTemplateRenderer({
     globals: {
       mark(name, value) {
         if (typeof name === 'string') {
@@ -4538,7 +4538,7 @@ test('matches Nunjucks comparison, membership, test, and not grouping', () => {
     '1 not in [2] == true',
   ]) {
     const source = `before\${{ ${expression} }}\${{ privileged() }}`;
-    assert.throws(() => engine.render(source), NunjitsuRenderError);
+    assert.throws(() => engine.render(source), TemplateRenderError);
     assert.throws(() => oracle.renderString(source.replaceAll('${{', '{{'), {}));
     assert.equal(privilegedCalls, 0);
     assert.equal(oraclePrivilegedCalls, 0);
@@ -4547,11 +4547,11 @@ test('matches Nunjucks comparison, membership, test, and not grouping', () => {
 
   assert.throws(
     () => engine.render('${{ not 2 == 1 < 1 }}', {}, { limits: { astNodes: 1 } }),
-    NunjitsuLimitError,
+    TemplateLimitError,
   );
   assert.throws(
     () => engine.render('${{ not 2 == 1 < 1 }}', {}, { limits: { workUnits: 1 } }),
-    NunjitsuLimitError,
+    TemplateLimitError,
   );
   assert.equal(engine.render('clean'), 'clean');
 });
@@ -4560,7 +4560,7 @@ test('matches Nunjucks parenthesized comma-expression groups', () => {
   for (const cookiecutterCompat of [false, true]) {
     const engineEvents: string[] = [];
     const oracleEvents: string[] = [];
-    const engine = createEngine({
+    const engine = createTemplateRenderer({
       cookiecutterCompat,
       filters: {
         inspectFilter(value) {
@@ -4660,7 +4660,7 @@ test('rejects Nunjucks-invalid nested conditionals and dictionary keys before ev
       return '';
     },
   };
-  const engine = createEngine({ globals: capabilities });
+  const engine = createTemplateRenderer({ globals: capabilities });
   const oracle = new nunjucks.Environment(undefined, { autoescape: false });
   for (const name of ['a', 'b', 'c', 'f', 'privileged'] as const) {
     oracle.addGlobal(name, (...arguments_: unknown[]) => {
@@ -4682,7 +4682,7 @@ test('rejects Nunjucks-invalid nested conditionals and dictionary keys before ev
     '{% if a() if false else b() if true else c() %}x{% endif %}',
   ];
   for (const source of invalidConditionalSources) {
-    assert.throws(() => engine.render(source), NunjitsuRenderError);
+    assert.throws(() => engine.render(source), TemplateRenderError);
     assert.throws(() => oracle.renderString(source.replaceAll('${{', '{{'), {}));
     assert.deepEqual(calls, []);
     assert.deepEqual(oracleCalls, []);
@@ -4701,7 +4701,7 @@ test('rejects Nunjucks-invalid nested conditionals and dictionary keys before ev
 
   for (const key of ['1', '1.5', 'true', 'false', 'null', 'none']) {
     const source = `before\${{ {${key}: 2} | dump }}\${{ privileged() }}`;
-    assert.throws(() => engine.render(source), NunjitsuRenderError);
+    assert.throws(() => engine.render(source), TemplateRenderError);
     assert.throws(() => oracle.renderString(source.replaceAll('${{', '{{'), {}));
     assert.deepEqual(calls, []);
     assert.deepEqual(oracleCalls, []);
@@ -4716,7 +4716,7 @@ test('rejects Nunjucks-invalid nested conditionals and dictionary keys before ev
 });
 
 test('uses UTF-16 code units consistently for string operations', () => {
-  const engine = createEngine();
+  const engine = createTemplateRenderer();
   const oracle = new nunjucks.Environment(undefined, { autoescape: false });
   const renderJinjaSlice = (source: string, context: object): string => {
     const uninstall = (nunjucks.installJinjaCompat as unknown as () => () => void)();
@@ -4812,7 +4812,7 @@ test('uses UTF-16 code units consistently for string operations', () => {
 test('orders strings lexicographically by UTF-16 code units', () => {
   let privilegedCalls = 0;
   let oraclePrivilegedCalls = 0;
-  const engine = createEngine({
+  const engine = createTemplateRenderer({
     globals: {
       privileged() {
         privilegedCalls += 1;
@@ -4914,7 +4914,7 @@ test('orders equal infinities after closed numeric conversion', () => {
   for (const cookiecutterCompat of [false, true]) {
     let engineCalls = 0;
     let oracleCalls = 0;
-    const engine = createEngine({
+    const engine = createTemplateRenderer({
       cookiecutterCompat,
       globals: {
         privileged() {
@@ -4958,7 +4958,7 @@ test('orders equal infinities after closed numeric conversion', () => {
     const source = '{{ {length:1/0}[(1/0):(1/0)] | dump }}';
     const oracle = new nunjucks.Environment(undefined, { autoescape: false });
     for (const cookiecutterCompat of [false, true]) {
-      const engine = createEngine({ cookiecutterCompat });
+      const engine = createTemplateRenderer({ cookiecutterCompat });
       const engineSource = cookiecutterCompat
         ? source
         : source.replaceAll('{{', '${{');
@@ -4973,7 +4973,7 @@ test('orders equal infinities after closed numeric conversion', () => {
 test('implements closed strict and loose equality without host coercion', () => {
   let privilegedCalls = 0;
   let oraclePrivilegedCalls = 0;
-  const engine = createEngine({
+  const engine = createTemplateRenderer({
     globals: {
       privileged() {
         privilegedCalls += 1;
@@ -5084,7 +5084,7 @@ test('implements closed strict and loose equality without host coercion', () => 
 });
 
 test('uses centralized closed coercion for lookup, membership, grouping, and operators', () => {
-  const engine = createEngine();
+  const engine = createTemplateRenderer();
   const oracle = new nunjucks.Environment(undefined, { autoescape: false });
   const context = {
     obj: {
@@ -5175,7 +5175,7 @@ test('closed coercion controls capability branches and rejects callables', () =>
   const oracleCalls: string[] = [];
   let privilegedCalls = 0;
   let laterCalls = 0;
-  const engine = createEngine({
+  const engine = createTemplateRenderer({
     globals: {
       mark(name) {
         if (typeof name === 'string') {
@@ -5252,7 +5252,7 @@ test('closed coercion controls capability branches and rejects callables', () =>
 
   assert.throws(
     () => engine.render('${{ privileged ~ "" }}${{ later() }}'),
-    error => error instanceof NunjitsuRenderError,
+    error => error instanceof TemplateRenderError,
   );
   assert.equal(privilegedCalls, 0);
   assert.equal(laterCalls, 0);
@@ -5260,7 +5260,7 @@ test('closed coercion controls capability branches and rejects callables', () =>
 });
 
 test('uses fixed unescaped output and explicit escape filtering', () => {
-  const engine = createEngine();
+  const engine = createTemplateRenderer();
   assert.equal(
     engine.render('${{ value }}|${{ value | escape }}', { value: '<script>"x"</script>' }),
     '<script>"x"</script>|&lt;script&gt;&quot;x&quot;&lt;/script&gt;',
@@ -5268,7 +5268,7 @@ test('uses fixed unescaped output and explicit escape filtering', () => {
 });
 
 test('resolves constant and computed lookups through closed operations', () => {
-  const engine = createEngine();
+  const engine = createTemplateRenderer();
   assert.equal(
     engine.render([
       '${{ record.name }}:',
@@ -5287,7 +5287,7 @@ test('resolves constant and computed lookups through closed operations', () => {
 });
 
 test('applies whitespace options to each complete inline source', () => {
-  const engine = createEngine({ trimBlocks: true, lstripBlocks: true });
+  const engine = createTemplateRenderer({ trimBlocks: true, lstripBlocks: true });
   assert.equal(
     engine.render('a\n    {% if true %}\n    b\n    {% endif %}\nc'),
     'a\n    b\nc',
@@ -5305,7 +5305,7 @@ test('matches Nunjucks code and template-data whitespace domains', () => {
   const unsupportedCodeWhitespace = templateWhitespace.filter(value => !codeWhitespace.has(value));
 
   for (const cookiecutterCompat of [false, true]) {
-    const engine = createEngine({ cookiecutterCompat });
+    const engine = createTemplateRenderer({ cookiecutterCompat });
     const oracle = new nunjucks.Environment(undefined, { autoescape: false });
     const engineSource = (source: string) => cookiecutterCompat
       ? source
@@ -5349,7 +5349,7 @@ test('matches Nunjucks code and template-data whitespace domains', () => {
         `{%${whitespace}if true %}yes{% endif %}`,
         `{% if true %}yes{% endif${whitespace}%}`,
       ]) {
-        assert.throws(() => engine.render(engineSource(source)), NunjitsuRenderError);
+        assert.throws(() => engine.render(engineSource(source)), TemplateRenderError);
         if (source.startsWith('{%')) {
           assert.throws(() => oracle.renderString(source, {}));
         }
@@ -5363,11 +5363,11 @@ test('matches Nunjucks code and template-data whitespace domains', () => {
         `{% for value${whitespace}in [1] %}x{% endfor %}`,
         `{% macro wrapper() %}x{% endmacro %}{% call${whitespace}wrapper() %}{% endcall %}`,
       ]) {
-        assert.throws(() => engine.render(engineSource(source)), NunjitsuRenderError);
+        assert.throws(() => engine.render(engineSource(source)), TemplateRenderError);
       }
     }
 
-    const lstripEngine = createEngine({ cookiecutterCompat, lstripBlocks: true });
+    const lstripEngine = createTemplateRenderer({ cookiecutterCompat, lstripBlocks: true });
     const lstripOracle = new nunjucks.Environment(undefined, {
       autoescape: false,
       lstripBlocks: true,
@@ -5414,7 +5414,7 @@ test('matches Nunjucks code and template-data whitespace domains', () => {
     ];
     for (const trimBlocks of [false, true]) {
       for (const lstripBlocks of [false, true]) {
-        const boundaryEngine = createEngine({
+        const boundaryEngine = createTemplateRenderer({
           cookiecutterCompat,
           trimBlocks,
           lstripBlocks,
@@ -5465,7 +5465,7 @@ test('matches nested raw scanning and raw whitespace controls', () => {
     '{% raw -%} \t\n\u00a0X{% endraw %}',
   ];
   for (const cookiecutterCompat of [false, true]) {
-    const engine = createEngine({ cookiecutterCompat });
+    const engine = createTemplateRenderer({ cookiecutterCompat });
     const oracle = new nunjucks.Environment(undefined, { autoescape: false });
     const assertSame = (source: string): void => {
       assert.equal(engine.render(source), oracle.renderString(source, {}), source);
@@ -5477,7 +5477,7 @@ test('matches nested raw scanning and raw whitespace controls', () => {
       for (const whitespace of templateWhitespace) {
         const terminal = `{% ${name} %}A{%${whitespace}end${name}${whitespace}%}`;
         if (whitespace === '\n') {
-          assert.throws(() => engine.render(terminal), NunjitsuRenderError);
+          assert.throws(() => engine.render(terminal), TemplateRenderError);
           assert.throws(() => oracle.renderString(terminal, {}));
         } else {
           assertSame(terminal);
@@ -5504,7 +5504,7 @@ test('matches nested raw scanning and raw whitespace controls', () => {
       ]) {
         assertSame(`{% ${name} %}A${marker}B{% end${name} %}`);
         const extraCloser = `{% ${name} %}A${marker}B{% end${name} %}{% end${name} %}`;
-        assert.throws(() => engine.render(extraCloser), NunjitsuRenderError);
+        assert.throws(() => engine.render(extraCloser), TemplateRenderError);
         assert.throws(() => oracle.renderString(extraCloser, {}));
       }
 
@@ -5521,7 +5521,7 @@ test('matches nested raw scanning and raw whitespace controls', () => {
 
       for (const whitespace of ['\n', '\r\n']) {
         const terminal = `{% ${name} %}A{%${whitespace}end${name}${whitespace}%}`;
-        assert.throws(() => engine.render(terminal), NunjitsuRenderError);
+        assert.throws(() => engine.render(terminal), TemplateRenderError);
         assert.throws(() => oracle.renderString(terminal, {}));
         assert.equal(engine.render('clean'), 'clean');
       }
@@ -5532,14 +5532,14 @@ test('matches nested raw scanning and raw whitespace controls', () => {
       '{% verbatim %}X{%- endverbatim %}',
       '{% verbatim %}X{% endverbatim -%}',
     ]) {
-      assert.throws(() => engine.render(source), NunjitsuRenderError);
+      assert.throws(() => engine.render(source), TemplateRenderError);
       assert.throws(() => oracle.renderString(source, {}));
       assert.equal(engine.render('clean'), 'clean');
     }
 
     for (const trimBlocks of [false, true]) {
       for (const lstripBlocks of [false, true]) {
-        const optionEngine = createEngine({
+        const optionEngine = createTemplateRenderer({
           cookiecutterCompat,
           trimBlocks,
           lstripBlocks,
@@ -5588,7 +5588,7 @@ test('matches nested raw scanning and raw whitespace controls', () => {
 });
 
 test('enforces finite resource limits and recovers after failures', () => {
-  const engine = createEngine({
+  const engine = createTemplateRenderer({
     filters: {
       identity(value) {
         return value;
@@ -5610,16 +5610,16 @@ test('enforces finite resource limits and recovers after failures', () => {
     }),
   ];
   for (const failure of failures) {
-    assert.throws(failure, error => error instanceof NunjitsuLimitError);
+    assert.throws(failure, error => error instanceof TemplateLimitError);
     assert.equal(engine.render('clean'), 'clean');
   }
   assert.throws(
     () => engine.render('${{ 1 + 2 }}', {}, { limits: { nestingDepth: 2 } }),
-    error => error instanceof NunjitsuLimitError && error.limit === 'nestingDepth',
+    error => error instanceof TemplateLimitError && error.limit === 'nestingDepth',
   );
   assert.throws(
     () => engine.render('${{ (((value))) }}', { value: 1 }, { limits: { nestingDepth: 2 } }),
-    error => error instanceof NunjitsuLimitError && error.limit === 'nestingDepth',
+    error => error instanceof TemplateLimitError && error.limit === 'nestingDepth',
   );
   assert.equal(engine.render('clean'), 'clean');
   assert.equal(
@@ -5629,7 +5629,7 @@ test('enforces finite resource limits and recovers after failures', () => {
 });
 
 test('charges repeated alias expansion against evaluator work', () => {
-  const engine = createEngine();
+  const engine = createTemplateRenderer();
   const oracle = new nunjucks.Environment(undefined, { autoescape: false });
   const assignments = (depth: number) => [
     '{% set value = "a" %}',
@@ -5657,7 +5657,7 @@ test('charges repeated alias expansion against evaluator work', () => {
   ] as const) {
     assert.throws(
       () => engine.render(assignments(hostileDepth) + tail, {}, { limits }),
-      error => error instanceof NunjitsuLimitError && error.limit === 'workUnits',
+      error => error instanceof TemplateLimitError && error.limit === 'workUnits',
       tail,
     );
   }
@@ -5665,28 +5665,28 @@ test('charges repeated alias expansion against evaluator work', () => {
 });
 
 test('wraps parse and evaluation failures without retaining render state', () => {
-  const engine = createEngine();
+  const engine = createTemplateRenderer();
 
   assert.throws(
     () => engine.render('valid', { invalid: new Date() as never }),
-    error => error instanceof TypeError && !(error instanceof NunjitsuRenderError),
+    error => error instanceof TypeError && !(error instanceof TemplateRenderError),
   );
   assert.throws(
     () => engine.render('valid', {}, { limits: { workUnits: -1 } }),
-    error => error instanceof RangeError && !(error instanceof NunjitsuRenderError),
+    error => error instanceof RangeError && !(error instanceof TemplateRenderError),
   );
   assert.throws(
     () => engine.render('too much work', {}, { limits: { workUnits: 0 } }),
-    error => error instanceof NunjitsuLimitError,
+    error => error instanceof TemplateLimitError,
   );
 
   assert.throws(
     () => engine.render('${{ broken( }}'),
-    error => error instanceof NunjitsuRenderError,
+    error => error instanceof TemplateRenderError,
   );
   assert.throws(
     () => engine.render('${{ value.toString() }}', { value: 'x' }),
-    error => error instanceof NunjitsuRenderError,
+    error => error instanceof TemplateRenderError,
   );
 
   const templateFailures = [
@@ -5702,7 +5702,7 @@ test('wraps parse and evaluation failures without retaining render state', () =>
     assert.throws(
       () => engine.render(source),
       error => (
-        error instanceof NunjitsuRenderError &&
+        error instanceof TemplateRenderError &&
         error.phase === 'evaluate' &&
         error.code === 'evaluation_error' &&
         error.cause === undefined
@@ -5714,16 +5714,16 @@ test('wraps parse and evaluation failures without retaining render state', () =>
 });
 
 test('reports actionable template diagnostics with precise safe context', () => {
-  const engine = createEngine();
+  const engine = createTemplateRenderer();
   const renderFailure = (
     source: string,
     context: Parameters<typeof engine.render>[1] = undefined,
-  ): NunjitsuRenderError => {
-    let caught: NunjitsuRenderError | undefined;
+  ): TemplateRenderError => {
+    let caught: TemplateRenderError | undefined;
     assert.throws(
       () => engine.render(source, context),
       error => {
-        if (!(error instanceof NunjitsuRenderError)) {
+        if (!(error instanceof TemplateRenderError)) {
           return false;
         }
         caught = error;
@@ -5785,7 +5785,7 @@ test('reports actionable template diagnostics with precise safe context', () => 
     /Block "item" is declared more than once; the first declaration is at line 2, column 1/,
   );
 
-  const capabilityEngine = createEngine({
+  const capabilityEngine = createTemplateRenderer({
     globals: {
       deploy() {
         throw new Error('backend rejected request');
@@ -5795,17 +5795,17 @@ test('reports actionable template diagnostics with precise safe context', () => 
   assert.throws(
     () => capabilityEngine.render('prefix ${{ deploy() }}'),
     error => (
-      error instanceof NunjitsuRenderError &&
+      error instanceof TemplateRenderError &&
       error.message === 'Template error at line 1, column 12: ' +
         'Template global "deploy" failed: backend rejected request'
     ),
   );
 
-  let limitError: NunjitsuLimitError | undefined;
+  let limitError: TemplateLimitError | undefined;
   assert.throws(
     () => engine.render('${{ value }}', { value: 'long' }, { limits: { outputCodeUnits: 3 } }),
     error => {
-      if (!(error instanceof NunjitsuLimitError)) {
+      if (!(error instanceof TemplateLimitError)) {
         return false;
       }
       limitError = error;

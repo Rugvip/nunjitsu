@@ -3,8 +3,8 @@ import {
   suggestDiagnosticName,
 } from '../diagnostics.ts';
 import {
-  NunjitsuLimitError,
-  withNunjitsuLimitErrorContext,
+  TemplateLimitError,
+  withTemplateLimitErrorContext,
 } from '../limits.ts';
 import { isAstNode, type AstCaseNode, type AstNode } from './ast.ts';
 import { ExpressionParser, ExpressionSyntaxError } from './expression.ts';
@@ -109,8 +109,8 @@ export function parseTemplate(
     if (error instanceof NunjitsuParseError) {
       throw error;
     }
-    if (error instanceof NunjitsuLimitError) {
-      throw withNunjitsuLimitErrorContext(error, 'parse');
+    if (error instanceof TemplateLimitError) {
+      throw withTemplateLimitErrorContext(error, 'parse');
     }
     if (error instanceof ExpressionSyntaxError) {
       throw new NunjitsuParseError(error.message, error.line, error.column);
@@ -166,7 +166,7 @@ class TemplateParser {
       this.#bodyDepth > this.#maximumDepth
     ) {
       const token = this.#tokens[Math.max(0, this.#index - 1)];
-      throw new NunjitsuLimitError('nestingDepth', {
+      throw new TemplateLimitError('nestingDepth', {
         phase: 'parse',
         line: token === undefined ? undefined : token.line + 1,
         column: token === undefined ? undefined : token.column + 1,
@@ -489,7 +489,7 @@ class TemplateParser {
       this.#maximumNodes !== Number.POSITIVE_INFINITY &&
       this.#nodeCount > this.#maximumNodes
     ) {
-      throw new NunjitsuLimitError('astNodes', {
+      throw new TemplateLimitError('astNodes', {
         phase: 'parse',
         line: node.line + 1,
         column: node.column + 1,

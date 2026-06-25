@@ -1,5 +1,5 @@
 import { formatDiagnosticValue } from '../diagnostics.ts';
-import { NunjitsuLimitError } from '../limits.ts';
+import { TemplateLimitError } from '../limits.ts';
 import { isReservedName } from '../runtime/value.ts';
 import type { AstNode, AstRegexLiteral } from './ast.ts';
 import { scanIdentifier } from './scanIdentifier.ts';
@@ -598,7 +598,7 @@ export class ExpressionParser {
     this.#depth += 1;
     if (this.#maximumDepth !== Number.POSITIVE_INFINITY && this.#depth > this.#maximumDepth) {
       const token = this.#peek();
-      throw new NunjitsuLimitError('nestingDepth', {
+      throw new TemplateLimitError('nestingDepth', {
         phase: 'parse',
         line: token.line + 1,
         column: token.column + 1,

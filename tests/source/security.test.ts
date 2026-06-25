@@ -4,7 +4,7 @@ import test from 'node:test';
 import { inspect } from 'node:util';
 import nunjucks from 'nunjucks';
 
-import { createEngine, NunjitsuLimitError, NunjitsuRenderError } from '../../src/index.ts';
+import { createTemplateRenderer, TemplateLimitError, TemplateRenderError } from '../../src/index.ts';
 import { NunjitsuParseError, parseTemplate } from '../../src/parser/index.ts';
 import { applyBuiltinFilter } from '../../src/runtime/builtins.ts';
 import { RuntimeScope } from '../../src/runtime/scope.ts';
@@ -124,7 +124,7 @@ test('rejects proxy-backed values before invoking reflection traps', () => {
     );
   }
 
-  const contextEngine = createEngine();
+  const contextEngine = createTemplateRenderer();
   assert.throws(
     () => contextEngine.render('clean', recordProxy),
     /Proxy objects cannot be used as template values/,
@@ -143,11 +143,11 @@ test('rejects proxy-backed values before invoking reflection traps', () => {
     /Proxy objects cannot be used as template values/,
   );
   assert.throws(
-    () => createEngine({ globals: { unsafe: arrayProxy } }),
+    () => createTemplateRenderer({ globals: { unsafe: arrayProxy } }),
     /Proxy objects cannot be used as template values/,
   );
 
-  const capabilityEngine = createEngine({
+  const capabilityEngine = createTemplateRenderer({
     filters: {
       proxyResult() {
         return recordProxy;
@@ -179,11 +179,11 @@ test('rejects proxy-backed values before invoking reflection traps', () => {
     '${{ arrayProxyResult() }}${{ later() }}',
     '${{ revokedProxyResult() }}${{ later() }}',
   ]) {
-    let caught: NunjitsuRenderError | undefined;
+    let caught: TemplateRenderError | undefined;
     assert.throws(
       () => capabilityEngine.render(source),
       error => {
-        if (!(error instanceof NunjitsuRenderError)) {
+        if (!(error instanceof TemplateRenderError)) {
           return false;
         }
         caught = error;
@@ -222,7 +222,7 @@ test('copying arrays does not invoke inherited host iteration hooks', () => {
     },
   });
 
-  const engine = createEngine();
+  const engine = createTemplateRenderer();
   try {
     assert.equal(
       engine.render('${{ values | dump }}', { values: [1, 2] }),
@@ -241,7 +241,7 @@ test('copying arrays does not invoke inherited host iteration hooks', () => {
 });
 
 test('reserves prototype gadget names across values, syntax, and scopes', () => {
-  const prepared = createEngine().prepareContext();
+  const prepared = createTemplateRenderer().prepareContext();
   for (const name of ['constructor', 'prototype', '__proto__']) {
     const context = Object.create(null) as Record<string, string>;
     context[name] = 'blocked';
@@ -253,7 +253,7 @@ test('reserves prototype gadget names across values, syntax, and scopes', () => 
     assert.throws(() => prepared.withPath(['steps', name], 'blocked'), /is reserved/);
   }
 
-  const engine = createEngine();
+  const engine = createTemplateRenderer();
   for (const source of [
     '${{ constructor }}',
     '${{ value.constructor }}',
@@ -274,7 +274,7 @@ test('prepared context updates copy data without invoking accessors', () => {
       return 'leaked';
     },
   });
-  const prepared = createEngine().prepareContext({ steps: {} });
+  const prepared = createTemplateRenderer().prepareContext({ steps: {} });
   assert.throws(
     () => prepared.withPath(['steps', 'unsafe'], withGetter as never),
     /cannot contain accessors/,
@@ -398,7 +398,7 @@ test('dump does not invoke inherited host serialization hooks', () => {
     },
   });
 
-  const engine = createEngine();
+  const engine = createTemplateRenderer();
   try {
     assert.equal(
       engine.render('${{ [1, {"safe": 2}] | dump }}'),
@@ -546,7 +546,7 @@ test('regex coercion does not invoke internal or host RegExp string hooks', () =
   }
 
   try {
-    const engine = createEngine({
+    const engine = createTemplateRenderer({
       globals: {
         observe(value) {
           return value;
@@ -573,7 +573,7 @@ test('regex coercion does not invoke internal or host RegExp string hooks', () =
 });
 
 test('templates cannot reach ambient authority or invoke looked-up values', () => {
-  const engine = createEngine();
+  const engine = createTemplateRenderer();
   for (const source of [
     '${{ globalThis }}',
     '${{ process }}',
@@ -598,7 +598,7 @@ test('templates cannot reach ambient authority or invoke looked-up values', () =
 
 test('call targets resolve through closed runtime values before capability dispatch', () => {
   let calls = 0;
-  const engine = createEngine({
+  const engine = createTemplateRenderer({
     globals: {
       dangerous() {
         calls += 1;
@@ -639,11 +639,11 @@ test('call targets resolve through closed runtime values before capability dispa
       return 'host callback';
     };
     assert.throws(
-      () => createEngine({ globals: dottedGlobals }),
+      () => createTemplateRenderer({ globals: dottedGlobals }),
       /valid template identifier/,
     );
   }
-  const builtinEngine = createEngine();
+  const builtinEngine = createTemplateRenderer();
   assert.equal(
     builtinEngine.render('{% set cycle = cycler("internal") %}${{ cycle.next() }}'),
     'internal',
@@ -679,7 +679,7 @@ test('call targets resolve through closed runtime values before capability dispa
 test('macro defaults execute only when an argument is genuinely absent', () => {
   let defaultCalls = 0;
   let failDefault = false;
-  const engine = createEngine({
+  const engine = createTemplateRenderer({
     globals: {
       privilegedDefault() {
         defaultCalls += 1;
@@ -728,7 +728,7 @@ test('macro binding uses formal positions and admits only the special caller key
   let laterCalls = 0;
   const defaultCalls: string[] = [];
   const oracleDefaultCalls: string[] = [];
-  const engine = createEngine({
+  const engine = createTemplateRenderer({
     globals: {
       privileged() {
         privilegedCalls += 1;
@@ -818,7 +818,7 @@ test('macro binding uses formal positions and admits only the special caller key
   ].join('');
   assert.throws(
     () => engine.render(injectedCallableSource),
-    error => error instanceof NunjitsuRenderError,
+    error => error instanceof TemplateRenderError,
   );
   assert.equal(privilegedCalls, 1);
   assert.equal(laterCalls, 0);
@@ -855,7 +855,7 @@ test('rejects invalid macro and caller declarations before capability dispatch',
       throw new Error('wrapper failed');
     },
   };
-  const engine = createEngine({ globals: capabilities });
+  const engine = createTemplateRenderer({ globals: capabilities });
   const oracle = new nunjucks.Environment(undefined, { autoescape: false });
   for (const name of Object.keys(capabilities)) {
     oracle.addGlobal(name, () => {
@@ -882,7 +882,7 @@ test('rejects invalid macro and caller declarations before capability dispatch',
       `{% macro invoked(${formal}) %}` + '${{ bodyCall() }}{% endmacro %}${{ invoked() }}${{ privileged() }}',
     ];
     for (const source of macroSources) {
-      assert.throws(() => engine.render(source), NunjitsuRenderError);
+      assert.throws(() => engine.render(source), TemplateRenderError);
       assert.throws(() => oracle.renderString(source.replaceAll('${{', '{{'), {}));
       assert.deepEqual(engineCalls, []);
       assert.deepEqual(oracleCalls, []);
@@ -901,7 +901,7 @@ test('rejects invalid macro and caller declarations before capability dispatch',
         `{% call(${formal}) wrapper() %}` + '${{ bodyCall() }}{% endcall %}',
         '${{ privileged() }}',
       ].join('');
-      assert.throws(() => engine.render(source), NunjitsuRenderError);
+      assert.throws(() => engine.render(source), TemplateRenderError);
       assert.throws(() => oracle.renderString(source.replaceAll('${{', '{{'), {}));
       assert.deepEqual(engineCalls, []);
       assert.deepEqual(oracleCalls, []);
@@ -918,7 +918,7 @@ test('rejects malformed structural tags before any template capability executes'
     engineCalls.push(name);
     return name;
   }]));
-  const engine = createEngine({ globals: engineGlobals });
+  const engine = createTemplateRenderer({ globals: engineGlobals });
   const oracle = new nunjucks.Environment(undefined, { autoescape: false });
   for (const name of names) {
     oracle.addGlobal(name, () => {
@@ -946,7 +946,7 @@ test('rejects malformed structural tags before any template capability executes'
     '${{ before() }}{% raw %}X{% endraw -%}${{ after() }}',
   ];
   for (const source of malformedSources) {
-    assert.throws(() => engine.render(source), NunjitsuRenderError);
+    assert.throws(() => engine.render(source), TemplateRenderError);
     assert.throws(() => oracle.renderString(source.replaceAll('${{', '{{'), {}));
     assert.deepEqual(engineCalls, []);
     assert.deepEqual(oracleCalls, []);
@@ -955,7 +955,7 @@ test('rejects malformed structural tags before any template capability executes'
 
   for (const cookiecutterCompat of [false, true]) {
     const invalidSwitchCalls: string[] = [];
-    const invalidSwitchEngine = createEngine({
+    const invalidSwitchEngine = createTemplateRenderer({
       cookiecutterCompat,
       globals: {
         before() {
@@ -988,7 +988,7 @@ test('rejects malformed structural tags before any template capability executes'
         : source.replaceAll('{{', '${{');
       assert.throws(
         () => invalidSwitchEngine.render(engineSource),
-        NunjitsuRenderError,
+        TemplateRenderError,
         source,
       );
       assert.throws(() => invalidSwitchOracle.renderString(source, {}), source);
@@ -1000,7 +1000,7 @@ test('rejects malformed structural tags before any template capability executes'
 
   for (const cookiecutterCompat of [false, true]) {
     const missingCloserCalls: string[] = [];
-    const missingCloserEngine = createEngine({
+    const missingCloserEngine = createTemplateRenderer({
       cookiecutterCompat,
       globals: {
         before() {
@@ -1026,7 +1026,7 @@ test('rejects malformed structural tags before any template capability executes'
       const engineSource = cookiecutterCompat
         ? source
         : source.replaceAll('{{', '${{');
-      assert.throws(() => missingCloserEngine.render(engineSource), NunjitsuRenderError);
+      assert.throws(() => missingCloserEngine.render(engineSource), TemplateRenderError);
       assert.deepEqual(missingCloserCalls, []);
       assert.equal(missingCloserEngine.render('clean'), 'clean');
     }
@@ -1039,7 +1039,7 @@ test('rejects malformed structural tags before any template capability executes'
         {},
         { limits: { sourceCodeUnits: 1 } },
       ),
-      NunjitsuLimitError,
+      TemplateLimitError,
     );
     assert.deepEqual(missingCloserCalls, []);
     assert.equal(missingCloserEngine.render('clean'), 'clean');
@@ -1047,7 +1047,7 @@ test('rejects malformed structural tags before any template capability executes'
 
   for (const cookiecutterCompat of [false, true]) {
     const conditionalCalls: string[] = [];
-    const conditionalEngine = createEngine({
+    const conditionalEngine = createTemplateRenderer({
       cookiecutterCompat,
       globals: {
         before() {
@@ -1080,7 +1080,7 @@ test('rejects malformed structural tags before any template capability executes'
       const engineSource = cookiecutterCompat
         ? source
         : source.replaceAll('{{', '${{');
-      assert.throws(() => conditionalEngine.render(engineSource), NunjitsuRenderError);
+      assert.throws(() => conditionalEngine.render(engineSource), TemplateRenderError);
       assert.throws(() => conditionalOracle.renderString(source, {}));
       assert.deepEqual(conditionalCalls, []);
       assert.deepEqual(conditionalOracleCalls, []);
@@ -1096,7 +1096,7 @@ test('rejects malformed structural tags before any template capability executes'
     assert.equal(engine.render(source), oracle.renderString(source, {}));
   }
 
-  const rawEngine = createEngine({
+  const rawEngine = createTemplateRenderer({
     cookiecutterCompat: true,
     globals: engineGlobals,
   });
@@ -1134,7 +1134,7 @@ test('rejects unterminated and unexpected comment closers before capability disp
     for (const options of optionCases) {
       const engineEvents: string[] = [];
       const oracleEvents: string[] = [];
-      const engine = createEngine({
+      const engine = createTemplateRenderer({
         cookiecutterCompat,
         ...options,
         globals: {
@@ -1157,11 +1157,11 @@ test('rejects unterminated and unexpected comment closers before capability disp
         const engineSource = cookiecutterCompat
           ? source.replaceAll('${{', '{{')
           : source;
-        let caught: NunjitsuRenderError | undefined;
+        let caught: TemplateRenderError | undefined;
         assert.throws(
           () => engine.render(engineSource),
           error => {
-            if (!(error instanceof NunjitsuRenderError)) {
+            if (!(error instanceof TemplateRenderError)) {
               return false;
             }
             caught = error;
@@ -1188,7 +1188,7 @@ test('rejects unterminated and unexpected comment closers before capability disp
           {},
           { limits: { sourceCodeUnits: 1 } },
         ),
-        NunjitsuLimitError,
+        TemplateLimitError,
       );
       assert.deepEqual(engineEvents, []);
       assert.equal(engine.render('clean'), 'clean');
@@ -1199,7 +1199,7 @@ test('rejects unterminated and unexpected comment closers before capability disp
 test('rejects macro declarations inside captured output before execution', () => {
   for (const cookiecutterCompat of [false, true]) {
     const events: string[] = [];
-    const engine = createEngine({
+    const engine = createTemplateRenderer({
       cookiecutterCompat,
       globals: {
         before() {
@@ -1224,7 +1224,7 @@ test('rejects macro declarations inside captured output before execution', () =>
         : source;
       assert.throws(
         () => engine.render(engineSource),
-        error => error instanceof NunjitsuRenderError && error.phase === 'parse',
+        error => error instanceof TemplateRenderError && error.phase === 'parse',
         source,
       );
       assert.deepEqual(events, [], source);
@@ -1252,7 +1252,7 @@ test('rejects Nunjucks-invalid repeated unary signs before capability dispatch',
   for (const cookiecutterCompat of [false, true]) {
     const engineCalls: string[] = [];
     const oracleCalls: string[] = [];
-    const engine = createEngine({
+    const engine = createTemplateRenderer({
       cookiecutterCompat,
       filters: {
         identity(input) {
@@ -1297,11 +1297,11 @@ test('rejects Nunjucks-invalid repeated unary signs before capability dispatch',
         ? originalSource.replaceAll('${{', '{{')
         : originalSource;
       const oracleSource = originalSource.replaceAll('${{', '{{');
-      let caught: NunjitsuRenderError | undefined;
+      let caught: TemplateRenderError | undefined;
       assert.throws(
         () => engine.render(engineSource),
         error => {
-          if (!(error instanceof NunjitsuRenderError)) {
+          if (!(error instanceof TemplateRenderError)) {
             return false;
           }
           caught = error;
@@ -1364,7 +1364,7 @@ test('restricts regex literals before capability dispatch', () => {
   for (const cookiecutterCompat of [false, true]) {
     const engineCalls: string[] = [];
     const oracleCalls: string[] = [];
-    const engine = createEngine({
+    const engine = createTemplateRenderer({
       cookiecutterCompat,
       filters: {
         identity(input) {
@@ -1410,11 +1410,11 @@ test('restricts regex literals before capability dispatch', () => {
         ? originalSource.replaceAll('${{', '{{')
         : originalSource;
       const oracleSource = originalSource.replaceAll('${{', '{{');
-      let caught: NunjitsuRenderError | undefined;
+      let caught: TemplateRenderError | undefined;
       assert.throws(
         () => engine.render(engineSource),
         error => {
-          if (!(error instanceof NunjitsuRenderError)) {
+          if (!(error instanceof TemplateRenderError)) {
             return false;
           }
           caught = error;
@@ -1505,7 +1505,7 @@ test('rejects malformed call-block signature regexes before capability dispatch'
   for (const cookiecutterCompat of [false, true]) {
     const events: string[] = [];
     const oracleEvents: string[] = [];
-    const engine = createEngine({
+    const engine = createTemplateRenderer({
       cookiecutterCompat,
       globals: {
         before() {
@@ -1539,11 +1539,11 @@ test('rejects malformed call-block signature regexes before capability dispatch'
       const engineSource = cookiecutterCompat
         ? source.replaceAll('${{', '{{')
         : source;
-      let caught: NunjitsuRenderError | undefined;
+      let caught: TemplateRenderError | undefined;
       assert.throws(
         () => engine.render(engineSource),
         error => {
-          if (!(error instanceof NunjitsuRenderError)) {
+          if (!(error instanceof TemplateRenderError)) {
             return false;
           }
           caught = error;
@@ -1597,7 +1597,7 @@ test('matches Nunjucks string escapes before capability dispatch', () => {
   for (const cookiecutterCompat of [false, true]) {
     const engineEvents: unknown[] = [];
     const oracleEvents: unknown[] = [];
-    const engine = createEngine({
+    const engine = createTemplateRenderer({
       cookiecutterCompat,
       filters: {
         observe(input, value) {
@@ -1648,7 +1648,7 @@ test('matches Nunjucks string escapes before capability dispatch', () => {
       : '${{ {"constructor": 1} }}';
     assert.throws(
       () => engine.render(reservedSource),
-      error => error instanceof NunjitsuRenderError && error.phase === 'parse',
+      error => error instanceof TemplateRenderError && error.phase === 'parse',
     );
     assert.equal(engine.render('clean'), 'clean');
 
@@ -1658,11 +1658,11 @@ test('matches Nunjucks string escapes before capability dispatch', () => {
       ['{{ "a\\', 'b" + broken( }}'].join('\n'),
     ]) {
       const engineSource = cookiecutterCompat ? source : source.replaceAll('{{', '${{');
-      let caught: NunjitsuRenderError | undefined;
+      let caught: TemplateRenderError | undefined;
       assert.throws(
         () => engine.render(engineSource),
         error => {
-          if (!(error instanceof NunjitsuRenderError)) {
+          if (!(error instanceof TemplateRenderError)) {
             return false;
           }
           caught = error;
@@ -1719,7 +1719,7 @@ test('restricts numeric literals before capability dispatch', () => {
   for (const cookiecutterCompat of [false, true]) {
     const engineCalls: string[] = [];
     const oracleCalls: string[] = [];
-    const engine = createEngine({
+    const engine = createTemplateRenderer({
       cookiecutterCompat,
       filters: {
         observe(input) {
@@ -1758,14 +1758,14 @@ test('restricts numeric literals before capability dispatch', () => {
       });
     }
 
-    const assertRejected = (source: string): NunjitsuRenderError => {
+    const assertRejected = (source: string): TemplateRenderError => {
       engineCalls.length = 0;
       const engineSource = cookiecutterCompat ? source : source.replaceAll('{{', '${{');
-      let caught: NunjitsuRenderError | undefined;
+      let caught: TemplateRenderError | undefined;
       assert.throws(
         () => engine.render(engineSource, { values: [1, 2] }),
         error => {
-          if (!(error instanceof NunjitsuRenderError)) {
+          if (!(error instanceof TemplateRenderError)) {
             return false;
           }
           caught = error;
@@ -1837,7 +1837,7 @@ test('halts after invalid regex replacement inputs and preserves value branches'
   for (const cookiecutterCompat of [false, true]) {
     const engineEvents: string[] = [];
     const oracleEvents: string[] = [];
-    const engine = createEngine({
+    const engine = createTemplateRenderer({
       cookiecutterCompat,
       globals: {
         before() {
@@ -1869,7 +1869,7 @@ test('halts after invalid regex replacement inputs and preserves value branches'
       const engineSource = cookiecutterCompat ? source : source.replaceAll('{{', '${{');
       assert.throws(
         () => engine.render(engineSource),
-        error => error instanceof NunjitsuRenderError && error.phase === 'evaluate',
+        error => error instanceof TemplateRenderError && error.phase === 'evaluate',
         input,
       );
       assert.throws(() => oracle.renderString(source, {}), input);
@@ -1899,7 +1899,7 @@ test('empty safe-string slice fills fail before later capabilities', () => {
   for (const cookiecutterCompat of [false, true]) {
     const engineEvents: string[] = [];
     const oracleEvents: string[] = [];
-    const engine = createEngine({
+    const engine = createTemplateRenderer({
       cookiecutterCompat,
       globals: {
         before() {
@@ -1930,7 +1930,7 @@ test('empty safe-string slice fills fail before later capabilities', () => {
 
     assert.throws(
       () => engine.render(engineSource),
-      error => error instanceof NunjitsuRenderError && error.phase === 'evaluate',
+      error => error instanceof TemplateRenderError && error.phase === 'evaluate',
     );
     assert.throws(() => oracle.renderString(source, {}));
     assert.deepEqual(engineEvents, ['before']);
@@ -1943,7 +1943,7 @@ test('array-like record filters fail closed and enforce projected limits', () =>
   for (const cookiecutterCompat of [false, true]) {
     const engineEvents: string[] = [];
     const oracleEvents: string[] = [];
-    const engine = createEngine({
+    const engine = createTemplateRenderer({
       cookiecutterCompat,
       globals: {
         before() {
@@ -1994,7 +1994,7 @@ test('array-like record filters fail closed and enforce projected limits', () =>
         : source.replaceAll('{{', '${{');
       assert.throws(
         () => engine.render(engineSource),
-        error => error instanceof NunjitsuRenderError && error.phase === 'evaluate',
+        error => error instanceof TemplateRenderError && error.phase === 'evaluate',
         expression,
       );
       assert.throws(() => oracle.renderString(source, {}), expression);
@@ -2023,7 +2023,7 @@ test('array-like record filters fail closed and enforce projected limits', () =>
         engineEvents.length = 0;
         assert.throws(
           () => engine.render(engineLargeSource, {}, { limits }),
-          NunjitsuLimitError,
+          TemplateLimitError,
         );
         assert.deepEqual(engineEvents, ['before']);
         assert.equal(engine.render('clean'), 'clean');
@@ -2036,7 +2036,7 @@ test('attribute lookup policies reject reserved paths and fail on nullish values
   for (const cookiecutterCompat of [false, true]) {
     const engineEvents: string[] = [];
     const oracleEvents: string[] = [];
-    const engine = createEngine({
+    const engine = createTemplateRenderer({
       cookiecutterCompat,
       globals: {
         before() {
@@ -2078,7 +2078,7 @@ test('attribute lookup policies reject reserved paths and fail on nullish values
         : source.replaceAll('{{', '${{');
       assert.throws(
         () => engine.render(engineSource),
-        error => error instanceof NunjitsuRenderError && error.phase === 'evaluate',
+        error => error instanceof TemplateRenderError && error.phase === 'evaluate',
         expression,
       );
       assert.throws(() => oracle.renderString(source, {}), expression);
@@ -2104,7 +2104,7 @@ test('attribute lookup policies reject reserved paths and fail on nullish values
         : source.replaceAll('{{', '${{');
       assert.throws(
         () => engine.render(engineSource),
-        error => error instanceof NunjitsuRenderError && error.phase === 'evaluate',
+        error => error instanceof TemplateRenderError && error.phase === 'evaluate',
         expression,
       );
       assert.deepEqual(engineEvents, ['before'], expression);
@@ -2130,7 +2130,7 @@ test('attribute lookup policies reject reserved paths and fail on nullish values
 test('standalone blocks never synthesize unsupported super authority', () => {
   let engineCalls = 0;
   let oracleCalls = 0;
-  const engine = createEngine({
+  const engine = createTemplateRenderer({
     globals: {
       privileged() {
         engineCalls += 1;
@@ -2155,11 +2155,11 @@ test('standalone blocks never synthesize unsupported super authority', () => {
     '{% block content %}{% set parent = super() %}{% if parent == "" %}${{ privileged() }}{% endif %}{% endblock %}',
   ];
   for (const source of sources) {
-    let caught: NunjitsuRenderError | undefined;
+    let caught: TemplateRenderError | undefined;
     assert.throws(
       () => engine.render(source),
       error => {
-        if (!(error instanceof NunjitsuRenderError)) {
+        if (!(error instanceof TemplateRenderError)) {
           return false;
         }
         caught = error;
@@ -2176,7 +2176,7 @@ test('standalone blocks never synthesize unsupported super authority', () => {
   }
 
   let configuredCalls = 0;
-  const configured = createEngine({
+  const configured = createTemplateRenderer({
     globals: {
       super() {
         configuredCalls += 1;
@@ -2191,7 +2191,7 @@ test('standalone blocks never synthesize unsupported super authority', () => {
   assert.equal(configuredCalls, 1);
   assert.throws(
     () => engine.render('{% block content %}${{ super() }}{% endblock %}', { super: 'data' }),
-    NunjitsuRenderError,
+    TemplateRenderError,
   );
   assert.equal(engine.render('clean'), 'clean');
 });
@@ -2199,7 +2199,7 @@ test('standalone blocks never synthesize unsupported super authority', () => {
 test('call blocks target only macros and cannot discard caller authority', () => {
   let capabilityCalls = 0;
   let laterCalls = 0;
-  const engine = createEngine({
+  const engine = createTemplateRenderer({
     globals: {
       capability() {
         capabilityCalls += 1;
@@ -2225,7 +2225,7 @@ test('call blocks target only macros and cannot discard caller authority', () =>
     '{% macro wrapper() %}${{ capability(caller) }}{% endmacro %}{% call wrapper() %}body{% endcall %}${{ later() }}',
     '{% macro wrapper() %}${{ range(1, caller=caller) | dump }}{% endmacro %}{% call wrapper() %}body{% endcall %}${{ later() }}',
   ]) {
-    assert.throws(() => engine.render(source), NunjitsuRenderError, source);
+    assert.throws(() => engine.render(source), TemplateRenderError, source);
     assert.equal(capabilityCalls, 0, source);
     assert.equal(laterCalls, 0, source);
     assert.equal(engine.render('clean'), 'clean');
@@ -2234,7 +2234,7 @@ test('call blocks target only macros and cannot discard caller authority', () =>
 
 test('validates operations before evaluating attacker-controlled operands', () => {
   const events: string[] = [];
-  const engine = createEngine({
+  const engine = createTemplateRenderer({
     filters: {
       known(input, argument) {
         events.push(`filter:${input}:${argument}`);
@@ -2282,11 +2282,11 @@ test('validates operations before evaluating attacker-controlled operands', () =
   ];
   for (const source of rejectedSources) {
     events.length = 0;
-    let caught: NunjitsuRenderError | undefined;
+    let caught: TemplateRenderError | undefined;
     assert.throws(
       () => engine.render(source),
       error => {
-        if (!(error instanceof NunjitsuRenderError)) {
+        if (!(error instanceof TemplateRenderError)) {
           return false;
         }
         caught = error;
@@ -2351,7 +2351,7 @@ test('extracts test invocations statically without evaluating ignored right-hand
   for (const cookiecutterCompat of [false, true]) {
     const engineEvents: string[] = [];
     const oracleEvents: string[] = [];
-    const engine = createEngine({
+    const engine = createTemplateRenderer({
       cookiecutterCompat,
       globals: {
         argument() {
@@ -2469,7 +2469,7 @@ test('extracts test invocations statically without evaluating ignored right-hand
       oracleEvents.length = 0;
       assert.throws(
         () => engine.render(engineSource(unknownSource)),
-        NunjitsuRenderError,
+        TemplateRenderError,
         unknownSource,
       );
       assert.throws(() => oracle.renderString(unknownSource, {}), unknownSource);
@@ -2486,7 +2486,7 @@ test('extracts test invocations statically without evaluating ignored right-hand
       engineEvents.length = 0;
       assert.throws(
         () => engine.render(engineSource(source)),
-        NunjitsuRenderError,
+        TemplateRenderError,
         source,
       );
       assert.deepEqual(engineEvents, [], source);
@@ -2500,7 +2500,7 @@ test('extracts test invocations statically without evaluating ignored right-hand
         {},
         { limits: { astNodes: 2 } },
       ),
-      NunjitsuLimitError,
+      TemplateLimitError,
     );
     assert.deepEqual(engineEvents, []);
     assert.equal(engine.render('clean'), 'clean');
@@ -2512,7 +2512,7 @@ test('record membership tracks key presence independently of its value', () => {
   let privilegedCalls = 0;
   let oraclePolicyCalls = 0;
   let oraclePrivilegedCalls = 0;
-  const engine = createEngine({
+  const engine = createTemplateRenderer({
     globals: {
       undefinedPolicy() {
         policyCalls += 1;
@@ -2576,7 +2576,7 @@ test('safe strings expose only closed own-field lookup and membership', () => {
   for (const cookiecutterCompat of [false, true]) {
     const events: string[] = [];
     const oracleEvents: string[] = [];
-    const engine = createEngine({
+    const engine = createTemplateRenderer({
       cookiecutterCompat,
       globals: {
         mark(label, value) {
@@ -2711,7 +2711,7 @@ test('safe strings expose only closed own-field lookup and membership', () => {
     ].join('');
     assert.throws(
       () => engine.render(callableNeedleSource),
-      NunjitsuRenderError,
+      TemplateRenderError,
     );
     assert.equal(engine.render('clean'), 'clean');
   }
@@ -2721,7 +2721,7 @@ test('callable identities stay sealed and regular expressions cross as inert dat
   let captureCalls = 0;
   let received: unknown;
   let laterCalls = 0;
-  const engine = createEngine({
+  const engine = createTemplateRenderer({
     globals: {
       capture(value) {
         captureCalls += 1;
@@ -2799,7 +2799,7 @@ test('callable authority cannot enter or be discarded by non-macro arguments', (
   let laterCalls = 0;
   let markCalls = 0;
   let privilegedCalls = 0;
-  const engine = createEngine({
+  const engine = createTemplateRenderer({
     filters: {
       capture(input, ...arguments_) {
         filterCalls += 1;
@@ -2834,7 +2834,7 @@ test('callable authority cannot enter or be discarded by non-macro arguments', (
     source: string,
     scratchBytes?: number,
   ): void => {
-    let caught: NunjitsuRenderError | undefined;
+    let caught: TemplateRenderError | undefined;
     assert.throws(
       () => engine.render(
         source,
@@ -2842,7 +2842,7 @@ test('callable authority cannot enter or be discarded by non-macro arguments', (
         scratchBytes === undefined ? {} : { limits: { scratchBytes } },
       ),
       error => {
-        if (!(error instanceof NunjitsuRenderError)) {
+        if (!(error instanceof TemplateRenderError)) {
           return false;
         }
         caught = error;
@@ -2924,7 +2924,7 @@ test('callable identities cannot be laundered through rendering or built-ins', (
   let handleCalls = 0;
   let inspectCalls = 0;
   let laterCalls = 0;
-  const engine = createEngine({
+  const engine = createTemplateRenderer({
     filters: {
       inspect(value) {
         inspectCalls += 1;
@@ -2965,7 +2965,7 @@ test('callable identities cannot be laundered through rendering or built-ins', (
   for (const source of sources) {
     assert.throws(
       () => engine.render(source, {}, { limits: { scratchBytes: Number.POSITIVE_INFINITY } }),
-      NunjitsuRenderError,
+      TemplateRenderError,
       source,
     );
     assert.equal(handleCalls, 0, source);
@@ -2978,7 +2978,7 @@ test('callable identities cannot be laundered through rendering or built-ins', (
 test('expression groups reject empty syntax and cannot discard callable authority', () => {
   for (const cookiecutterCompat of [false, true]) {
     const events: string[] = [];
-    const engine = createEngine({
+    const engine = createTemplateRenderer({
       cookiecutterCompat,
       globals: {
         before() {
@@ -3015,7 +3015,7 @@ test('expression groups reject empty syntax and cannot discard callable authorit
       events.length = 0;
       assert.throws(
         () => engine.render(renderSource(source)),
-        NunjitsuRenderError,
+        TemplateRenderError,
         source,
       );
       assert.deepEqual(events, [], source);
@@ -3030,7 +3030,7 @@ test('expression groups reject empty syntax and cannot discard callable authorit
       events.length = 0;
       assert.throws(
         () => engine.render(renderSource(source)),
-        NunjitsuRenderError,
+        TemplateRenderError,
         source,
       );
       assert.deepEqual(events, [], source);
@@ -3050,7 +3050,7 @@ test('expression groups reject empty syntax and cannot discard callable authorit
 test('standard-library failures and scalar results cannot select fail-open branches', () => {
   let engineCalls = 0;
   let oracleCalls = 0;
-  const engine = createEngine({
+  const engine = createTemplateRenderer({
     globals: {
       privileged() {
         engineCalls += 1;
@@ -3068,7 +3068,7 @@ test('standard-library failures and scalar results cannot select fail-open branc
     '${{ missing | string }}${{ privileged() }}',
     '${{ null | string }}${{ privileged() }}',
   ]) {
-    assert.throws(() => engine.render(source), NunjitsuRenderError);
+    assert.throws(() => engine.render(source), TemplateRenderError);
     assert.throws(() => oracle.renderString(source.replaceAll('${{', '{{'), {}));
     assert.equal(engineCalls, 0);
     assert.equal(oracleCalls, 0);
@@ -3091,7 +3091,7 @@ test('standard-library failures and scalar results cannot select fail-open branc
 test('numeric filter arguments cannot desynchronize capability branches', () => {
   let engineCalls = 0;
   let oracleCalls = 0;
-  const engine = createEngine({
+  const engine = createTemplateRenderer({
     globals: {
       privileged() {
         engineCalls += 1;
@@ -3128,7 +3128,7 @@ test('built-in value types cannot desynchronize capability branches', () => {
   let oracleCalls = 0;
   const engineCaptured: unknown[] = [];
   const oracleCaptured: unknown[] = [];
-  const engine = createEngine({
+  const engine = createTemplateRenderer({
     globals: {
       capture(value) {
         engineCaptured.push(value);
@@ -3196,14 +3196,14 @@ test('built-in value types cannot desynchronize capability branches', () => {
     '{% set separator = joiner([handle]) %}${{ separator() }}${{ privileged() }}',
     '{% set separator = joiner({"value":handle}) %}${{ separator() }}${{ privileged() }}',
   ]) {
-    assert.throws(() => engine.render(source), NunjitsuRenderError);
+    assert.throws(() => engine.render(source), TemplateRenderError);
     assert.equal(engineCalls, 0);
     assert.equal(engine.render('clean'), 'clean');
   }
 });
 
 test('capability results cross the same closed value boundary', () => {
-  const engine = createEngine({
+  const engine = createTemplateRenderer({
     globals: {
       exposeReserved() {
         const value = Object.create(null) as Record<string, string>;
@@ -3224,7 +3224,7 @@ test('derived record keys preserve the capability-boundary name invariant', () =
     let calls = 0;
     let received: unknown;
     const target = {} as Record<string, unknown>;
-    const engine = createEngine({
+    const engine = createTemplateRenderer({
       globals: {
         capture(value) {
           calls += 1;
@@ -3266,7 +3266,7 @@ test('direct filter attributes use only explicit record keys', () => {
   for (const { name: path, reserved } of pathCases) {
     let calls = 0;
     let received: unknown;
-    const engine = createEngine({
+    const engine = createTemplateRenderer({
       globals: {
         capture(value) {
           calls += 1;
@@ -3324,7 +3324,7 @@ test('scope and capability identities never fall through host object names', () 
       filterCalls += 1;
       return `filter:${String(value)}`;
     };
-    const engine = createEngine({ globals, filters: filters as never });
+    const engine = createTemplateRenderer({ globals, filters: filters as never });
     assert.equal(engine.render(`\${{ ${name}() }}|\${{ "value" | ${name} }}`), 'global|filter:value');
     assert.equal(globalCalls, 1);
     assert.equal(filterCalls, 1);
@@ -3346,14 +3346,14 @@ test('scope and capability identities never fall through host object names', () 
       calls += 1;
       return null;
     };
-    assert.throws(() => createEngine({ globals }), /reserved/);
-    assert.throws(() => createEngine({ filters: filters as never }), /reserved/);
+    assert.throws(() => createTemplateRenderer({ globals }), /reserved/);
+    assert.throws(() => createTemplateRenderer({ filters: filters as never }), /reserved/);
     assert.equal(calls, 0);
   }
 
   for (const name of ['__proto__', 'constructor', 'prototype', '', '0', '東京', 'segment.child']) {
     let calls = 0;
-    const engine = createEngine({
+    const engine = createTemplateRenderer({
       globals: {
         early() {
           calls += 1;
@@ -3385,7 +3385,7 @@ test('dotted filters dispatch exact validated capability names', () => {
         return `tools.text.identity:${String(value)}`;
       },
     };
-    const engine = createEngine({
+    const engine = createTemplateRenderer({
       cookiecutterCompat,
       filters,
       globals: {
@@ -3460,7 +3460,7 @@ test('dotted filters dispatch exact validated capability names', () => {
       const rejectedSource = cookiecutterCompat
         ? source_
         : source_.replaceAll('{{', '${{');
-      assert.throws(() => engine.render(rejectedSource), NunjitsuRenderError, source_);
+      assert.throws(() => engine.render(rejectedSource), TemplateRenderError, source_);
       assert.deepEqual(engineEvents, [], source_);
       assert.equal(engine.render('clean'), 'clean');
     }
@@ -3489,7 +3489,7 @@ test('dotted filters dispatch exact validated capability names', () => {
   ]) {
     const filters = Object.create(null) as Record<string, (value: unknown) => unknown>;
     filters[name] = value => value;
-    assert.throws(() => createEngine({ filters: filters as never }), name);
+    assert.throws(() => createTemplateRenderer({ filters: filters as never }), name);
   }
 
   let accessorCalls = 0;
@@ -3501,12 +3501,12 @@ test('dotted filters dispatch exact validated capability names', () => {
       return (value: unknown) => value;
     },
   });
-  assert.throws(() => createEngine({ filters: accessorRegistry }));
+  assert.throws(() => createTemplateRenderer({ filters: accessorRegistry }));
   assert.equal(accessorCalls, 0);
 
   const symbolRegistry = Object.create(null);
   symbolRegistry[Symbol('filter')] = (value: unknown) => value;
-  assert.throws(() => createEngine({ filters: symbolRegistry }));
+  assert.throws(() => createTemplateRenderer({ filters: symbolRegistry }));
 
   let proxyTrapCalls = 0;
   const proxyRegistry = new Proxy({}, {
@@ -3519,14 +3519,14 @@ test('dotted filters dispatch exact validated capability names', () => {
       return [];
     },
   });
-  assert.throws(() => createEngine({ filters: proxyRegistry }));
+  assert.throws(() => createTemplateRenderer({ filters: proxyRegistry }));
   assert.equal(proxyTrapCalls, 0);
 });
 
 test('filter blocks validate authority before capturing and fail closed', () => {
   for (const cookiecutterCompat of [false, true]) {
     const events: string[] = [];
-    const engine = createEngine({
+    const engine = createTemplateRenderer({
       cookiecutterCompat,
       filters: {
         observe(value, argument) {
@@ -3576,7 +3576,7 @@ test('filter blocks validate authority before capturing and fail closed', () => 
       events.length = 0;
       assert.throws(
         () => engine.render(renderSource(source)),
-        NunjitsuRenderError,
+        TemplateRenderError,
         source,
       );
       assert.equal(events.includes('later'), false, source);
@@ -3596,7 +3596,7 @@ test('filter blocks validate authority before capturing and fail closed', () => 
       events.length = 0;
       assert.throws(
         () => engine.render(renderSource(source)),
-        NunjitsuRenderError,
+        TemplateRenderError,
         source,
       );
       assert.deepEqual(events, [], source);
@@ -3609,7 +3609,7 @@ test('filter blocks validate authority before capturing and fail closed', () => 
         {},
         { limits: { outputCodeUnits: 4 } },
       ),
-      NunjitsuLimitError,
+      TemplateLimitError,
     );
     assert.equal(engine.render('clean'), 'clean');
   }
@@ -3621,7 +3621,7 @@ test('capability results are recopied before reaching another capability', () =>
     let sinkCalls = 0;
     let received: unknown;
     const target = {} as Record<string, unknown>;
-    const engine = createEngine({
+    const engine = createTemplateRenderer({
       globals: {
         produce() {
           producerCalls += 1;
@@ -3706,7 +3706,7 @@ test('capability exceptions retain only inert sanitized messages and halt evalua
       return 'must not run';
     },
   };
-  const engine = createEngine({
+  const engine = createTemplateRenderer({
     filters: {
       failUseful() {
         throw new Error('useful message');
@@ -3758,11 +3758,11 @@ test('capability exceptions retain only inert sanitized messages and halt evalua
     },
   ];
   for (const { source, message } of failureCases) {
-    let caught: NunjitsuRenderError | undefined;
+    let caught: TemplateRenderError | undefined;
     assert.throws(
       () => engine.render(source),
       error => {
-        if (!(error instanceof NunjitsuRenderError)) {
+        if (!(error instanceof TemplateRenderError)) {
           return false;
         }
         caught = error;
@@ -3782,11 +3782,11 @@ test('capability exceptions retain only inert sanitized messages and halt evalua
     assert.equal(engine.render('clean'), 'clean');
   }
 
-  let longError: NunjitsuRenderError | undefined;
+  let longError: TemplateRenderError | undefined;
   assert.throws(
     () => engine.render('${{ failLong() }}${{ later() }}'),
     error => {
-      if (!(error instanceof NunjitsuRenderError)) {
+      if (!(error instanceof TemplateRenderError)) {
         return false;
       }
       longError = error;
@@ -3805,7 +3805,7 @@ test('capability exceptions retain only inert sanitized messages and halt evalua
 });
 
 test('parser diagnostics neutralize untrusted token content', () => {
-  const engine = createEngine();
+  const engine = createTemplateRenderer();
   const unsafeDiagnosticCharacterPattern = /[\u0000-\u001f\u007f-\u009f\u061c\u200e\u200f\u2028\u2029\u202a-\u202e\u2066-\u2069]/;
   const values = [
     'first-line\nsecond-line',
@@ -3834,7 +3834,7 @@ test('parser diagnostics neutralize untrusted token content', () => {
     assert.throws(
       () => engine.render(source, { target: {} }),
       error => {
-        if (!(error instanceof NunjitsuRenderError)) {
+        if (!(error instanceof TemplateRenderError)) {
           return false;
         }
         renderMessage = error.message;
@@ -3853,7 +3853,7 @@ test('parser diagnostics neutralize untrusted token content', () => {
   assert.throws(
     () => engine.render(printableSource, { target: {} }),
     error => (
-      error instanceof NunjitsuRenderError &&
+      error instanceof TemplateRenderError &&
       error.message.includes('"ordinary printable value"')
     ),
   );
@@ -3862,7 +3862,7 @@ test('parser diagnostics neutralize untrusted token content', () => {
   assert.throws(
     () => engine.render(evaluatorSource),
     error => (
-      error instanceof NunjitsuRenderError &&
+      error instanceof TemplateRenderError &&
       !unsafeDiagnosticCharacterPattern.test(error.message) &&
       error.message.includes('first\\u000asecond\\u001b[31m')
     ),
@@ -3870,16 +3870,16 @@ test('parser diagnostics neutralize untrusted token content', () => {
   const longEvaluatorSource = '${{ [1] | select(' + JSON.stringify('x'.repeat(2_000)) + ') }}';
   assert.throws(
     () => engine.render(longEvaluatorSource),
-    error => error instanceof NunjitsuRenderError && error.message.length <= 1_025,
+    error => error instanceof TemplateRenderError && error.message.length <= 1_025,
   );
 
   for (const character of bidiControlCharacters) {
     const source = '${{ value["LEFT' + character + 'RIGHT"]() }}';
-    let caught: NunjitsuRenderError | undefined;
+    let caught: TemplateRenderError | undefined;
     assert.throws(
       () => engine.render(source, { value: {} }),
       error => {
-        if (!(error instanceof NunjitsuRenderError)) {
+        if (!(error instanceof TemplateRenderError)) {
           return false;
         }
         caught = error;
@@ -3897,11 +3897,11 @@ test('public render diagnostics expose safe structure without internal causes', 
   const unsafeControlPattern = /[\u0000-\u0008\u000b-\u001f\u007f-\u009f\u061c\u200e\u200f\u2028\u2029\u202a-\u202e\u2066-\u2069]/;
   const source = '${{ value["FORGED\\n' + '\u001b' + ']52;c;YXR0YWNrZXI=' +
     '\u0007' + '\u202e' + 'TXT"]() }}';
-  let evaluationError: NunjitsuRenderError | undefined;
+  let evaluationError: TemplateRenderError | undefined;
   assert.throws(
-    () => createEngine().render(source, { value: {} }),
+    () => createTemplateRenderer().render(source, { value: {} }),
     error => {
-      if (!(error instanceof NunjitsuRenderError)) {
+      if (!(error instanceof TemplateRenderError)) {
         return false;
       }
       evaluationError = error;
@@ -3918,11 +3918,11 @@ test('public render diagnostics expose safe structure without internal causes', 
   assert.doesNotMatch(inspectedEvaluationError, unsafeControlPattern);
   assert.ok(!inspectedEvaluationError.includes('FORGED\n'));
 
-  let parseError: NunjitsuRenderError | undefined;
+  let parseError: TemplateRenderError | undefined;
   assert.throws(
-    () => createEngine().render('first line\n${{ broken( }}'),
+    () => createTemplateRenderer().render('first line\n${{ broken( }}'),
     error => {
-      if (!(error instanceof NunjitsuRenderError)) {
+      if (!(error instanceof TemplateRenderError)) {
         return false;
       }
       parseError = error;
@@ -3935,18 +3935,18 @@ test('public render diagnostics expose safe structure without internal causes', 
   assert.equal(parseError?.column, 13);
   assert.equal(parseError?.cause, undefined);
 
-  const capabilityEngine = createEngine({
+  const capabilityEngine = createTemplateRenderer({
     globals: {
       fail() {
         throw new Error('capability\n\u001b[31m');
       },
     },
   });
-  let capabilityError: NunjitsuRenderError | undefined;
+  let capabilityError: TemplateRenderError | undefined;
   assert.throws(
     () => capabilityEngine.render('prefix ${{ fail() }}'),
     error => {
-      if (!(error instanceof NunjitsuRenderError)) {
+      if (!(error instanceof TemplateRenderError)) {
         return false;
       }
       capabilityError = error;
@@ -3963,7 +3963,7 @@ test('public render diagnostics expose safe structure without internal causes', 
 });
 
 test('clears ambient legacy RegExp state after every render', () => {
-  const engine = createEngine();
+  const engine = createTemplateRenderer();
   const assertLegacyStateCleared = (): void => {
     assert.equal(RegExp.$1, '');
     assert.equal(RegExp.$2, '');
@@ -3996,14 +3996,14 @@ test('clears ambient legacy RegExp state after every render', () => {
       '${{ "FAIL:secret" | replace(r/FAIL:(.*)/, "x") }}',
       '${{ missing() }}',
     ].join('')),
-    error => error instanceof NunjitsuRenderError,
+    error => error instanceof TemplateRenderError,
   );
   assertLegacyStateCleared();
 
   seedLegacyState();
   assert.throws(
     () => engine.render('${{'),
-    error => error instanceof NunjitsuRenderError,
+    error => error instanceof TemplateRenderError,
   );
   assertLegacyStateCleared();
 
@@ -4040,7 +4040,7 @@ test('isolates capabilities from template-controlled legacy RegExp state', () =>
   };
   let laterCalls = 0;
 
-  const engine = createEngine({
+  const engine = createTemplateRenderer({
     filters: {
       observe(input) {
         observe();
@@ -4090,7 +4090,7 @@ test('isolates capabilities from template-controlled legacy RegExp state', () =>
 
   assert.throws(
     () => engine.render('${{ invalidResult() }}${{ later() }}'),
-    error => error instanceof NunjitsuRenderError,
+    error => error instanceof TemplateRenderError,
   );
   assert.deepEqual(readLegacyState(), emptyLegacyState);
   assert.equal(laterCalls, 0);
@@ -4098,7 +4098,7 @@ test('isolates capabilities from template-controlled legacy RegExp state', () =>
   assert.throws(
     () => engine.render('${{ fail() }}${{ later() }}'),
     error => (
-      error instanceof NunjitsuRenderError &&
+      error instanceof TemplateRenderError &&
       error.message ===
         'Template error at line 1, column 5: Template global "fail" failed: expected failure'
     ),
@@ -4107,7 +4107,7 @@ test('isolates capabilities from template-controlled legacy RegExp state', () =>
   assert.equal(laterCalls, 0);
 
   let nestedStateAfterRender: readonly string[] | undefined;
-  const innerEngine = createEngine({
+  const innerEngine = createTemplateRenderer({
     globals: {
       observeInner: observe,
       poisonInner() {
@@ -4116,7 +4116,7 @@ test('isolates capabilities from template-controlled legacy RegExp state', () =>
       },
     },
   });
-  const outerEngine = createEngine({
+  const outerEngine = createTemplateRenderer({
     globals: {
       nested() {
         /OUTER:(.*)/.exec('OUTER:poisoned');

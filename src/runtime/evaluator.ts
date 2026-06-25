@@ -17,10 +17,10 @@ import {
   suggestDiagnosticName,
 } from '../diagnostics.ts';
 import { parseTemplate } from '../parser/index.ts';
-import type { NormalizedRenderLimits } from '../limits.ts';
+import type { NormalizedTemplateRenderLimits } from '../limits.ts';
 import {
-  NunjitsuLimitError,
-  withNunjitsuLimitErrorContext,
+  TemplateLimitError,
+  withTemplateLimitErrorContext,
 } from '../limits.ts';
 import type { TemplateContext } from '../values.ts';
 import { normalizeMacroArguments } from './arguments.ts';
@@ -105,7 +105,7 @@ export interface EvaluateOptions {
   readonly cookiecutterCompat: boolean;
   readonly trimBlocks: boolean;
   readonly lstripBlocks: boolean;
-  readonly limits: NormalizedRenderLimits;
+  readonly limits: NormalizedTemplateRenderLimits;
   readonly host?: RuntimeHost;
 }
 
@@ -178,7 +178,7 @@ export function evaluateRuntimeTemplate(
     options.limits.sourceCodeUnits !== Number.POSITIVE_INFINITY &&
     source.length > options.limits.sourceCodeUnits
   ) {
-    throw new NunjitsuLimitError('sourceCodeUnits', {
+    throw new TemplateLimitError('sourceCodeUnits', {
       phase: 'parse',
       configured: options.limits.sourceCodeUnits,
       observed: source.length,
@@ -195,8 +195,8 @@ export function evaluateRuntimeTemplate(
   try {
     lexicalSlots = planLexicalSlots(ast, options.limits.workUnits);
   } catch (error) {
-    if (error instanceof NunjitsuLimitError) {
-      throw withNunjitsuLimitErrorContext(
+    if (error instanceof TemplateLimitError) {
+      throw withTemplateLimitErrorContext(
         error,
         'evaluate',
         ast.line + 1,
@@ -252,8 +252,8 @@ class Evaluator {
       this.#renderTemplate(ast, scope, macroContext, output, 0);
       return output.join('');
     } catch (error) {
-      if (error instanceof NunjitsuLimitError) {
-        throw withNunjitsuLimitErrorContext(
+      if (error instanceof TemplateLimitError) {
+        throw withTemplateLimitErrorContext(
           error,
           'evaluate',
           ast.line + 1,
@@ -284,8 +284,8 @@ class Evaluator {
     try {
       this.#evaluateNodeUnchecked(node, scope, macroContext, output, depth);
     } catch (error) {
-      if (error instanceof NunjitsuLimitError) {
-        throw withNunjitsuLimitErrorContext(
+      if (error instanceof TemplateLimitError) {
+        throw withTemplateLimitErrorContext(
           error,
           'evaluate',
           node.line + 1,
@@ -581,8 +581,8 @@ class Evaluator {
     try {
       return this.#evaluateExpressionUnchecked(node, scope, macroContext, depth);
     } catch (error) {
-      if (error instanceof NunjitsuLimitError) {
-        throw withNunjitsuLimitErrorContext(
+      if (error instanceof TemplateLimitError) {
+        throw withTemplateLimitErrorContext(
           error,
           'evaluate',
           node.line + 1,
@@ -865,7 +865,7 @@ class Evaluator {
           this.#chargeExpansionWork,
         );
         if (scratchBytes > this.#options.limits.scratchBytes) {
-          throw new NunjitsuLimitError('scratchBytes', {
+          throw new TemplateLimitError('scratchBytes', {
             phase: 'evaluate',
             configured: this.#options.limits.scratchBytes,
             observed: scratchBytes,
@@ -1472,7 +1472,7 @@ class Evaluator {
       this.#options.limits.outputCodeUnits !== Number.POSITIVE_INFINITY &&
       this.#outputCodeUnits > this.#options.limits.outputCodeUnits
     ) {
-      throw new NunjitsuLimitError('outputCodeUnits', {
+      throw new TemplateLimitError('outputCodeUnits', {
         phase: 'evaluate',
         configured: this.#options.limits.outputCodeUnits,
         observed: this.#outputCodeUnits,
@@ -1486,7 +1486,7 @@ class Evaluator {
       this.#options.limits.nestingDepth !== Number.POSITIVE_INFINITY &&
       depth > this.#options.limits.nestingDepth
     ) {
-      throw new NunjitsuLimitError('nestingDepth', {
+      throw new TemplateLimitError('nestingDepth', {
         phase: 'evaluate',
         configured: this.#options.limits.nestingDepth,
         observed: depth,
@@ -1497,7 +1497,7 @@ class Evaluator {
       this.#options.limits.workUnits !== Number.POSITIVE_INFINITY &&
       this.#workUnits > this.#options.limits.workUnits
     ) {
-      throw new NunjitsuLimitError('workUnits', {
+      throw new TemplateLimitError('workUnits', {
         phase: 'evaluate',
         configured: this.#options.limits.workUnits,
         observed: this.#workUnits,
@@ -1511,7 +1511,7 @@ class Evaluator {
       this.#options.limits.capabilityCalls !== Number.POSITIVE_INFINITY &&
       this.#capabilityCalls > this.#options.limits.capabilityCalls
     ) {
-      throw new NunjitsuLimitError('capabilityCalls', {
+      throw new TemplateLimitError('capabilityCalls', {
         phase: 'evaluate',
         configured: this.#options.limits.capabilityCalls,
         observed: this.#capabilityCalls,
@@ -1525,7 +1525,7 @@ class Evaluator {
     for (const value of values) {
       bytes += runtimeValueBytes(value, this.#chargeExpansionWork);
       if (bounded && bytes > this.#options.limits.scratchBytes) {
-        throw new NunjitsuLimitError('scratchBytes', {
+        throw new TemplateLimitError('scratchBytes', {
           phase: 'evaluate',
           configured: this.#options.limits.scratchBytes,
           observed: bytes,
@@ -1547,7 +1547,7 @@ class Evaluator {
       workLimit !== Number.POSITIVE_INFINITY &&
       (!Number.isSafeInteger(count) || count > workLimit - this.#workUnits)
     ) {
-      throw new NunjitsuLimitError('workUnits', {
+      throw new TemplateLimitError('workUnits', {
         phase: 'evaluate',
         configured: workLimit,
         observed: this.#workUnits + count,
@@ -1563,7 +1563,7 @@ class Evaluator {
         )
       )
     ) {
-      throw new NunjitsuLimitError('scratchBytes', {
+      throw new TemplateLimitError('scratchBytes', {
         phase: 'evaluate',
         configured: scratchLimit,
         observed: existingScratchBytes + count * indexedValueScratchBytes,
@@ -2076,7 +2076,7 @@ function contextualizeRuntimeFailure(
   line: number,
   column: number,
 ): RuntimeEvaluationError {
-  if (error instanceof NunjitsuLimitError) {
+  if (error instanceof TemplateLimitError) {
     throw error;
   }
   const failure = RuntimeEvaluationError.from(error, line, column);

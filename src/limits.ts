@@ -1,5 +1,5 @@
 /** Configurable denial-of-service limits for one render. */
-export interface RenderLimits {
+export interface TemplateRenderLimits {
   /** Maximum total UTF-16 source code units parsed across one render. */
   sourceCodeUnits: number;
   /** Maximum total immutable AST nodes parsed across one render. */
@@ -17,10 +17,10 @@ export interface RenderLimits {
 }
 
 /** Fully populated limits passed to the native parser and evaluator. */
-export type NormalizedRenderLimits = Readonly<RenderLimits>;
+export type NormalizedTemplateRenderLimits = Readonly<TemplateRenderLimits>;
 
 /** Safe structured context for one resource-limit failure. */
-export interface NunjitsuLimitErrorDetails {
+export interface TemplateLimitErrorDetails {
   /** Processing stage in which the limit was exceeded. */
   readonly phase?: 'parse' | 'evaluate' | undefined;
   /** One-based template line when available. */
@@ -34,9 +34,9 @@ export interface NunjitsuLimitErrorDetails {
 }
 
 /** A render rejected after exceeding one configured resource dimension. */
-export class NunjitsuLimitError extends Error {
+export class TemplateLimitError extends Error {
   /** Limit name when the host can identify the failed dimension. */
-  readonly limit: keyof RenderLimits | undefined;
+  readonly limit: keyof TemplateRenderLimits | undefined;
   /** Processing stage in which the limit was exceeded. */
   readonly phase: 'parse' | 'evaluate' | undefined;
   /** One-based template line when available. */
@@ -49,7 +49,7 @@ export class NunjitsuLimitError extends Error {
   readonly observed: number | undefined;
 
   /** Creates a deterministic resource-limit failure. */
-  constructor(limit?: keyof RenderLimits, details: NunjitsuLimitErrorDetails = {}) {
+  constructor(limit?: keyof TemplateRenderLimits, details: TemplateLimitErrorDetails = {}) {
     const resource = limit ? limitDescriptions[limit] : 'resource';
     const usage = details.configured === undefined
       ? ''
@@ -67,7 +67,7 @@ export class NunjitsuLimitError extends Error {
         ? ` at line ${details.line}`
         : ` at line ${details.line}, column ${details.column}`;
     super(`${stage} exceeded the ${resource} limit${usage}${location}`);
-    this.name = 'NunjitsuLimitError';
+    this.name = 'TemplateLimitError';
     this.limit = limit;
     this.phase = details.phase;
     this.line = details.line;
@@ -78,14 +78,14 @@ export class NunjitsuLimitError extends Error {
 
 }
 
-/** Adds missing one-based template context to an engine-owned limit error. */
-export function withNunjitsuLimitErrorContext(
-  error: NunjitsuLimitError,
+/** Adds missing one-based template context to a renderer-owned limit error. */
+export function withTemplateLimitErrorContext(
+  error: TemplateLimitError,
   phase: 'parse' | 'evaluate',
   line?: number,
   column?: number,
-): NunjitsuLimitError {
-  return new NunjitsuLimitError(error.limit, {
+): TemplateLimitError {
+  return new TemplateLimitError(error.limit, {
     phase: error.phase ?? phase,
     line: error.line ?? line,
     column: error.column ?? column,
@@ -94,7 +94,7 @@ export function withNunjitsuLimitErrorContext(
   });
 }
 
-const limitDescriptions: Readonly<Record<keyof RenderLimits, string>> = Object.freeze({
+const limitDescriptions: Readonly<Record<keyof TemplateRenderLimits, string>> = Object.freeze({
   sourceCodeUnits: 'source code unit',
   astNodes: 'AST node',
   workUnits: 'work unit',
@@ -104,7 +104,7 @@ const limitDescriptions: Readonly<Record<keyof RenderLimits, string>> = Object.f
   capabilityCalls: 'capability call',
 });
 
-const defaultLimits: NormalizedRenderLimits = Object.freeze({
+const defaultLimits: NormalizedTemplateRenderLimits = Object.freeze({
   sourceCodeUnits: 4 * 1024 * 1024,
   astNodes: 1_000_000,
   workUnits: 1_000_000,
@@ -115,9 +115,9 @@ const defaultLimits: NormalizedRenderLimits = Object.freeze({
 });
 
 /** Applies finite defaults and validates explicit per-render overrides. */
-export function normalizeRenderLimits(
-  limits: Partial<RenderLimits> | undefined,
-): NormalizedRenderLimits {
+export function normalizeTemplateRenderLimits(
+  limits: Partial<TemplateRenderLimits> | undefined,
+): NormalizedTemplateRenderLimits {
   const normalized = {
     ...defaultLimits,
     ...limits,

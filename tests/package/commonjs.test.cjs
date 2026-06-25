@@ -1,22 +1,28 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 
-const { createEngine } = require('nunjitsu');
+const packageExports = require('nunjitsu');
+const { createTemplateRenderer } = packageExports;
 
 test('resolves the CommonJS package export', () => {
   assert.match(require.resolve('nunjitsu'), /\/dist\/cjs\/index\.cjs$/);
+  assert.equal(packageExports.createTemplateRenderer, createTemplateRenderer);
+  assert.equal(Object.hasOwn(packageExports, 'default'), false);
+  assert.equal(Object.hasOwn(packageExports, 'createEngine'), false);
 });
 
 test('loads the ESM condition from a CommonJS environment', async () => {
   const module = await import('nunjitsu');
-  assert.equal(typeof module.createEngine, 'function');
+  assert.equal(typeof module.createTemplateRenderer, 'function');
+  assert.equal(Object.hasOwn(module, 'default'), false);
+  assert.equal(Object.hasOwn(module, 'createEngine'), false);
 });
 
 test('renders synchronously through the CommonJS package entry', t => {
   t.mock.method(Math, 'random', () => {
     throw new Error('Math.random must not be called during rendering');
   });
-  const engine = createEngine({
+  const engine = createTemplateRenderer({
     filters: {
       'tools.identity'(value) {
         return value;

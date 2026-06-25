@@ -1,34 +1,50 @@
 import {
-  createEngine,
-  NunjitsuLimitError,
-  NunjitsuRenderError,
-  type Engine,
-  type EngineOptions,
-  type NunjitsuRenderErrorCode,
-  type NunjitsuRenderErrorDetails,
-  type NunjitsuRenderErrorPhase,
-  type NunjitsuLimitErrorDetails,
+  createTemplateRenderer,
+  TemplateLimitError,
+  TemplateRenderError,
+  type TemplateRenderer,
+  type TemplateRendererOptions,
+  type PreparedTemplateContext,
+  type TemplateRenderLimits,
+  type TemplateRenderOptions,
+  type TemplateRenderErrorCode,
+  type TemplateRenderErrorDetails,
+  type TemplateRenderErrorPhase,
+  type TemplateLimitErrorDetails,
 } from 'nunjitsu';
 
-const options = { cookiecutterCompat: true } satisfies EngineOptions;
-const engine: Engine = createEngine(options);
+const options = { cookiecutterCompat: true } satisfies TemplateRendererOptions;
+const engine: TemplateRenderer = createTemplateRenderer(options);
 const output: string = engine.render('{{ value }}', { value: 'commonjs' });
-const code: NunjitsuRenderErrorCode = 'evaluation_error';
-const phase: NunjitsuRenderErrorPhase = 'evaluate';
-const details: NunjitsuRenderErrorDetails = {
+const context: PreparedTemplateContext = engine.prepareContext({ value: 'commonjs' });
+const limits: TemplateRenderLimits = {
+  sourceCodeUnits: 1,
+  astNodes: 1,
+  workUnits: 1,
+  nestingDepth: 1,
+  outputCodeUnits: 1,
+  scratchBytes: 1,
+  capabilityCalls: 1,
+};
+const renderOptions: TemplateRenderOptions = { limits };
+const code: TemplateRenderErrorCode = 'evaluation_error';
+const phase: TemplateRenderErrorPhase = 'evaluate';
+const details: TemplateRenderErrorDetails = {
   code,
   phase,
   line: undefined,
   column: undefined,
 };
-const limitDetails: NunjitsuLimitErrorDetails = {
+const limitDetails: TemplateLimitErrorDetails = {
   phase: 'parse',
   configured: 10,
   observed: 11,
 };
 
 void output;
+void context;
+void renderOptions;
 void details;
 void limitDetails;
-void NunjitsuLimitError;
-void NunjitsuRenderError;
+void TemplateLimitError;
+void TemplateRenderError;

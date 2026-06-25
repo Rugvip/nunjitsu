@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { createEngine } from '../../src/createEngine.ts';
+import { createTemplateRenderer } from '../../src/createTemplateRenderer.ts';
 
 test('renders default and Cookiecutter variable modes synchronously', () => {
-  const engine = createEngine();
+  const engine = createTemplateRenderer();
   assert.equal(
     engine.render('Hello ${{ values.name }}; {{ untouched }}', {
       values: { name: 'Nunjitsu' },
@@ -12,7 +12,7 @@ test('renders default and Cookiecutter variable modes synchronously', () => {
     'Hello Nunjitsu; {{ untouched }}',
   );
 
-  const cookiecutter = createEngine({ cookiecutterCompat: true });
+  const cookiecutter = createTemplateRenderer({ cookiecutterCompat: true });
   assert.equal(
     cookiecutter.render('{{ cookiecutter.name }}:{{ cookiecutter.items | jsonify }}', {
       cookiecutter: { name: 'Nunjitsu', items: [1, 2] },
@@ -23,7 +23,7 @@ test('renders default and Cookiecutter variable modes synchronously', () => {
 
 test('invokes synchronous filters and value or function globals through copied data', () => {
   const input = { nested: { value: 'safe' } };
-  const engine = createEngine({
+  const engine = createTemplateRenderer({
     filters: {
       inspect(value, suffix) {
         assert.equal(Object.getPrototypeOf(value), null);
@@ -64,7 +64,7 @@ test('reuses immutable prepared contexts and derives structurally shared updates
     },
     stable: 'clean',
   };
-  const engine = createEngine();
+  const engine = createTemplateRenderer();
   const prepared = engine.prepareContext(input);
 
   input.parameters.name = 'mutated';
@@ -139,13 +139,13 @@ test('reuses immutable prepared contexts and derives structurally shared updates
     /only strings/,
   );
   assert.throws(
-    () => createEngine().render('${{ parameters.name }}', prepared),
-    /different engine/,
+    () => createTemplateRenderer().render('${{ parameters.name }}', prepared),
+    /different template renderer/,
   );
 });
 
 test('rejects template-loading and extension syntax', () => {
-  const engine = createEngine();
+  const engine = createTemplateRenderer();
   for (const source of [
     '{% include "partial.njk" %}',
     '{% import "macros.njk" as macros %}',

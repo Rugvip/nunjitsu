@@ -9,13 +9,13 @@ belong here so those pages can remain readable.
 
 - **Direct string template**: one complete source string passed directly to
   `render`, without a loader, filename, include graph, or compiled cache.
-- **Closed value**: an engine-owned primitive or sealed runtime variant whose
+- **Closed value**: a renderer-owned primitive or sealed runtime variant whose
   behavior is implemented explicitly by the interpreter.
 - **Safe value boundary**: the recursive copy and validation step between host
   values and the closed runtime graph.
 - **Capability**: a trusted registered filter or global function represented in
   the interpreter by an opaque callable identity.
-- **Prepared context**: an immutable engine-bound snapshot of already copied
+- **Prepared context**: an immutable renderer-bound snapshot of already copied
   context values that may be structurally updated and reused.
 - **Compatibility oracle**: pinned Nunjucks v3.2.4 behavior used only by tests
   and benchmarks to establish observable output for the supported subset.
@@ -38,7 +38,7 @@ belong here so those pages can remain readable.
   package-manager lockfile. Author one erasable `.ts` source tree and compile it
   into tested ESM and CommonJS builds with generated declarations using the
   lockfile-pinned TypeScript 7.0 RC.
-- Construct engines synchronously and render synchronously. Engine-level
+- Construct renderers synchronously and render synchronously. Renderer-level
   filters and globals are immutable after creation.
 - Implement template execution as a closed native TypeScript interpreter in
   the caller process. Do not add Rust, Wasm, a worker protocol, or generated
@@ -53,7 +53,7 @@ belong here so those pages can remain readable.
 - Do not use `eval`, `Function`, constructor-derived equivalents, `node:vm`,
   generated JavaScript, dynamic import, or a JavaScript parser to execute
   template syntax.
-- Copy context and capability results into the closed engine-owned value graph.
+- Copy context and capability results into the closed renderer-owned value graph.
   Never retain live host objects, prototypes, getters, functions, methods, or
   iteration protocols in template-visible values.
 - Store scopes and records in private maps and implement every lookup,
@@ -144,7 +144,7 @@ belong here so those pages can remain readable.
   evaluation.
 - Never retain template sources, ASTs, values, or output state between renders
   by default. Retain values only through an explicit caller-owned prepared
-  context snapshot; keep snapshots immutable and engine-bound, and copy every
+  context snapshot; keep snapshots immutable and renderer-bound, and copy every
   update through the safe value boundary.
 - Treat template source as fully untrusted. Copy context into the safe value
   model; do not expose prototypes, getters, arbitrary functions, or live host
@@ -459,9 +459,9 @@ Do not create additional packages without a documented architectural reason.
   native-error brand check, neutralize and bound the detail, discard the
   original thrown value, and never resume template evaluation.
 - Complete public API validation before template evaluation. Pass through only
-  `NunjitsuLimitError` from evaluation and wrap every other evaluation failure
-  in `NunjitsuRenderError`, regardless of its underlying JavaScript error class.
-- Public render errors must expose only engine-owned bounded messages, stable
+  `TemplateLimitError` from evaluation and wrap every other evaluation failure
+  in `TemplateRenderError`, regardless of its underlying JavaScript error class.
+- Public render errors must expose only renderer-owned bounded messages, stable
   phase and code fields, and one-based template coordinates. Never retain an
   internal error, stack, thrown capability value, or other original value as
   `cause`; the public `cause` property remains `undefined`. Preserve original
@@ -510,7 +510,7 @@ Do not create additional packages without a documented architectural reason.
   compatibility changes, validate the built package against the Node.js 22
   package minimum. Also test both built package entry paths and synchronous
   rendering.
-- Every failure path must prove that the engine retains no partial render state
+- Every failure path must prove that the renderer retains no partial render state
   and the next render starts cleanly.
 - Security-sensitive parsing, value copying, lookup, coercion, and call changes
   require malformed input tests, gadget regression tests, and fuzz coverage
@@ -559,11 +559,11 @@ Do not create additional packages without a documented architectural reason.
   re-export declarations from responsibility-focused modules. Do not place
   substantial implementation in index files or add format-specific entrypoints.
 - When a module exists primarily to provide one main export, name the file
-  after that export, including its casing, such as `createEngine.ts` for
-  `createEngine`.
+  after that export, including its casing, such as `createTemplateRenderer.ts` for
+  `createTemplateRenderer`.
 - Add comments only for non-obvious invariants, architecture, or intentionally
   surprising behavior. Prefer self-explanatory names and types.
 - Keep security and memory ownership visible in APIs. Reject invalid states at
-  boundaries rather than compensating for them deeper in the engine.
+  boundaries rather than compensating for them deeper in the renderer.
 - Avoid speculative abstractions and persistent caches. Add complexity only for
   a measured need that fits the documented optimization target.

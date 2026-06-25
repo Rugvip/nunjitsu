@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 
 import nunjucks from 'nunjucks';
 
-import { createEngine } from '../src/index.ts';
+import { createTemplateRenderer } from '../src/index.ts';
 import {
   benchmarkWorkloads,
   type BenchmarkCaseId,
@@ -206,7 +206,7 @@ function createRunner(
 ): BenchmarkRunner {
   if (workload.kind === 'evolving-context') {
     if (implementation === 'nunjitsu') {
-      const engine = createEngine();
+      const engine = createTemplateRenderer();
       const initialContext = engine.prepareContext(workload.context);
       return {
         render() {
@@ -239,7 +239,7 @@ function createRunner(
   }
 
   if (implementation === 'nunjitsu') {
-    const engine = createEngine();
+    const engine = createTemplateRenderer();
     const context = engine.prepareContext(workload.context);
     return {
       render() {

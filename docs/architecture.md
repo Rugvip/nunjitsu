@@ -12,7 +12,7 @@ for templates that may render only once.
 
 ```mermaid
 flowchart LR
-    A["Application"] --> B["createEngine / render"]
+    A["Application"] --> B["createTemplateRenderer / render"]
     B --> C["Safe value copier"]
     B --> D["Template parser"]
     D --> E["Immutable AST"]
@@ -24,12 +24,12 @@ flowchart LR
 
 The application supplies an inline source string and plain data. The parser
 validates the complete source before evaluation and produces an immutable,
-data-only abstract syntax tree. Context data is copied into engine-owned values.
-The interpreter then performs lookup, coercion, control flow, filtering, and
-output explicitly over those known value kinds.
+data-only abstract syntax tree. Context data is copied into renderer-owned
+values. The interpreter then performs lookup, coercion, control flow,
+filtering, and output explicitly over those known value kinds.
 
 Templates never receive a live JavaScript object or function. Application code
-can be invoked only through filters and globals registered when the engine is
+can be invoked only through filters and globals registered when the renderer is
 created.
 
 ## Render lifecycle
@@ -49,12 +49,12 @@ cache. The next render starts from fresh parser and evaluator state.
 
 ## Main modules
 
-### Public engine
+### Public renderer
 
-`createEngine` owns immutable filter and global registries plus delimiter and
-whitespace options. `render` handles one source string. `prepareContext` creates
-an optional immutable snapshot for applications that repeatedly render against
-mostly unchanged data.
+`createTemplateRenderer` owns immutable filter and global registries plus
+delimiter and whitespace options. `render` handles one source string.
+`prepareContext` creates an optional immutable snapshot for applications that
+repeatedly render against mostly unchanged data.
 
 ### Parser
 
@@ -81,7 +81,7 @@ application object graph separate from template-visible state.
 ## Ownership and memory
 
 Normal renders retain no template state. Prepared contexts are the one explicit
-exception: they retain an engine-owned copy of context data until the caller
+exception: they retain a renderer-owned copy of context data until the caller
 releases the snapshot. `withPath` creates a new snapshot while structurally
 sharing unchanged internal values.
 
@@ -107,6 +107,6 @@ with generated declarations. Runtime behavior must not depend on module format.
 Nunjitsu does not provide template loading, inheritance, browser support,
 streaming, asynchronous rendering, precompilation, persistent compiled caches,
 custom parser extensions, or the Nunjucks JavaScript API. Applications own any
-filesystem access before passing a source string to the engine.
+filesystem access before passing a source string to the renderer.
 
 For exact implementation invariants, see [`CONTEXT.md`](../CONTEXT.md).

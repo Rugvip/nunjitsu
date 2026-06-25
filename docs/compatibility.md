@@ -45,12 +45,12 @@ JavaScript authority. In particular:
 
 - context values are copied plain data rather than live JavaScript objects;
 - object methods and context functions are not callable;
-- filters and globals are fixed when the engine is created and are synchronous;
+- filters and globals are fixed when the renderer is created and are synchronous;
 - callable identities cannot be converted, stored in ordinary data, passed to
   capabilities, or silently discarded by unsupported arguments;
 - malformed or unsupported complete source fails before any template code runs;
 - resource limits are enabled by default; and
-- errors are engine-owned diagnostics rather than upstream Nunjucks exceptions.
+- errors are renderer-owned diagnostics rather than upstream Nunjucks exceptions.
 
 These differences are part of the public contract, not compatibility gaps.
 

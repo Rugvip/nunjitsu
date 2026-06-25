@@ -3,7 +3,7 @@ import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 import nunjucks from 'nunjucks';
 
-import { createEngine, type TemplateContext } from '../../src/index.ts';
+import { createTemplateRenderer, type TemplateContext } from '../../src/index.ts';
 
 interface CompatibilityCase {
   id: string;
@@ -123,7 +123,7 @@ test('compatibility corpus retains complete attributed provenance', async () => 
 test('applicable upstream cases render synchronously in Cookiecutter mode', async t => {
   const applicable = cases.cases;
   assert.ok(applicable.length >= 60);
-  const engine = createEngine({ cookiecutterCompat: true });
+  const engine = createTemplateRenderer({ cookiecutterCompat: true });
   for (const compatibilityCase of applicable) {
     await t.test(compatibilityCase.id, () => {
       assert.equal(

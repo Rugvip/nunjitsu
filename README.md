@@ -22,28 +22,29 @@ Nunjitsu. See the [security model](docs/security.md) for trust-boundary details.
 pnpm add nunjitsu
 ```
 
-The package provides equivalent ESM and CommonJS entrypoints:
+The package provides named exports only, with equivalent ESM and CommonJS
+entrypoints:
 
 ```ts
-import { createEngine } from 'nunjitsu';
+import { createTemplateRenderer } from 'nunjitsu';
 ```
 
 ```js
-const { createEngine } = require('nunjitsu');
+const { createTemplateRenderer } = require('nunjitsu');
 ```
 
 ## TypeScript API
 
 ### Quick start
 
-Create an engine once, then render complete inline templates synchronously:
+Create a renderer once, then render complete inline templates synchronously:
 
 ```ts
-import { createEngine } from 'nunjitsu';
+import { createTemplateRenderer } from 'nunjitsu';
 
-const engine = createEngine();
+const renderer = createTemplateRenderer();
 
-const output = engine.render('Hello ${{ name }}!', {
+const output = renderer.render('Hello ${{ name }}!', {
   name: 'world',
 });
 
@@ -52,14 +53,16 @@ console.log(output); // Hello world!
 
 The default variable delimiters are `${{` and `}}`.
 
-### Creating an engine
+### Creating a renderer
 
 ```ts
-function createEngine(options?: EngineOptions): Engine;
+function createTemplateRenderer(
+  options?: TemplateRendererOptions,
+): TemplateRenderer;
 ```
 
-`createEngine` returns an immutable engine. Its filters, globals, delimiter
-mode, and whitespace behavior cannot be changed after creation.
+`createTemplateRenderer` returns an immutable renderer. Its filters, globals,
+delimiter mode, and whitespace behavior cannot be changed after creation.
 
 | Option | Type | Default | Description |
 | --- | --- | --- | --- |
@@ -72,11 +75,11 @@ mode, and whitespace behavior cannot be changed after creation.
 ### Rendering
 
 ```ts
-interface Engine {
+interface TemplateRenderer {
   render(
     source: string,
-    context?: TemplateContext | PreparedContext,
-    options?: RenderOptions,
+    context?: TemplateContext | PreparedTemplateContext,
+    options?: TemplateRenderOptions,
   ): string;
 }
 ```
@@ -86,7 +89,7 @@ copied and validated before evaluation. Rendering returns the complete output
 string or throws without returning partial output.
 
 ```ts
-const result = engine.render(
+const result = renderer.render(
   '${{ user.name }} has ${{ items | length }} items',
   {
     user: { name: 'Patrik' },
@@ -104,7 +107,7 @@ nesting, output, filter scratch data, and capability calls. Applications can
 tighten or disable individual limits for one render:
 
 ```ts
-engine.render(source, context, {
+renderer.render(source, context, {
   limits: {
     outputCodeUnits: 100_000,
     capabilityCalls: 100,
@@ -118,22 +121,22 @@ and guarantees.
 ### Prepared contexts
 
 Use a prepared context when the same data is rendered repeatedly. It is copied
-once into an immutable snapshot owned by the engine:
+once into an immutable snapshot owned by the renderer:
 
 ```ts
-interface Engine {
-  prepareContext(context?: TemplateContext): PreparedContext;
+interface TemplateRenderer {
+  prepareContext(context?: TemplateContext): PreparedTemplateContext;
 }
 
-interface PreparedContext {
-  withPath(path: readonly string[], value: TemplateValue): PreparedContext;
+interface PreparedTemplateContext {
+  withPath(path: readonly string[], value: TemplateValue): PreparedTemplateContext;
 }
 ```
 
 `withPath` returns a new snapshot and leaves the original unchanged.
 
 ```ts
-const initial = engine.prepareContext({
+const initial = renderer.prepareContext({
   parameters: { service: 'catalog' },
   steps: {},
 });
@@ -143,10 +146,10 @@ const afterBuild = initial.withPath(
   { output: { image: 'example/catalog:1.0' } },
 );
 
-engine.render('${{ steps.build.output.image }}', afterBuild);
+renderer.render('${{ steps.build.output.image }}', afterBuild);
 ```
 
-A prepared context can only be used with the engine that created it.
+A prepared context can only be used with the renderer that created it.
 
 ### Template values
 
@@ -189,7 +192,7 @@ template-controlled data, and their results cross the same value-copying
 boundary before becoming visible to the template.
 
 ```ts
-const engine = createEngine({
+const renderer = createTemplateRenderer({
   filters: {
     slugify(input) {
       if (typeof input !== 'string') {
