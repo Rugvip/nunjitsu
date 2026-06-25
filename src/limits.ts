@@ -8,7 +8,7 @@ export interface TemplateRenderLimits {
   workUnits: number;
   /** Maximum nested interpreter evaluation depth. */
   nestingDepth: number;
-  /** Maximum rendered JavaScript UTF-16 code units. */
+  /** Maximum rendered text or equivalent native-result UTF-16 code units. */
   outputCodeUnits: number;
   /** Maximum estimated UTF-8 bytes in values supplied to one filter. */
   scratchBytes: number;

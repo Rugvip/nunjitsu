@@ -56,6 +56,10 @@ Prepared contexts contain the same copied values. They never observe later
 mutation of the caller's objects, and failed path updates do not modify the
 original snapshot.
 
+`renderValue` returns values through the same boundary. Arrays and records are
+fresh frozen public copies, safe strings become ordinary strings, regular
+expressions become inert strings, and callable identities are rejected.
+
 ## Capabilities
 
 Filters and global functions are trusted application code. Registering one
@@ -83,15 +87,15 @@ execute.
 
 Every render starts with cooperative limits:
 
-| Limit | Default | Covers |
-| --- | ---: | --- |
-| `sourceCodeUnits` | `4_194_304` | UTF-16 source length |
-| `astNodes` | `1_000_000` | Parsed AST nodes |
-| `workUnits` | `1_000_000` | Static planning, evaluation, and value expansion |
-| `nestingDepth` | `512` | Nested statement and expression evaluation |
-| `outputCodeUnits` | `16_777_216` | UTF-16 output length |
-| `scratchBytes` | `67_108_864` | Estimated data supplied to one filter |
-| `capabilityCalls` | `4_096` | Registered filter and global calls |
+| Limit             |      Default | Covers                                           |
+| ----------------- | -----------: | ------------------------------------------------ |
+| `sourceCodeUnits` |  `4_194_304` | UTF-16 source length                             |
+| `astNodes`        |  `1_000_000` | Parsed AST nodes                                 |
+| `workUnits`       |  `1_000_000` | Static planning, evaluation, and value expansion |
+| `nestingDepth`    |        `512` | Nested statement and expression evaluation       |
+| `outputCodeUnits` | `16_777_216` | Rendered text or equivalent native-result output |
+| `scratchBytes`    | `67_108_864` | Estimated data supplied to one filter            |
+| `capabilityCalls` |      `4_096` | Registered filter and global calls               |
 
 Applications can override individual values through `TemplateRenderOptions.limits`.
 Each override must be a non-negative safe integer or `Infinity`.
@@ -104,7 +108,8 @@ strong resource containment or protection from bugs in trusted capabilities.
 
 API validation errors are reported before template evaluation. Parser and
 runtime failures use `TemplateRenderError`; exhausted resource limits use
-`TemplateLimitError`. Rendering is fail-stop and never returns partial output.
+`TemplateLimitError`. Both rendering methods are fail-stop and never return
+partial output.
 
 Public render errors contain renderer-owned, bounded, single-line diagnostics
 and safe template coordinates when available. They do not retain the internal

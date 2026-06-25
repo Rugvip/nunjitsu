@@ -7,6 +7,7 @@ import {
   type PreparedTemplateContext,
   type TemplateRenderLimits,
   type TemplateRenderOptions,
+  type TemplateValue,
   type TemplateRenderErrorCode,
   type TemplateRenderErrorDetails,
   type TemplateRenderErrorPhase,
@@ -16,6 +17,7 @@ import {
 const options = { cookiecutterCompat: true } satisfies TemplateRendererOptions;
 const engine: TemplateRenderer = createTemplateRenderer(options);
 const output: string = engine.render('{{ value }}', { value: 'commonjs' });
+const value: TemplateValue | undefined = engine.renderValue('{{ value }}', { value: 1 });
 const context: PreparedTemplateContext = engine.prepareContext({ value: 'commonjs' });
 const limits: TemplateRenderLimits = {
   sourceCodeUnits: 1,
@@ -42,6 +44,7 @@ const limitDetails: TemplateLimitErrorDetails = {
 };
 
 void output;
+void value;
 void context;
 void renderOptions;
 void details;

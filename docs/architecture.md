@@ -12,7 +12,7 @@ for templates that may render only once.
 
 ```mermaid
 flowchart LR
-    A["Application"] --> B["createTemplateRenderer / render"]
+    A["Application"] --> B["createTemplateRenderer / render / renderValue"]
     B --> C["Safe value copier"]
     B --> D["Template parser"]
     D --> E["Immutable AST"]
@@ -34,14 +34,15 @@ created.
 
 ## Render lifecycle
 
-One call to `render` follows this sequence:
+One call to `render` or `renderValue` follows this sequence:
 
 1. Validate the source, context, prepared-context ownership, and limit options.
 2. Copy ordinary context data into the closed value model.
 3. Parse and validate the complete template.
 4. Allocate render-local scopes and evaluator state.
 5. Evaluate the AST and append output fragments.
-6. Join and return the final string, or throw without returning partial output.
+6. Return the final string or safely copied native value, or throw without
+   returning partial output.
 7. Release the source, AST, scopes, and one-shot values.
 
 Nothing is compiled to JavaScript, sent to a worker, or retained as a template
@@ -52,7 +53,8 @@ cache. The next render starts from fresh parser and evaluator state.
 ### Public renderer
 
 `createTemplateRenderer` owns immutable filter and global registries plus
-delimiter and whitespace options. `render` handles one source string.
+delimiter and whitespace options. `render` always returns text. `renderValue`
+preserves the public value of a sole interpolation and otherwise returns text.
 `prepareContext` creates an optional immutable snapshot for applications that
 repeatedly render against mostly unchanged data.
 

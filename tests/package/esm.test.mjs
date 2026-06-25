@@ -41,6 +41,11 @@ test('renders synchronously through the ESM package entry', t => {
   );
   const context = engine.prepareContext({ value: 'prepared' });
   assert.equal(engine.render('ESM ${{ value | upper }}', context), 'ESM PREPARED');
+  assert.equal(engine.renderValue('${{ value }}', { value: 42 }), 42);
+  assert.deepEqual(
+    { ...engine.renderValue('${{ value }}', { value: { nested: true } }) },
+    { nested: true },
+  );
   assert.equal(engine.render('${{ ["only"] | random }}'), 'only');
   assert.equal(engine.render('${{ "dotted" | tools.identity }}'), 'dotted');
   assert.equal(

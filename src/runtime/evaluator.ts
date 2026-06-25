@@ -8,6 +8,7 @@ import type {
   AstData,
   AstForNode,
   AstNode,
+  AstOutputNode,
   AstRegexLiteral,
   AstSetNode,
   AstSliceNode,
@@ -22,7 +23,7 @@ import {
   TemplateLimitError,
   withTemplateLimitErrorContext,
 } from '../limits.ts';
-import type { TemplateContext } from '../values.ts';
+import type { TemplateContext, TemplateValue } from '../values.ts';
 import { normalizeMacroArguments } from './arguments.ts';
 import {
   applyBuiltinFilter,
@@ -58,9 +59,11 @@ import { RuntimeScope } from './scope.ts';
 import { stringCodeUnits } from './stringCodeUnits.ts';
 import {
   assertRuntimeValueHasNoCallable,
+  copyPublicValueWithWork,
   copyRuntimeContext,
   isReservedName,
   renderRuntimeValue,
+  renderedRuntimeValueCodeUnits,
   runtimeTruthy,
   RuntimeArray,
   RuntimeCallable,
@@ -174,6 +177,36 @@ export function evaluateRuntimeTemplate(
   context: RuntimeRecord,
   options: EvaluateOptions,
 ): string {
+  return evaluateRuntimeTemplateResult(source, context, options, false);
+}
+
+/** Parses and evaluates one inline source while preserving a sole output value. */
+export function evaluateRuntimeTemplateValue(
+  source: string,
+  context: RuntimeRecord,
+  options: EvaluateOptions,
+): TemplateValue | undefined {
+  return evaluateRuntimeTemplateResult(source, context, options, true);
+}
+
+function evaluateRuntimeTemplateResult(
+  source: string,
+  context: RuntimeRecord,
+  options: EvaluateOptions,
+  preserveSoleValue: false,
+): string;
+function evaluateRuntimeTemplateResult(
+  source: string,
+  context: RuntimeRecord,
+  options: EvaluateOptions,
+  preserveSoleValue: true,
+): TemplateValue | undefined;
+function evaluateRuntimeTemplateResult(
+  source: string,
+  context: RuntimeRecord,
+  options: EvaluateOptions,
+  preserveSoleValue: boolean,
+): TemplateValue | undefined {
   if (
     options.limits.sourceCodeUnits !== Number.POSITIVE_INFINITY &&
     source.length > options.limits.sourceCodeUnits
@@ -205,7 +238,25 @@ export function evaluateRuntimeTemplate(
     }
     throw error;
   }
-  return new Evaluator(options, lexicalSlots).render(ast, context);
+  const evaluator = new Evaluator(options, lexicalSlots);
+  return preserveSoleValue
+    ? evaluator.renderValue(ast, context)
+    : evaluator.render(ast, context);
+}
+
+function soleInterpolationOutput(ast: AstNode): AstOutputNode | undefined {
+  if (ast.type !== 'Root' || ast.children.length !== 1) {
+    return undefined;
+  }
+  const output = ast.children[0];
+  if (
+    output?.type !== 'Output' ||
+    output.children.length !== 1 ||
+    output.children[0]?.type === 'TemplateData'
+  ) {
+    return undefined;
+  }
+  return output;
 }
 
 class Evaluator {
@@ -223,6 +274,8 @@ class Evaluator {
   #workUnits = 0;
   #outputCodeUnits = 0;
   #capabilityCalls = 0;
+  #nativeOutput: AstOutputNode | undefined;
+  #nativeValue: RuntimeValue = undefined;
 
   constructor(options: EvaluateOptions, lexicalSlots: LexicalSlotPlan) {
     this.#options = options;
@@ -233,6 +286,45 @@ class Evaluator {
     ast: AstNode,
     context: RuntimeRecord,
   ): string {
+    const output: OutputTarget = [];
+    return this.#evaluateTemplate(
+      ast,
+      context,
+      output,
+      () => output.join(''),
+    );
+  }
+
+  renderValue(
+    ast: AstNode,
+    context: RuntimeRecord,
+  ): TemplateValue | undefined {
+    const nativeOutput = soleInterpolationOutput(ast);
+    if (!nativeOutput) {
+      return this.render(ast, context);
+    }
+    this.#nativeOutput = nativeOutput;
+    const output: OutputTarget = [];
+    return this.#evaluateTemplate(
+      ast,
+      context,
+      output,
+      () => {
+        const value = this.#nativeValue;
+        this.#chargeOutputCodeUnits(
+          renderedRuntimeValueCodeUnits(value, this.#chargeExpansionWork),
+        );
+        return copyPublicValueWithWork(value, this.#chargeExpansionWork);
+      },
+    );
+  }
+
+  #evaluateTemplate<Result>(
+    ast: AstNode,
+    context: RuntimeRecord,
+    output: OutputTarget,
+    complete: () => Result,
+  ): Result {
     const contextScope = new RuntimeScope();
     for (const [name, value] of context.entries()) {
       contextScope.setReadonly(name, value);
@@ -247,10 +339,9 @@ class Evaluator {
       true,
       true,
     );
-    const output: OutputTarget = [];
     try {
       this.#renderTemplate(ast, scope, macroContext, output, 0);
-      return output.join('');
+      return complete();
     } catch (error) {
       if (error instanceof TemplateLimitError) {
         throw withTemplateLimitErrorContext(
@@ -310,6 +401,19 @@ class Evaluator {
         this.#evaluateSequence(node.children, scope, macroContext, output, depth);
         return;
       case 'Output':
+        if (node === this.#nativeOutput) {
+          const child = node.children[0];
+          if (!child || child.type === 'TemplateData') {
+            throw new Error('Invalid native output node');
+          }
+          this.#nativeValue = this.#evaluateExpression(
+            child,
+            scope,
+            macroContext,
+            depth + 1,
+          );
+          return;
+        }
         for (const child of node.children) {
           if (child.type === 'TemplateData') {
             this.#append(output, literalString(child));
@@ -1467,7 +1571,12 @@ class Evaluator {
   }
 
   #append(output: OutputTarget, value: string): void {
-    this.#outputCodeUnits += value.length;
+    this.#chargeOutputCodeUnits(value.length);
+    output.push(value);
+  }
+
+  #chargeOutputCodeUnits(codeUnits: number): void {
+    this.#outputCodeUnits += codeUnits;
     if (
       this.#options.limits.outputCodeUnits !== Number.POSITIVE_INFINITY &&
       this.#outputCodeUnits > this.#options.limits.outputCodeUnits
@@ -1478,7 +1587,6 @@ class Evaluator {
         observed: this.#outputCodeUnits,
       });
     }
-    output.push(value);
   }
 
   #charge(depth: number): void {

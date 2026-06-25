@@ -7,6 +7,7 @@ import {
   type PreparedTemplateContext,
   type TemplateRenderLimits,
   type TemplateRenderOptions,
+  type TemplateValue,
   type TemplateRenderErrorDetails,
   type TemplateLimitErrorDetails,
 } from 'nunjitsu';
@@ -14,6 +15,7 @@ import {
 const options = { cookiecutterCompat: true } satisfies TemplateRendererOptions;
 const engine: TemplateRenderer = createTemplateRenderer(options);
 const output: string = engine.render('${{ value }}', { value: 'legacy' });
+const value: TemplateValue | undefined = engine.renderValue('${{ value }}', { value: 1 });
 const context: PreparedTemplateContext = engine.prepareContext({ value: 'legacy' });
 const limits: TemplateRenderLimits = {
   sourceCodeUnits: 1,
@@ -38,6 +40,7 @@ const limitDetails: TemplateLimitErrorDetails = {
 };
 
 void output;
+void value;
 void context;
 void renderOptions;
 void details;

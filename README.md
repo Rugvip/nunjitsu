@@ -1,6 +1,6 @@
 # Nunjitsu
 
-Nunjitsu is a secure native TypeScript template engine for direct string
+Nunjitsu is a secure native TypeScript template engine for direct template
 rendering. It supports a focused subset of
 [Nunjucks 3.2.4](https://mozilla.github.io/nunjucks/) through a closed,
 synchronous interpreter rather than generated JavaScript.
@@ -95,6 +95,27 @@ const result = renderer.render(
   },
 );
 ```
+
+Use `renderValue` when a sole interpolation should retain its value type:
+
+```ts
+interface TemplateRenderer {
+  renderValue(
+    source: string,
+    context?: TemplateContext | PreparedTemplateContext,
+    options?: TemplateRenderOptions,
+  ): TemplateValue | undefined;
+}
+
+const config = renderer.renderValue('${{ config }}', {
+  config: { retries: 3 },
+});
+// { retries: 3 }
+```
+
+Templates containing text, multiple interpolations, or statements return their
+normally rendered string. Returned arrays and records are copied and frozen.
+This is useful for configuration, workflow, and structured-data templates.
 
 `TemplateRenderOptions` configures per-render resource limits. See
 [Security](docs/security.md#resource-limits) for details.

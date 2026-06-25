@@ -332,6 +332,14 @@ export function copyPublicValue(value: RuntimeValue): TemplateValue | undefined 
   return toPublicValue(value, new Map());
 }
 
+/** Copies an internal value while charging every traversed structured slot. */
+export function copyPublicValueWithWork(
+  value: RuntimeValue,
+  chargeWork: RuntimeWorkCharge,
+): TemplateValue | undefined {
+  return toPublicValue(value, new Map(), chargeWork);
+}
+
 /** Explicit string coercion over closed value variants. */
 export function renderRuntimeValue(
   value: RuntimeValue,
@@ -339,6 +347,15 @@ export function renderRuntimeValue(
 ): string {
   assertRuntimeValueHasNoCallable(value);
   return renderRuntimeValueUnchecked(value, chargeWork);
+}
+
+/** Measures closed string rendering without allocating the rendered value. */
+export function renderedRuntimeValueCodeUnits(
+  value: RuntimeValue,
+  chargeWork?: RuntimeWorkCharge,
+): number {
+  assertRuntimeValueHasNoCallable(value);
+  return renderedRuntimeValueCodeUnitsUnchecked(value, chargeWork);
 }
 
 /** Rejects callable identities anywhere inside a closed value graph. */
@@ -411,6 +428,42 @@ function renderRuntimeValueUnchecked(
   }
   if (value instanceof RuntimeRegex) {
     return runtimeRegexToString(value);
+  }
+  throw new TypeError('Callable values cannot be rendered');
+}
+
+function renderedRuntimeValueCodeUnitsUnchecked(
+  value: RuntimeValue,
+  chargeWork?: RuntimeWorkCharge,
+): number {
+  if (value === undefined || value === null) {
+    return 0;
+  }
+  if (typeof value === 'string') {
+    return value.length;
+  }
+  if (typeof value === 'boolean') {
+    return value ? 4 : 5;
+  }
+  if (typeof value === 'number') {
+    return renderRuntimeValueUnchecked(value).length;
+  }
+  if (value instanceof RuntimeSafeString) {
+    return value.value.length;
+  }
+  if (value instanceof RuntimeArray) {
+    let codeUnits = Math.max(0, value.length - 1);
+    for (const item of value.values()) {
+      chargeWork?.();
+      codeUnits += renderedRuntimeValueCodeUnitsUnchecked(item, chargeWork);
+    }
+    return codeUnits;
+  }
+  if (value instanceof RuntimeRecord) {
+    return 15;
+  }
+  if (value instanceof RuntimeRegex) {
+    return runtimeRegexToString(value).length;
   }
   throw new TypeError('Callable values cannot be rendered');
 }
@@ -571,6 +624,7 @@ function isArrayIndex(value: string, length: number): boolean {
 function toPublicValue(
   value: RuntimeValue,
   aliases: Map<object, TemplateValue>,
+  chargeWork?: RuntimeWorkCharge,
 ): TemplateValue | undefined {
   if (
     value === undefined ||
@@ -593,8 +647,9 @@ function toPublicValue(
     output.length = value.length;
     aliases.set(value, output);
     for (let index = 0; index < value.length; index += 1) {
+      chargeWork?.();
       if (value.has(index)) {
-        const publicItem = toPublicValue(value.at(index), aliases);
+        const publicItem = toPublicValue(value.at(index), aliases, chargeWork);
         defineOwnArrayIndex(
           output,
           index,
@@ -608,10 +663,11 @@ function toPublicValue(
     const output = Object.create(null) as Record<string, TemplateValue>;
     aliases.set(value, output);
     for (const [key, item] of value.entries()) {
+      chargeWork?.();
       if (isReservedName(key)) {
         throw new TypeError(`Template record key ${key} is reserved`);
       }
-      const publicItem = toPublicValue(item, aliases);
+      const publicItem = toPublicValue(item, aliases, chargeWork);
       if (publicItem !== undefined) {
         output[key] = publicItem;
       }

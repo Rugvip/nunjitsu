@@ -8,7 +8,8 @@ belong here so those pages can remain readable.
 ## Domain language
 
 - **Direct string template**: one complete source string passed directly to
-  `render`, without a loader, filename, include graph, or compiled cache.
+  `render` or `renderValue`, without a loader, filename, include graph, or
+  compiled cache.
 - **Closed value**: a renderer-owned primitive or sealed runtime variant whose
   behavior is implemented explicitly by the interpreter.
 - **Safe value boundary**: the recursive copy and validation step between host
@@ -46,6 +47,17 @@ belong here so those pages can remain readable.
 - Parse each complete source into an immutable, data-only AST before executing
   it. AST nodes must not contain functions, host objects, property descriptors,
   or executable closures.
+- Preserve a native `renderValue` result only when the parsed root contains
+  exactly one `Output` node containing exactly one non-`TemplateData`
+  expression. Comments may disappear during scanning, but any literal text,
+  additional output, or executable statement forces ordinary string
+  rendering. Parse and evaluate once; never probe a result by re-running
+  template behavior.
+- Export a native result only through the safe public value boundary. Convert
+  safe strings and inert regexes to ordinary strings, reject callable authority
+  recursively, preserve sparse arrays and record order, freeze returned arrays
+  and null-prototype records, charge work for every traversed structured slot,
+  and apply the equivalent rendered-text output limit before returning.
 - Represent AST variants as frozen plain object nodes with stable direct typed
   properties and direct child references. Do not add generic field bags,
   packed numeric arenas, or ArrayBuffer storage without a measured end-to-end

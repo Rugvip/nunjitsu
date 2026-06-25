@@ -3,7 +3,11 @@ import { neutralizeDiagnosticMessage } from './diagnostics.ts';
 import { TemplateLimitError, normalizeTemplateRenderLimits, type TemplateRenderLimits } from './limits.ts';
 import { NunjitsuParseError } from './parser/index.ts';
 import { clearLegacyRegExpState } from './runtime/clearLegacyRegExpState.ts';
-import { evaluateRuntimeTemplate } from './runtime/evaluator.ts';
+import {
+  evaluateRuntimeTemplate,
+  evaluateRuntimeTemplateValue,
+  type EvaluateOptions,
+} from './runtime/evaluator.ts';
 import { createRuntimeHost } from './runtime/host.ts';
 import { RuntimeEvaluationError } from './runtime/RuntimeEvaluationError.ts';
 import {
@@ -63,6 +67,17 @@ export interface TemplateRenderer {
     context?: TemplateContext | PreparedTemplateContext,
     options?: TemplateRenderOptions,
   ): string;
+  /**
+   * Renders one complete template while preserving a sole interpolation value.
+   *
+   * Templates containing text, multiple interpolations, or executable
+   * statements return their normally rendered string.
+   */
+  renderValue(
+    source: string,
+    context?: TemplateContext | PreparedTemplateContext,
+    options?: TemplateRenderOptions,
+  ): TemplateValue | undefined;
 }
 
 /** Internal ownership and value state for one opaque prepared context. */
@@ -149,6 +164,46 @@ export function createTemplateRenderer(
   const rendererOwner = Object.freeze({});
   const emptyContext = new RuntimeRecord([]);
 
+  function renderTemplate<Result>(
+    source: string,
+    context: TemplateContext | PreparedTemplateContext | undefined,
+    renderOptions: TemplateRenderOptions,
+    evaluate: (
+      source: string,
+      context: RuntimeRecord,
+      options: EvaluateOptions,
+    ) => Result,
+  ): Result {
+    try {
+      if (typeof source !== 'string') {
+        throw new TypeError('Template source must be a string');
+      }
+      const runtimeContext = resolveRuntimeContext(
+        rendererOwner,
+        context,
+        emptyContext,
+      );
+      const limits = normalizeTemplateRenderLimits(renderOptions.limits);
+      try {
+        return evaluate(source, runtimeContext, {
+          cookiecutterCompat,
+          trimBlocks,
+          lstripBlocks,
+          limits,
+          host,
+        });
+      } catch (error) {
+        if (error instanceof TemplateLimitError) {
+          throw error;
+        }
+        const diagnostic = publicRenderDiagnostic(error);
+        throw new TemplateRenderError(diagnostic.message, diagnostic);
+      }
+    } finally {
+      clearLegacyRegExpState();
+    }
+  }
+
   return Object.freeze({
     prepareContext(context: TemplateContext = {}): PreparedTemplateContext {
       return createPreparedTemplateContext(rendererOwner, copyRuntimeContext(context));
@@ -158,34 +213,24 @@ export function createTemplateRenderer(
       context?: TemplateContext | PreparedTemplateContext,
       renderOptions: TemplateRenderOptions = {},
     ): string {
-      try {
-        if (typeof source !== 'string') {
-          throw new TypeError('Template source must be a string');
-        }
-        const runtimeContext = resolveRuntimeContext(
-          rendererOwner,
-          context,
-          emptyContext,
-        );
-        const limits = normalizeTemplateRenderLimits(renderOptions.limits);
-        try {
-          return evaluateRuntimeTemplate(source, runtimeContext, {
-            cookiecutterCompat,
-            trimBlocks,
-            lstripBlocks,
-            limits,
-            host,
-          });
-        } catch (error) {
-          if (error instanceof TemplateLimitError) {
-            throw error;
-          }
-          const diagnostic = publicRenderDiagnostic(error);
-          throw new TemplateRenderError(diagnostic.message, diagnostic);
-        }
-      } finally {
-        clearLegacyRegExpState();
-      }
+      return renderTemplate(
+        source,
+        context,
+        renderOptions,
+        evaluateRuntimeTemplate,
+      );
+    },
+    renderValue(
+      source: string,
+      context?: TemplateContext | PreparedTemplateContext,
+      renderOptions: TemplateRenderOptions = {},
+    ): TemplateValue | undefined {
+      return renderTemplate(
+        source,
+        context,
+        renderOptions,
+        evaluateRuntimeTemplateValue,
+      );
     },
   });
 }
