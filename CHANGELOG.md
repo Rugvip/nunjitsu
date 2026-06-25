@@ -1,5 +1,18 @@
 # nunjitsu
 
+## 0.3.0
+
+### Minor Changes
+
+- Add `TemplateRenderer.renderValue` for rendering complete templates while
+  preserving the native value of a sole interpolation. Templates containing text,
+  multiple interpolations, or statements continue to return rendered strings.
+
+### Patch Changes
+
+- Streamline the README API documentation by removing overly detailed security
+  guidance.
+
 ## 0.2.0
 
 ### Minor Changes
