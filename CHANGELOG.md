@@ -1,5 +1,13 @@
 # nunjitsu
 
+## 0.3.1
+
+### Patch Changes
+
+- Harden `striptags` against nested markup that could expose a new HTML tag after
+  the first removal pass. Excessively nested overlapping markup now fails closed.
+- Roll up the public TypeScript declarations so package consumers no longer receive internal declaration modules.
+
 ## 0.3.0
 
 ### Minor Changes
