@@ -49,7 +49,9 @@ JavaScript authority. In particular:
 - callable identities cannot be converted, stored in ordinary data, passed to
   capabilities, or silently discarded by unsupported arguments;
 - malformed or unsupported complete source fails before any template code runs;
-- resource limits are enabled by default; and
+- resource limits are enabled by default;
+- `striptags` removes nested markup to a bounded fixed point instead of
+  preserving tags exposed by an earlier removal pass; and
 - errors are renderer-owned diagnostics rather than upstream Nunjucks exceptions.
 
 These differences are part of the public contract, not compatibility gaps.

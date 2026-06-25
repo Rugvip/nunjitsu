@@ -56,6 +56,63 @@ const bidiControlCharacters = Object.freeze([
   '\u2069',
 ]);
 
+test('striptags removes nested markup without returning partially sanitized safe text', () => {
+  const oracle = new nunjucks.Environment(undefined, { autoescape: false });
+  let laterCalls = 0;
+  const renderer = createTemplateRenderer({
+    globals: {
+      later() {
+        laterCalls += 1;
+        return 'later';
+      },
+    },
+  });
+  const ordinary = '<p>Hello <!-- comment --><b>world</b></p>';
+  const hostile = '<<script>script>alert(1)<</script>/script>';
+  const hostileComment = '<!<b></b>-- hidden --><i>visible</i>';
+
+  assert.equal(
+    renderer.render('${{ value | striptags }}', { value: ordinary }),
+    oracle.renderString('{{ value | striptags }}', { value: ordinary }),
+  );
+  assert.equal(
+    oracle.renderString('{{ value | safe | striptags }}', { value: hostile }),
+    '<script>alert(1)</script>',
+  );
+  assert.equal(
+    renderer.render('${{ value | safe | striptags }}', { value: hostile }),
+    'alert(1)',
+  );
+  assert.equal(
+    oracle.renderString('{{ value | safe | striptags }}', { value: hostileComment }),
+    '<!-- hidden -->visible',
+  );
+  assert.equal(
+    renderer.render('${{ value | safe | striptags }}', { value: hostileComment }),
+    'visible',
+  );
+  assert.equal(
+    renderer.render('${{ value | safe | striptags is escaped }}', { value: hostile }),
+    'true',
+  );
+
+  let excessivelyNested = '<b>text</b>';
+  for (let depth = 0; depth < 8; depth += 1) {
+    excessivelyNested = excessivelyNested
+      .replaceAll('<b>', '<<b>b>')
+      .replaceAll('</b>', '<</b>/b>');
+  }
+  assert.throws(
+    () => renderer.render(
+      '${{ value | safe | striptags }}${{ later() }}',
+      { value: excessivelyNested },
+    ),
+    TemplateRenderError,
+  );
+  assert.equal(laterCalls, 0);
+  assert.equal(renderer.render('${{ value }}', { value: 'clean' }), 'clean');
+});
+
 test('copies only plain data without invoking accessors or host behavior', () => {
   let getterCalls = 0;
   const withGetter = Object.defineProperty({}, 'secret', {

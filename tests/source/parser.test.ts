@@ -4,6 +4,10 @@ import test from 'node:test';
 import { type AstData, type AstNode, isAstNode } from '../../src/parser/ast.ts';
 import { NunjitsuParseError, parseTemplate } from '../../src/parser/index.ts';
 
+function defaultInterpolation(expression: string): string {
+  return '${{ ' + expression + ' }}';
+}
+
 test('parses complete templates into deeply immutable data-only nodes', () => {
   const ast = parseTemplate([
     'Hello ${{ user.name | upper }}',
@@ -119,7 +123,7 @@ test('parses Nunjucks test right-hand sides through the comparison tier', () => 
     for (const expression of expressions) {
       const source = cookiecutterCompat
         ? `{{ ${expression} }}`
-        : `\${{ ${expression} }}`;
+        : defaultInterpolation(expression);
       const ast = parseTemplate(source, options);
       assertDataOnly(ast);
     }
@@ -384,7 +388,7 @@ test('rejects adjacent identical unary signs while preserving separated forms', 
   ];
   for (const options of modes) {
     for (const expression of rejectedExpressions) {
-      const source = `\${{ ${expression} }}`;
+      const source = defaultInterpolation(expression);
       const renderedSource = options ? source.replaceAll('${{', '{{') : source;
       assert.throws(
         () => parseTemplate(renderedSource, options),
@@ -413,7 +417,7 @@ test('rejects adjacent identical unary signs while preserving separated forms', 
       '+(+value)',
       'not not value',
     ]) {
-      const source = `\${{ ${expression} }}`;
+      const source = defaultInterpolation(expression);
       const renderedSource = options ? source.replaceAll('${{', '{{') : source;
       assert.doesNotThrow(() => parseTemplate(renderedSource, options), renderedSource);
     }

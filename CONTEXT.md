@@ -409,6 +409,10 @@ Do not create additional packages without a documented architectural reason.
   through splitting and safeness copying. Return unchanged values and existing
   safe strings directly where Nunjucks short-circuits; transformed output
   receives a fresh safe identity.
+- Deliberately harden `striptags` beyond pinned Nunjucks by removing nested tags
+  and comments to a fixed point. Bound overlapping-removal work to eight passes
+  and fail closed when another pass could still expose markup; never return a
+  partially sanitized safe string.
 - Preserve filter arguments through original-value defaulting and apply the
   operation-specific numeric rule only where Nunjucks performs it. Do not share
   one integer normalization across repeat-loop bounds, substring positions,

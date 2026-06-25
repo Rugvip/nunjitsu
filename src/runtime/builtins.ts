@@ -40,6 +40,7 @@ const emailAddressPattern = /^[\w.!#$%&'*+\-/=?^`{|}~]+@[a-z\d-]+(?:\.[a-z\d-]+)
 const commonDomainPattern = /\.(?:org|net|com)(?::|\/|$)/;
 const htmlEscapeCharacterPattern = /[&"'<>\\]/g;
 const maximumRepeatedSpaces = 16 * 1024 * 1024;
+const maximumStripTagsPasses = 8;
 const randomFractionResolution = 0x1_0000_0000;
 const htmlEscapeReplacements: Readonly<Record<string, string>> = Object.freeze({
   '&': '&amp;', '"': '&quot;', "'": '&#39;', '<': '&lt;', '>': '&gt;', '\\': '&#92;',
@@ -330,9 +331,7 @@ export function applyBuiltinFilter(
     return copySafeness(input, renderRuntimeValue(input));
   }
   if (name === 'striptags') {
-    const stripped = normalizedRuntimeText(input)
-      .replace(htmlTagPattern, '')
-      .trim();
+    const stripped = stripHtmlTags(normalizedRuntimeText(input)).trim();
     const text = runtimeTruthy(positional[0])
       ? stripped
         .replace(lineEdgeSpacesPattern, '')
@@ -371,6 +370,21 @@ export function applyBuiltinFilter(
     return runtimeText(normalized).match(wordPattern)?.length ?? null;
   }
   return undefined;
+}
+
+function stripHtmlTags(value: string): string {
+  let stripped = value;
+  for (let pass = 0; pass < maximumStripTagsPasses; pass += 1) {
+    const next = stripped.replace(htmlTagPattern, '');
+    if (next === stripped) {
+      return stripped;
+    }
+    stripped = next;
+  }
+  if (stripped.replace(htmlTagPattern, '') !== stripped) {
+    throw new TypeError('striptags input contains excessively nested markup');
+  }
+  return stripped;
 }
 
 function batchRuntimeValues(
