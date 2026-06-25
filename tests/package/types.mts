@@ -19,6 +19,7 @@ const engine: TemplateRenderer = createTemplateRenderer(options);
 const output: string = engine.render('{{ value }}', { value: 'esm' });
 const value: TemplateValue | undefined = engine.renderValue('{{ value }}', { value: 1 });
 const context: PreparedTemplateContext = engine.prepareContext({ value: 'esm' });
+const updatedContext: PreparedTemplateContext = context.withValue(['value'], 'updated');
 const limits: TemplateRenderLimits = {
   sourceCodeUnits: 1,
   astNodes: 1,
@@ -48,6 +49,7 @@ const limitDetails: TemplateLimitErrorDetails = {
 void output;
 void value;
 void context;
+void updatedContext;
 void renderOptions;
 void details;
 void limitDetails;

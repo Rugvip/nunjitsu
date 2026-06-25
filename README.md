@@ -131,14 +131,14 @@ interface TemplateRenderer {
 }
 
 interface PreparedTemplateContext {
-  withPath(
+  withValue(
     path: readonly string[],
     value: TemplateValue,
   ): PreparedTemplateContext;
 }
 ```
 
-`withPath` returns a new snapshot and leaves the original unchanged.
+`withValue` returns a new snapshot and leaves the original unchanged.
 
 ```ts
 const initial = renderer.prepareContext({
@@ -146,7 +146,7 @@ const initial = renderer.prepareContext({
   steps: {},
 });
 
-const afterBuild = initial.withPath(['steps', 'build'], {
+const afterBuild = initial.withValue(['steps', 'build'], {
   output: { image: 'example/catalog:1.0' },
 });
 

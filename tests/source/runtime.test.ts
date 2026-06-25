@@ -2925,14 +2925,14 @@ test('enumerates record keys in Nunjucks property order', () => {
       record: { x: 'initial', 10: 'ten' },
     });
     const updated = prepared
-      .withPath(['record', '2'], 'two')
-      .withPath(['record', '0'], 'zero')
-      .withPath(['record', '4294967294'], 'index-max')
-      .withPath(['record', '01'], 'padded')
-      .withPath(['record', '4294967295'], 'not-index')
-      .withPath(['record', '-1'], 'negative')
-      .withPath(['record', 'x'], 'replaced')
-      .withPath(['record', '2'], 'replaced-two');
+      .withValue(['record', '2'], 'two')
+      .withValue(['record', '0'], 'zero')
+      .withValue(['record', '4294967294'], 'index-max')
+      .withValue(['record', '01'], 'padded')
+      .withValue(['record', '4294967295'], 'not-index')
+      .withValue(['record', '-1'], 'negative')
+      .withValue(['record', 'x'], 'replaced')
+      .withValue(['record', '2'], 'replaced-two');
     const oracleContext = {
       record: { x: 'initial', 10: 'ten' } as Record<string, string>,
     };

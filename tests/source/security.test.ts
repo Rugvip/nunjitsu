@@ -196,7 +196,7 @@ test('rejects proxy-backed values before invoking reflection traps', () => {
   );
   const prepared = contextEngine.prepareContext({ steps: {} });
   assert.throws(
-    () => prepared.withPath(['steps', 'unsafe'], revocable.proxy),
+    () => prepared.withValue(['steps', 'unsafe'], revocable.proxy),
     /Proxy objects cannot be used as template values/,
   );
   assert.throws(
@@ -307,7 +307,7 @@ test('reserves prototype gadget names across values, syntax, and scopes', () => 
     const scope = new RuntimeScope();
     assert.throws(() => scope.set(name, 'blocked'), /is reserved/);
     assert.equal(scope.get(name), undefined);
-    assert.throws(() => prepared.withPath(['steps', name], 'blocked'), /is reserved/);
+    assert.throws(() => prepared.withValue(['steps', name], 'blocked'), /is reserved/);
   }
 
   const engine = createTemplateRenderer();
@@ -333,7 +333,7 @@ test('prepared context updates copy data without invoking accessors', () => {
   });
   const prepared = createTemplateRenderer().prepareContext({ steps: {} });
   assert.throws(
-    () => prepared.withPath(['steps', 'unsafe'], withGetter as never),
+    () => prepared.withValue(['steps', 'unsafe'], withGetter as never),
     /cannot contain accessors/,
   );
   assert.equal(getterCalls, 0);

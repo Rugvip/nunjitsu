@@ -48,7 +48,7 @@ export interface PreparedTemplateContext {
    * Missing record segments are created. Existing non-record segments,
    * reserved names, accessors, behavior, and unsupported values are rejected.
    */
-  withPath(path: readonly string[], value: TemplateValue): PreparedTemplateContext;
+  withValue(path: readonly string[], value: TemplateValue): PreparedTemplateContext;
 }
 
 /** An immutable synchronous template renderer. */
@@ -274,7 +274,7 @@ function createPreparedTemplateContext(
   value: RuntimeRecord,
 ): PreparedTemplateContext {
   const prepared = Object.freeze({
-    withPath(path: readonly string[], publicValue: TemplateValue): PreparedTemplateContext {
+    withValue(path: readonly string[], publicValue: TemplateValue): PreparedTemplateContext {
       return createPreparedTemplateContext(
         owner,
         withRuntimeContextPath(value, path, copyRuntimeValue(publicValue)),

@@ -84,7 +84,7 @@ application object graph separate from template-visible state.
 
 Normal renders retain no template state. Prepared contexts are the one explicit
 exception: they retain a renderer-owned copy of context data until the caller
-releases the snapshot. `withPath` creates a new snapshot while structurally
+releases the snapshot. `withValue` creates a new snapshot while structurally
 sharing unchanged internal values.
 
 Resource limits bound logical parser and evaluator work, output, nesting, and

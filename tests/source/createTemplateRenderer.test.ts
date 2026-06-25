@@ -147,7 +147,7 @@ test('evaluates renderValue capabilities once and returns frozen public copies',
 test('supports prepared renderValue contexts and preserves their ownership', () => {
   const renderer = createTemplateRenderer();
   const initial = renderer.prepareContext({ value: 1 });
-  const updated = initial.withPath(['value'], { nested: true });
+  const updated = initial.withValue(['value'], { nested: true });
 
   assert.equal(renderer.renderValue('${{ value }}', initial), 1);
   assert.equal(
@@ -270,7 +270,7 @@ test('reuses immutable prepared contexts and derives structurally shared updates
   );
 
   const secondOutput = { value: 2 };
-  const updated = prepared.withPath(['steps', 'second', 'output'], secondOutput);
+  const updated = prepared.withValue(['steps', 'second', 'output'], secondOutput);
   secondOutput.value = 3;
   assert.equal(engine.render('${{ steps.second.output.value }}', prepared), '');
   assert.equal(
@@ -287,8 +287,8 @@ test('reuses immutable prepared contexts and derives structurally shared updates
   assert.ok(Object.isFrozen(updated));
 
   const created = prepared
-    .withPath(['created', 'leaf'], 'created')
-    .withPath(['blocked', 'record', 'leaf'], 'record');
+    .withValue(['created', 'leaf'], 'created')
+    .withValue(['blocked', 'record', 'leaf'], 'record');
   assert.equal(
     engine.render('${{ created.leaf }}:${{ blocked.record.leaf }}', created),
     'created:record',
@@ -303,7 +303,7 @@ test('reuses immutable prepared contexts and derives structurally shared updates
     ['blocked', 'string', 'leaf'],
     ['blocked', 'array', 'leaf'],
   ]) {
-    assert.throws(() => prepared.withPath(path, 'blocked'), /is not a record/, path.join('.'));
+    assert.throws(() => prepared.withValue(path, 'blocked'), /is not a record/, path.join('.'));
     assert.equal(
       engine.render('${{ stable }}:${{ blocked.undefined is undefined }}', prepared),
       'clean:true',
@@ -311,7 +311,7 @@ test('reuses immutable prepared contexts and derives structurally shared updates
     );
   }
 
-  const replacedUndefined = prepared.withPath(
+  const replacedUndefined = prepared.withValue(
     ['blocked', 'undefined'],
     { leaf: 'replacement' },
   );
@@ -325,12 +325,12 @@ test('reuses immutable prepared contexts and derives structurally shared updates
   );
 
   assert.throws(
-    () => prepared.withPath(['parameters', 'name', 'nested'], 'blocked'),
+    () => prepared.withValue(['parameters', 'name', 'nested'], 'blocked'),
     /is not a record/,
   );
-  assert.throws(() => prepared.withPath([], 'blocked'), /non-empty array/);
+  assert.throws(() => prepared.withValue([], 'blocked'), /non-empty array/);
   assert.throws(
-    () => prepared.withPath(['steps', 1 as never], 'blocked'),
+    () => prepared.withValue(['steps', 1 as never], 'blocked'),
     /only strings/,
   );
   assert.throws(

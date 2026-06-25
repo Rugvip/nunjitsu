@@ -213,7 +213,7 @@ function createRunner(
           let context = initialContext;
           const output: string[] = [];
           for (const update of workload.updates) {
-            context = context.withPath(['steps', 'current', 'output'], update);
+            context = context.withValue(['steps', 'current', 'output'], update);
             output.push(engine.render(workload.source, context));
           }
           return output.join('');
