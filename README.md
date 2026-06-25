@@ -11,33 +11,33 @@ Node.js 22 or newer and accepts inline template source only; filesystem loading,
 precompilation, streaming, browser execution, and asynchronous callbacks are
 outside its scope.
 
-Use the [Nunjucks templating documentation](https://mozilla.github.io/nunjucks/templating.html)
+Use the
+[Nunjucks templating documentation](https://mozilla.github.io/nunjucks/templating.html)
 as the general syntax reference, then check the local
 [compatibility guide](docs/compatibility.md) for the subset supported by
 Nunjitsu. See the [security model](docs/security.md) for trust-boundary details.
 
 ## Installation
 
+Install using your favorite package manager:
+
 ```sh
 pnpm add nunjitsu
 ```
 
-The package provides named exports only, with equivalent ESM and CommonJS
-entrypoints:
-
-```ts
-import { createTemplateRenderer } from 'nunjitsu';
+```sh
+npm install nunjitsu
 ```
 
-```js
-const { createTemplateRenderer } = require('nunjitsu');
+```sh
+yarn add nunjitsu
 ```
 
 ## TypeScript API
 
 ### Quick start
 
-Create a renderer once, then render complete inline templates synchronously:
+Create a renderer once, then render templates synchronously:
 
 ```ts
 import { createTemplateRenderer } from 'nunjitsu';
@@ -64,13 +64,13 @@ function createTemplateRenderer(
 `createTemplateRenderer` returns an immutable renderer. Its filters, globals,
 delimiter mode, and whitespace behavior cannot be changed after creation.
 
-| Option | Type | Default | Description |
-| --- | --- | --- | --- |
-| `filters` | `Readonly<Record<string, TemplateFilter>>` | `{}` | Trusted synchronous template filters. |
-| `globals` | `Readonly<Record<string, TemplateGlobal>>` | `{}` | Trusted values and synchronous functions. |
-| `cookiecutterCompat` | `boolean` | `false` | Uses `{{` and `}}` plus supported Jinja compatibility behavior. |
-| `trimBlocks` | `boolean` | `false` | Removes one newline immediately after block tags. |
-| `lstripBlocks` | `boolean` | `false` | Removes indentation before block tags on otherwise blank lines. |
+| Option               | Type                                       | Default | Description                                                     |
+| -------------------- | ------------------------------------------ | ------- | --------------------------------------------------------------- |
+| `filters`            | `Readonly<Record<string, TemplateFilter>>` | `{}`    | Trusted synchronous template filters.                           |
+| `globals`            | `Readonly<Record<string, TemplateGlobal>>` | `{}`    | Trusted values and synchronous functions.                       |
+| `cookiecutterCompat` | `boolean`                                  | `false` | Uses `{{` and `}}` plus supported Jinja compatibility behavior. |
+| `trimBlocks`         | `boolean`                                  | `false` | Removes one newline immediately after block tags.               |
+| `lstripBlocks`       | `boolean`                                  | `false` | Removes indentation before block tags on otherwise blank lines. |
 
 ### Rendering
 
@@ -84,9 +84,7 @@ interface TemplateRenderer {
 }
 ```
 
-Each call parses and renders one complete template. Plain context values are
-copied and validated before evaluation. Rendering returns the complete output
-string or throws without returning partial output.
+Each call parses and renders one complete template.
 
 ```ts
 const result = renderer.render(
@@ -98,25 +96,8 @@ const result = renderer.render(
 );
 ```
 
-Automatic escaping is disabled. Treat rendered output according to its
-destination, for example by applying the appropriate escaping before inserting
-it into HTML, SQL, or shell commands.
-
-Every render has cooperative limits for source size, AST size, evaluator work,
-nesting, output, filter scratch data, and capability calls. Applications can
-tighten or disable individual limits for one render:
-
-```ts
-renderer.render(source, context, {
-  limits: {
-    outputCodeUnits: 100_000,
-    capabilityCalls: 100,
-  },
-});
-```
-
-See [Security](docs/security.md#resource-limits) for the limit fields, defaults,
-and guarantees.
+`TemplateRenderOptions` configures per-render resource limits. See
+[Security](docs/security.md#resource-limits) for details.
 
 ### Prepared contexts
 
@@ -129,7 +110,10 @@ interface TemplateRenderer {
 }
 
 interface PreparedTemplateContext {
-  withPath(path: readonly string[], value: TemplateValue): PreparedTemplateContext;
+  withPath(
+    path: readonly string[],
+    value: TemplateValue,
+  ): PreparedTemplateContext;
 }
 ```
 
@@ -141,10 +125,9 @@ const initial = renderer.prepareContext({
   steps: {},
 });
 
-const afterBuild = initial.withPath(
-  ['steps', 'build'],
-  { output: { image: 'example/catalog:1.0' } },
-);
+const afterBuild = initial.withPath(['steps', 'build'], {
+  output: { image: 'example/catalog:1.0' },
+});
 
 renderer.render('${{ steps.build.output.image }}', afterBuild);
 ```
@@ -153,7 +136,7 @@ A prepared context can only be used with the renderer that created it.
 
 ### Template values
 
-Contexts and capability results use recursively copied data:
+Contexts and capability results use plain data values:
 
 ```ts
 type TemplateValue =
@@ -166,11 +149,6 @@ type TemplateValue =
 
 type TemplateContext = Readonly<Record<string, TemplateValue>>;
 ```
-
-Records must be plain data objects. Functions, accessors, proxies, class
-instances, promises, cycles, and other behavior-bearing objects are rejected.
-Host behavior is available only through explicitly registered filters and
-globals.
 
 ### Filters and globals
 
@@ -187,9 +165,7 @@ type TemplateGlobalFunction = (
 type TemplateGlobal = TemplateValue | TemplateGlobalFunction;
 ```
 
-Capabilities must be synchronous. They receive frozen copies of
-template-controlled data, and their results cross the same value-copying
-boundary before becoming visible to the template.
+Filters and global functions must be synchronous.
 
 ```ts
 const renderer = createTemplateRenderer({
@@ -213,9 +189,8 @@ const renderer = createTemplateRenderer({
 });
 ```
 
-Capability implementations must treat all arguments as attacker-controlled
-application data. See [Security](docs/security.md#capabilities) for the
-full boundary and failure behavior.
+See [Security](docs/security.md#capabilities) for the capability boundary and
+failure behavior.
 
 ## Development
 
