@@ -19,5 +19,10 @@
     "types": ["node"],
     "verbatimModuleSyntax": true
   },
-  "include": ["benchmarks/**/*.ts", "src/**/*.ts", "tests/source/**/*.ts"]
+  "include": [
+    "benchmarks/**/*.ts",
+    "src/**/*.ts",
+    "tests/source/**/*.ts",
+    "tsdown.config.ts"
+  ]
 }

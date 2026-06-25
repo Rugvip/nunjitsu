@@ -6,7 +6,7 @@ import * as packageExports from 'nunjitsu';
 import { createTemplateRenderer } from 'nunjitsu';
 
 test('resolves the ESM package export', () => {
-  assert.match(import.meta.resolve('nunjitsu'), /\/dist\/esm\/index\.js$/);
+  assert.match(import.meta.resolve('nunjitsu'), /\/dist\/index\.js$/);
   assert.equal(packageExports.createTemplateRenderer, createTemplateRenderer);
   assert.equal(Object.hasOwn(packageExports, 'default'), false);
   assert.equal(Object.hasOwn(packageExports, 'createEngine'), false);
@@ -14,7 +14,7 @@ test('resolves the ESM package export', () => {
 
 test('loads the CommonJS condition from an ESM environment', () => {
   const require = createRequire(import.meta.url);
-  assert.match(require.resolve('nunjitsu'), /\/dist\/cjs\/index\.cjs$/);
+  assert.match(require.resolve('nunjitsu'), /\/dist\/index\.cjs$/);
   const commonJsExports = require('nunjitsu');
   assert.equal(typeof commonJsExports.createTemplateRenderer, 'function');
   assert.equal(Object.hasOwn(commonJsExports, 'default'), false);

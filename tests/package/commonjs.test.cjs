@@ -5,7 +5,7 @@ const packageExports = require('nunjitsu');
 const { createTemplateRenderer } = packageExports;
 
 test('resolves the CommonJS package export', () => {
-  assert.match(require.resolve('nunjitsu'), /\/dist\/cjs\/index\.cjs$/);
+  assert.match(require.resolve('nunjitsu'), /\/dist\/index\.cjs$/);
   assert.equal(packageExports.createTemplateRenderer, createTemplateRenderer);
   assert.equal(Object.hasOwn(packageExports, 'default'), false);
   assert.equal(Object.hasOwn(packageExports, 'createEngine'), false);

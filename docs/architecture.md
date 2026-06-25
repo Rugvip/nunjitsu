@@ -99,10 +99,11 @@ operational model and defaults.
 - `tests/compat/` contains the attributed Nunjucks compatibility corpus.
 - `tests/package/` validates built ESM, CommonJS, and declaration entrypoints.
 - `benchmarks/` compares inline rendering with pinned Nunjucks.
-- `scripts/` contains build, compatibility, and release tooling.
+- `scripts/` contains compatibility and release tooling.
 
 One erasable TypeScript source tree produces equivalent ESM and CommonJS builds
-with generated declarations. Runtime behavior must not depend on module format.
+with rolled-up public declarations. Runtime behavior must not depend on module
+format.
 
 ## Deliberate non-goals
 

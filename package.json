@@ -17,20 +17,20 @@
   "engines": {
     "node": ">=22.0.0"
   },
-  "main": "./dist/cjs/index.cjs",
-  "module": "./dist/esm/index.js",
-  "types": "./dist/types/legacy/index.d.ts",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "exports": {
     ".": {
       "import": {
-        "types": "./dist/types/esm/index.d.mts",
-        "default": "./dist/esm/index.js"
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
       },
       "require": {
-        "types": "./dist/types/cjs/index.d.cts",
-        "default": "./dist/cjs/index.cjs"
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
       },
-      "default": "./dist/esm/index.js"
+      "default": "./dist/index.js"
     },
     "./package.json": "./package.json"
   },
@@ -43,7 +43,7 @@
   "scripts": {
     "benchmark": "node benchmarks/run.ts",
     "benchmark:quick": "node benchmarks/run.ts --warmup=1 --iterations=3 --loops=1",
-    "build": "node scripts/build.mjs",
+    "build": "tsdown",
     "changeset": "changeset",
     "prepack": "pnpm run build",
     "release:check": "node scripts/release/verifyReleaseVersion.mjs",
@@ -51,16 +51,15 @@
     "test:benchmark": "node benchmarks/run.ts --warmup=0 --iterations=1 --loops=1 --silent",
     "test:package": "pnpm run build && node --test tests/package/*.test.*",
     "test:source": "node --test tests/source/*.test.ts",
-    "typecheck": "tsgo -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json",
     "version:packages": "changeset version"
   },
   "devDependencies": {
     "@changesets/cli": "^2.31.0",
     "@types/node": "^22.13.14",
     "@types/nunjucks": "3.2.6",
-    "@typescript/native-preview": "7.0.0-dev.20260613.1",
-    "esbuild": "^0.25.0",
     "nunjucks": "3.2.4",
-    "typescript": "~5.7.0"
+    "tsdown": "^0.22.3",
+    "typescript": "~6.0.3"
   }
 }
