@@ -7,7 +7,6 @@ export default defineConfig({
   platform: 'node',
   sourcemap: true,
   dts: {
-    resolver: 'tsc',
     sourcemap: true,
   },
 });

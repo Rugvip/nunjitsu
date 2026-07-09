@@ -54,6 +54,13 @@ test('resolves declarations through modern and legacy TypeScript modes', async (
     }
 
     const compiler = join(root, 'node_modules', 'typescript', 'bin', 'tsc');
+    const legacyCompiler = join(
+      root,
+      'node_modules',
+      'typescript-legacy',
+      'bin',
+      'tsc',
+    );
     await run(process.execPath, [
       compiler,
       '--noEmit',
@@ -84,7 +91,7 @@ test('resolves declarations through modern and legacy TypeScript modes', async (
       'types.mts',
     ], { cwd: temporaryRoot });
     await run(process.execPath, [
-      compiler,
+      legacyCompiler,
       '--noEmit',
       '--strict',
       '--skipLibCheck',
