@@ -73,8 +73,49 @@ Benchmark timings are diagnostic, not pass/fail thresholds. The CI smoke run
 checks correctness and harness health without asserting noisy performance
 ratios.
 
+## Fuzzing
+
+Source tests include a fast deterministic property-based fuzz profile for parser
+immutability, public render failures, and prepared context updates. Run a longer
+property profile with:
+
+```sh
+pnpm test:fuzz:properties
+```
+
+Coverage-guided fuzz targets live in `fuzz/` and are compiled into the ignored
+`.fuzz/targets/` directory. The build step also seeds `.fuzz/corpus/` from the
+compatibility corpus. The target smoke only replays the corpus:
+
+```sh
+pnpm build:fuzz
+pnpm test:fuzz:targets:smoke
+```
+
+Use the fuzz test command for a bounded local pass over properties plus both
+coverage-guided targets:
+
+```sh
+pnpm test:fuzz
+```
+
+Use the longer commands when actively looking for new parser or runtime failures:
+
+```sh
+pnpm fuzz
+pnpm fuzz:parser
+pnpm fuzz:render
+```
+
+Pass `-- --seconds=<n>` to tune the coverage-guided run duration for the current
+machine, for example `pnpm run test:fuzz:targets -- --seconds=60`.
+
+When a fuzzer finds a failure, reduce it to a focused source or compatibility
+regression before changing parser or runtime behavior.
+
 ## Continuous integration
 
 GitHub Actions runs `pnpm test` on Node.js 22 and 24 for pull requests and
-pushes to `main`. CI installs from the lockfile with read-only repository
-permissions. Publishing uses separate release workflows and credentials.
+pushes to `main`, then runs the fuzz target smoke on Node.js 22. CI installs
+from the lockfile with read-only repository permissions. Publishing uses
+separate release workflows and credentials.

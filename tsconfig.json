@@ -21,8 +21,10 @@
   },
   "include": [
     "benchmarks/**/*.ts",
+    "fuzz/**/*.ts",
     "src/**/*.ts",
     "tests/source/**/*.ts",
+    "tsdown.fuzz.config.ts",
     "tsdown.config.ts"
   ]
 }

@@ -38,3 +38,6 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: Run test matrix
         run: pnpm test
+      - name: Run fuzz target smoke
+        if: matrix.node-version == '22.x'
+        run: pnpm run build:fuzz && pnpm run test:fuzz:targets:smoke
