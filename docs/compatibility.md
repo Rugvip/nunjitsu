@@ -38,6 +38,11 @@ coercion, scoping, sparse-array, UTF-16 string, macro, loop, and built-in-filter
 semantics. The compatibility tests use rendered Nunjucks output as the oracle
 rather than assuming conventional JavaScript or Jinja behavior.
 
+Regular-expression literals used by `replace` execute through Node.js's native
+regular-expression engine. This preserves useful replacement behavior but
+leaves native backtracking outside the current availability guarantees; see
+[Regular-expression execution](security.md#regular-expression-execution).
+
 ## Intentional differences
 
 Security rules take precedence when Nunjucks behavior would expose or discard

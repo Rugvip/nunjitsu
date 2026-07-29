@@ -114,6 +114,26 @@ These checks are availability safeguards, not a hard memory limit, exact CPU
 budget, or process sandbox. Use process isolation when the deployment requires
 strong resource containment or protection from bugs in trusted capabilities.
 
+## Regular-expression execution
+
+The `replace` filter accepts template-controlled regular-expression literals
+and executes them with Node.js's native regular-expression engine. This
+preserves useful Nunjucks replacement behavior, including captures and flags,
+but a hostile pattern and input can cause excessive backtracking and block the
+Node.js event loop.
+
+Render work limits do not close this gap. Once a synchronous native
+regular-expression operation begins, the interpreter cannot account for or
+interrupt its internal matching work. Protection from regular-expression
+denial of service is therefore outside Nunjitsu's current availability
+guarantees. Deployments that require a hard execution boundary must render in a
+separately isolated process that can be terminated.
+
+A future version may use a linear-time regular-expression engine or define a
+smaller executable pattern language. A heuristic scan for known problematic
+patterns would be useful defense in depth, but would not be treated as a
+security guarantee.
+
 ## Failures and diagnostics
 
 API validation errors are reported before template evaluation. Parser and
@@ -149,7 +169,8 @@ URLs, SQL, shells, configuration files, and other consumers.
 ## Outside the guarantee
 
 Nunjitsu does not provide hard process isolation, exact CPU or heap accounting,
-safe behavior for application capabilities, protection from regular-expression
-backtracking in approved patterns, secret-data zeroization, or sanitization of
-rendered output. The security contract also assumes trusted standard Node.js
-intrinsics and an uncompromised Nunjitsu installation.
+safe behavior for application capabilities, protection from the
+template-controlled native regular-expression backtracking described above,
+secret-data zeroization, or sanitization of rendered output. The security
+contract also assumes trusted standard Node.js intrinsics and an uncompromised
+Nunjitsu installation.
