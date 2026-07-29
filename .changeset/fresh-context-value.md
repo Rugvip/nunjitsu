@@ -1,5 +1,6 @@
 ---
-'nunjitsu': patch
+'nunjitsu': minor
 ---
 
-Rename `PreparedTemplateContext.withPath` to `withValue` for a clearer immutable context API.
+Rename `PreparedTemplateContext.withPath` to `withValue`. This is a breaking
+change for callers using prepared-context updates.
