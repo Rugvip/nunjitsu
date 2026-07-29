@@ -164,7 +164,7 @@ export function applyBuiltinFilter(
   positional: readonly RuntimeValue[],
   keyword: ReadonlyMap<string, RuntimeValue>,
   reserveIndexedValues: (count: number) => void,
-  allowRegexReplace = false,
+  allowRegexExecution = false,
 ): RuntimeValue | undefined {
   if (!builtinFilters.has(name)) {
     return undefined;
@@ -309,7 +309,7 @@ export function applyBuiltinFilter(
     return randomRuntimeValue(input);
   }
   if (name === 'replace') {
-    return replaceRuntimeValue(input, positional, allowRegexReplace);
+    return replaceRuntimeValue(input, positional, allowRegexExecution);
   }
   if (name === 'round') {
     const precisionValue = runtimeTruthy(positional[0]) ? positional[0] : 0;
@@ -560,13 +560,13 @@ function selectRuntimeValues(
 function replaceRuntimeValue(
   input: RuntimeValue,
   positional: readonly RuntimeValue[],
-  allowRegexReplace: boolean,
+  allowRegexExecution: boolean,
 ): RuntimeValue {
   const search = positional[0];
   const replacement = positional[1];
   const maximumValue = positional[2] === undefined ? -1 : positional[2];
   if (search instanceof RuntimeRegex) {
-    if (!allowRegexReplace) {
+    if (!allowRegexExecution) {
       throw new TypeError('Regular-expression replacement is disabled');
     }
     if (typeof input !== 'string' && !(input instanceof RuntimeSafeString)) {

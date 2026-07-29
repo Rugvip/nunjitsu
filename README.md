@@ -64,14 +64,14 @@ function createTemplateRenderer(
 `createTemplateRenderer` returns an immutable renderer. Its filters, globals,
 delimiter mode, and whitespace behavior cannot be changed after creation.
 
-| Option               | Type                                       | Default | Description                                                     |
-| -------------------- | ------------------------------------------ | ------- | --------------------------------------------------------------- |
-| `filters`            | `Readonly<Record<string, TemplateFilter>>` | `{}`    | Trusted synchronous template filters.                           |
-| `globals`            | `Readonly<Record<string, TemplateGlobal>>` | `{}`    | Trusted values and synchronous functions.                       |
-| `allowRegexReplace`  | `boolean`                                  | `false` | Allows native regex patterns in the built-in `replace` filter.   |
-| `cookiecutterCompat` | `boolean`                                  | `false` | Uses `{{` and `}}` plus supported Jinja compatibility behavior. |
-| `trimBlocks`         | `boolean`                                  | `false` | Removes one newline immediately after block tags.               |
-| `lstripBlocks`       | `boolean`                                  | `false` | Removes indentation before block tags on otherwise blank lines. |
+| Option                | Type                                       | Default | Description                                                     |
+| --------------------- | ------------------------------------------ | ------- | --------------------------------------------------------------- |
+| `filters`             | `Readonly<Record<string, TemplateFilter>>` | `{}`    | Trusted synchronous template filters.                           |
+| `globals`             | `Readonly<Record<string, TemplateGlobal>>` | `{}`    | Trusted values and synchronous functions.                       |
+| `allowRegexExecution` | `boolean`                                  | `false` | Allows template-controlled regular-expression execution.        |
+| `cookiecutterCompat`  | `boolean`                                  | `false` | Uses `{{` and `}}` plus supported Jinja compatibility behavior. |
+| `trimBlocks`          | `boolean`                                  | `false` | Removes one newline immediately after block tags.               |
+| `lstripBlocks`        | `boolean`                                  | `false` | Removes indentation before block tags on otherwise blank lines. |
 
 ### Rendering
 

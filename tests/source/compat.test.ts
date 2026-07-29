@@ -124,7 +124,7 @@ test('applicable upstream cases render synchronously in Cookiecutter mode', asyn
   const applicable = cases.cases;
   assert.ok(applicable.length >= 60);
   const engine = createTemplateRenderer({
-    allowRegexReplace: true,
+    allowRegexExecution: true,
     cookiecutterCompat: true,
   });
   for (const compatibilityCase of applicable) {

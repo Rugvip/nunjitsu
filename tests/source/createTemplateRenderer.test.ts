@@ -66,7 +66,7 @@ test('disables built-in regular-expression replacement unless explicitly allowed
 
     const allowed = createTemplateRenderer({
       cookiecutterCompat,
-      allowRegexReplace: true,
+      allowRegexExecution: true,
     });
     assert.equal(
       allowed.render(source(

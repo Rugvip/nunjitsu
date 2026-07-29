@@ -126,15 +126,16 @@ for a renderer:
 
 ```ts
 const renderer = createTemplateRenderer({
-  allowRegexReplace: true,
+  allowRegexExecution: true,
 });
 ```
 
-This setting allows the built-in `replace` filter to execute
-template-controlled patterns with Node.js's native regular-expression engine,
-including captures and flags. It does not affect a custom registered filter
-named `replace`, which is trusted capability code like any other registered
-filter.
+This renderer-wide setting allows template-controlled regular-expression
+execution. Currently, the only such operation is the built-in `replace` filter,
+which executes patterns with Node.js's native regular-expression engine,
+including captures and flags. The setting does not affect a custom registered
+filter named `replace`, which is trusted capability code like any other
+registered filter.
 
 A hostile enabled pattern and input can cause excessive backtracking and block
 the Node.js event loop.

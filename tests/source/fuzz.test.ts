@@ -121,7 +121,7 @@ const parserOptionsArbitrary: fc.Arbitrary<ParseOptions> = fc.record({
   nestingDepth: fc.constant(fuzzLimits.nestingDepth),
 });
 const rendererOptionsArbitrary: fc.Arbitrary<TemplateRendererOptions> = fc.record({
-  allowRegexReplace: fc.boolean(),
+  allowRegexExecution: fc.boolean(),
   trimBlocks: fc.boolean(),
   lstripBlocks: fc.boolean(),
   cookiecutterCompat: fc.boolean(),

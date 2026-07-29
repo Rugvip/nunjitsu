@@ -13,7 +13,7 @@ import {
 } from 'nunjitsu';
 
 const options = {
-  allowRegexReplace: true,
+  allowRegexExecution: true,
   cookiecutterCompat: true,
 } satisfies TemplateRendererOptions;
 const engine: TemplateRenderer = createTemplateRenderer(options);

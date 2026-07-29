@@ -1564,7 +1564,7 @@ test('restricts regex literals before capability dispatch', () => {
     const engineCalls: string[] = [];
     const oracleCalls: string[] = [];
     const engine = createTemplateRenderer({
-      allowRegexReplace: true,
+      allowRegexExecution: true,
       cookiecutterCompat,
       filters: {
         identity(input) {
@@ -2038,7 +2038,7 @@ test('halts after invalid regex replacement inputs and preserves value branches'
     const engineEvents: string[] = [];
     const oracleEvents: string[] = [];
     const engine = createTemplateRenderer({
-      allowRegexReplace: true,
+      allowRegexExecution: true,
       cookiecutterCompat,
       globals: {
         before() {
@@ -4164,7 +4164,7 @@ test('public render diagnostics expose safe structure without internal causes', 
 });
 
 test('clears ambient legacy RegExp state after every render', () => {
-  const engine = createTemplateRenderer({ allowRegexReplace: true });
+  const engine = createTemplateRenderer({ allowRegexExecution: true });
   const assertLegacyStateCleared = (): void => {
     assert.equal(RegExp.$1, '');
     assert.equal(RegExp.$2, '');
@@ -4242,7 +4242,7 @@ test('isolates capabilities from template-controlled legacy RegExp state', () =>
   let laterCalls = 0;
 
   const engine = createTemplateRenderer({
-    allowRegexReplace: true,
+    allowRegexExecution: true,
     filters: {
       observe(input) {
         observe();

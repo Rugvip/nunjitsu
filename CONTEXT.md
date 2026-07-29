@@ -326,12 +326,12 @@ Do not create additional packages without a documented architectural reason.
   `gimy` order without consulting `RegExp.prototype` or another host hook. Keep
   the original validated source and flags for regex `replace` matching.
 - Keep template-controlled native regex execution disabled by default through
-  the immutable renderer option `allowRegexReplace`. When false, the built-in
+  the immutable renderer option `allowRegexExecution`. When false, the built-in
   `replace` filter must reject a regex search value before constructing or
   matching a native `RegExp`; string replacement and other inert regex
   operations remain available. The option does not restrict an explicitly
   registered custom filter named `replace`, which is trusted capability code.
-- When `allowRegexReplace` is true, regex `replace` deliberately executes
+- When `allowRegexExecution` is true, regex `replace` deliberately executes
   template-controlled patterns through Node.js's native regular-expression
   engine for Nunjucks compatibility. Cooperative render limits cannot interrupt
   native matching, so protection from excessive backtracking is outside the

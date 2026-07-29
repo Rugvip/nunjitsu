@@ -38,7 +38,7 @@ coercion, scoping, sparse-array, UTF-16 string, macro, loop, and built-in-filter
 semantics. The compatibility tests use rendered Nunjucks output as the oracle
 rather than assuming conventional JavaScript or Jinja behavior.
 
-Regular-expression literals remain inert unless `allowRegexReplace: true` is
+Regular-expression literals remain inert unless `allowRegexExecution: true` is
 set when creating the renderer. Opting in makes the built-in `replace` filter
 execute them through Node.js's native regular-expression engine, preserving
 useful Nunjucks replacement behavior while leaving native backtracking outside

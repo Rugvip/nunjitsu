@@ -68,7 +68,7 @@ test('matches Nunjucks regex literals in call-block signatures', () => {
   ];
   for (const cookiecutterCompat of [false, true]) {
     const engine = createTemplateRenderer({
-      allowRegexReplace: true,
+      allowRegexExecution: true,
       cookiecutterCompat,
     });
     const oracle = new nunjucks.Environment(undefined, { autoescape: false });
@@ -2095,7 +2095,7 @@ test('matches Nunjucks sort and dictsort comparison semantics', () => {
 
 test('matches Nunjucks replacement and safe-string identity semantics', () => {
   const engine = createTemplateRenderer({
-    allowRegexReplace: true,
+    allowRegexExecution: true,
     cookiecutterCompat: true,
   });
   const oracle = new nunjucks.Environment(undefined, { autoescape: false });
@@ -4012,7 +4012,7 @@ test('coerces inert regex values with Nunjucks canonical spelling', () => {
     const engineEvents: string[] = [];
     const oracleEvents: string[] = [];
     const engine = createTemplateRenderer({
-      allowRegexReplace: true,
+      allowRegexExecution: true,
       cookiecutterCompat,
       filters: {
         observeRegex(input) {
