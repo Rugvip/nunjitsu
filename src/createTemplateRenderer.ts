@@ -20,6 +20,13 @@ import type { TemplateContext, TemplateValue } from './values.ts';
 
 /** Configures an immutable secure direct-string template renderer. */
 export interface TemplateRendererOptions extends TemplateCapabilities {
+  /**
+   * Allows the built-in `replace` filter to execute template regular expressions.
+   *
+   * Disabled by default because native regular-expression matching cannot be
+   * interrupted by the renderer's cooperative resource limits.
+   */
+  allowRegexReplace?: boolean;
   /** Uses `{{ ... }}` variables and supported Jinja compatibility behavior. */
   cookiecutterCompat?: boolean;
   /** Removes one LF or CRLF immediately after each block tag. */
@@ -157,6 +164,7 @@ export class TemplateRenderError extends Error {
 export function createTemplateRenderer(
   options: TemplateRendererOptions = {},
 ): TemplateRenderer {
+  const allowRegexReplace = options.allowRegexReplace ?? false;
   const cookiecutterCompat = options.cookiecutterCompat ?? false;
   const trimBlocks = options.trimBlocks ?? false;
   const lstripBlocks = options.lstripBlocks ?? false;
@@ -186,6 +194,7 @@ export function createTemplateRenderer(
       const limits = normalizeTemplateRenderLimits(renderOptions.limits);
       try {
         return evaluate(source, runtimeContext, {
+          allowRegexReplace,
           cookiecutterCompat,
           trimBlocks,
           lstripBlocks,

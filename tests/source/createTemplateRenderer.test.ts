@@ -25,6 +25,74 @@ test('renders default and Cookiecutter variable modes synchronously', () => {
   );
 });
 
+test('disables built-in regular-expression replacement unless explicitly allowed', () => {
+  for (const cookiecutterCompat of [false, true]) {
+    const source = (value: string): string => cookiecutterCompat
+      ? value.replaceAll('${{', '{{')
+      : value;
+    let laterCalls = 0;
+    const renderer = createTemplateRenderer({
+      cookiecutterCompat,
+      globals: {
+        later() {
+          laterCalls += 1;
+          return 'later';
+        },
+      },
+    });
+
+    assert.equal(
+      renderer.render(source('${{ "a-b-a" | replace("a", "x") }}')),
+      'x-b-x',
+    );
+    assert.equal(renderer.renderValue(source('${{ r/a+/g }}')), '/a+/g');
+    assert.throws(
+      () => renderer.render(source([
+        '${{ "abc123" | replace(r/([a-z]+)([0-9]+)/, "$2-$1") }}',
+        '${{ later() }}',
+      ].join(''))),
+      error => (
+        error instanceof TemplateRenderError &&
+        error.phase === 'evaluate' &&
+        /Regular-expression replacement is disabled/.test(error.message)
+      ),
+    );
+    assert.throws(
+      () => renderer.renderValue(source('${{ "abc" | replace(r/a/, "x") }}')),
+      TemplateRenderError,
+    );
+    assert.equal(laterCalls, 0);
+    assert.equal(renderer.render('clean'), 'clean');
+
+    const allowed = createTemplateRenderer({
+      cookiecutterCompat,
+      allowRegexReplace: true,
+    });
+    assert.equal(
+      allowed.render(source(
+        '${{ "abc123" | replace(r/([a-z]+)([0-9]+)/, "$2-$1") }}',
+      )),
+      '123-abc',
+    );
+
+    let observedSearch: unknown;
+    const custom = createTemplateRenderer({
+      cookiecutterCompat,
+      filters: {
+        replace(input, search) {
+          observedSearch = search;
+          return input;
+        },
+      },
+    });
+    assert.equal(
+      custom.render(source('${{ "value" | replace(r/a+/g, "unused") }}')),
+      'value',
+    );
+    assert.equal(observedSearch, '/a+/g');
+  }
+});
+
 test('invokes synchronous filters and value or function globals through copied data', () => {
   const input = { nested: { value: 'safe' } };
   const engine = createTemplateRenderer({

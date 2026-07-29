@@ -105,6 +105,7 @@ export interface RuntimeHost {
 
 /** Options for one native template evaluation. */
 export interface EvaluateOptions {
+  readonly allowRegexReplace: boolean;
   readonly cookiecutterCompat: boolean;
   readonly trimBlocks: boolean;
   readonly lstripBlocks: boolean;
@@ -1084,6 +1085,7 @@ class Evaluator {
         lowered.positional,
         lowered.keyword,
         count => this.#reserveIndexedValues(count, scratchBytes),
+        this.#options.allowRegexReplace,
       );
     } catch (error) {
       throw contextualizeRuntimeFailure(

@@ -5,6 +5,7 @@ import { normalizeTemplateRenderLimits } from '../../src/limits.ts';
 import { evaluateTemplate } from '../../src/runtime/evaluator.ts';
 
 const options = {
+  allowRegexReplace: false,
   cookiecutterCompat: false,
   trimBlocks: false,
   lstripBlocks: false,

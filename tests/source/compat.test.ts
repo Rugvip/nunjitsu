@@ -123,7 +123,10 @@ test('compatibility corpus retains complete attributed provenance', async () => 
 test('applicable upstream cases render synchronously in Cookiecutter mode', async t => {
   const applicable = cases.cases;
   assert.ok(applicable.length >= 60);
-  const engine = createTemplateRenderer({ cookiecutterCompat: true });
+  const engine = createTemplateRenderer({
+    allowRegexReplace: true,
+    cookiecutterCompat: true,
+  });
   for (const compatibilityCase of applicable) {
     await t.test(compatibilityCase.id, () => {
       assert.equal(

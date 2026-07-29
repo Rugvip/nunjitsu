@@ -12,7 +12,10 @@ import {
   type TemplateLimitErrorDetails,
 } from 'nunjitsu';
 
-const options = { cookiecutterCompat: true } satisfies TemplateRendererOptions;
+const options = {
+  allowRegexReplace: true,
+  cookiecutterCompat: true,
+} satisfies TemplateRendererOptions;
 const engine: TemplateRenderer = createTemplateRenderer(options);
 const output: string = engine.render('${{ value }}', { value: 'legacy' });
 const value: TemplateValue | undefined = engine.renderValue('${{ value }}', { value: 1 });

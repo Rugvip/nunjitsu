@@ -116,11 +116,28 @@ strong resource containment or protection from bugs in trusted capabilities.
 
 ## Regular-expression execution
 
-The `replace` filter accepts template-controlled regular-expression literals
-and executes them with Node.js's native regular-expression engine. This
-preserves useful Nunjucks replacement behavior, including captures and flags,
-but a hostile pattern and input can cause excessive backtracking and block the
-Node.js event loop.
+Regular-expression literals are inert by default. They can be rendered,
+compared, stored, or passed to a capability as canonical strings, but the
+built-in `replace` filter rejects them as search patterns. Ordinary string
+replacement remains available.
+
+Applications can opt into Nunjucks-compatible regular-expression replacement
+for a renderer:
+
+```ts
+const renderer = createTemplateRenderer({
+  allowRegexReplace: true,
+});
+```
+
+This setting allows the built-in `replace` filter to execute
+template-controlled patterns with Node.js's native regular-expression engine,
+including captures and flags. It does not affect a custom registered filter
+named `replace`, which is trusted capability code like any other registered
+filter.
+
+A hostile enabled pattern and input can cause excessive backtracking and block
+the Node.js event loop.
 
 Render work limits do not close this gap. Once a synchronous native
 regular-expression operation begins, the interpreter cannot account for or
@@ -170,7 +187,7 @@ URLs, SQL, shells, configuration files, and other consumers.
 
 Nunjitsu does not provide hard process isolation, exact CPU or heap accounting,
 safe behavior for application capabilities, protection from the
-template-controlled native regular-expression backtracking described above,
+opt-in native regular-expression backtracking described above,
 secret-data zeroization, or sanitization of rendered output. The security
 contract also assumes trusted standard Node.js intrinsics and an uncompromised
 Nunjitsu installation.

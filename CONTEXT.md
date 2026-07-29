@@ -325,13 +325,20 @@ Do not create additional packages without a documented architectural reason.
   patterns render as `(?:)`, raw line terminators are escaped, and flags emit in
   `gimy` order without consulting `RegExp.prototype` or another host hook. Keep
   the original validated source and flags for regex `replace` matching.
-- Regex `replace` deliberately executes template-controlled patterns through
-  Node.js's native regular-expression engine for Nunjucks compatibility.
-  Cooperative render limits cannot interrupt native matching, so protection
-  from excessive backtracking is outside the availability guarantee. Document
-  this gap explicitly and do not represent a heuristic pattern scanner as
-  closing it. A future linear-time engine or restricted executable grammar
-  requires a compatibility, security, and trusted-computing-base review.
+- Keep template-controlled native regex execution disabled by default through
+  the immutable renderer option `allowRegexReplace`. When false, the built-in
+  `replace` filter must reject a regex search value before constructing or
+  matching a native `RegExp`; string replacement and other inert regex
+  operations remain available. The option does not restrict an explicitly
+  registered custom filter named `replace`, which is trusted capability code.
+- When `allowRegexReplace` is true, regex `replace` deliberately executes
+  template-controlled patterns through Node.js's native regular-expression
+  engine for Nunjucks compatibility. Cooperative render limits cannot interrupt
+  native matching, so protection from excessive backtracking is outside the
+  availability guarantee. Document this gap explicitly and do not represent a
+  heuristic pattern scanner as closing it. A future linear-time engine or
+  restricted executable grammar requires a compatibility, security, and
+  trusted-computing-base review.
 - Use the shared parser-owned balanced code scanner for structural delimiter,
   keyword, assignment, and executable-tag-end discovery. It must skip strings
   and exact `r/` literals through the same lexical helpers as expression

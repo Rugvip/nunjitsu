@@ -38,9 +38,11 @@ coercion, scoping, sparse-array, UTF-16 string, macro, loop, and built-in-filter
 semantics. The compatibility tests use rendered Nunjucks output as the oracle
 rather than assuming conventional JavaScript or Jinja behavior.
 
-Regular-expression literals used by `replace` execute through Node.js's native
-regular-expression engine. This preserves useful replacement behavior but
-leaves native backtracking outside the current availability guarantees; see
+Regular-expression literals remain inert unless `allowRegexReplace: true` is
+set when creating the renderer. Opting in makes the built-in `replace` filter
+execute them through Node.js's native regular-expression engine, preserving
+useful Nunjucks replacement behavior while leaving native backtracking outside
+the availability guarantees. See
 [Regular-expression execution](security.md#regular-expression-execution).
 
 ## Intentional differences
@@ -51,6 +53,7 @@ JavaScript authority. In particular:
 - context values are copied plain data rather than live JavaScript objects;
 - object methods and context functions are not callable;
 - filters and globals are fixed when the renderer is created and are synchronous;
+- native regular-expression replacement is disabled by default;
 - callable identities cannot be converted, stored in ordinary data, passed to
   capabilities, or silently discarded by unsupported arguments;
 - malformed or unsupported complete source fails before any template code runs;

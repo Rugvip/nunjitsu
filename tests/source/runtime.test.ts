@@ -67,7 +67,10 @@ test('matches Nunjucks regex literals in call-block signatures', () => {
     { value: 'r / 2', body: '${{ value }}' },
   ];
   for (const cookiecutterCompat of [false, true]) {
-    const engine = createTemplateRenderer({ cookiecutterCompat });
+    const engine = createTemplateRenderer({
+      allowRegexReplace: true,
+      cookiecutterCompat,
+    });
     const oracle = new nunjucks.Environment(undefined, { autoescape: false });
     for (const case_ of cases) {
       const source = [
@@ -2091,7 +2094,10 @@ test('matches Nunjucks sort and dictsort comparison semantics', () => {
 });
 
 test('matches Nunjucks replacement and safe-string identity semantics', () => {
-  const engine = createTemplateRenderer({ cookiecutterCompat: true });
+  const engine = createTemplateRenderer({
+    allowRegexReplace: true,
+    cookiecutterCompat: true,
+  });
   const oracle = new nunjucks.Environment(undefined, { autoescape: false });
   const sources = [
     '{{ 123 | replace("x", "y", 0) | dump }}',
@@ -4006,6 +4012,7 @@ test('coerces inert regex values with Nunjucks canonical spelling', () => {
     const engineEvents: string[] = [];
     const oracleEvents: string[] = [];
     const engine = createTemplateRenderer({
+      allowRegexReplace: true,
       cookiecutterCompat,
       filters: {
         observeRegex(input) {
