@@ -9,6 +9,15 @@ export const reservedNames = Object.freeze(new Set([
   '__proto__',
 ]));
 
+/** Hard ceiling for structured entries traversed by one safe-value copy. */
+export const maximumSafeValueEntries = 100_000;
+
+/** Hard ceiling for nested array and record levels in closed values. */
+export const maximumSafeValueDepth = 256;
+
+/** Hard ceiling for one prepared-context update path. */
+export const maximumPreparedContextPathSegments = maximumSafeValueDepth;
+
 /** Primitive values owned directly by the interpreter. */
 export type RuntimePrimitive = undefined | null | boolean | number | string;
 
@@ -43,6 +52,7 @@ export class RuntimeArray {
   readonly #items: readonly RuntimeValue[];
   readonly #present: ReadonlySet<number> | undefined;
   readonly #containsCallable: boolean;
+  readonly #nestingDepth: number;
 
   constructor(items: readonly RuntimeValue[]) {
     if (types.isProxy(items)) {
@@ -51,10 +61,12 @@ export class RuntimeArray {
     if (!Array.isArray(items)) {
       throw new TypeError('Runtime arrays require an array');
     }
+    assertRuntimeContainerSize(items.length);
     const copied: RuntimeValue[] = [];
     copied.length = items.length;
     const present = new Set<number>();
     let containsCallable = false;
+    let nestingDepth = 1;
     for (let index = 0; index < items.length; index += 1) {
       const descriptor = Object.getOwnPropertyDescriptor(items, `${index}`);
       if (descriptor === undefined) {
@@ -68,10 +80,13 @@ export class RuntimeArray {
       defineOwnArrayIndex(copied, index, value);
       present.add(index);
       containsCallable ||= runtimeValueContainsCallable(value);
+      nestingDepth = Math.max(nestingDepth, runtimeValueNestingDepth(value) + 1);
     }
+    assertRuntimeValueDepth(nestingDepth);
     this.#items = Object.freeze(copied);
     this.#present = present.size === copied.length ? undefined : present;
     this.#containsCallable = containsCallable;
+    this.#nestingDepth = nestingDepth;
     Object.freeze(this);
   }
 
@@ -114,6 +129,11 @@ export class RuntimeArray {
     return this.#containsCallable;
   }
 
+  /** Returns the deepest closed container level including this array. */
+  nestingDepth(): number {
+    return this.#nestingDepth;
+  }
+
   /** Returns a mutable sparse copy without exposing interpreter storage. */
   copySparse(): RuntimeValue[] {
     const output: RuntimeValue[] = [];
@@ -132,11 +152,15 @@ export class RuntimeRecord {
   readonly kind = 'record';
   readonly #entries: ReadonlyMap<string, RuntimeValue>;
   readonly #containsCallable: boolean;
+  readonly #nestingDepth: number;
 
   constructor(entries: Iterable<readonly [string, RuntimeValue]>) {
     const indexedEntries = new Map<string, RuntimeValue>();
     const namedEntries = new Map<string, RuntimeValue>();
+    let entryCount = 0;
     for (const [name, value] of entries) {
+      entryCount += 1;
+      assertRuntimeContainerSize(entryCount);
       if (isReservedName(name)) {
         throw new TypeError(`Template record key ${name} is reserved`);
       }
@@ -154,10 +178,14 @@ export class RuntimeRecord {
       this.#entries = new Map(orderedEntries);
     }
     let containsCallable = false;
+    let nestingDepth = 1;
     for (const value of this.#entries.values()) {
       containsCallable ||= runtimeValueContainsCallable(value);
+      nestingDepth = Math.max(nestingDepth, runtimeValueNestingDepth(value) + 1);
     }
+    assertRuntimeValueDepth(nestingDepth);
     this.#containsCallable = containsCallable;
+    this.#nestingDepth = nestingDepth;
     Object.freeze(this);
   }
 
@@ -187,6 +215,11 @@ export class RuntimeRecord {
   /** Returns whether any own entry transitively contains callable authority. */
   containsCallable(): boolean {
     return this.#containsCallable;
+  }
+
+  /** Returns the deepest closed container level including this record. */
+  nestingDepth(): number {
+    return this.#nestingDepth;
   }
 
   /** Returns a derived record with one allowed own entry replaced. */
@@ -292,14 +325,14 @@ export function defineOwnArrayIndex<T>(target: T[], index: number, value: T): vo
 
 /** Copies one public safe value graph into interpreter-owned values. */
 export function copyRuntimeValue(value: TemplateValue | undefined): RuntimeValue {
-  return copyValue(value, new Set(), new Map());
+  return copyValue(value, createSafeValueCopyState(), 0);
 }
 
 /** Copies a root context record into interpreter-owned values. */
 export function copyRuntimeContext(
   context: Readonly<Record<string, TemplateValue>>,
 ): RuntimeRecord {
-  const copied = copyValue(context, new Set(), new Map());
+  const copied = copyValue(context, createSafeValueCopyState(), 0);
   if (!(copied instanceof RuntimeRecord)) {
     throw new TypeError('Template context must be a plain record');
   }
@@ -315,6 +348,11 @@ export function withRuntimeContextPath(
   if (!Array.isArray(path) || path.length === 0) {
     throw new TypeError('Prepared context update path must be a non-empty array');
   }
+  if (path.length > maximumPreparedContextPathSegments) {
+    throw new RangeError(
+      `Prepared context update paths cannot exceed ${maximumPreparedContextPathSegments} segments`,
+    );
+  }
   const names = path.map(name => {
     if (typeof name !== 'string') {
       throw new TypeError('Prepared context update path must contain only strings');
@@ -329,7 +367,7 @@ export function withRuntimeContextPath(
 
 /** Copies an internal value for a trusted host callback without leaking internals. */
 export function copyPublicValue(value: RuntimeValue): TemplateValue | undefined {
-  return toPublicValue(value, new Map());
+  return toPublicValue(value, createPublicValueCopyState(), 0);
 }
 
 /** Copies an internal value while charging every traversed structured slot. */
@@ -337,7 +375,7 @@ export function copyPublicValueWithWork(
   value: RuntimeValue,
   chargeWork: RuntimeWorkCharge,
 ): TemplateValue | undefined {
-  return toPublicValue(value, new Map(), chargeWork);
+  return toPublicValue(value, createPublicValueCopyState(), 0, chargeWork);
 }
 
 /** Explicit string coercion over closed value variants. */
@@ -385,6 +423,13 @@ function runtimeValueContainsCallable(value: RuntimeValue): boolean {
     return value.containsCallable();
   }
   return false;
+}
+
+function runtimeValueNestingDepth(value: RuntimeValue): number {
+  if (value instanceof RuntimeArray || value instanceof RuntimeRecord) {
+    return value.nestingDepth();
+  }
+  return 0;
 }
 
 function renderRuntimeValueUnchecked(
@@ -485,10 +530,24 @@ export function runtimeTruthy(value: RuntimeValue): boolean {
   return true;
 }
 
+interface SafeValueCopyState {
+  readonly ancestors: Set<object>;
+  readonly aliases: Map<object, RuntimeValue>;
+  remainingEntries: number;
+}
+
+function createSafeValueCopyState(): SafeValueCopyState {
+  return {
+    ancestors: new Set(),
+    aliases: new Map(),
+    remainingEntries: maximumSafeValueEntries,
+  };
+}
+
 function copyValue(
   value: TemplateValue | undefined,
-  ancestors: Set<object>,
-  aliases: Map<object, RuntimeValue>,
+  state: SafeValueCopyState,
+  parentDepth: number,
 ): RuntimeValue {
   if (
     value === undefined ||
@@ -505,20 +564,23 @@ function copyValue(
   if (types.isProxy(value)) {
     throw new TypeError('Proxy objects cannot be used as template values');
   }
-  if (ancestors.has(value)) {
+  assertRuntimeValueDepth(parentDepth + 1);
+  if (state.ancestors.has(value)) {
     throw new TypeError('Cyclic template values are not supported');
   }
-  const existing = aliases.get(value);
+  const existing = state.aliases.get(value);
   if (existing !== undefined) {
     return existing;
   }
 
-  ancestors.add(value);
+  state.ancestors.add(value);
   try {
     if (Array.isArray(value)) {
       if (Object.getPrototypeOf(value) !== Array.prototype) {
         throw new TypeError('Template arrays cannot use a custom prototype');
       }
+      assertRuntimeContainerSize(value.length);
+      reserveSafeValueEntries(state, value.length);
       validateArrayKeys(value);
       const items: RuntimeValue[] = [];
       items.length = value.length;
@@ -528,12 +590,12 @@ function copyValue(
           defineOwnArrayIndex(
             items,
             index,
-            copyDataDescriptor(descriptor, ancestors, aliases),
+            copyDataDescriptor(descriptor, state, parentDepth + 1),
           );
         }
       }
       const copied = new RuntimeArray(items);
-      aliases.set(value, copied);
+      state.aliases.set(value, copied);
       return copied;
     }
 
@@ -541,8 +603,11 @@ function copyValue(
     if (prototype !== Object.prototype && prototype !== null) {
       throw new TypeError('Only plain records can be used as template values');
     }
+    const keys = Reflect.ownKeys(value);
+    assertRuntimeContainerSize(keys.length);
+    reserveSafeValueEntries(state, keys.length);
     const entries: Array<readonly [string, RuntimeValue]> = [];
-    for (const key of Reflect.ownKeys(value)) {
+    for (const key of keys) {
       if (typeof key !== 'string') {
         throw new TypeError('Template records cannot contain symbol keys');
       }
@@ -551,26 +616,29 @@ function copyValue(
       }
       const descriptor = Object.getOwnPropertyDescriptor(value, key);
       if (descriptor?.enumerable) {
-        entries.push([key, copyDataDescriptor(descriptor, ancestors, aliases)]);
+        entries.push([
+          key,
+          copyDataDescriptor(descriptor, state, parentDepth + 1),
+        ]);
       }
     }
     const copied = new RuntimeRecord(entries);
-    aliases.set(value, copied);
+    state.aliases.set(value, copied);
     return copied;
   } finally {
-    ancestors.delete(value);
+    state.ancestors.delete(value);
   }
 }
 
 function copyDataDescriptor(
   descriptor: PropertyDescriptor,
-  ancestors: Set<object>,
-  aliases: Map<object, RuntimeValue>,
+  state: SafeValueCopyState,
+  parentDepth: number,
 ): RuntimeValue {
   if (!('value' in descriptor)) {
     throw new TypeError('Template values cannot contain accessors');
   }
-  return copyValue(descriptor.value as TemplateValue, ancestors, aliases);
+  return copyValue(descriptor.value as TemplateValue, state, parentDepth);
 }
 
 function validateArrayKeys(value: readonly TemplateValue[]): void {
@@ -621,9 +689,22 @@ function isArrayIndex(value: string, length: number): boolean {
   return isCanonicalArrayIndex(value) && Number(value) < length;
 }
 
+interface PublicValueCopyState {
+  readonly aliases: Map<object, TemplateValue>;
+  remainingEntries: number;
+}
+
+function createPublicValueCopyState(): PublicValueCopyState {
+  return {
+    aliases: new Map(),
+    remainingEntries: maximumSafeValueEntries,
+  };
+}
+
 function toPublicValue(
   value: RuntimeValue,
-  aliases: Map<object, TemplateValue>,
+  state: PublicValueCopyState,
+  parentDepth: number,
   chargeWork?: RuntimeWorkCharge,
 ): TemplateValue | undefined {
   if (
@@ -638,18 +719,25 @@ function toPublicValue(
   if (value instanceof RuntimeSafeString) {
     return value.value;
   }
-  const existing = aliases.get(value);
+  const existing = state.aliases.get(value);
   if (existing !== undefined) {
     return existing;
   }
   if (value instanceof RuntimeArray) {
+    assertRuntimeValueDepth(parentDepth + 1);
+    reserveSafeValueEntries(state, value.length);
     const output: TemplateValue[] = [];
     output.length = value.length;
-    aliases.set(value, output);
+    state.aliases.set(value, output);
     for (let index = 0; index < value.length; index += 1) {
       chargeWork?.();
       if (value.has(index)) {
-        const publicItem = toPublicValue(value.at(index), aliases, chargeWork);
+        const publicItem = toPublicValue(
+          value.at(index),
+          state,
+          parentDepth + 1,
+          chargeWork,
+        );
         defineOwnArrayIndex(
           output,
           index,
@@ -660,14 +748,21 @@ function toPublicValue(
     return Object.freeze(output);
   }
   if (value instanceof RuntimeRecord) {
+    assertRuntimeValueDepth(parentDepth + 1);
+    reserveSafeValueEntries(state, value.size);
     const output = Object.create(null) as Record<string, TemplateValue>;
-    aliases.set(value, output);
+    state.aliases.set(value, output);
     for (const [key, item] of value.entries()) {
       chargeWork?.();
       if (isReservedName(key)) {
         throw new TypeError(`Template record key ${key} is reserved`);
       }
-      const publicItem = toPublicValue(item, aliases, chargeWork);
+      const publicItem = toPublicValue(
+        item,
+        state,
+        parentDepth + 1,
+        chargeWork,
+      );
       if (publicItem !== undefined) {
         output[key] = publicItem;
       }
@@ -678,4 +773,32 @@ function toPublicValue(
     return runtimeRegexToString(value);
   }
   throw new TypeError('Callable values cannot cross the capability boundary');
+}
+
+function assertRuntimeContainerSize(entries: number): void {
+  if (entries > maximumSafeValueEntries) {
+    throw new RangeError(
+      `Template value containers cannot exceed ${maximumSafeValueEntries} entries`,
+    );
+  }
+}
+
+function assertRuntimeValueDepth(depth: number): void {
+  if (depth > maximumSafeValueDepth) {
+    throw new RangeError(
+      `Template value nesting cannot exceed ${maximumSafeValueDepth} levels`,
+    );
+  }
+}
+
+function reserveSafeValueEntries(
+  state: { remainingEntries: number },
+  entries: number,
+): void {
+  if (entries > state.remainingEntries) {
+    throw new RangeError(
+      `Template value copies cannot exceed ${maximumSafeValueEntries} structured entries`,
+    );
+  }
+  state.remainingEntries -= entries;
 }

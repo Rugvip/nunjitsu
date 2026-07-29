@@ -56,6 +56,13 @@ Prepared contexts contain the same copied values. They never observe later
 mutation of the caller's objects, and failed path updates do not modify the
 original snapshot.
 
+Safe-value copying has non-configurable structural ceilings: one copied graph
+may contain at most 100,000 array slots and record properties across at most
+256 nested container levels. Each individual runtime array or record has the
+same 100,000-entry ceiling, and a prepared-context update path may contain at
+most 256 segments. Sparse arrays are charged by their logical length before
+their elements are inspected.
+
 `renderValue` returns values through the same boundary. Arrays and records are
 fresh frozen public copies, safe strings become ordinary strings, regular
 expressions become inert strings, and callable identities are rejected.
@@ -99,6 +106,9 @@ Every render starts with cooperative limits:
 
 Applications can override individual values through `TemplateRenderOptions.limits`.
 Each override must be a non-negative safe integer or `Infinity`.
+
+The structural safe-value ceilings described under [Accepted data](#accepted-data)
+are separate hard invariants and cannot be disabled through render options.
 
 These checks are availability safeguards, not a hard memory limit, exact CPU
 budget, or process sandbox. Use process isolation when the deployment requires

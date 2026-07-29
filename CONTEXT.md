@@ -68,6 +68,12 @@ belong here so those pages can remain readable.
 - Copy context and capability results into the closed renderer-owned value graph.
   Never retain live host objects, prototypes, getters, functions, methods, or
   iteration protocols in template-visible values.
+- Bound every safe-value copy to 100,000 structured entries and 256 nested
+  array or record levels. Charge sparse arrays by logical length before
+  inspecting indices, keep every individual runtime container within the same
+  100,000-entry ceiling, and reject prepared-context update paths longer than
+  256 segments. These are non-configurable hard invariants independent of
+  per-render cooperative limits.
 - Store scopes and records in private maps and implement every lookup,
   coercion, comparison, and call explicitly by internal value kind. Never use
   reflective host property access as an evaluator shortcut.

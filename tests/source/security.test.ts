@@ -13,6 +13,9 @@ import {
   copyPublicValue,
   copyRuntimeContext,
   copyRuntimeValue,
+  maximumPreparedContextPathSegments,
+  maximumSafeValueDepth,
+  maximumSafeValueEntries,
   RuntimeArray,
   RuntimeCallable,
   RuntimeRecord,
@@ -141,6 +144,145 @@ test('copies only plain data without invoking accessors or host behavior', () =>
     () => copyRuntimeValue({ [Symbol('secret')]: 'host' } as never),
     /cannot contain symbol keys/,
   );
+});
+
+test('hard structural limits bound every safe-value ingress', () => {
+  let maximumDepthValue: unknown = 'leaf';
+  for (let depth = 0; depth < maximumSafeValueDepth; depth += 1) {
+    maximumDepthValue = { child: maximumDepthValue };
+  }
+  const copiedAtMaximumDepth = copyRuntimeValue(maximumDepthValue as never);
+  assert.ok(copiedAtMaximumDepth instanceof RuntimeRecord);
+  assert.throws(
+    () => copyRuntimeValue({ child: maximumDepthValue } as never),
+    (error: unknown) => (
+      error instanceof RangeError &&
+      error.message.includes(`${maximumSafeValueDepth} levels`)
+    ),
+  );
+  assert.throws(
+    () => new RuntimeArray([copiedAtMaximumDepth]),
+    (error: unknown) => (
+      error instanceof RangeError &&
+      error.message.includes(`${maximumSafeValueDepth} levels`)
+    ),
+  );
+
+  let accessorCalls = 0;
+  const oversizedSparseArray: unknown[] = [];
+  oversizedSparseArray.length = maximumSafeValueEntries + 1;
+  Object.defineProperty(oversizedSparseArray, '0', {
+    enumerable: true,
+    get() {
+      accessorCalls += 1;
+      return 'unreachable';
+    },
+  });
+  for (const copy of [
+    () => copyRuntimeValue(oversizedSparseArray as never),
+    () => new RuntimeArray(oversizedSparseArray as never),
+  ]) {
+    assert.throws(
+      copy,
+      (error: unknown) => (
+        error instanceof RangeError &&
+        error.message.includes(`${maximumSafeValueEntries} entries`)
+      ),
+    );
+  }
+  assert.equal(accessorCalls, 0);
+
+  function* oversizedRecordEntries(): IterableIterator<readonly [string, number]> {
+    for (let index = 0; index <= maximumSafeValueEntries; index += 1) {
+      yield ['duplicate', index];
+    }
+  }
+  assert.throws(
+    () => new RuntimeRecord(oversizedRecordEntries()),
+    (error: unknown) => (
+      error instanceof RangeError &&
+      error.message.includes(`${maximumSafeValueEntries} entries`)
+    ),
+  );
+
+  const oversizedGraph = Array.from({ length: 100 }, () => {
+    const sparse: unknown[] = [];
+    sparse.length = 1_000;
+    return sparse;
+  });
+  assert.throws(
+    () => copyRuntimeValue(oversizedGraph as never),
+    (error: unknown) => (
+      error instanceof RangeError &&
+      error.message.includes(`${maximumSafeValueEntries} structured entries`)
+    ),
+  );
+  const oversizedRuntimeGraph = new RuntimeArray(
+    oversizedGraph.map(value => new RuntimeArray(value as never)),
+  );
+  assert.throws(
+    () => copyPublicValue(oversizedRuntimeGraph),
+    (error: unknown) => (
+      error instanceof RangeError &&
+      error.message.includes(`${maximumSafeValueEntries} structured entries`)
+    ),
+  );
+
+  let laterCalls = 0;
+  const renderer = createTemplateRenderer({
+    globals: {
+      oversizedResult() {
+        return oversizedSparseArray as never;
+      },
+      later() {
+        laterCalls += 1;
+        return 'later';
+      },
+    },
+  });
+  assert.throws(
+    () => renderer.render('${{ later() }}', {
+      deep: { child: maximumDepthValue } as never,
+    }),
+    RangeError,
+  );
+  assert.throws(
+    () => renderer.prepareContext({ value: oversizedSparseArray as never }),
+    RangeError,
+  );
+  assert.throws(
+    () => createTemplateRenderer({
+      globals: { oversized: oversizedSparseArray as never },
+    }),
+    RangeError,
+  );
+  assert.throws(
+    () => renderer.render('${{ oversizedResult() }}${{ later() }}'),
+    (error: unknown) => (
+      error instanceof TemplateRenderError &&
+      error.code === 'capability_error'
+    ),
+  );
+  assert.equal(laterCalls, 0);
+
+  const prepared = renderer.prepareContext();
+  assert.throws(
+    () => prepared.withValue(['value'], oversizedSparseArray as never),
+    RangeError,
+  );
+  const maximumPath = Array.from(
+    { length: maximumPreparedContextPathSegments },
+    (_, index) => `level${index}`,
+  );
+  assert.doesNotThrow(() => prepared.withValue(maximumPath, 'leaf'));
+  assert.throws(
+    () => prepared.withValue([...maximumPath, 'tooDeep'], 'leaf'),
+    (error: unknown) => (
+      error instanceof RangeError &&
+      error.message.includes(`${maximumPreparedContextPathSegments} segments`)
+    ),
+  );
+  assert.equal(renderer.render('clean'), 'clean');
 });
 
 test('rejects proxy-backed values before invoking reflection traps', () => {
