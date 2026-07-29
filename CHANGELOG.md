@@ -1,5 +1,12 @@
 # nunjitsu
 
+## 0.4.0
+
+### Minor Changes
+
+- Rename `PreparedTemplateContext.withPath` to `withValue`. This is a breaking
+  change for callers using prepared-context updates.
+
 ## 0.3.1
 
 ### Patch Changes
