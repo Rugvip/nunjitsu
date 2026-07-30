@@ -5,7 +5,7 @@ const runtimeEvaluationErrors = new WeakSet<object>();
 /** Stable internal category for one expected evaluator failure. */
 export type RuntimeEvaluationErrorCode = 'evaluation_error' | 'capability_error';
 
-/** Engine-owned evaluator failure containing no original thrown value. */
+/** Renderer-owned evaluator failure containing no original thrown value. */
 export class RuntimeEvaluationError extends Error {
   /** Stable internal evaluator failure category. */
   readonly code: RuntimeEvaluationErrorCode;
@@ -49,7 +49,7 @@ export class RuntimeEvaluationError extends Error {
     );
   }
 
-  /** Checks the private engine-owned error brand without invoking object behavior. */
+  /** Checks the private renderer-owned error brand without invoking object behavior. */
   static is(error: unknown): error is RuntimeEvaluationError {
     return typeof error === 'object' && error !== null && runtimeEvaluationErrors.has(error);
   }

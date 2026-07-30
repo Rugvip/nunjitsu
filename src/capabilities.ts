@@ -24,7 +24,7 @@ export type TemplateGlobalFunction = (
 /** JSON value or trusted synchronous function exposed as a template global. */
 export type TemplateGlobal = TemplateValue | TemplateGlobalFunction;
 
-/** Immutable filters and globals configured for an engine. */
+/** Immutable filters and globals configured for a template renderer. */
 export interface TemplateCapabilities {
   /** Filters addressed by one or more dot-separated valid identifier segments. */
   filters?: Readonly<Record<string, TemplateFilter>>;
