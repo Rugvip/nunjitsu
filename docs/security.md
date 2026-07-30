@@ -109,6 +109,9 @@ Each override must be a non-negative safe integer or `Infinity`.
 
 The structural safe-value ceilings described under [Accepted data](#accepted-data)
 are separate hard invariants and cannot be disabled through render options.
+Every regular-expression pattern is likewise capped at 16,384 UTF-16 code
+units before native syntax validation, regardless of whether regex execution is
+enabled.
 
 These checks are availability safeguards, not a hard memory limit, exact CPU
 budget, or process sandbox. Use process isolation when the deployment requires

@@ -321,6 +321,10 @@ Do not create additional packages without a documented architectural reason.
   evaluation; share complete identifier boundaries between tag and expression
   scanning so only an exact `r/` token starts a regex. Native Node.js RegExp
   support must never expand accepted syntax.
+- Bound every regex pattern to 16,384 UTF-16 code units while scanning, before
+  passing it to native `RegExp` syntax validation. This non-configurable ceiling
+  applies whether regex execution is disabled or enabled and must fail during
+  complete parsing before any capability executes.
 - Coerce inert regex values through one closed canonical spelling helper. Empty
   patterns render as `(?:)`, raw line terminators are escaped, and flags emit in
   `gimy` order without consulting `RegExp.prototype` or another host hook. Keep

@@ -1,6 +1,9 @@
 const allowedRegularExpressionFlags = Object.freeze(['g', 'i', 'm', 'y'] as const);
 const asciiLetterPattern = /^[A-Za-z]$/;
 
+/** Hard ceiling applied before native regular-expression syntax validation. */
+export const maximumRegexPatternCodeUnits = 16 * 1024;
+
 /** Result of scanning one closed regular-expression literal. */
 interface ScannedRegexLiteral {
   readonly source: string;
@@ -25,6 +28,15 @@ export function scanRegexLiteral(source: string, start: number): ScannedRegexLit
 
   for (let index = start + 2; index < source.length; index += 1) {
     const character = source[index]!;
+    if (
+      (character !== '/' || backslashRun > 0) &&
+      pattern.length >= maximumRegexPatternCodeUnits
+    ) {
+      throw new RegexLiteralSyntaxError(
+        'Regular-expression literal exceeds the maximum length',
+        start,
+      );
+    }
     if (character === '\\') {
       pattern += character;
       backslashRun += 1;

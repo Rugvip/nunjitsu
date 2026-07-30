@@ -6,6 +6,7 @@ import nunjucks from 'nunjucks';
 
 import { createTemplateRenderer, TemplateLimitError, TemplateRenderError } from '../../src/index.ts';
 import { NunjitsuParseError, parseTemplate } from '../../src/parser/index.ts';
+import { maximumRegexPatternCodeUnits } from '../../src/parser/scanRegexLiteral.ts';
 import { applyBuiltinFilter } from '../../src/runtime/builtins.ts';
 import { RuntimeScope } from '../../src/runtime/scope.ts';
 import {
@@ -1691,6 +1692,56 @@ test('restricts regex literals before capability dispatch', () => {
         engineSource,
       );
       assert.deepEqual(engineCalls, oracleCalls, engineSource);
+    }
+  }
+});
+
+test('bounds regex literal compilation before capability dispatch', () => {
+  assert.equal(maximumRegexPatternCodeUnits, 16 * 1024);
+  const acceptedPattern = 'a'.repeat(maximumRegexPatternCodeUnits);
+  const rejectedPattern = `${acceptedPattern}a`;
+
+  for (const cookiecutterCompat of [false, true]) {
+    const source = (value: string): string => cookiecutterCompat
+      ? value.replaceAll('${{', '{{')
+      : value;
+    for (const allowRegexExecution of [false, true]) {
+      const calls: string[] = [];
+      const renderer = createTemplateRenderer({
+        allowRegexExecution,
+        cookiecutterCompat,
+        globals: {
+          before() {
+            calls.push('before');
+            return '';
+          },
+          later() {
+            calls.push('later');
+            return '';
+          },
+        },
+      });
+      const oversized = source([
+        '${{ before() }}',
+        `\${{ r/${rejectedPattern}/ }}`,
+        '${{ later() }}',
+      ].join(''));
+
+      assert.throws(
+        () => renderer.render(oversized),
+        error => (
+          error instanceof TemplateRenderError &&
+          error.phase === 'parse' &&
+          error.code === 'syntax_error' &&
+          /maximum length/.test(error.message)
+        ),
+      );
+      assert.deepEqual(calls, []);
+      assert.equal(renderer.render('clean'), 'clean');
+      assert.equal(
+        renderer.renderValue(source(`\${{ r/${acceptedPattern}/ }}`)),
+        `/${acceptedPattern}/`,
+      );
     }
   }
 });
