@@ -1,5 +1,24 @@
 # nunjitsu
 
+## 0.5.0
+
+### Minor Changes
+
+- Disable template-controlled regular-expression execution in the built-in
+  `replace` filter by default. Set `allowRegexExecution: true` when creating a
+  renderer to retain native Nunjucks-compatible regex replacement. String
+  replacement and inert regular-expression literals remain available.
+
+### Patch Changes
+
+- Bound every template regular-expression pattern to 16,384 UTF-16 code units
+  before native syntax validation, preventing oversized literals from consuming
+  unbounded compilation resources even when regular-expression execution is
+  disabled.
+- Correct the remaining engine terminology in the published TypeScript API
+  documentation to refer consistently to template renderers.
+- Bound safe-value copying with fixed nesting, structured-entry, and prepared-context path ceilings so pathological context and capability-result graphs fail deterministically instead of exhausting the JavaScript stack or expanding enormous sparse arrays.
+
 ## 0.4.0
 
 ### Minor Changes
