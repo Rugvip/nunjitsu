@@ -115,8 +115,10 @@ const config = renderer.renderValue('${{ config }}', {
 ```
 
 Templates containing text, multiple interpolations, or statements return their
-normally rendered string. Returned arrays and records are copied and frozen.
-This is useful for configuration, workflow, and structured-data templates.
+normally rendered string. Native values are detached copies; returned arrays
+and records are frozen, while returned Maps and Sets remain independent mutable
+containers. This is useful for configuration, workflow, and structured-data
+templates.
 
 `TemplateRenderOptions` configures per-render resource limits. See
 [Security](docs/security.md#resource-limits) for details.
@@ -167,10 +169,16 @@ type TemplateValue =
   | number
   | string
   | readonly TemplateValue[]
-  | Readonly<{ [key: string]: TemplateValue }>;
+  | Readonly<{ [key: string]: TemplateValue }>
+  | ReadonlyMap<TemplateValue, TemplateValue>
+  | ReadonlySet<TemplateValue>;
 
 type TemplateContext = Readonly<Record<string, TemplateValue>>;
 ```
+
+Arrays, Maps, and Sets are copied before rendering. Approved template mutations
+preserve aliases during that render without modifying the caller's values or a
+prepared context.
 
 ### Filters and globals
 

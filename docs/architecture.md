@@ -37,7 +37,8 @@ created.
 One call to `render` or `renderValue` follows this sequence:
 
 1. Validate the source, context, prepared-context ownership, and limit options.
-2. Copy ordinary context data into the closed value model.
+2. Copy ordinary context data, or clone a prepared snapshot, into the closed
+   value model.
 3. Parse and validate the complete template.
 4. Allocate render-local scopes and evaluator state.
 5. Evaluate the AST and append output fragments.
@@ -67,11 +68,17 @@ rejected before template evaluation begins.
 
 ### Closed values and interpreter
 
-The runtime has explicit representations for primitives, arrays, records, safe
-strings, regular expressions, and sealed callable identities. Scopes and
-records are map-backed. Operations such as property lookup, truthiness,
+The runtime has explicit representations for primitives, arrays, records, Maps,
+Sets, safe strings, regular expressions, and sealed callable identities. Scopes
+and records are map-backed. Operations such as property lookup, truthiness,
 comparison, addition, iteration, and calls dispatch by runtime value kind rather
 than falling through to JavaScript objects or prototypes.
+
+A small receiver-specific intrinsic layer implements approved string, number,
+array, Map, Set, and regular-expression methods. Method lookup creates a sealed
+receiver-bound identity; it never exposes a JavaScript prototype method. Mutable
+collections live only in the current render graph, so aliases observe changes
+while caller-owned and prepared values remain unchanged.
 
 ### Capabilities
 

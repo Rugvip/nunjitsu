@@ -25,8 +25,9 @@ export interface TemplateRendererOptions extends TemplateCapabilities {
    * Allows template-controlled regular expressions to execute.
    *
    * Disabled by default because native regular-expression matching cannot be
-   * interrupted by the renderer's cooperative resource limits. Currently this
-   * enables regular-expression patterns in the built-in `replace` filter.
+   * interrupted by the renderer's cooperative resource limits. This enables
+   * regex patterns in the built-in `replace` filter and approved string and
+   * regex methods.
    */
   allowRegexExecution?: boolean;
   /** Uses `{{ ... }}` variables and supported Jinja compatibility behavior. */

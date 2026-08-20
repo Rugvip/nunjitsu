@@ -35,37 +35,47 @@ coercion, comparison, iteration, and call behavior is implemented by closed
 value kind. The names `constructor`, `prototype`, and `__proto__` are reserved
 throughout the language and data boundary.
 
-Only sealed identities created for macros, built-ins, and registered filters or
-globals are callable. Strings, context functions, object paths, and computed
-property names cannot manufacture a callable identity.
+Only sealed identities created for macros, built-ins, approved intrinsic
+methods, and registered filters or globals are callable. Intrinsics use a fixed
+receiver-specific allowlist and never expose a host method or prototype.
+Context functions, arbitrary object paths, and computed property names cannot
+manufacture authority.
 
 ## Accepted data
 
 The public value model accepts:
 
 - `null`, booleans, numbers, and strings;
-- arrays containing accepted values; and
-- plain records containing accepted values in enumerable own data properties.
+- arrays containing accepted values;
+- plain records containing accepted values in enumerable own data properties;
+- exact native Maps with accepted keys and values; and
+- exact native Sets with accepted values.
 
 The copier rejects functions, symbols, accessors, proxies, custom prototypes,
-class instances, typed arrays, dates, maps, sets, promises, errors, cycles, and
-other behavior-bearing values. It inspects property descriptors rather than
-reading getters and does not consume inherited iteration protocols.
+Map and Set subclasses, class instances, typed arrays, dates, promises, errors,
+cycles, and other behavior-bearing values. It inspects property descriptors
+rather than reading getters. Maps and Sets are snapshotted through captured
+intrinsics without consuming an object-owned iteration protocol.
 
 Prepared contexts contain the same copied values. They never observe later
 mutation of the caller's objects, and failed path updates do not modify the
 original snapshot.
 
 Safe-value copying has non-configurable structural ceilings: one copied graph
-may contain at most 100,000 array slots and record properties across at most
-256 nested container levels. Each individual runtime array or record has the
-same 100,000-entry ceiling, and a prepared-context update path may contain at
-most 256 segments. Sparse arrays are charged by their logical length before
-their elements are inspected.
+may contain at most 100,000 array slots, record properties, Map entries, and Set
+values across at most 256 nested container levels. Each individual container
+has the same 100,000-entry ceiling, and a prepared-context update path may
+contain at most 256 segments. Sparse arrays are charged by their logical length
+before their elements are inspected.
 
 `renderValue` returns values through the same boundary. Arrays and records are
-fresh frozen public copies, safe strings become ordinary strings, regular
-expressions become inert strings, and callable identities are rejected.
+fresh frozen public copies; Maps and Sets are fresh detached native containers;
+safe strings become ordinary strings; regular expressions become inert strings;
+and callable identities are rejected.
+
+Approved array, Map, and Set mutations operate only on the current render's
+copy. Aliases within that render observe the mutation, but caller-owned values,
+prepared contexts, configured globals, later renders, and failed renders do not.
 
 ## Capabilities
 
@@ -82,9 +92,11 @@ Keep capabilities narrow:
 - do not return secrets that the template should not render; and
 - treat a capability error message as potentially sensitive application data.
 
-Arguments are frozen public copies with no runtime prototypes or callable
-handles. Results cross the same safe-value copier before evaluation continues.
-If a callback throws or returns an invalid value, rendering stops immediately.
+Arguments are detached public copies with no internal runtime objects or
+callable handles. Arrays and records are frozen; Map and Set arguments are
+independent native snapshots. Results cross the same safe-value copier before
+evaluation continues. If a callback throws or returns an invalid value,
+rendering stops immediately.
 
 Capability callbacks run in the caller process and are outside evaluator work
 accounting. They must be synchronous, bounded, and safe for the application to
@@ -121,11 +133,12 @@ strong resource containment or protection from bugs in trusted capabilities.
 
 Regular-expression literals are inert by default. They can be rendered,
 compared, stored, or passed to a capability as canonical strings, but the
-built-in `replace` filter rejects them as search patterns. Ordinary string
+built-in `replace` filter and string `replace` and `split` methods reject them as
+patterns, and the regex `test` method cannot execute. Ordinary string
 replacement remains available.
 
-Applications can opt into Nunjucks-compatible regular-expression replacement
-for a renderer:
+Applications can opt into Nunjucks-compatible regular-expression execution for
+a renderer:
 
 ```ts
 const renderer = createTemplateRenderer({
@@ -133,12 +146,12 @@ const renderer = createTemplateRenderer({
 });
 ```
 
-This renderer-wide setting allows template-controlled regular-expression
-execution. Currently, the only such operation is the built-in `replace` filter,
-which executes patterns with Node.js's native regular-expression engine,
-including captures and flags. The setting does not affect a custom registered
-filter named `replace`, which is trusted capability code like any other
-registered filter.
+This renderer-wide setting enables regex patterns in the built-in `replace`
+filter and string `replace` and `split` methods, plus stateful regex `test`.
+These operations use Node.js's native regular-expression engine, including
+captures and flags. The setting does not affect a custom registered filter
+named `replace`, which is trusted capability code like any other registered
+filter.
 
 A hostile enabled pattern and input can cause excessive backtracking and block
 the Node.js event loop.
