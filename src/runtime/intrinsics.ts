@@ -120,13 +120,43 @@ const setMethods = new Set([
   'values',
 ]);
 
+const mutatingMethodNames = new Set([
+  'add',
+  'append',
+  'clear',
+  'copyWithin',
+  'delete',
+  'fill',
+  'insert',
+  'pop',
+  'push',
+  'remove',
+  'reverse',
+  'set',
+  'shift',
+  'sort',
+  'splice',
+  'unshift',
+]);
+
+/** Returns whether an approved method name can mutate its closed receiver. */
+export function isMutatingRuntimeIntrinsicName(name: string): boolean {
+  return mutatingMethodNames.has(name);
+}
+
 /** Resolves only explicitly approved closed methods, never host properties. */
 export function resolveRuntimeIntrinsic(
   receiver: RuntimeValue,
   name: string,
   cookiecutterCompat: boolean,
 ): RuntimeIntrinsicMethod | undefined {
-  if (isReservedName(name)) {
+  if (
+    isReservedName(name) ||
+    receiver === undefined ||
+    receiver === null ||
+    typeof receiver === 'boolean' ||
+    (receiver instanceof RuntimeRecord && !cookiecutterCompat)
+  ) {
     return undefined;
   }
   let found = false;

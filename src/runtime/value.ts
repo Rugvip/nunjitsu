@@ -48,8 +48,39 @@ export class RuntimeSafeString {
   }
 }
 
+abstract class RuntimeContainerValue {
+  #parents: Map<RuntimeContainerValue, number> | undefined;
+
+  abstract refreshMetadata(): void;
+
+  abstract containsMutable(): boolean;
+
+  addRuntimeParent(parent: RuntimeContainerValue): void {
+    this.#parents ??= new Map();
+    this.#parents.set(parent, (this.#parents.get(parent) ?? 0) + 1);
+  }
+
+  removeRuntimeParent(parent: RuntimeContainerValue): void {
+    const count = this.#parents?.get(parent);
+    if (count === undefined) {
+      return;
+    }
+    if (count === 1) {
+      this.#parents?.delete(parent);
+    } else {
+      this.#parents?.set(parent, count - 1);
+    }
+  }
+
+  runtimeParents(): Iterable<RuntimeContainerValue> {
+    return this.#parents?.keys() ?? emptyRuntimeContainerParents;
+  }
+}
+
+const emptyRuntimeContainerParents: readonly RuntimeContainerValue[] = Object.freeze([]);
+
 /** A renderer-owned array whose mutations remain confined to one evaluation. */
-export class RuntimeArray {
+export class RuntimeArray extends RuntimeContainerValue {
   readonly kind = 'array';
   #items: readonly RuntimeValue[] = [];
   #present: Set<number> | undefined;
@@ -57,12 +88,17 @@ export class RuntimeArray {
   #nestingDepth = 1;
 
   constructor(items: readonly RuntimeValue[]) {
-    this.replace(items);
+    super();
+    this.#replace(items, false);
     Object.freeze(this);
   }
 
   /** Replaces the sparse contents after validating closed-container invariants. */
   replace(items: readonly RuntimeValue[]): void {
+    this.#replace(items, true);
+  }
+
+  #replace(items: readonly RuntimeValue[], validateContainment: boolean): void {
     if (types.isProxy(items)) {
       throw new TypeError('Proxy objects cannot be used as runtime arrays');
     }
@@ -85,7 +121,9 @@ export class RuntimeArray {
         throw new TypeError('Runtime arrays cannot contain accessors');
       }
       const value = descriptor.value as RuntimeValue;
-      assertRuntimeValueCanBeContained(this, value);
+      if (validateContainment) {
+        assertRuntimeValueCanBeContained(this, value);
+      }
       defineOwnArrayIndex(copied, index, value);
       present.add(index);
       containsCallable ||= runtimeValueContainsCallable(value);
@@ -144,6 +182,10 @@ export class RuntimeArray {
     return this.#containsCallable;
   }
 
+  containsMutable(): boolean {
+    return true;
+  }
+
   /** Returns the deepest closed container level including this array. */
   nestingDepth(): number {
     return this.#nestingDepth;
@@ -175,16 +217,33 @@ export class RuntimeArray {
 }
 
 /** A renderer-owned Map snapshot with closed keys and values. */
-export class RuntimeMap {
+export class RuntimeMap extends RuntimeContainerValue {
   readonly kind = 'map';
   readonly #entries = new Map<RuntimeValue, RuntimeValue>();
   #containsCallable = false;
   #nestingDepth = 1;
 
   constructor(entries: Iterable<readonly [RuntimeValue, RuntimeValue]>) {
+    super();
     for (const [key, value] of entries) {
-      this.set(key, value);
+      if (typeof key === 'string' && isReservedName(key)) {
+        throw new TypeError(`Template Map key ${key} is reserved`);
+      }
+      this.#entries.set(key, value);
+      assertRuntimeContainerSize(this.#entries.size);
     }
+    for (const [key, value] of this.#entries) {
+      this.#containsCallable ||= runtimeValueContainsCallable(key) ||
+        runtimeValueContainsCallable(value);
+      this.#nestingDepth = Math.max(
+        this.#nestingDepth,
+        runtimeValueNestingDepth(key) + 1,
+        runtimeValueNestingDepth(value) + 1,
+      );
+      registerRuntimeContainerParent(this, key);
+      registerRuntimeContainerParent(this, value);
+    }
+    assertRuntimeValueDepth(this.#nestingDepth);
     Object.freeze(this);
   }
 
@@ -289,6 +348,10 @@ export class RuntimeMap {
     return this.#containsCallable;
   }
 
+  containsMutable(): boolean {
+    return true;
+  }
+
   /** Returns the deepest closed container level including this Map. */
   nestingDepth(): number {
     return this.#nestingDepth;
@@ -332,16 +395,27 @@ export class RuntimeMap {
 }
 
 /** A renderer-owned Set snapshot with closed values. */
-export class RuntimeSet {
+export class RuntimeSet extends RuntimeContainerValue {
   readonly kind = 'set';
   readonly #values = new Set<RuntimeValue>();
   #containsCallable = false;
   #nestingDepth = 1;
 
   constructor(values: Iterable<RuntimeValue>) {
+    super();
     for (const value of values) {
-      this.add(value);
+      this.#values.add(value);
+      assertRuntimeContainerSize(this.#values.size);
     }
+    for (const value of this.#values) {
+      this.#containsCallable ||= runtimeValueContainsCallable(value);
+      this.#nestingDepth = Math.max(
+        this.#nestingDepth,
+        runtimeValueNestingDepth(value) + 1,
+      );
+      registerRuntimeContainerParent(this, value);
+    }
+    assertRuntimeValueDepth(this.#nestingDepth);
     Object.freeze(this);
   }
 
@@ -407,6 +481,10 @@ export class RuntimeSet {
     return this.#containsCallable;
   }
 
+  containsMutable(): boolean {
+    return true;
+  }
+
   /** Returns the deepest closed container level including this Set. */
   nestingDepth(): number {
     return this.#nestingDepth;
@@ -426,13 +504,15 @@ export class RuntimeSet {
 }
 
 /** An immutable interpreter-owned string-keyed record. */
-export class RuntimeRecord {
+export class RuntimeRecord extends RuntimeContainerValue {
   readonly kind = 'record';
   readonly #entries: ReadonlyMap<string, RuntimeValue>;
   #containsCallable: boolean;
+  readonly #containsMutable: boolean;
   #nestingDepth: number;
 
   constructor(entries: Iterable<readonly [string, RuntimeValue]>) {
+    super();
     const indexedEntries = new Map<string, RuntimeValue>();
     const namedEntries = new Map<string, RuntimeValue>();
     let entryCount = 0;
@@ -456,13 +536,16 @@ export class RuntimeRecord {
       this.#entries = new Map(orderedEntries);
     }
     let containsCallable = false;
+    let containsMutable = false;
     let nestingDepth = 1;
     for (const value of this.#entries.values()) {
       containsCallable ||= runtimeValueContainsCallable(value);
+      containsMutable ||= runtimeValueContainsMutable(value);
       nestingDepth = Math.max(nestingDepth, runtimeValueNestingDepth(value) + 1);
     }
     assertRuntimeValueDepth(nestingDepth);
     this.#containsCallable = containsCallable;
+    this.#containsMutable = containsMutable;
     this.#nestingDepth = nestingDepth;
     for (const value of this.#entries.values()) {
       registerRuntimeContainerParent(this, value);
@@ -496,6 +579,10 @@ export class RuntimeRecord {
   /** Returns whether any own entry transitively contains callable authority. */
   containsCallable(): boolean {
     return this.#containsCallable;
+  }
+
+  containsMutable(): boolean {
+    return this.#containsMutable;
   }
 
   /** Returns the deepest closed container level including this record. */
@@ -603,20 +690,10 @@ export class RuntimeCallable {
   }
 }
 
-type RuntimeContainer = RuntimeArray | RuntimeMap | RuntimeRecord | RuntimeSet;
-
-const runtimeContainerParents = new WeakMap<
-  RuntimeContainer,
-  Map<RuntimeContainer, number>
->();
+type RuntimeContainer = RuntimeContainerValue;
 
 function runtimeContainer(value: RuntimeValue): RuntimeContainer | undefined {
-  return value instanceof RuntimeArray ||
-    value instanceof RuntimeMap ||
-    value instanceof RuntimeRecord ||
-    value instanceof RuntimeSet
-    ? value
-    : undefined;
+  return value instanceof RuntimeContainerValue ? value : undefined;
 }
 
 function registerRuntimeContainerParent(
@@ -624,15 +701,10 @@ function registerRuntimeContainerParent(
   value: RuntimeValue,
 ): void {
   const child = runtimeContainer(value);
-  if (!child) {
+  if (!child?.containsMutable()) {
     return;
   }
-  let parents = runtimeContainerParents.get(child);
-  if (!parents) {
-    parents = new Map();
-    runtimeContainerParents.set(child, parents);
-  }
-  parents.set(parent, (parents.get(parent) ?? 0) + 1);
+  child.addRuntimeParent(parent);
 }
 
 function unregisterRuntimeContainerParent(
@@ -640,19 +712,10 @@ function unregisterRuntimeContainerParent(
   value: RuntimeValue,
 ): void {
   const child = runtimeContainer(value);
-  if (!child) {
+  if (!child?.containsMutable()) {
     return;
   }
-  const parents = runtimeContainerParents.get(child);
-  const count = parents?.get(parent);
-  if (count === undefined) {
-    return;
-  }
-  if (count === 1) {
-    parents?.delete(parent);
-  } else {
-    parents?.set(parent, count - 1);
-  }
+  child.removeRuntimeParent(parent);
 }
 
 function maximumRuntimeParentDepth(value: RuntimeContainer): number {
@@ -661,7 +724,7 @@ function maximumRuntimeParentDepth(value: RuntimeContainer): number {
   const depths = new Map<RuntimeContainer, number>();
   while (pending.length > 0) {
     const [child, depth] = pending.pop()!;
-    for (const parent of runtimeContainerParents.get(child)?.keys() ?? []) {
+    for (const parent of child.runtimeParents()) {
       const parentDepth = depth + 1;
       if (parentDepth <= (depths.get(parent) ?? -1)) {
         continue;
@@ -679,7 +742,7 @@ function refreshRuntimeContainerParents(value: RuntimeContainer): void {
   const pending: Array<readonly [RuntimeContainer, number]> = [[value, 0]];
   while (pending.length > 0) {
     const [child, depth] = pending.pop()!;
-    for (const parent of runtimeContainerParents.get(child)?.keys() ?? []) {
+    for (const parent of child.runtimeParents()) {
       const parentDepth = depth + 1;
       if (parentDepth <= (depths.get(parent) ?? -1)) {
         continue;
@@ -860,6 +923,10 @@ function runtimeValueContainsCallable(value: RuntimeValue): boolean {
     return value.containsCallable();
   }
   return false;
+}
+
+function runtimeValueContainsMutable(value: RuntimeValue): boolean {
+  return runtimeContainer(value)?.containsMutable() ?? false;
 }
 
 function runtimeValueNestingDepth(value: RuntimeValue): number {

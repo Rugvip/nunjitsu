@@ -26,6 +26,33 @@ test('keeps array mutations local to one render while preserving aliases', () =>
   assert.deepEqual(shared, [1]);
 });
 
+test('isolates computed and extracted mutations of prepared values', () => {
+  const renderer = createTemplateRenderer();
+  const values = [1];
+  const prepared = renderer.prepareContext({ method: 'push', values });
+  const sources = [
+    '{% set ignored=values[method](2) %}${{ values|dump }}',
+    [
+      '{% set mutate=values[method] %}',
+      '{% set ignored=mutate(2) %}',
+      '${{ values|dump }}',
+    ].join(''),
+    [
+      '{% macro apply(mutate) %}',
+      '{% set ignored=mutate(2) %}',
+      '{% endmacro %}',
+      '${{ apply(values[method]) }}',
+      '${{ values|dump }}',
+    ].join(''),
+  ];
+
+  for (const source of sources) {
+    assert.equal(renderer.render(source, prepared), '[1,2]');
+    assert.equal(renderer.render(source, prepared), '[1,2]');
+    assert.deepEqual(values, [1]);
+  }
+});
+
 test('preserves sparse array behavior without changing the source array', () => {
   const renderer = createTemplateRenderer();
   const values: string[] = [];

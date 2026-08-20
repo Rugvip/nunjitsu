@@ -1137,7 +1137,7 @@ function lookupRuntimeAttributePath(
     if (current === undefined || current === null) {
       throw new TypeError('Cannot read a template attribute from a nullish value');
     }
-    if (!hasRuntimeOwnValue(current, segment)) {
+    if (!hasRuntimeConstantKey(current, segment)) {
       return undefined;
     }
     current = readRuntimeOwnValue(current, segment);
@@ -1399,7 +1399,11 @@ export function lookupRuntimeValue(
   return readRuntimeOwnValue(target, propertyKey);
 }
 
-function hasRuntimeOwnValue(target: RuntimeValue, propertyKey: string): boolean {
+/** Returns whether a parser-validated property exists even when its value is undefined. */
+export function hasRuntimeConstantKey(
+  target: RuntimeValue,
+  propertyKey: string,
+): boolean {
   if (target instanceof RuntimeRecord) {
     return target.has(propertyKey);
   }

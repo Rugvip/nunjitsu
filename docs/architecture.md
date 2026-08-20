@@ -37,10 +37,11 @@ created.
 One call to `render` or `renderValue` follows this sequence:
 
 1. Validate the source, context, prepared-context ownership, and limit options.
-2. Copy ordinary context data, or clone a prepared snapshot, into the closed
-   value model.
+2. Copy ordinary context data into the closed value model or resolve the owned
+   prepared snapshot.
 3. Parse and validate the complete template.
-4. Allocate render-local scopes and evaluator state.
+4. Allocate render-local scopes and evaluator state. If the validated plan can
+   invoke a mutating intrinsic, clone the prepared graph for that render.
 5. Evaluate the AST and append output fragments.
 6. Return the final string or safely copied native value, or throw without
    returning partial output.

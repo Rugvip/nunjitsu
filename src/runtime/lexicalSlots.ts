@@ -5,6 +5,7 @@ import type {
   AstNode,
 } from '../parser/ast.ts';
 import { TemplateLimitError } from '../limits.ts';
+import { isMutatingRuntimeIntrinsicName } from './intrinsics.ts';
 import type { RuntimeValue } from './value.ts';
 
 /** Mutable slot inventory used only while building one compiled frame plan. */
@@ -135,9 +136,11 @@ export class LexicalLoopPlan {
 /** Static compiler-slot assignments for one complete immutable AST. */
 export class LexicalSlotPlan {
   readonly #root: CompiledFramePlan;
+  readonly mayMutateContext: boolean;
 
-  constructor(root: CompiledFramePlan) {
+  constructor(root: CompiledFramePlan, mayMutateContext: boolean) {
     this.#root = root;
+    this.mayMutateContext = mayMutateContext;
   }
 
   /** Returns the compiled frame that owns root render storage. */
@@ -192,6 +195,9 @@ export function planLexicalSlots(
   const visitedNodes = new WeakSet<AstNode>();
   let nextSlot = 0;
   let expansionWork = 0;
+  let hasDynamicLookup = false;
+  let hasIndirectCall = false;
+  let hasMutatingLookup = false;
 
   const createCompiledFrame = (
     inherited?: ReadonlyMap<string, number>,
@@ -340,6 +346,14 @@ export function planLexicalSlots(
         useSlot(state, node);
         return;
       case 'LookupVal':
+        if (
+          node.val.type === 'Literal' &&
+          typeof node.val.value === 'string'
+        ) {
+          hasMutatingLookup ||= isMutatingRuntimeIntrinsicName(node.val.value);
+        } else if (node.val.type !== 'Literal') {
+          hasDynamicLookup = true;
+        }
         visit(node.target, state);
         visit(node.val, state);
         return;
@@ -406,6 +420,13 @@ export function planLexicalSlots(
         state.scope.bindCallableFrame(node, planCallable(node, state.bindings));
         return;
       case 'FunCall':
+        if (node.name.type === 'LookupVal') {
+          if (node.name.val.type !== 'Literal') {
+            hasMutatingLookup = true;
+          }
+        } else {
+          hasIndirectCall = true;
+        }
         visit(node.name, state);
         visit(node.args, state);
         return;
@@ -492,5 +513,8 @@ export function planLexicalSlots(
   for (const frame of frames) {
     Object.freeze(frame.slots);
   }
-  return new LexicalSlotPlan(root.plan);
+  return new LexicalSlotPlan(
+    root.plan,
+    hasMutatingLookup || (hasDynamicLookup && hasIndirectCall),
+  );
 }

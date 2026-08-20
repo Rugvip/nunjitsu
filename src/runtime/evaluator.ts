@@ -31,6 +31,7 @@ import {
   builtinTestArity,
   hasBuiltinFilter,
   hasBuiltinTest,
+  hasRuntimeConstantKey,
   listBuiltinFilterNames,
   listBuiltinTestNames,
   lowerBuiltinFilterArguments,
@@ -65,6 +66,7 @@ import { RuntimeScope } from './scope.ts';
 import { stringCodeUnits } from './stringCodeUnits.ts';
 import {
   assertRuntimeValueHasNoCallable,
+  cloneRuntimeContext,
   cloneRuntimeValue,
   copyPublicValueWithWork,
   copyRuntimeContext,
@@ -115,6 +117,7 @@ export interface RuntimeHost {
 /** Options for one native template evaluation. */
 export interface EvaluateOptions {
   readonly allowRegexExecution: boolean;
+  readonly cloneContextBeforeMutation?: boolean;
   readonly cookiecutterCompat: boolean;
   readonly trimBlocks: boolean;
   readonly lstripBlocks: boolean;
@@ -252,10 +255,14 @@ function evaluateRuntimeTemplateResult(
     }
     throw error;
   }
+  const isolatedContext = options.cloneContextBeforeMutation &&
+      lexicalSlots.mayMutateContext
+    ? cloneRuntimeContext(context)
+    : context;
   const evaluator = new Evaluator(options, lexicalSlots);
   return preserveSoleValue
-    ? evaluator.renderValue(ast, context)
-    : evaluator.render(ast, context);
+    ? evaluator.renderValue(ast, isolatedContext)
+    : evaluator.render(ast, isolatedContext);
 }
 
 function soleInterpolationOutput(ast: AstNode): AstOutputNode | undefined {
@@ -759,6 +766,9 @@ class Evaluator {
         }
         const globalValue = this.#options.host?.globalValue?.(name);
         if (globalValue?.found) {
+          if (!this.#lexicalSlots.mayMutateContext) {
+            return globalValue.value;
+          }
           if (!this.#globalValues.has(name)) {
             this.#globalValues.set(name, cloneRuntimeValue(globalValue.value));
           }
@@ -1526,6 +1536,13 @@ class Evaluator {
     const propertyKey = typeof key === 'string'
       ? key
       : runtimeToPropertyKey(key, this.#chargeExpansionWork);
+    const ownValue = lookupRuntimeConstantKey(target, key);
+    if (
+      ownValue !== undefined ||
+      hasRuntimeConstantKey(target, propertyKey)
+    ) {
+      return freshMemberCallable(ownValue);
+    }
     const intrinsic = resolveRuntimeIntrinsic(
       target,
       propertyKey,
@@ -1536,7 +1553,7 @@ class Evaluator {
       this.#builtinCallables.set(id, { type: 'intrinsic', method: intrinsic });
       return new RuntimeCallable('builtin', id);
     }
-    return freshMemberCallable(lookupRuntimeConstantKey(target, key));
+    return undefined;
   }
 
   #invokeBuiltinCallable(id: number, arguments_: RuntimeArguments): RuntimeValue {

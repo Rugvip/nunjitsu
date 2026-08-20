@@ -11,7 +11,6 @@ import {
 import { createRuntimeHost } from './runtime/host.ts';
 import { RuntimeEvaluationError } from './runtime/RuntimeEvaluationError.ts';
 import {
-  cloneRuntimeContext,
   copyRuntimeContext,
   copyRuntimeValue,
   RuntimeRecord,
@@ -189,15 +188,16 @@ export function createTemplateRenderer(
       if (typeof source !== 'string') {
         throw new TypeError('Template source must be a string');
       }
-      const runtimeContext = resolveRuntimeContext(
+      const resolvedContext = resolveRuntimeContext(
         rendererOwner,
         context,
         emptyContext,
       );
       const limits = normalizeTemplateRenderLimits(renderOptions.limits);
       try {
-        return evaluate(source, runtimeContext, {
+        return evaluate(source, resolvedContext.value, {
           allowRegexExecution,
+          cloneContextBeforeMutation: resolvedContext.prepared,
           cookiecutterCompat,
           trimBlocks,
           lstripBlocks,
@@ -301,16 +301,19 @@ function resolveRuntimeContext(
   owner: object,
   context: TemplateContext | PreparedTemplateContext | undefined,
   emptyContext: RuntimeRecord,
-): RuntimeRecord {
+): { readonly value: RuntimeRecord; readonly prepared: boolean } {
   if (context === undefined) {
-    return emptyContext;
+    return { value: emptyContext, prepared: false };
   }
   const state = preparedTemplateContextStates.get(context);
   if (state) {
     if (state.owner !== owner) {
       throw new TypeError('Prepared context belongs to a different template renderer');
     }
-    return cloneRuntimeContext(state.value);
+    return { value: state.value, prepared: true };
   }
-  return copyRuntimeContext(context as TemplateContext);
+  return {
+    value: copyRuntimeContext(context as TemplateContext),
+    prepared: false,
+  };
 }
