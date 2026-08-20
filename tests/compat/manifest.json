@@ -1160,13 +1160,13 @@
     },
     {
       "upstream": {"id":"tests/compiler.js:42","file":"tests/compiler.js","test":"should work with Set builtin"},
-      "status": "not applicable",
-      "reason": "Live JavaScript Set instances are outside the copied safe-value contract; callers provide arrays for ordered sequences."
+      "status": "adapted",
+      "reason": "Set values are copied into renderer-owned storage before exercising ordered loop and empty-branch behavior."
     },
     {
       "upstream": {"id":"tests/compiler.js:43","file":"tests/compiler.js","test":"should work with Map builtin"},
-      "status": "not applicable",
-      "reason": "Live JavaScript Map instances are outside the copied safe-value contract; callers provide arrays or records."
+      "status": "adapted",
+      "reason": "Map values are copied into renderer-owned storage before exercising ordered entry destructuring and empty-branch behavior."
     },
     {
       "upstream": {"id":"tests/compiler.js:44","file":"tests/compiler.js","test":"should allow overriding var with none inside nested scope"},
@@ -1530,13 +1530,13 @@
     },
     {
       "upstream": {"id":"tests/filters.js:39","file":"tests/filters.js","test":"should output the length of a Map"},
-      "status": "not applicable",
-      "reason": "JavaScript Map instances are outside the documented copied TemplateValue contract."
+      "status": "adapted",
+      "reason": "Length is measured from a renderer-owned Map snapshot rather than a live host object."
     },
     {
       "upstream": {"id":"tests/filters.js:40","file":"tests/filters.js","test":"should output the length of a Set"},
-      "status": "not applicable",
-      "reason": "JavaScript Set instances are outside the documented copied TemplateValue contract."
+      "status": "adapted",
+      "reason": "Length is measured from a renderer-owned Set snapshot rather than a live host object."
     },
     {
       "upstream": {"id":"tests/filters.js:45","file":"tests/filters.js","test":"reject"},
@@ -1641,7 +1641,7 @@
     {
       "upstream": {"id":"tests/tests.js:11","file":"tests/tests.js","test":"mapping should detect Maps or hashes"},
       "status": "adapted",
-      "reason": "Plain copied records are ported; JavaScript Map instances are outside the TemplateValue contract."
+      "reason": "Plain records and renderer-owned Map snapshots are both recognized without retaining live host objects."
     },
     {
       "upstream": {"id":"tests/tests.js:12","file":"tests/tests.js","test":"falsy should detect whether or not a value is falsy"},
@@ -1688,13 +1688,13 @@
     },
     {
       "upstream": {"id":"tests/tests.js:21","file":"tests/tests.js","test":"iterable should detect that a Map is iterable"},
-      "status": "not applicable",
-      "reason": "JavaScript Map instances are outside the copied TemplateValue contract."
+      "status": "adapted",
+      "reason": "The iterable test recognizes a renderer-owned Map snapshot without invoking a host iteration protocol."
     },
     {
       "upstream": {"id":"tests/tests.js:22","file":"tests/tests.js","test":"iterable should detect that a Set is not non-iterable"},
-      "status": "not applicable",
-      "reason": "JavaScript Set instances are outside the copied TemplateValue contract."
+      "status": "adapted",
+      "reason": "The iterable test recognizes a renderer-owned Set snapshot without invoking a host iteration protocol."
     },
     {
       "upstream": {"id":"tests/tests.js:23","file":"tests/tests.js","test":"number should detect whether a value is numeric"},

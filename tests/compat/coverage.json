@@ -120,6 +120,20 @@
       "statuses": ["ported", "adapted"]
     },
     {
+      "id": "map-set-value-model",
+      "file": "tests/source/mapSetValues.test.ts",
+      "test": "matches Nunjucks Map and Set value behavior",
+      "upstream": [
+        "tests/compiler.js:42",
+        "tests/compiler.js:43",
+        "tests/filters.js:39",
+        "tests/filters.js:40",
+        "tests/tests.js:11",
+        "tests/tests.js:21",
+        "tests/tests.js:22"
+      ]
+    },
+    {
       "id": "loop-target-validation",
       "file": "tests/source/runtime.test.ts",
       "test": "rejects invalid targets and nullish destructuring before loop bodies execute",

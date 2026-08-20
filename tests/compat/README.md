@@ -30,7 +30,9 @@ complete manifest.
 
 Case context uses ordinary JSON. Cases that require trusted host behavior name
 a deterministic filter/global fixture; the TypeScript harness provides it while
-exercising the closed native interpreter.
+exercising the closed native interpreter. Source-backed cases cover copied host
+containers such as Map and Set when their identity and boundary behavior cannot
+be represented in JSON.
 
 To verify the inventory against an exact checkout of its pinned upstream
 commit, run:
