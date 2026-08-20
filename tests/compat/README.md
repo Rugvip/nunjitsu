@@ -17,6 +17,13 @@ validation rejects applicable entries without executable coverage.
 The language-neutral case suite also renders through the pinned Nunjucks
 development dependency and requires identical output.
 
+`intrinsic-method-cases.json` keeps the larger method-compatibility matrix
+separate so that the proposed string, number, array, regular-expression, and
+Jinja-compatible behaviors can be reviewed as one coherent surface. These
+cases run in both supported delimiter modes and against the pinned Nunjucks
+oracle unless a `modes` field confines a Jinja-only adaptation to Cookiecutter
+mode.
+
 Entries may use `status: "partial"` with a reason and removal condition only
 during future compatibility work. Partial entries are forbidden in the
 complete manifest.

@@ -12,6 +12,11 @@ interface CompatibilityCase {
   expected: string;
 }
 
+interface IntrinsicMethodCase extends CompatibilityCase {
+  category: string;
+  modes?: Array<'default' | 'cookiecutter'>;
+}
+
 interface CompatibilityCases {
   schemaVersion: number;
   cases: CompatibilityCase[];
@@ -53,12 +58,17 @@ interface CompatibilityCoverage {
 
 const baselineCommit = '86a77f49da4779d55414d8337e1a4d7ec7582da5';
 const cases = await readJson<CompatibilityCases>('../compat/cases.json');
+const intrinsicMethods = await readJson<{
+  schemaVersion: number;
+  cases: IntrinsicMethodCase[];
+}>('../compat/intrinsic-method-cases.json');
 const manifest = await readJson<CompatibilityManifest>('../compat/manifest.json');
 const inventory = await readJson<UpstreamInventory>('../compat/upstream-inventory.json');
 const coverage = await readJson<CompatibilityCoverage>('../compat/coverage.json');
 
 test('compatibility corpus retains complete attributed provenance', async () => {
   assert.equal(cases.schemaVersion, 1);
+  assert.equal(intrinsicMethods.schemaVersion, 1);
   assert.equal(manifest.schemaVersion, 1);
   assert.equal(inventory.schemaVersion, 1);
   assert.equal(coverage.schemaVersion, 1);
@@ -66,7 +76,9 @@ test('compatibility corpus retains complete attributed provenance', async () => 
   assert.equal(inventory.baseline.commit, baselineCommit);
   assert.equal(inventory.entries.length, 364);
 
-  const caseIds = new Set(cases.cases.map(entry => entry.id));
+  const caseIds = new Set(
+    [...cases.cases, ...intrinsicMethods.cases].map(entry => entry.id),
+  );
   const classified = new Set<string>();
   const executableCoverage = new Set<string>();
   for (const entry of manifest.entries) {
@@ -120,6 +132,32 @@ test('compatibility corpus retains complete attributed provenance', async () => 
   assert.match(license, /Copyright \(c\) 2012-2015, James Long/);
 });
 
+test('intrinsic method cases match Nunjucks in both delimiter modes', async t => {
+  assert.ok(intrinsicMethods.cases.length >= 30);
+  for (const cookiecutterCompat of [false, true]) {
+    const renderer = createTemplateRenderer({
+      allowRegexExecution: true,
+      cookiecutterCompat,
+    });
+    await t.test(cookiecutterCompat ? 'Cookiecutter' : 'default', async mode => {
+      const modeName = cookiecutterCompat ? 'cookiecutter' : 'default';
+      for (const methodCase of intrinsicMethods.cases.filter(
+        entry => entry.modes?.includes(modeName) ?? true,
+      )) {
+        await mode.test(methodCase.id, () => {
+          const source = cookiecutterCompat
+            ? methodCase.template
+            : methodCase.template.replaceAll('{{', '${{');
+          assert.equal(
+            renderer.render(source, structuredClone(methodCase.context)),
+            methodCase.expected,
+          );
+        });
+      }
+    });
+  }
+});
+
 test('applicable upstream cases render synchronously in Cookiecutter mode', async t => {
   const applicable = cases.cases;
   assert.ok(applicable.length >= 60);
@@ -138,17 +176,37 @@ test('applicable upstream cases render synchronously in Cookiecutter mode', asyn
 });
 
 test('language-neutral cases match the pinned Nunjucks oracle', () => {
+  const defaultEnvironment = new nunjucks.Environment(null, { autoescape: false });
+  for (const methodCase of intrinsicMethods.cases.filter(
+    entry => entry.modes?.includes('default') ?? true,
+  )) {
+    assert.equal(
+      defaultEnvironment.renderString(
+        methodCase.template,
+        structuredClone(methodCase.context),
+      ),
+      methodCase.expected,
+      `${methodCase.id} (default)`,
+    );
+  }
+
   const uninstall = (nunjucks.installJinjaCompat as unknown as () => () => void)();
   try {
     const environment = new nunjucks.Environment(null, {
       autoescape: false,
       tags: { variableStart: '{{', variableEnd: '}}' },
     });
-    for (const compatibilityCase of cases.cases) {
+    const cookiecutterCases = intrinsicMethods.cases.filter(
+      entry => entry.modes?.includes('cookiecutter') ?? true,
+    );
+    for (const compatibilityCase of [...cases.cases, ...cookiecutterCases]) {
       assert.equal(
-        environment.renderString(compatibilityCase.template, compatibilityCase.context),
+        environment.renderString(
+          compatibilityCase.template,
+          structuredClone(compatibilityCase.context),
+        ),
         compatibilityCase.expected,
-        compatibilityCase.id,
+        `${compatibilityCase.id} (Cookiecutter)`,
       );
     }
   } finally {

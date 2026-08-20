@@ -1,0 +1,233 @@
+{
+  "schemaVersion": 1,
+  "cases": [
+    {
+      "id": "methods-upstream-static-members",
+      "category": "upstream-parser",
+      "template": "{{ ([1,2,3]).indexOf(1) }}|{{ [1,2,3].length }}|{{ \"Some String\".replace(\"S\",\"$\") }}|{{ ({name:\"Khalid\"}).name }}|{{ (1.618).toFixed(2) }}",
+      "context": {},
+      "expected": "0|3|$ome String|Khalid|1.62"
+    },
+    {
+      "id": "methods-string-replace",
+      "category": "string",
+      "template": "{{ \"banana\".replace(\"a\",\"X\") }}|{{ \"aaa\".replace(\"a\",\"$&$&\") }}",
+      "context": {},
+      "expected": "bXnana|aaaa"
+    },
+    {
+      "id": "methods-string-split",
+      "category": "string",
+      "template": "{{ \"a,b,c\".split(\",\")|dump }}|{{ \"a,b,c\".split(\",\",2)|dump }}|{{ \"abc\".split(\"\")|dump }}",
+      "context": {},
+      "expected": "[\"a\",\"b\",\"c\"]|[\"a\",\"b\"]|[\"a\",\"b\",\"c\"]"
+    },
+    {
+      "id": "methods-string-search",
+      "category": "string",
+      "template": "{{ \"template\".includes(\"plat\") }}|{{ \"template\".includes(\"x\") }}|{{ \"template\".startsWith(\"tem\") }}|{{ \"template\".endsWith(\"ate\") }}|{{ \"banana\".indexOf(\"na\") }}|{{ \"banana\".lastIndexOf(\"na\") }}",
+      "context": {},
+      "expected": "true|false|true|true|2|4"
+    },
+    {
+      "id": "methods-string-slices",
+      "category": "string",
+      "template": "{{ \"abcdef\".slice(1,-1) }}|{{ \"abcdef\".slice(-3) }}|{{ \"abcdef\".substring(4,1) }}|{{ \"abcdef\".substring(-2,2) }}",
+      "context": {},
+      "expected": "bcde|def|bcd|ab"
+    },
+    {
+      "id": "methods-string-case-and-trim",
+      "category": "string",
+      "template": "[{{ \"  Ab C  \".trim() }}]|[{{ \"  Ab C  \".trimStart() }}]|[{{ \"  Ab C  \".trimEnd() }}]|{{ \"AbC\".toLowerCase() }}|{{ \"AbC\".toUpperCase() }}",
+      "context": {},
+      "expected": "[Ab C]|[Ab C  ]|[  Ab C]|abc|ABC"
+    },
+    {
+      "id": "methods-string-character-and-concat",
+      "category": "string",
+      "template": "{{ \"abc\".charAt(1) }}|{{ \"abc\".charAt(9) }}|{{ \"ABC\".charCodeAt(1) }}|{{ \"a\".concat(\"b\",\"c\") }}",
+      "context": {},
+      "expected": "b||66|abc"
+    },
+    {
+      "id": "methods-safe-string-receiver",
+      "category": "string",
+      "template": "{{ (\" AbC \"|safe).trim().toLowerCase() }}|{{ (\"a,b\"|safe).split(\",\")|dump }}|{{ (\"banana\"|safe).replace(\"a\",\"X\") }}",
+      "context": {},
+      "expected": "abc|[\"a\",\"b\"]|bXnana"
+    },
+    {
+      "id": "methods-array-access",
+      "category": "array-query",
+      "template": "{{ [1,2,3].at(0) }}|{{ [1,2,3].at(-1) }}|{{ [1,2,3].at(9)|dump }}|{{ [1,2,3].length }}",
+      "context": {},
+      "expected": "1|3||3"
+    },
+    {
+      "id": "methods-array-combination",
+      "category": "array-query",
+      "template": "{{ [1,2].concat([3],[4,5])|dump }}|{{ [1,[2,[3]]].flat()|dump }}|{{ [1,[2,[3]]].flat(2)|dump }}",
+      "context": {},
+      "expected": "[1,2,3,4,5]|[1,2,[3]]|[1,2,3]"
+    },
+    {
+      "id": "methods-array-search",
+      "category": "array-query",
+      "template": "{{ [1,2,3].includes(2) }}|{{ [1,2,3].includes(9) }}|{{ [1,2,1].indexOf(1) }}|{{ [1,2,1].lastIndexOf(1) }}",
+      "context": {},
+      "expected": "true|false|0|2"
+    },
+    {
+      "id": "methods-array-join-and-slice",
+      "category": "array-query",
+      "template": "{{ [1,2,3].join(\"-\") }}|{{ [1,null,missing].join(\":\") }}|{{ [1,2,3,4].slice(1,-1)|dump }}|{{ [1,2,3].slice(-2)|dump }}",
+      "context": {},
+      "expected": "1-2-3|1::|[2,3]|[2,3]"
+    },
+    {
+      "id": "methods-number-formatting",
+      "category": "number",
+      "template": "{{ (1.618).toFixed(2) }}|{{ (1234.5).toExponential(2) }}|{{ (1234.5).toPrecision(4) }}|{{ (255).toString(16) }}|{{ (-10).toString(2) }}",
+      "context": {},
+      "expected": "1.62|1.23e+3|1235|ff|-1010"
+    },
+    {
+      "id": "methods-array-push-results",
+      "category": "array-mutation",
+      "template": "{% set values=[1] %}{{ values.push(2) }}|{{ values.push(3,4) }}|{{ values|dump }}",
+      "context": {},
+      "expected": "2|4|[1,2,3,4]"
+    },
+    {
+      "id": "methods-array-push-contact-accumulation",
+      "category": "array-mutation",
+      "template": "{%- set contacts = [owner] -%}{%- for contact in invoicingContacts -%}{%- if contacts.push(contact) -%}{%- endif -%}{%- endfor -%}{{ contacts|dump }}",
+      "context": {
+        "owner": "owner",
+        "invoicingContacts": ["billing", "finance"]
+      },
+      "expected": "[\"owner\",\"billing\",\"finance\"]"
+    },
+    {
+      "id": "methods-array-pop-and-shift-results",
+      "category": "array-mutation",
+      "template": "{% set values=[1,2,3] %}{{ values.pop() }}|{{ values|dump }}|{{ values.shift() }}|{{ values|dump }}|{{ values.pop() }}|{{ values.pop()|dump }}|{{ values|dump }}",
+      "context": {},
+      "expected": "3|[1,2]|1|[2]|2||[]"
+    },
+    {
+      "id": "methods-array-unshift-results",
+      "category": "array-mutation",
+      "template": "{% set values=[2,3] %}{{ values.unshift(1) }}|{{ values.unshift(-1,0) }}|{{ values|dump }}",
+      "context": {},
+      "expected": "3|5|[-1,0,1,2,3]"
+    },
+    {
+      "id": "methods-array-splice-results",
+      "category": "array-mutation",
+      "template": "{% set values=[0,1,2,3] %}{{ values.splice(1,2,\"a\",\"b\")|dump }}|{{ values|dump }}|{{ values.splice(-1,1)|dump }}|{{ values|dump }}",
+      "context": {},
+      "expected": "[1,2]|[0,\"a\",\"b\",3]|[3]|[0,\"a\",\"b\"]"
+    },
+    {
+      "id": "methods-array-sort-reverse-aliases",
+      "category": "array-mutation",
+      "template": "{% set values=[10,2,1] %}{% set alias=values %}{{ values.sort()|dump }}|{{ alias|dump }}|{{ values.reverse()|dump }}|{{ alias|dump }}",
+      "context": {},
+      "expected": "[1,10,2]|[1,10,2]|[2,10,1]|[2,10,1]"
+    },
+    {
+      "id": "methods-array-fill-and-copy-within",
+      "category": "array-mutation",
+      "template": "{% set values=[0,1,2,3] %}{{ values.fill(\"x\",1,3)|dump }}|{{ values|dump }}|{{ values.copyWithin(1,0,2)|dump }}|{{ values|dump }}",
+      "context": {},
+      "expected": "[0,\"x\",\"x\",3]|[0,\"x\",\"x\",3]|[0,0,\"x\",3]|[0,0,\"x\",3]"
+    },
+    {
+      "id": "methods-array-local-alias-observes-mutation",
+      "category": "array-mutation",
+      "template": "{% set values=[1] %}{% set alias=values %}{% set ignored=values.push(2) %}{{ values|dump }}|{{ alias|dump }}",
+      "context": {},
+      "expected": "[1,2]|[1,2]"
+    },
+    {
+      "id": "methods-array-nested-alias-observes-mutation",
+      "category": "array-mutation",
+      "template": "{% set state={contacts:[owner]} %}{% set alias=state.contacts %}{% for contact in invoicingContacts %}{% set ignored=state.contacts.push(contact) %}{% endfor %}{{ state|dump }}|{{ alias|dump }}",
+      "context": {
+        "owner": "owner",
+        "invoicingContacts": ["billing", "finance"]
+      },
+      "expected": "{\"contacts\":[\"owner\",\"billing\",\"finance\"]}|[\"owner\",\"billing\",\"finance\"]"
+    },
+    {
+      "id": "methods-computed-member-names",
+      "category": "dispatch",
+      "template": "{% set method=\"push\" %}{% set values=[1] %}{{ values[method](2) }}|{{ values|dump }}|{{ \"banana\"[\"replace\"](\"a\",\"X\") }}",
+      "context": {},
+      "expected": "2|[1,2]|bXnana"
+    },
+    {
+      "id": "methods-extracted-member-binding",
+      "category": "dispatch",
+      "template": "{% set values=[1] %}{% set append=values.push %}{{ append(2) }}|{{ values|dump }}|{{ append is callable }}",
+      "context": {},
+      "expected": "2|[1,2]|true"
+    },
+    {
+      "id": "methods-mutating-result-chaining",
+      "category": "dispatch",
+      "template": "{% set values=[3,1,2] %}{{ values.sort().reverse().push(4) }}|{{ values|dump }}",
+      "context": {},
+      "expected": "4|[3,2,1,4]"
+    },
+    {
+      "id": "methods-macro-argument-mutation",
+      "category": "array-mutation",
+      "template": "{% macro add(values,value) %}{{ values.push(value) }}{% endmacro %}{% set values=[1] %}{{ add(values,2) }}|{{ values|dump }}",
+      "context": {},
+      "expected": "2|[1,2]"
+    },
+    {
+      "id": "methods-context-array-mutation",
+      "category": "array-mutation",
+      "template": "{% set ignored=values.push(3) %}{{ values|dump }}",
+      "context": {
+        "values": [1, 2]
+      },
+      "expected": "[1,2,3]"
+    },
+    {
+      "id": "methods-jinja-array-mutation-aliases",
+      "category": "jinja-compat",
+      "modes": ["cookiecutter"],
+      "template": "{% set values=[1,2] %}{{ values.append(3)|dump }}|{{ values|dump }}|{{ values.pop(0) }}|{{ values|dump }}|{{ values.insert(0,9)|dump }}|{{ values|dump }}|{{ values.remove(2)|dump }}|{{ values|dump }}",
+      "context": {},
+      "expected": "3|[1,2,3]|1|[2,3]|[]|[9,2,3]|[2]|[9,3]"
+    },
+    {
+      "id": "methods-jinja-array-queries",
+      "category": "jinja-compat",
+      "modes": ["cookiecutter"],
+      "template": "{% set values=[1,2,1] %}{{ values.count(1) }}|{{ values.index(1) }}|{{ values.find(2) }}|{{ values.find(9) }}",
+      "context": {},
+      "expected": "2|0|1|-1"
+    },
+    {
+      "id": "methods-jinja-record-queries",
+      "category": "jinja-compat",
+      "modes": ["cookiecutter"],
+      "template": "{{ ({a:1,b:2}).keys()|dump }}|{{ ({a:1,b:2}).values()|dump }}|{{ ({a:1,b:2}).items()|dump }}|{{ ({a:1}).get(\"a\") }}|{{ ({a:1}).get(\"x\",9) }}|{{ ({a:1}).has_key(\"a\") }}",
+      "context": {},
+      "expected": "[\"a\",\"b\"]|[1,2]|[[\"a\",1],[\"b\",2]]|1|9|true"
+    },
+    {
+      "id": "methods-regex-execution",
+      "category": "regex",
+      "template": "{{ \"a1b2\".replace(r/\\d/g,\"X\") }}|{{ \"a1b2\".split(r/\\d/)|dump }}|{% set pattern=r/a/g %}{{ pattern.test(\"ba\") }}|{{ pattern.test(\"ba\") }}",
+      "context": {},
+      "expected": "aXbX|[\"a\",\"b\",\"\"]|true|false"
+    }
+  ]
+}

@@ -159,8 +159,9 @@
     },
     {
       "upstream": {"id":"tests/parser.js:8","file":"tests/parser.js","test":"should accept attributes and methods of static arrays, objects and primitives"},
-      "status": "not applicable",
-      "reason": "Nunjitsu deliberately does not expose JavaScript prototype methods to templates; equivalent safe operations use built-in filters under the documented copied-value security model."
+      "status": "adapted",
+      "reason": "Static primitive and container members are verified through rendered behavior rather than exposed parser nodes.",
+      "cases": ["methods-upstream-static-members"]
     },
     {
       "upstream": {"id":"tests/parser.js:9","file":"tests/parser.js","test":"should parse include tags"},
