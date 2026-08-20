@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
 import test from 'node:test';
 
 import {
@@ -227,6 +228,44 @@ test('supports prepared renderValue contexts and preserves their ownership', () 
     /different template renderer/,
   );
   assert.equal(renderer.renderValue('${{ value }}', initial), 1);
+});
+
+test('does not retain prior structurally shared prepared-context snapshots', () => {
+  const moduleUrl = new URL('../../src/index.ts', import.meta.url).href;
+  const script = `
+    import { createTemplateRenderer } from ${JSON.stringify(moduleUrl)};
+
+    const renderer = createTemplateRenderer();
+    let prepared = renderer.prepareContext({ shared: [], payload: null });
+    for (let count = 0; count < 5; count += 1) global.gc();
+    const before = process.memoryUsage().heapUsed;
+
+    for (let update = 0; update < 160; update += 1) {
+      prepared = prepared.withValue(
+        ['payload'],
+        Array.from({ length: 10_000 }, (_, index) => index),
+      );
+    }
+
+    if (renderer.renderValue('\${{ payload | length }}', prepared) !== 10_000) {
+      throw new Error('Prepared context did not retain its latest snapshot');
+    }
+    for (let count = 0; count < 5; count += 1) global.gc();
+    console.log(process.memoryUsage().heapUsed - before);
+  `;
+  const result = spawnSync(
+    process.execPath,
+    ['--expose-gc', '--input-type=module', '--eval', script],
+    { encoding: 'utf8' },
+  );
+
+  assert.equal(result.status, 0, result.stderr);
+  const retainedBytes = Number(result.stdout.trim());
+  assert.ok(Number.isFinite(retainedBytes), result.stdout);
+  assert.ok(
+    retainedBytes < 5 * 1024 * 1024,
+    `Prepared snapshots retained ${retainedBytes} bytes`,
+  );
 });
 
 test('applies renderValue failures and limits without retaining render state', () => {

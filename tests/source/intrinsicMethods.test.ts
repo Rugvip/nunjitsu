@@ -3,6 +3,7 @@ import test from 'node:test';
 
 import {
   createTemplateRenderer,
+  TemplateLimitError,
   TemplateRenderError,
 } from '../../src/index.ts';
 
@@ -50,6 +51,43 @@ test('isolates computed and extracted mutations of prepared values', () => {
     assert.equal(renderer.render(source, prepared), '[1,2]');
     assert.equal(renderer.render(source, prepared), '[1,2]');
     assert.deepEqual(values, [1]);
+  }
+});
+
+test('charges mutable ancestor fan-out before changing render-local values', () => {
+  const events: string[] = [];
+  const renderer = createTemplateRenderer({
+    globals: {
+      later() {
+        events.push('later');
+        return 'later';
+      },
+    },
+  });
+  const cases = [
+    { shared: [] as unknown, mutation: 'shared.push(1)' },
+    { shared: new Map(), mutation: 'shared.set("key",1)' },
+    { shared: new Set(), mutation: 'shared.add(1)' },
+  ];
+
+  for (const { shared, mutation } of cases) {
+    const context: Record<string, unknown> = { shared };
+    for (let index = 0; index < 2_000; index += 1) {
+      context[`alias${index}`] = shared;
+    }
+    const prepared = renderer.prepareContext(context as never);
+
+    assert.throws(
+      () => renderer.render(
+        `{% set ignored=${mutation} %}` + '${{ later() }}',
+        prepared,
+        { limits: { workUnits: 500 } },
+      ),
+      error => error instanceof TemplateLimitError && error.limit === 'workUnits',
+      mutation,
+    );
+    assert.deepEqual(events, [], mutation);
+    assert.equal(renderer.render('${{ shared|length }}', prepared), '0');
   }
 });
 

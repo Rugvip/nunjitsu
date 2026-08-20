@@ -49,11 +49,28 @@ export class RuntimeSafeString {
 }
 
 abstract class RuntimeContainerValue {
+  readonly #trackRuntimeParents: boolean;
   #parents: Map<RuntimeContainerValue, number> | undefined;
+
+  constructor(trackRuntimeParents: boolean) {
+    this.#trackRuntimeParents = trackRuntimeParents;
+  }
 
   abstract refreshMetadata(): void;
 
   abstract containsMutable(): boolean;
+
+  abstract metadataWorkUnits(): number;
+
+  tracksRuntimeParents(): boolean {
+    return this.#trackRuntimeParents;
+  }
+
+  assertRuntimeMutationAllowed(): void {
+    if (!this.#trackRuntimeParents) {
+      throw new TypeError('Persistent runtime values cannot be mutated');
+    }
+  }
 
   addRuntimeParent(parent: RuntimeContainerValue): void {
     this.#parents ??= new Map();
@@ -87,18 +104,23 @@ export class RuntimeArray extends RuntimeContainerValue {
   #containsCallable = false;
   #nestingDepth = 1;
 
-  constructor(items: readonly RuntimeValue[]) {
-    super();
+  constructor(items: readonly RuntimeValue[], trackRuntimeParents = true) {
+    super(trackRuntimeParents);
     this.#replace(items, false);
     Object.freeze(this);
   }
 
   /** Replaces the sparse contents after validating closed-container invariants. */
-  replace(items: readonly RuntimeValue[]): void {
-    this.#replace(items, true);
+  replace(items: readonly RuntimeValue[], chargeWork?: RuntimeWorkCharge): void {
+    this.assertRuntimeMutationAllowed();
+    this.#replace(items, true, chargeWork);
   }
 
-  #replace(items: readonly RuntimeValue[], validateContainment: boolean): void {
+  #replace(
+    items: readonly RuntimeValue[],
+    validateContainment: boolean,
+    chargeWork?: RuntimeWorkCharge,
+  ): void {
     if (types.isProxy(items)) {
       throw new TypeError('Proxy objects cannot be used as runtime arrays');
     }
@@ -106,6 +128,9 @@ export class RuntimeArray extends RuntimeContainerValue {
       throw new TypeError('Runtime arrays require an array');
     }
     assertRuntimeContainerSize(items.length);
+    const ancestry = validateContainment
+      ? inspectRuntimeContainerAncestry(this, chargeWork)
+      : emptyRuntimeContainerAncestry;
     const copied: RuntimeValue[] = [];
     copied.length = items.length;
     const present = new Set<number>();
@@ -129,7 +154,7 @@ export class RuntimeArray extends RuntimeContainerValue {
       containsCallable ||= runtimeValueContainsCallable(value);
       nestingDepth = Math.max(nestingDepth, runtimeValueNestingDepth(value) + 1);
     }
-    assertRuntimeValueDepth(nestingDepth + maximumRuntimeParentDepth(this));
+    assertRuntimeValueDepth(nestingDepth + ancestry.maximumDepth);
     for (const value of this.presentValues()) {
       unregisterRuntimeContainerParent(this, value);
     }
@@ -140,7 +165,7 @@ export class RuntimeArray extends RuntimeContainerValue {
     for (const value of this.presentValues()) {
       registerRuntimeContainerParent(this, value);
     }
-    refreshRuntimeContainerParents(this);
+    refreshRuntimeContainerAncestors(ancestry.ancestors);
   }
 
   /** Number of contained values. */
@@ -186,6 +211,10 @@ export class RuntimeArray extends RuntimeContainerValue {
     return true;
   }
 
+  metadataWorkUnits(): number {
+    return this.#items.length;
+  }
+
   /** Returns the deepest closed container level including this array. */
   nestingDepth(): number {
     return this.#nestingDepth;
@@ -223,8 +252,11 @@ export class RuntimeMap extends RuntimeContainerValue {
   #containsCallable = false;
   #nestingDepth = 1;
 
-  constructor(entries: Iterable<readonly [RuntimeValue, RuntimeValue]>) {
-    super();
+  constructor(
+    entries: Iterable<readonly [RuntimeValue, RuntimeValue]>,
+    trackRuntimeParents = true,
+  ) {
+    super(trackRuntimeParents);
     for (const [key, value] of entries) {
       assertAllowedRuntimeMapKey(key);
       this.#entries.set(key, value);
@@ -261,12 +293,18 @@ export class RuntimeMap extends RuntimeContainerValue {
   }
 
   /** Adds or replaces one closed entry. */
-  set(key: RuntimeValue, value: RuntimeValue): this {
+  set(
+    key: RuntimeValue,
+    value: RuntimeValue,
+    chargeWork?: RuntimeWorkCharge,
+  ): this {
+    this.assertRuntimeMutationAllowed();
     assertAllowedRuntimeMapKey(key);
     const replacing = this.#entries.has(key);
     if (!replacing) {
       assertRuntimeContainerSize(this.#entries.size + 1);
     }
+    const ancestry = inspectRuntimeContainerAncestry(this, chargeWork);
     assertRuntimeValueCanBeContained(this, key);
     assertRuntimeValueCanBeContained(this, value);
     let containsCallable = this.#containsCallable;
@@ -282,7 +320,7 @@ export class RuntimeMap extends RuntimeContainerValue {
         runtimeValueNestingDepth(value) + 1,
       );
     }
-    assertRuntimeValueDepth(nestingDepth + maximumRuntimeParentDepth(this));
+    assertRuntimeValueDepth(nestingDepth + ancestry.maximumDepth);
     if (replacing) {
       unregisterRuntimeContainerParent(this, this.#entries.get(key));
     } else {
@@ -292,28 +330,35 @@ export class RuntimeMap extends RuntimeContainerValue {
     registerRuntimeContainerParent(this, value);
     this.#containsCallable = containsCallable;
     this.#nestingDepth = nestingDepth;
-    refreshRuntimeContainerParents(this);
+    refreshRuntimeContainerAncestors(ancestry.ancestors);
     return this;
   }
 
   /** Removes one entry. */
-  delete(key: RuntimeValue): boolean {
+  delete(key: RuntimeValue, chargeWork?: RuntimeWorkCharge): boolean {
+    this.assertRuntimeMutationAllowed();
     if (!this.#entries.has(key)) {
       return false;
     }
+    const ancestry = inspectRuntimeContainerAncestry(this, chargeWork);
     const value = this.#entries.get(key);
     const deleted = this.#entries.delete(key);
     if (deleted) {
       unregisterRuntimeContainerParent(this, key);
       unregisterRuntimeContainerParent(this, value);
       this.refreshMetadata();
-      refreshRuntimeContainerParents(this);
+      refreshRuntimeContainerAncestors(ancestry.ancestors);
     }
     return deleted;
   }
 
   /** Removes every entry. */
-  clear(): void {
+  clear(chargeWork?: RuntimeWorkCharge): void {
+    this.assertRuntimeMutationAllowed();
+    if (this.#entries.size === 0) {
+      return;
+    }
+    const ancestry = inspectRuntimeContainerAncestry(this, chargeWork);
     for (const [key, value] of this.#entries) {
       unregisterRuntimeContainerParent(this, key);
       unregisterRuntimeContainerParent(this, value);
@@ -321,7 +366,7 @@ export class RuntimeMap extends RuntimeContainerValue {
     this.#entries.clear();
     this.#containsCallable = false;
     this.#nestingDepth = 1;
-    refreshRuntimeContainerParents(this);
+    refreshRuntimeContainerAncestors(ancestry.ancestors);
   }
 
   /** Iterates entries in insertion order. */
@@ -346,6 +391,10 @@ export class RuntimeMap extends RuntimeContainerValue {
 
   containsMutable(): boolean {
     return true;
+  }
+
+  metadataWorkUnits(): number {
+    return this.#entries.size;
   }
 
   /** Returns the deepest closed container level including this Map. */
@@ -397,8 +446,8 @@ export class RuntimeSet extends RuntimeContainerValue {
   #containsCallable = false;
   #nestingDepth = 1;
 
-  constructor(values: Iterable<RuntimeValue>) {
-    super();
+  constructor(values: Iterable<RuntimeValue>, trackRuntimeParents = true) {
+    super(trackRuntimeParents);
     for (const value of values) {
       this.#values.add(value);
       assertRuntimeContainerSize(this.#values.size);
@@ -426,45 +475,57 @@ export class RuntimeSet extends RuntimeContainerValue {
   }
 
   /** Adds one closed value. */
-  add(value: RuntimeValue): this {
+  add(value: RuntimeValue, chargeWork?: RuntimeWorkCharge): this {
+    this.assertRuntimeMutationAllowed();
     if (this.#values.has(value)) {
       return this;
     }
     assertRuntimeContainerSize(this.#values.size + 1);
+    const ancestry = inspectRuntimeContainerAncestry(this, chargeWork);
     assertRuntimeValueCanBeContained(this, value);
     const nestingDepth = Math.max(
       this.#nestingDepth,
       runtimeValueNestingDepth(value) + 1,
     );
-    assertRuntimeValueDepth(nestingDepth + maximumRuntimeParentDepth(this));
+    assertRuntimeValueDepth(nestingDepth + ancestry.maximumDepth);
     this.#values.add(value);
     registerRuntimeContainerParent(this, value);
     this.#containsCallable ||= runtimeValueContainsCallable(value);
     this.#nestingDepth = nestingDepth;
-    refreshRuntimeContainerParents(this);
+    refreshRuntimeContainerAncestors(ancestry.ancestors);
     return this;
   }
 
   /** Removes one value. */
-  delete(value: RuntimeValue): boolean {
+  delete(value: RuntimeValue, chargeWork?: RuntimeWorkCharge): boolean {
+    this.assertRuntimeMutationAllowed();
+    if (!this.#values.has(value)) {
+      return false;
+    }
+    const ancestry = inspectRuntimeContainerAncestry(this, chargeWork);
     const deleted = this.#values.delete(value);
     if (deleted) {
       unregisterRuntimeContainerParent(this, value);
       this.refreshMetadata();
-      refreshRuntimeContainerParents(this);
+      refreshRuntimeContainerAncestors(ancestry.ancestors);
     }
     return deleted;
   }
 
   /** Removes every value. */
-  clear(): void {
+  clear(chargeWork?: RuntimeWorkCharge): void {
+    this.assertRuntimeMutationAllowed();
+    if (this.#values.size === 0) {
+      return;
+    }
+    const ancestry = inspectRuntimeContainerAncestry(this, chargeWork);
     for (const value of this.#values) {
       unregisterRuntimeContainerParent(this, value);
     }
     this.#values.clear();
     this.#containsCallable = false;
     this.#nestingDepth = 1;
-    refreshRuntimeContainerParents(this);
+    refreshRuntimeContainerAncestors(ancestry.ancestors);
   }
 
   /** Iterates values in insertion order. */
@@ -479,6 +540,10 @@ export class RuntimeSet extends RuntimeContainerValue {
 
   containsMutable(): boolean {
     return true;
+  }
+
+  metadataWorkUnits(): number {
+    return this.#values.size;
   }
 
   /** Returns the deepest closed container level including this Set. */
@@ -507,8 +572,11 @@ export class RuntimeRecord extends RuntimeContainerValue {
   readonly #containsMutable: boolean;
   #nestingDepth: number;
 
-  constructor(entries: Iterable<readonly [string, RuntimeValue]>) {
-    super();
+  constructor(
+    entries: Iterable<readonly [string, RuntimeValue]>,
+    trackRuntimeParents = true,
+  ) {
+    super(trackRuntimeParents);
     const indexedEntries = new Map<string, RuntimeValue>();
     const namedEntries = new Map<string, RuntimeValue>();
     let entryCount = 0;
@@ -581,6 +649,10 @@ export class RuntimeRecord extends RuntimeContainerValue {
     return this.#containsMutable;
   }
 
+  metadataWorkUnits(): number {
+    return this.#entries.size;
+  }
+
   /** Returns the deepest closed container level including this record. */
   nestingDepth(): number {
     return this.#nestingDepth;
@@ -593,7 +665,7 @@ export class RuntimeRecord extends RuntimeContainerValue {
     }
     const entries = new Map(this.#entries);
     entries.set(name, value);
-    return new RuntimeRecord(entries);
+    return new RuntimeRecord(entries, this.tracksRuntimeParents());
   }
 
   /** Refreshes metadata after a nested mutable container changes. */
@@ -697,7 +769,11 @@ function registerRuntimeContainerParent(
   value: RuntimeValue,
 ): void {
   const child = runtimeContainer(value);
-  if (!child?.containsMutable()) {
+  if (
+    !parent.tracksRuntimeParents() ||
+    !child?.tracksRuntimeParents() ||
+    !child.containsMutable()
+  ) {
     return;
   }
   child.addRuntimeParent(parent);
@@ -708,48 +784,76 @@ function unregisterRuntimeContainerParent(
   value: RuntimeValue,
 ): void {
   const child = runtimeContainer(value);
-  if (!child?.containsMutable()) {
+  if (
+    !parent.tracksRuntimeParents() ||
+    !child?.tracksRuntimeParents() ||
+    !child.containsMutable()
+  ) {
     return;
   }
   child.removeRuntimeParent(parent);
 }
 
-function maximumRuntimeParentDepth(value: RuntimeContainer): number {
+interface RuntimeContainerAncestry {
+  readonly maximumDepth: number;
+  readonly ancestors: readonly RuntimeContainer[];
+}
+
+const emptyRuntimeContainerAncestry: RuntimeContainerAncestry = Object.freeze({
+  ancestors: emptyRuntimeContainerParents,
+  maximumDepth: 0,
+});
+
+function inspectRuntimeContainerAncestry(
+  value: RuntimeContainer,
+  chargeWork?: RuntimeWorkCharge,
+): RuntimeContainerAncestry {
   let maximum = 0;
   const pending: Array<readonly [RuntimeContainer, number]> = [[value, 0]];
   const depths = new Map<RuntimeContainer, number>();
   while (pending.length > 0) {
     const [child, depth] = pending.pop()!;
     for (const parent of child.runtimeParents()) {
+      chargeWork?.();
       const parentDepth = depth + 1;
       if (parentDepth <= (depths.get(parent) ?? -1)) {
         continue;
+      }
+      if (!depths.has(parent)) {
+        chargeRuntimeWorkUnits(parent.metadataWorkUnits(), chargeWork);
       }
       depths.set(parent, parentDepth);
       maximum = Math.max(maximum, parentDepth);
       pending.push([parent, parentDepth]);
     }
   }
-  return maximum;
+  const ancestors = Array.from(depths.entries());
+  ancestors.sort(([, left], [, right]) => {
+    chargeWork?.();
+    return left - right;
+  });
+  return {
+    ancestors: ancestors.map(([ancestor]) => ancestor),
+    maximumDepth: maximum,
+  };
 }
 
-function refreshRuntimeContainerParents(value: RuntimeContainer): void {
-  const depths = new Map<RuntimeContainer, number>();
-  const pending: Array<readonly [RuntimeContainer, number]> = [[value, 0]];
-  while (pending.length > 0) {
-    const [child, depth] = pending.pop()!;
-    for (const parent of child.runtimeParents()) {
-      const parentDepth = depth + 1;
-      if (parentDepth <= (depths.get(parent) ?? -1)) {
-        continue;
-      }
-      depths.set(parent, parentDepth);
-      pending.push([parent, parentDepth]);
-    }
+function chargeRuntimeWorkUnits(
+  units: number,
+  chargeWork?: RuntimeWorkCharge,
+): void {
+  if (!chargeWork) {
+    return;
   }
-  const ancestors = Array.from(depths.entries());
-  ancestors.sort(([, left], [, right]) => left - right);
-  for (const [ancestor] of ancestors) {
+  for (let unit = 0; unit < units; unit += 1) {
+    chargeWork();
+  }
+}
+
+function refreshRuntimeContainerAncestors(
+  ancestors: readonly RuntimeContainer[],
+): void {
+  for (const ancestor of ancestors) {
     ancestor.refreshMetadata();
   }
 }
@@ -789,7 +893,14 @@ export function defineOwnArrayIndex<T>(target: T[], index: number, value: T): vo
 
 /** Copies one public safe value graph into interpreter-owned values. */
 export function copyRuntimeValue(value: TemplateValue | undefined): RuntimeValue {
-  return copyValue(value, createSafeValueCopyState(), 0);
+  return copyValue(value, createSafeValueCopyState(true), 0);
+}
+
+/** Copies one public safe value without render-local mutation bookkeeping. */
+export function copyPersistentRuntimeValue(
+  value: TemplateValue | undefined,
+): RuntimeValue {
+  return copyValue(value, createSafeValueCopyState(false), 0);
 }
 
 /** Clones one already closed value graph for isolated render-local mutation. */
@@ -810,12 +921,26 @@ export function cloneRuntimeContext(context: RuntimeRecord): RuntimeRecord {
 export function copyRuntimeContext(
   context: Readonly<Record<string, TemplateValue>>,
 ): RuntimeRecord {
+  return copyRuntimeContextWithParentTracking(context, true);
+}
+
+/** Copies a reusable root context without retaining derived snapshot parents. */
+export function copyPersistentRuntimeContext(
+  context: Readonly<Record<string, TemplateValue>>,
+): RuntimeRecord {
+  return copyRuntimeContextWithParentTracking(context, false);
+}
+
+function copyRuntimeContextWithParentTracking(
+  context: Readonly<Record<string, TemplateValue>>,
+  trackRuntimeParents: boolean,
+): RuntimeRecord {
   if (types.isProxy(context)) {
     throw new TypeError('Proxy objects cannot be used as template values');
   }
   const rootEntries = Reflect.ownKeys(context).length;
   assertRuntimeContainerSize(rootEntries);
-  const state = createSafeValueCopyState();
+  const state = createSafeValueCopyState(trackRuntimeParents);
   // The bounded root namespace is accounted separately from its nested value graph.
   state.remainingEntries += rootEntries;
   const copied = copyValue(context, state, 0);
@@ -1050,13 +1175,17 @@ export function runtimeTruthy(value: RuntimeValue): boolean {
 interface SafeValueCopyState {
   readonly ancestors: Set<object>;
   readonly aliases: Map<object, RuntimeValue>;
+  readonly trackRuntimeParents: boolean;
   remainingEntries: number;
 }
 
-function createSafeValueCopyState(): SafeValueCopyState {
+function createSafeValueCopyState(
+  trackRuntimeParents: boolean,
+): SafeValueCopyState {
   return {
     ancestors: new Set(),
     aliases: new Map(),
+    trackRuntimeParents,
     remainingEntries: maximumSafeValueEntries,
   };
 }
@@ -1111,7 +1240,7 @@ function copyValue(
           );
         }
       }
-      const copied = new RuntimeArray(items);
+      const copied = new RuntimeArray(items, state.trackRuntimeParents);
       state.aliases.set(value, copied);
       return copied;
     }
@@ -1142,7 +1271,7 @@ function copyValue(
           copyValue(entryValue as TemplateValue, state, parentDepth + 1),
         ]);
       });
-      const copied = new RuntimeMap(entries);
+      const copied = new RuntimeMap(entries, state.trackRuntimeParents);
       state.aliases.set(value, copied);
       return copied;
     }
@@ -1166,7 +1295,7 @@ function copyValue(
           parentDepth + 1,
         ));
       });
-      const copied = new RuntimeSet(values);
+      const copied = new RuntimeSet(values, state.trackRuntimeParents);
       state.aliases.set(value, copied);
       return copied;
     }
@@ -1194,7 +1323,7 @@ function copyValue(
         ]);
       }
     }
-    const copied = new RuntimeRecord(entries);
+    const copied = new RuntimeRecord(entries, state.trackRuntimeParents);
     state.aliases.set(value, copied);
     return copied;
   } finally {
@@ -1243,7 +1372,7 @@ function replaceRuntimeContextPath(
   }
   let child: RuntimeRecord;
   if (!context.has(name)) {
-    child = new RuntimeRecord([]);
+    child = new RuntimeRecord([], context.tracksRuntimeParents());
   } else {
     const existing = context.get(name);
     if (!(existing instanceof RuntimeRecord)) {

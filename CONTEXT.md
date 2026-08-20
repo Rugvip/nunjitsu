@@ -166,8 +166,11 @@ belong here so those pages can remain readable.
   evaluation.
 - Never retain template sources, ASTs, values, or output state between renders
   by default. Retain values only through an explicit caller-owned prepared
-  context snapshot; keep snapshots immutable and renderer-bound, and copy every
-  update through the safe value boundary.
+  context snapshot; keep snapshots immutable and renderer-bound, copy every
+  update through the safe value boundary, and never attach mutable-container
+  parent links to persistent prepared or configured-global graphs. Register
+  parent links only while cloning a render-local graph so structurally shared
+  updates cannot retain earlier snapshots.
 - Treat template source as fully untrusted. Copy context into the safe value
   model; do not expose prototypes, getters, arbitrary functions, or live host
   objects. Host behavior requires explicit capability handles.
@@ -481,7 +484,10 @@ Do not create additional packages without a documented architectural reason.
   global values before first mutation can reach them, and discard the graph on
   success or failure. Track mutable-container parent relationships so cycles,
   callable authority, and the 256-level nesting invariant remain enforced after
-  nested mutation.
+  nested mutation. Charge parent traversal, ancestor metadata work, and ordering
+  before changing a container so resource exhaustion cannot leave partial state.
+  Reject reserved Map keys both before and after safe-string or public-value
+  conversion.
 - Accept array and string indices only after property-key conversion and only
   when the key is the canonical in-range nonnegative integer spelling. Treat
   array membership as strict identity rather than loose equality.

@@ -11,8 +11,9 @@ import {
 import { createRuntimeHost } from './runtime/host.ts';
 import { RuntimeEvaluationError } from './runtime/RuntimeEvaluationError.ts';
 import {
+  copyPersistentRuntimeContext,
+  copyPersistentRuntimeValue,
   copyRuntimeContext,
-  copyRuntimeValue,
   RuntimeRecord,
   withRuntimeContextPath,
 } from './runtime/value.ts';
@@ -218,7 +219,10 @@ export function createTemplateRenderer(
 
   return Object.freeze({
     prepareContext(context: TemplateContext = {}): PreparedTemplateContext {
-      return createPreparedTemplateContext(rendererOwner, copyRuntimeContext(context));
+      return createPreparedTemplateContext(
+        rendererOwner,
+        copyPersistentRuntimeContext(context),
+      );
     },
     render(
       source: string,
@@ -289,7 +293,11 @@ function createPreparedTemplateContext(
     withValue(path: readonly string[], publicValue: TemplateValue): PreparedTemplateContext {
       return createPreparedTemplateContext(
         owner,
-        withRuntimeContextPath(value, path, copyRuntimeValue(publicValue)),
+        withRuntimeContextPath(
+          value,
+          path,
+          copyPersistentRuntimeValue(publicValue),
+        ),
       );
     },
   });

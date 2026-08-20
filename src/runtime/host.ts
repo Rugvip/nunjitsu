@@ -13,6 +13,7 @@ import { clearLegacyRegExpState } from './clearLegacyRegExpState.ts';
 import { RuntimeEvaluationError } from './RuntimeEvaluationError.ts';
 import {
   copyPublicValue,
+  copyPersistentRuntimeValue,
   copyRuntimeValue,
   isReservedName,
   type RuntimeValue,
@@ -179,7 +180,7 @@ function copyGlobals(
     if (typeof descriptor.value === 'function') {
       functions.set(key, descriptor.value as TemplateGlobalFunction);
     } else {
-      values.set(key, copyRuntimeValue(descriptor.value));
+      values.set(key, copyPersistentRuntimeValue(descriptor.value));
     }
   }
 }

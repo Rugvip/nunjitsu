@@ -269,10 +269,10 @@ export function invokeRuntimeIntrinsic(
     return invokeRecordIntrinsic(receiver, name, positional);
   }
   if (receiver instanceof RuntimeMap) {
-    return invokeMapIntrinsic(receiver, name, positional);
+    return invokeMapIntrinsic(receiver, name, positional, options);
   }
   if (receiver instanceof RuntimeSet) {
-    return invokeSetIntrinsic(receiver, name, positional);
+    return invokeSetIntrinsic(receiver, name, positional, options);
   }
   if (receiver instanceof RuntimeRegex && name === 'test') {
     assertRegexExecution(options);
@@ -387,7 +387,7 @@ function invokeArrayIntrinsic(
     case 'push':
     case 'append': {
       const length = items.push(...positional);
-      receiver.replace(items);
+      receiver.replace(items, options.chargeWork);
       return length;
     }
     case 'pop': {
@@ -395,21 +395,21 @@ function invokeArrayIntrinsic(
         const index = normalizeExistingIndex(toInteger(first, options.chargeWork), items.length);
         if (index === undefined) return undefined;
         const removed = items.splice(index, 1);
-        receiver.replace(items);
+        receiver.replace(items, options.chargeWork);
         return removed[0];
       }
       const value = items.pop();
-      receiver.replace(items);
+      receiver.replace(items, options.chargeWork);
       return value;
     }
     case 'shift': {
       const value = items.shift();
-      receiver.replace(items);
+      receiver.replace(items, options.chargeWork);
       return value;
     }
     case 'unshift': {
       const length = items.unshift(...positional);
-      receiver.replace(items);
+      receiver.replace(items, options.chargeWork);
       return length;
     }
     case 'splice': {
@@ -419,17 +419,17 @@ function invokeArrayIntrinsic(
         : second === undefined
           ? items.splice(start)
           : items.splice(start, Math.max(0, toInteger(second, options.chargeWork)), ...positional.slice(2));
-      receiver.replace(items);
+      receiver.replace(items, options.chargeWork);
       return new RuntimeArray(removed);
     }
     case 'sort': {
       items.sort(compareRuntimeArrayItems);
-      receiver.replace(items);
+      receiver.replace(items, options.chargeWork);
       return receiver;
     }
     case 'reverse':
       items.reverse();
-      receiver.replace(items);
+      receiver.replace(items, options.chargeWork);
       return receiver;
     case 'fill':
       items.fill(
@@ -437,7 +437,7 @@ function invokeArrayIntrinsic(
         optionalInteger(second, options.chargeWork) ?? 0,
         optionalInteger(third, options.chargeWork) ?? items.length,
       );
-      receiver.replace(items);
+      receiver.replace(items, options.chargeWork);
       return receiver;
     case 'copyWithin':
       items.copyWithin(
@@ -445,17 +445,17 @@ function invokeArrayIntrinsic(
         optionalInteger(second, options.chargeWork) ?? 0,
         optionalInteger(third, options.chargeWork) ?? items.length,
       );
-      receiver.replace(items);
+      receiver.replace(items, options.chargeWork);
       return receiver;
     case 'insert': {
       const removed = items.splice(toInteger(first, options.chargeWork), 0, second);
-      receiver.replace(items);
+      receiver.replace(items, options.chargeWork);
       return new RuntimeArray(removed);
     }
     case 'remove': {
       const index = items.indexOf(first);
       const removed = index < 0 ? [] : items.splice(index, 1);
-      receiver.replace(items);
+      receiver.replace(items, options.chargeWork);
       return new RuntimeArray(removed);
     }
     case 'count': {
@@ -503,13 +503,16 @@ function invokeMapIntrinsic(
   receiver: RuntimeMap,
   name: string,
   positional: readonly RuntimeValue[],
+  options: RuntimeIntrinsicOptions,
 ): RuntimeValue {
   if (name === 'get') return receiver.get(positional[0]);
   if (name === 'has') return receiver.has(positional[0]);
-  if (name === 'set') return receiver.set(positional[0], positional[1]);
-  if (name === 'delete') return receiver.delete(positional[0]);
+  if (name === 'set') {
+    return receiver.set(positional[0], positional[1], options.chargeWork);
+  }
+  if (name === 'delete') return receiver.delete(positional[0], options.chargeWork);
   if (name === 'clear') {
-    receiver.clear();
+    receiver.clear(options.chargeWork);
     return undefined;
   }
   if (name === 'keys') return new RuntimeArray(Array.from(receiver.keys()));
@@ -527,12 +530,13 @@ function invokeSetIntrinsic(
   receiver: RuntimeSet,
   name: string,
   positional: readonly RuntimeValue[],
+  options: RuntimeIntrinsicOptions,
 ): RuntimeValue {
   if (name === 'has') return receiver.has(positional[0]);
-  if (name === 'add') return receiver.add(positional[0]);
-  if (name === 'delete') return receiver.delete(positional[0]);
+  if (name === 'add') return receiver.add(positional[0], options.chargeWork);
+  if (name === 'delete') return receiver.delete(positional[0], options.chargeWork);
   if (name === 'clear') {
-    receiver.clear();
+    receiver.clear(options.chargeWork);
     return undefined;
   }
   if (name === 'values') return new RuntimeArray(Array.from(receiver.values()));
