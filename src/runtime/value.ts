@@ -226,9 +226,7 @@ export class RuntimeMap extends RuntimeContainerValue {
   constructor(entries: Iterable<readonly [RuntimeValue, RuntimeValue]>) {
     super();
     for (const [key, value] of entries) {
-      if (typeof key === 'string' && isReservedName(key)) {
-        throw new TypeError(`Template Map key ${key} is reserved`);
-      }
+      assertAllowedRuntimeMapKey(key);
       this.#entries.set(key, value);
       assertRuntimeContainerSize(this.#entries.size);
     }
@@ -264,9 +262,7 @@ export class RuntimeMap extends RuntimeContainerValue {
 
   /** Adds or replaces one closed entry. */
   set(key: RuntimeValue, value: RuntimeValue): this {
-    if (typeof key === 'string' && isReservedName(key)) {
-      throw new TypeError(`Template Map key ${key} is reserved`);
-    }
+    assertAllowedRuntimeMapKey(key);
     const replacing = this.#entries.has(key);
     if (!replacing) {
       assertRuntimeContainerSize(this.#entries.size + 1);
@@ -1352,8 +1348,17 @@ function toPublicValue(
     state.aliases.set(value, output as TemplateValue);
     for (const [key, item] of value.entries()) {
       chargeWork?.();
+      const publicKey = toPublicValue(
+        key,
+        state,
+        parentDepth + 1,
+        chargeWork,
+      );
+      if (typeof publicKey === 'string' && isReservedName(publicKey)) {
+        throw new TypeError(`Template Map key ${publicKey} is reserved`);
+      }
       output.set(
-        toPublicValue(key, state, parentDepth + 1, chargeWork),
+        publicKey,
         toPublicValue(item, state, parentDepth + 1, chargeWork),
       );
     }
@@ -1491,6 +1496,13 @@ function assertRuntimeValueCanBeContained(owner: object, value: RuntimeValue): v
     } else if (candidate instanceof RuntimeSet) {
       pending.push(...candidate.values());
     }
+  }
+}
+
+function assertAllowedRuntimeMapKey(key: RuntimeValue): void {
+  const stringKey = key instanceof RuntimeSafeString ? key.value : key;
+  if (typeof stringKey === 'string' && isReservedName(stringKey)) {
+    throw new TypeError(`Template Map key ${stringKey} is reserved`);
   }
 }
 

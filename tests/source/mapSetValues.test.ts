@@ -480,6 +480,32 @@ test('keeps Map and Set methods inside the sealed callable boundary', () => {
   }
 });
 
+test('rejects reserved Map keys after safe-string coercion', () => {
+  const events: string[] = [];
+  const renderer = createTemplateRenderer({
+    globals: {
+      observe() {
+        events.push('observe');
+        return 'observed';
+      },
+    },
+  });
+
+  for (const reserved of ['constructor', 'prototype', '__proto__']) {
+    assert.throws(
+      () => renderer.render(
+        `{% set ignored=map.set(${JSON.stringify(reserved)}|safe,1) %}` +
+          '${{ observe(map) }}',
+        { map: new Map() } as never,
+      ),
+      TemplateRenderError,
+      reserved,
+    );
+    assert.deepEqual(events, [], reserved);
+    assert.equal(renderer.render('clean'), 'clean');
+  }
+});
+
 test('bounds copied Map and Set entries', () => {
   const renderer = createTemplateRenderer();
   const map = new Map<number, number>();
