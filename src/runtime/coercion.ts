@@ -2,10 +2,12 @@ import {
   assertRuntimeValueHasNoCallable,
   RuntimeArray,
   RuntimeCallable,
+  RuntimeMap,
   RuntimeRecord,
   RuntimeRegex,
   runtimeRegexToString,
   RuntimeSafeString,
+  RuntimeSet,
   type RuntimePrimitive,
   type RuntimeValue,
   type RuntimeWorkCharge,
@@ -37,6 +39,12 @@ export function runtimeToPrimitive(
   }
   if (value instanceof RuntimeRecord) {
     return '[object Object]';
+  }
+  if (value instanceof RuntimeMap) {
+    return '[object Map]';
+  }
+  if (value instanceof RuntimeSet) {
+    return '[object Set]';
   }
   if (value instanceof RuntimeRegex) {
     return runtimeRegexToString(value);

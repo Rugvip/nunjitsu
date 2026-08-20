@@ -18,9 +18,11 @@ import {
   runtimeTruthy,
   RuntimeArray,
   RuntimeCallable,
+  RuntimeMap,
   RuntimeRecord,
   RuntimeRegex,
   RuntimeSafeString,
+  RuntimeSet,
   type RuntimeValue,
 } from './value.ts';
 
@@ -492,6 +494,9 @@ function runtimeLength(input: RuntimeValue): RuntimeValue {
   if (input instanceof RuntimeArray) {
     return input.length;
   }
+  if (input instanceof RuntimeMap || input instanceof RuntimeSet) {
+    return input.size;
+  }
   if (input instanceof RuntimeRecord) {
     return input.size;
   }
@@ -517,6 +522,16 @@ function listRuntimeValue(input: RuntimeValue): RuntimeValue {
       ]));
     }
     return new RuntimeArray(output);
+  }
+  if (input instanceof RuntimeMap) {
+    const output: RuntimeValue[] = [];
+    for (const [key, value] of input.entries()) {
+      output.push(new RuntimeArray([key, value]));
+    }
+    return new RuntimeArray(output);
+  }
+  if (input instanceof RuntimeSet) {
+    return new RuntimeArray(Array.from(input.values()));
   }
   throw new TypeError('list requires an iterable value');
 }
@@ -855,7 +870,7 @@ function escapeHtml(value: string): string {
 
 function toJsonValue(
   value: RuntimeValue,
-  aliases: Map<RuntimeArray | RuntimeRecord, unknown>,
+  aliases: Map<RuntimeArray | RuntimeRecord | RuntimeMap | RuntimeSet, unknown>,
 ): unknown {
   if (value instanceof RuntimeSafeString) {
     return value.value;
@@ -891,6 +906,9 @@ function toJsonValue(
     throw new TypeError('Callable values cannot be serialized');
   }
   if (value instanceof RuntimeRegex) {
+    return Object.create(null);
+  }
+  if (value instanceof RuntimeMap || value instanceof RuntimeSet) {
     return Object.create(null);
   }
   return value;
@@ -1312,7 +1330,11 @@ export function applyBuiltinTest(
       if (input === undefined || input === null) {
         throw new TypeError('iterable test requires a value');
       }
-      return typeof input === 'string' || input instanceof RuntimeSafeString || input instanceof RuntimeArray;
+      return typeof input === 'string' ||
+        input instanceof RuntimeSafeString ||
+        input instanceof RuntimeArray ||
+        input instanceof RuntimeMap ||
+        input instanceof RuntimeSet;
     case 'le':
       return runtimeOrder(input, positional[0]) <= 0;
     case 'lessthan':
@@ -1327,6 +1349,7 @@ export function applyBuiltinTest(
     }
     case 'mapping':
       return input instanceof RuntimeRecord ||
+        input instanceof RuntimeMap ||
         input instanceof RuntimeSafeString ||
         input instanceof RuntimeRegex;
     case 'ne':
@@ -1384,6 +1407,9 @@ function hasRuntimeOwnValue(target: RuntimeValue, propertyKey: string): boolean 
     return propertyKey === 'length' ||
       runtimeArrayIndexFromPropertyKey(propertyKey, target.length) !== undefined;
   }
+  if (target instanceof RuntimeMap || target instanceof RuntimeSet) {
+    return propertyKey === 'size';
+  }
   if (typeof target === 'string') {
     const text = target;
     return propertyKey === 'length' ||
@@ -1410,6 +1436,9 @@ function readRuntimeOwnValue(
     }
     const index = runtimeArrayIndexFromPropertyKey(propertyKey, target.length);
     return index === undefined ? undefined : target.at(index);
+  }
+  if (target instanceof RuntimeMap || target instanceof RuntimeSet) {
+    return propertyKey === 'size' ? target.size : undefined;
   }
   if (typeof target === 'string') {
     const text = target;

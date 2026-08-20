@@ -2824,7 +2824,7 @@ test('record membership tracks key presence independently of its value', () => {
   assert.equal(engine.render('clean'), 'clean');
 });
 
-test('safe strings expose only closed own-field lookup and membership', () => {
+test('safe strings expose only closed own fields and approved intrinsics', () => {
   for (const cookiecutterCompat of [false, true]) {
     const events: string[] = [];
     const oracleEvents: string[] = [];
@@ -2921,7 +2921,7 @@ test('safe strings expose only closed own-field lookup and membership', () => {
       '${{ "toString" in value }}:${{ "indexOf" in value }}:',
       '${{ "constructor" in value }}:${{ "prototype" in value }}:',
       '${{ "__proto__" in value }}|',
-      '${{ value.toString is undefined }}:${{ value.indexOf is undefined }}',
+      '${{ value.toString is undefined }}:${{ value.indexOf is callable }}',
     ].join('');
     const engineInheritedSource = cookiecutterCompat
       ? inheritedSource.replaceAll('${{', '{{')

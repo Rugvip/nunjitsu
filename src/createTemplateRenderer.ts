@@ -11,6 +11,7 @@ import {
 import { createRuntimeHost } from './runtime/host.ts';
 import { RuntimeEvaluationError } from './runtime/RuntimeEvaluationError.ts';
 import {
+  cloneRuntimeContext,
   copyRuntimeContext,
   copyRuntimeValue,
   RuntimeRecord,
@@ -308,7 +309,7 @@ function resolveRuntimeContext(
     if (state.owner !== owner) {
       throw new TypeError('Prepared context belongs to a different template renderer');
     }
-    return state.value;
+    return cloneRuntimeContext(state.value);
   }
   return copyRuntimeContext(context as TemplateContext);
 }

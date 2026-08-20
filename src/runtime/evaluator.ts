@@ -55,10 +55,17 @@ import {
   planLexicalSlots,
   RuntimeLexicalFrame,
 } from './lexicalSlots.ts';
+import {
+  invokeRuntimeIntrinsic,
+  resolveRuntimeIntrinsic,
+  runtimeIntrinsicArity,
+  type RuntimeIntrinsicMethod,
+} from './intrinsics.ts';
 import { RuntimeScope } from './scope.ts';
 import { stringCodeUnits } from './stringCodeUnits.ts';
 import {
   assertRuntimeValueHasNoCallable,
+  cloneRuntimeValue,
   copyPublicValueWithWork,
   copyRuntimeContext,
   isReservedName,
@@ -67,9 +74,11 @@ import {
   runtimeTruthy,
   RuntimeArray,
   RuntimeCallable,
+  RuntimeMap,
   RuntimeRecord,
   RuntimeRegex,
   RuntimeSafeString,
+  RuntimeSet,
   type RuntimeValue,
   type RuntimeWorkCharge,
 } from './value.ts';
@@ -161,6 +170,10 @@ type BuiltinCallableDefinition =
     readonly type: 'joiner';
     readonly separator: RuntimeValue;
     used: boolean;
+  }
+  | {
+    readonly type: 'intrinsic';
+    readonly method: RuntimeIntrinsicMethod;
   };
 
 /** Parses and evaluates one inline source through the closed interpreter. */
@@ -268,6 +281,7 @@ class Evaluator {
   readonly #capabilityNames = new Map<number, string>();
   readonly #capabilityHandles = new Map<string, RuntimeCallable>();
   readonly #builtinGlobalHandles = new Map<BuiltinGlobalName, RuntimeCallable>();
+  readonly #globalValues = new Map<string, RuntimeValue>();
   readonly #chargeExpansionWork: RuntimeWorkCharge = () => {
     this.#charge(0);
   };
@@ -745,7 +759,10 @@ class Evaluator {
         }
         const globalValue = this.#options.host?.globalValue?.(name);
         if (globalValue?.found) {
-          return globalValue.value;
+          if (!this.#globalValues.has(name)) {
+            this.#globalValues.set(name, cloneRuntimeValue(globalValue.value));
+          }
+          return this.#globalValues.get(name);
         }
         if (this.#options.host?.hasGlobal?.(name)) {
           return this.#registerGlobal(name);
@@ -825,7 +842,7 @@ class Evaluator {
           ) {
             return this.#lookupBuiltinCallable(target.id, constantKey.value);
           }
-          return freshMemberCallable(lookupRuntimeConstantKey(target, constantKey.value));
+          return this.#lookupRuntimeMember(target, constantKey.value);
         }
         const key = this.#evaluateExpression(valueNode, scope, macroContext, depth + 1);
         if (target instanceof RuntimeCallable && target.callableKind === 'builtin') {
@@ -834,7 +851,10 @@ class Evaluator {
             runtimeToPropertyKey(key, this.#chargeExpansionWork),
           );
         }
-        return freshMemberCallable(lookupRuntimeValue(target, key));
+        return this.#lookupRuntimeMember(
+          target,
+          runtimeToPropertyKey(key, this.#chargeExpansionWork),
+        );
       }
       case 'InlineIf': {
         const condition = this.#evaluateExpression(node.cond, scope, macroContext, depth + 1);
@@ -1499,6 +1519,26 @@ class Evaluator {
     return new RuntimeCallable('builtin', methodId);
   }
 
+  #lookupRuntimeMember(
+    target: RuntimeValue,
+    key: undefined | null | boolean | number | string,
+  ): RuntimeValue {
+    const propertyKey = typeof key === 'string'
+      ? key
+      : runtimeToPropertyKey(key, this.#chargeExpansionWork);
+    const intrinsic = resolveRuntimeIntrinsic(
+      target,
+      propertyKey,
+      this.#options.cookiecutterCompat,
+    );
+    if (intrinsic) {
+      const id = this.#nextCallableId++;
+      this.#builtinCallables.set(id, { type: 'intrinsic', method: intrinsic });
+      return new RuntimeCallable('builtin', id);
+    }
+    return freshMemberCallable(lookupRuntimeConstantKey(target, key));
+  }
+
   #invokeBuiltinCallable(id: number, arguments_: RuntimeArguments): RuntimeValue {
     assertRuntimeArgumentsHaveNoCallable(arguments_);
     const definition = this.#builtinCallables.get(id);
@@ -1531,6 +1571,23 @@ class Evaluator {
       owner.index = (owner.index + 1) % owner.values.length;
       return owner.values[owner.index];
     }
+    if (definition.type === 'intrinsic') {
+      const scratchBytes = this.#assertScratch([
+        definition.method.receiver,
+        ...arguments_.positional,
+      ]);
+      const result = invokeRuntimeIntrinsic(
+        definition.method,
+        arguments_.positional,
+        {
+          allowRegexExecution: this.#options.allowRegexExecution,
+          cookiecutterCompat: this.#options.cookiecutterCompat,
+          chargeWork: this.#chargeExpansionWork,
+        },
+      );
+      this.#reserveIntrinsicResult(result, scratchBytes);
+      return result;
+    }
     throw new Error('Interpreter builtin object is not directly callable');
   }
 
@@ -1554,6 +1611,16 @@ class Evaluator {
     }
     if (definition.type === 'cycler-method') {
       assertExactPositionalSyntax(node, `Cycler ${definition.method}`, 0);
+      return;
+    }
+    if (definition.type === 'intrinsic') {
+      const operation = `Template intrinsic ${definition.method.name}`;
+      assertPositionalOnlySyntax(node, operation);
+      const arity = runtimeIntrinsicArity(
+        definition.method,
+        this.#options.cookiecutterCompat,
+      );
+      assertPositionalRangeSyntax(node, operation, arity.minimum, arity.maximum);
       return;
     }
     throw new Error('Interpreter builtin object is not directly callable');
@@ -1683,6 +1750,12 @@ class Evaluator {
       throw new RangeError('Array-like record length exceeds the supported range');
     }
     this.#workUnits += count;
+  }
+
+  #reserveIntrinsicResult(result: RuntimeValue, existingScratchBytes: number): void {
+    if (result instanceof RuntimeArray) {
+      this.#reserveIndexedValues(result.length, existingScratchBytes);
+    }
   }
 }
 
@@ -1927,7 +2000,10 @@ function iterableEntries(
   chargeWork?: RuntimeWorkCharge,
 ): RuntimeIteration {
   const compilerBranch =
-    value instanceof RuntimeArray || value instanceof RuntimeSafeString
+    value instanceof RuntimeArray ||
+      value instanceof RuntimeSafeString ||
+      value instanceof RuntimeMap ||
+      value instanceof RuntimeSet
       ? 'array'
       : 'record';
   if (targetCount === 1) {
@@ -1942,6 +2018,16 @@ function iterableEntries(
         values: recordIndexValues(value, length, chargeWork),
       };
     }
+    if (value instanceof RuntimeMap) {
+      return {
+        compilerBranch,
+        length: value.size,
+        values: mapIterationValues(value),
+      };
+    }
+    if (value instanceof RuntimeSet) {
+      return { compilerBranch, length: value.size, values: value.values() };
+    }
     if (typeof value === 'string' || value instanceof RuntimeSafeString) {
       const text = typeof value === 'string' ? value : value.value;
       return { compilerBranch, length: text.length, values: stringCodeUnits(text) };
@@ -1950,6 +2036,20 @@ function iterableEntries(
   }
   if (value instanceof RuntimeArray) {
     return { compilerBranch, length: value.length, values: value.values() };
+  }
+  if (value instanceof RuntimeMap) {
+    return {
+      compilerBranch: 'array',
+      length: value.size,
+      values: mapIterationValues(value),
+    };
+  }
+  if (value instanceof RuntimeSet) {
+    return {
+      compilerBranch: 'array',
+      length: value.size,
+      values: value.values(),
+    };
   }
   if (value instanceof RuntimeRecord) {
     return { compilerBranch, length: value.size, values: recordIterationValues(value) };
@@ -1999,6 +2099,12 @@ function* recordIndexValues(
 }
 
 function* recordIterationValues(value: RuntimeRecord): IterableIterator<RuntimeValue> {
+  for (const [key, item] of value.entries()) {
+    yield new RuntimeArray([key, item]);
+  }
+}
+
+function* mapIterationValues(value: RuntimeMap): IterableIterator<RuntimeValue> {
   for (const [key, item] of value.entries()) {
     yield new RuntimeArray([key, item]);
   }
@@ -2074,6 +2180,23 @@ function assertMaximumPositionalSyntax(
   }
 }
 
+function assertPositionalRangeSyntax(
+  node: AstNode,
+  operation: string,
+  minimum: number,
+  maximum: number,
+): void {
+  const actual = argumentSyntax(node).positionalCount;
+  if (actual < minimum || actual > maximum) {
+    const range = minimum === maximum
+      ? `${minimum}`
+      : maximum === Number.POSITIVE_INFINITY
+        ? `at least ${minimum}`
+        : `${minimum} to ${maximum}`;
+    throw new TypeError(`${operation} requires ${range} positional arguments`);
+  }
+}
+
 function argumentSyntax(
   node: AstNode,
 ): { readonly positionalCount: number; readonly keywordCount: number } {
@@ -2138,6 +2261,22 @@ function runtimeValueBytes(
     }
     return bytes;
   }
+  if (value instanceof RuntimeMap) {
+    let bytes = 0;
+    for (const [key, item] of value.entries()) {
+      chargeWork?.();
+      bytes += runtimeValueBytes(key, chargeWork) + runtimeValueBytes(item, chargeWork);
+    }
+    return bytes;
+  }
+  if (value instanceof RuntimeSet) {
+    let bytes = 0;
+    for (const item of value.values()) {
+      chargeWork?.();
+      bytes += runtimeValueBytes(item, chargeWork);
+    }
+    return bytes;
+  }
   return Buffer.byteLength(renderRuntimeValue(value, chargeWork));
 }
 
@@ -2152,6 +2291,17 @@ function chargeRuntimeValueExpansion(
     }
   } else if (value instanceof RuntimeRecord) {
     for (const [, item] of value.entries()) {
+      chargeWork();
+      chargeRuntimeValueExpansion(item, chargeWork);
+    }
+  } else if (value instanceof RuntimeMap) {
+    for (const [key, item] of value.entries()) {
+      chargeWork();
+      chargeRuntimeValueExpansion(key, chargeWork);
+      chargeRuntimeValueExpansion(item, chargeWork);
+    }
+  } else if (value instanceof RuntimeSet) {
+    for (const item of value.values()) {
       chargeWork();
       chargeRuntimeValueExpansion(item, chargeWork);
     }
@@ -2213,6 +2363,12 @@ function runtimeValueKind(value: RuntimeValue): string {
   }
   if (value instanceof RuntimeRecord) {
     return 'record';
+  }
+  if (value instanceof RuntimeMap) {
+    return 'Map';
+  }
+  if (value instanceof RuntimeSet) {
+    return 'Set';
   }
   if (value instanceof RuntimeSafeString) {
     return 'safe string';

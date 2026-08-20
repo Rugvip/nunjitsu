@@ -56,8 +56,9 @@ belong here so those pages can remain readable.
 - Export a native result only through the safe public value boundary. Convert
   safe strings and inert regexes to ordinary strings, reject callable authority
   recursively, preserve sparse arrays and record order, freeze returned arrays
-  and null-prototype records, charge work for every traversed structured slot,
-  and apply the equivalent rendered-text output limit before returning.
+  and null-prototype records, copy Maps and Sets into fresh native containers,
+  charge work for every traversed structured slot, and apply the equivalent
+  rendered-text output limit before returning.
 - Represent AST variants as frozen plain object nodes with stable direct typed
   properties and direct child references. Do not add generic field bags,
   packed numeric arenas, or ArrayBuffer storage without a measured end-to-end
@@ -66,23 +67,26 @@ belong here so those pages can remain readable.
   generated JavaScript, dynamic import, or a JavaScript parser to execute
   template syntax.
 - Copy context and capability results into the closed renderer-owned value graph.
-  Never retain live host objects, prototypes, getters, functions, methods, or
-  iteration protocols in template-visible values.
+  Snapshot exact native Maps and Sets through captured intrinsics without using
+  their property or iteration protocols. Never retain live host objects,
+  prototypes, getters, functions, methods, or iteration protocols in
+  template-visible values.
 - Bound every safe-value copy to 100,000 structured entries and 256 nested
-  array or record levels. Charge sparse arrays by logical length before
-  inspecting indices, keep every individual runtime container within the same
-  100,000-entry ceiling, and reject prepared-context update paths longer than
-  256 segments. These are non-configurable hard invariants independent of
-  per-render cooperative limits.
+  array, record, Map, or Set levels. Charge sparse arrays by logical length
+  before inspecting indices, keep every individual runtime container within the
+  same 100,000-entry ceiling, and reject prepared-context update paths longer
+  than 256 segments. Treat the bounded root context namespace separately from
+  its nested value-graph budget. These are non-configurable hard invariants
+  independent of per-render cooperative limits.
 - Store scopes and records in private maps and implement every lookup,
   coercion, comparison, and call explicitly by internal value kind. Never use
   reflective host property access as an evaluator shortcut.
 - Reserve `constructor`, `prototype`, and `__proto__` across input, syntax,
   scopes, registries, internal record construction, lookup, assignment, and
   capability arguments and results.
-- Make sealed interpreter variants for macros, built-ins, and registered
-  capabilities the only callable values. Context functions and object methods
-  are unsupported.
+- Make sealed interpreter variants for macros, built-ins, approved intrinsic
+  methods, and registered capabilities the only callable values. Context
+  functions and arbitrary host or prototype methods are unsupported.
 - Resolve every call target through lexical scope and the closed value model.
   Dispatch capabilities only through evaluator-owned IDs mapped privately to
   exact registered callbacks; never derive authority from call-site spelling.
@@ -271,6 +275,11 @@ Do not create additional packages without a documented architectural reason.
 - Reject Node-detected proxies before array detection or any reflective value
   inspection. Keep capability result copying inside the opaque fail-stop
   exception boundary.
+- Accept only exact native Map and Set instances with no own properties. Reject
+  subclasses, custom prototypes, accessors, proxies, cycles, oversized
+  containers, and reserved string Map keys before exposing a closed snapshot.
+  Preserve SameValueZero keys, values, insertion order, and aliases across the
+  copied graph.
 - Keep parser and evaluator internals private. Do not pass AST nodes, scopes,
   internal values, or callable variants to host callbacks.
 - Revalidate template-controlled data whenever it changes semantic role, such
@@ -302,11 +311,13 @@ Do not create additional packages without a documented architectural reason.
 - Treat every safe-string wrapper as truthy, including one containing empty
   text. Keep that wrapper truthiness separate from content-based text length,
   indexing, iteration, and string or numeric coercion.
-- Expose only the closed own safe-string fields `length` and `val`. Safe-string
-  membership tests those fields after closed property-key conversion rather
-  than searching wrapped content. Numeric membership remains false even though
-  the deliberate UTF-16 lookup model supports numeric code-unit indexing; never
-  reproduce inherited String or Object prototype membership.
+- Expose only the closed own safe-string fields `length` and `val`, plus the
+  explicitly approved sealed string intrinsics. Safe-string membership tests
+  only the own fields after closed property-key conversion rather than searching
+  wrapped content or reporting intrinsic methods. Numeric membership remains
+  false even though the deliberate UTF-16 lookup model supports numeric
+  code-unit indexing; never reproduce inherited String or Object prototype
+  membership.
 - Keep string-literal escapes fixed to Nunjucks v3.2.4: decode only `\\n`,
   `\\t`, and `\\r`, and treat every other backslash as quoting exactly its next
   source code unit. Do not add JavaScript hexadecimal or Unicode decoding, and
@@ -331,13 +342,16 @@ Do not create additional packages without a documented architectural reason.
   the original validated source and flags for regex `replace` matching.
 - Keep template-controlled native regex execution disabled by default through
   the immutable renderer option `allowRegexExecution`. When false, the built-in
-  `replace` filter must reject a regex search value before constructing or
-  matching a native `RegExp`; string replacement and other inert regex
-  operations remain available. The option does not restrict an explicitly
-  registered custom filter named `replace`, which is trusted capability code.
-- When `allowRegexExecution` is true, regex `replace` deliberately executes
-  template-controlled patterns through Node.js's native regular-expression
-  engine for Nunjucks compatibility. Cooperative render limits cannot interrupt
+  `replace` filter and string `replace` or `split` intrinsics must reject a regex
+  argument before constructing or matching a native `RegExp`; the regex `test`
+  intrinsic must reject execution as well. String-only operations and other
+  inert regex behavior remain available. The option does not restrict an
+  explicitly registered custom filter named `replace`, which is trusted
+  capability code.
+- When `allowRegexExecution` is true, regex replacement, splitting, and testing
+  deliberately execute template-controlled patterns through Node.js's native
+  regular-expression engine for Nunjucks compatibility. Keep regex `lastIndex`
+  as closed render-local state. Cooperative render limits cannot interrupt
   native matching, so protection from excessive backtracking is outside the
   availability guarantee. Document this gap explicitly and do not represent a
   heuristic pattern scanner as closing it. A future linear-time engine or
@@ -448,10 +462,26 @@ Do not create additional packages without a documented architectural reason.
   only from primitive strings; and `dump` indentation accepts only primitive
   numbers and strings. Safe strings must not gain authority through coercion.
 - Give each directly resolved registered or built-in global one canonical
-  sealed callable handle per render. Ordinary array, record, and callable-valued
-  built-in member lookup must return a fresh sealed alias carrying only the same
-  evaluator-owned kind and ID; scope lookup and loop destructuring retain the
-  canonical handle. Use closed strict identity for `switch` case matching.
+  sealed callable handle per render. Approved intrinsic lookup must create a
+  sealed receiver-bound handle; arbitrary array, record, Map, Set, string,
+  number, regex, and Object prototype members remain unreachable. Ordinary
+  callable-valued built-in member lookup returns a fresh sealed alias carrying
+  only the same evaluator-owned kind and ID; scope lookup and loop destructuring
+  retain the canonical handle. Use closed strict identity for `switch` case
+  matching.
+- Keep intrinsic dispatch in one explicit receiver-specific allowlist. Support
+  closed string search, slicing, case, trimming, replacement, and splitting;
+  number formatting; non-callback array queries and mutations; Map and Set
+  queries, ordered views, and mutations; regex testing behind the execution
+  option; and the documented Cookiecutter array and record aliases. Never
+  resolve a host property, accept callback-taking collection methods, or let an
+  intrinsic handle cross a capability or coercion boundary.
+- Confine array, Map, and Set mutation to one evaluator-owned render graph.
+  Preserve aliases during the render, clone prepared contexts and configured
+  global values before first mutation can reach them, and discard the graph on
+  success or failure. Track mutable-container parent relationships so cycles,
+  callable authority, and the 256-level nesting invariant remain enforced after
+  nested mutation.
 - Accept array and string indices only after property-key conversion and only
   when the key is the canonical in-range nonnegative integer spelling. Treat
   array membership as strict identity rather than loose equality.
@@ -481,9 +511,10 @@ Do not create additional packages without a documented architectural reason.
 - Plan loops from both the closed container kind and target count. Single-target
   records use only their own raw `length` and numeric entries; multi-target
   records yield key-value pairs, primitive strings yield index-code-unit pairs,
-  and arrays destructure through explicit closed numeric lookup. Preserve raw
-  record length for loop metadata and else truthiness, and fail before the body
-  when multi-target array destructuring encounters null or undefined.
+  Maps yield ordered key-value arrays, Sets yield ordered values, and arrays
+  destructure through explicit closed numeric lookup. Preserve raw record length
+  for loop metadata and else truthiness, and fail before the body when
+  multi-target array destructuring encounters null or undefined.
 - Clear all host-realm legacy RegExp capture state in a public render-level
   `finally` block. Cover successful and failed renders, and do not claim that
   pre-existing legacy state can be restored.
