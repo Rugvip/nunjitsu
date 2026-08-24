@@ -547,7 +547,7 @@
     {
       "upstream": {"id":"tests/compiler.js:16","file":"tests/compiler.js","test":"should compile inline conditionals"},
       "status": "ported",
-      "cases": ["compiler-inline-if-true","compiler-inline-if-false","compiler-inline-if-not","compiler-inline-if-and","compiler-inline-if-or","compiler-inline-if-group","compiler-inline-if-comparison","compiler-parenthesized-nested-inline-conditional"]
+      "cases": ["compiler-inline-if-true","compiler-inline-if-false","compiler-inline-if-not","compiler-inline-if-and","compiler-inline-if-or","compiler-inline-if-group","compiler-inline-if-comparison","compiler-inline-if-empty-fallback-values","compiler-inline-if-empty-fallback-structures","compiler-inline-if-empty-fallback-string-filter","compiler-parenthesized-nested-inline-conditional"]
     },
     {
       "upstream": {"id":"tests/compiler.js:52","file":"tests/compiler.js","test":"should compile python-style ternary operators"},

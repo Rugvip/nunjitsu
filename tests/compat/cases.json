@@ -230,6 +230,24 @@
       "expected": "beer"
     },
     {
+      "id": "compiler-inline-if-empty-fallback-values",
+      "template": "{{ (\"x\" if false) | dump }}|{{ (\"x\" if false) is string }}|{{ (\"x\" if false) is undefined }}|{{ (\"x\" if false) == \"\" }}|{{ (\"x\" if false) === \"\" }}|{{ (\"x\" if false) == null }}|{{ (\"x\" if false) in [\"\"] }}|{{ \"\" in [(\"x\" if false)] }}|{{ (\"x\" if false) | default(\"fallback\") | dump }}|{{ ((\"x\" if false) ~ \"suffix\") | dump }}|{{ ((\"x\" if false) + 1) | dump }}|{{ (\"x\" if false else missing) is undefined }}|{{ (\"x\" if false else \"\") is string }}",
+      "context": {},
+      "expected": "\"\"|true|false|true|true|false|true|true|\"\"|\"suffix\"|\"1\"|true|true"
+    },
+    {
+      "id": "compiler-inline-if-empty-fallback-structures",
+      "template": "{{ [(\"x\" if false)] | dump }}|{{ {key:(\"x\" if false)} | dump }}|{% set assigned=\"x\" if false %}{{ assigned | dump }}:{{ assigned is string }}|{% macro show(value) %}{{ value | dump }}:{{ value is string }}{% endmacro %}{{ show(\"x\" if false) }}|{% switch \"x\" if false %}{% case \"\" %}empty{% case null %}null{% default %}other{% endswitch %}|{{ ((\"a\" if false) if true) | dump }}|{{ (\"a\" if false else (\"b\" if false)) | dump }}",
+      "context": {},
+      "expected": "[\"\"]|{\"key\":\"\"}|\"\":true|\"\":true|empty|\"\"|\"\""
+    },
+    {
+      "id": "compiler-inline-if-empty-fallback-string-filter",
+      "template": "{{ (\"x\" if false) | string | dump }}",
+      "context": {},
+      "expected": "\"\""
+    },
+    {
       "id": "compiler-python-style-ternary-tests",
       "template": "{{ \"yes\" if 1 is odd else \"no\" }}|{{ \"yes\" if 2 is even else \"no\" }}|{{ \"yes\" if 2 is odd else \"no\" }}|{{ \"yes\" if 1 is even else \"no\" }}",
       "context": {},

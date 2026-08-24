@@ -186,6 +186,75 @@ test('preserves sole interpolation values and renders every other template as te
   );
 });
 
+test('preserves Nunjucks empty-string inline conditional fallbacks in renderValue', () => {
+  const renderer = createTemplateRenderer();
+
+  for (const condition of ['missing', 'null', 'false', '0', '""']) {
+    assert.equal(
+      renderer.renderValue(`\${{ "value" if ${condition} }}`),
+      '',
+      `falsey condition ${condition}`,
+    );
+  }
+
+  assert.equal(renderer.renderValue('${{ "value" if true }}'), 'value');
+  assert.equal(
+    renderer.renderValue('${{ "value" if false else missing }}'),
+    undefined,
+  );
+  assert.equal(renderer.renderValue('${{ missing }}'), undefined);
+});
+
+test('keeps false inline conditional values present during JSON revival', () => {
+  const renderer = createTemplateRenderer();
+  const source = {
+    labels: ['fixed', '${{ optional if optional }}'],
+    metadata: { optional: '${{ optional if optional }}' },
+  };
+
+  for (const context of [{}, { optional: '' }]) {
+    const result = JSON.parse(
+      JSON.stringify(source),
+      (_key, value: unknown) =>
+        typeof value === 'string'
+          ? renderer.renderValue(value, context)
+          : value,
+    ) as {
+      labels: unknown[];
+      metadata: { optional?: unknown };
+    };
+
+    assert.deepEqual(result, {
+      labels: ['fixed', ''],
+      metadata: { optional: '' },
+    });
+    assert.equal(1 in result.labels, true);
+    assert.equal('optional' in result.metadata, true);
+  }
+});
+
+test('matches Nunjucks capability branches for false inline conditionals', () => {
+  const events: string[] = [];
+  const renderer = createTemplateRenderer({
+    globals: {
+      mark(value) {
+        assert.equal(typeof value, 'string');
+        events.push(value as string);
+        return value;
+      },
+    },
+  });
+
+  assert.equal(
+    renderer.render([
+      '{% if ("x" if false) is undefined %}${{ mark("unexpected") }}{% endif %}',
+      '{% if ("x" if false) is string %}${{ mark("expected") }}{% endif %}',
+    ].join('')),
+    'expected',
+  );
+  assert.deepEqual(events, ['expected']);
+});
+
 test('evaluates renderValue capabilities once and returns frozen public copies', () => {
   let globalCalls = 0;
   let filterCalls = 0;
