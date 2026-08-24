@@ -874,7 +874,7 @@ class Evaluator {
         const otherwise = node.else_;
         return otherwise
           ? this.#evaluateExpression(otherwise, scope, macroContext, depth + 1)
-          : undefined;
+          : '';
       }
       case 'Or': {
         const left = this.#evaluateExpression(node.left, scope, macroContext, depth + 1);
