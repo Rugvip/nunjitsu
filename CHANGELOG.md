@@ -1,5 +1,11 @@
 # nunjitsu
 
+## 0.6.1
+
+### Patch Changes
+
+- Match Nunjucks by evaluating a false inline conditional without an `else` branch to an empty string.
+
 ## 0.6.0
 
 ### Minor Changes
