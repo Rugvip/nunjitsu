@@ -1,3 +1,5 @@
+import { types } from 'node:util';
+
 import type {
   AstBinaryNode,
   AstBlockNode,
@@ -347,7 +349,7 @@ class Evaluator {
         try {
           decoded = JSON.parse(encoded) as TemplateValue;
         } catch (error) {
-          if (!(error instanceof SyntaxError)) {
+          if (!types.isNativeError(error) || error.name !== 'SyntaxError') {
             throw error;
           }
           return normal === '' ? undefined : normal;

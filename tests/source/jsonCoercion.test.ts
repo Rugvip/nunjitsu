@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { runInNewContext } from 'node:vm';
 import nunjucks from 'nunjucks';
 
 import {
@@ -181,4 +182,27 @@ test('clears legacy RegExp state for coercion API failures and reads the mode on
     get coercion() { reads += 1; return 'json' as const; },
   }), 1);
   assert.equal(reads, 1);
+});
+
+test('recognizes JSON syntax failures across realms without swallowing other errors', t => {
+  const foreignParse = runInNewContext('JSON.parse') as typeof JSON.parse;
+  assert.throws(() => foreignParse('invalid'), error => (
+    error instanceof Error === false &&
+    (error as Error).name === 'SyntaxError'
+  ));
+  const renderer = createTemplateRenderer();
+  const parse = t.mock.method(JSON, 'parse', foreignParse);
+  assert.equal(renderer.renderValue('{% if true %}not JSON{% endif %}', {}, { coercion: 'json' }), 'not JSON');
+  assert.equal(renderer.renderValue('{% if true %}false{% endif %}', {}, { coercion: 'json' }), false);
+  for (const error of [
+    runInNewContext('new RangeError("failed")') as Error,
+    { name: 'SyntaxError' },
+    new TemplateLimitError('workUnits'),
+  ]) {
+    parse.mock.mockImplementation(() => { throw error; });
+    assert.throws(() => renderer.renderValue('{% if true %}false{% endif %}', {}, { coercion: 'json' }),
+      error instanceof TemplateLimitError ? TemplateLimitError : TemplateRenderError);
+    parse.mock.mockImplementation(foreignParse);
+    assert.equal(renderer.renderValue('{% if true %}true{% endif %}', {}, { coercion: 'json' }), true);
+  }
 });
