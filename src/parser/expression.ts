@@ -650,7 +650,8 @@ function tokenize(source: string, initialLine: number, initialColumn: number): r
     }
     const tokenLine = line;
     const tokenColumn = column;
-    const name = scanIdentifier(source, index);
+    const previous = tokens.at(-1);
+    const name = scanIdentifier(source, index, previous?.kind === 'operator' && previous.value === '.');
     if (name) {
       if (name.value === 'r' && source[name.end] === '/') {
         let regex;
@@ -674,7 +675,12 @@ function tokenize(source: string, initialLine: number, initialColumn: number): r
       }
       continue;
     }
-    if (character === '.' && isAsciiDigit(source[index + 1])) {
+    const afterOperand = previous !== undefined && (
+      previous.kind === 'name' || previous.kind === 'number' ||
+      previous.kind === 'string' || previous.kind === 'regex' ||
+      (previous.kind === 'operator' && [')', ']', '}'].includes(previous.value))
+    );
+    if (character === '.' && isAsciiDigit(source[index + 1]) && !afterOperand) {
       throw new ExpressionSyntaxError('Invalid numeric literal', tokenLine, tokenColumn);
     }
     const number = decimalNumberPattern.exec(source.slice(index));

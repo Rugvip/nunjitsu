@@ -338,8 +338,13 @@ Do not create additional packages without a documented architectural reason.
   advance diagnostic positions over each raw string source code unit.
 - Keep numeric literals decimal-only: digits followed by an optional decimal
   point and digits, with signs represented as unary nodes. Reject leading-dot,
-  exponent, non-decimal radix, separator, and digit-leading symbol-like forms
-  during complete parsing; native number conversion must not define syntax.
+  exponent, non-decimal radix, separator, and standalone digit-leading
+  symbol-like forms during complete parsing; native number conversion must not
+  define syntax. After a property-access dot, accept digit-leading ASCII names
+  containing a letter or underscore, while rejecting numeric-only segments.
+  Keep ordinary binding names unchanged. Share these complete name boundaries
+  with structural code scanning so a property such as `1r` followed by division
+  cannot be reinterpreted as a regex literal.
 - Keep regular-expression literal grammar fixed to the parser-owned Nunjucks
   v3.2.4 `gimy` flag set. Reject duplicate or other ASCII-letter flags and
   candidate delimiters preceded by nonzero even backslash runs before

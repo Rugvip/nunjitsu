@@ -26,6 +26,24 @@
       "expected": "baz"
     },
     {
+      "id": "compiler-digit-leading-dotted-reference",
+      "template": "{{ values.1password }}|{{ values. 1password }}|{{ values.1e3 }}|{{ values.1_000 }}|{{ values.0x10 }}|{{ values.1r/2 }}",
+      "context": {"values":{"1password":"vault","1e3":"exponent-key","1_000":"separator-key","0x10":"radix-key","1r":8}},
+      "expected": "vault|vault|exponent-key|separator-key|radix-key|4"
+    },
+    {
+      "id": "compiler-digit-leading-chained-reference",
+      "template": "{{ items[0].2fa }}|{{ (values).1password.name }}|{{ {\"3d\": \"dict\"}.3d }}|{{ 1 .1x }}|{{ \"s\".1x }}|{{ r/x/.1x }}",
+      "context": {"items":[{"2fa":"enabled"}],"values":{"1password":{"name":"vault"}}},
+      "expected": "enabled|vault|dict|||"
+    },
+    {
+      "id": "compiler-digit-leading-statement-reference",
+      "template": "{% set vault = values.1password %}{% if vault %}{% for x in values.2items %}{{ x }}{% endfor %}{% endif %}{% macro vaultName() %}{{ values.1password }}{% endmacro %}{{ vaultName() }}",
+      "context": {"values":{"1password":"vault","2items":[1,2]}},
+      "expected": "12vault"
+    },
+    {
       "id": "compiler-bracket-reference",
       "template": "{{ foo[\"bar\"] }}",
       "context": {"foo":{"bar":"baz"}},

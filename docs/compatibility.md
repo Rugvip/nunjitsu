@@ -64,6 +64,11 @@ Cookiecutter mode additionally supports array `append`, `count`, `find`,
 and `values`. Callback-taking collection methods such as `map`, `filter`,
 `reduce`, and `forEach` are deliberately unavailable.
 
+Dotted property names can start with digits when they also contain a letter or
+underscore, such as `${{ values.1password }}` or `${{ items[0].2fa }}`. Numeric-only
+segments such as `values.1` are invalid; use `values[1]` for numeric indexing.
+This does not change the numeric-literal or variable-name grammar.
+
 ## JSON value coercion
 
 `renderValue(source, context, { coercion: 'json' })` opts into value conversion

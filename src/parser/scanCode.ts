@@ -80,7 +80,7 @@ export function splitTopLevelCodeKeyword(
 ): { readonly left: string; readonly right: string } | undefined {
   let depth = 0;
   for (let index = 0; index < source.length;) {
-    const identifier = scanIdentifier(source, index);
+    const identifier = scanIdentifier(source, index, true);
     if (identifier) {
       if (identifier.value === 'r' && source[identifier.end] === '/') {
         index = scanRegexLiteral(source, index).end;
@@ -100,7 +100,7 @@ export function splitTopLevelCodeKeyword(
       index = identifier.end;
       continue;
     }
-    const skipped = skipQuotedString(source, index);
+    const skipped = skipCodeToken(source, index);
     if (skipped !== undefined) {
       index = skipped;
       continue;
@@ -124,9 +124,14 @@ function skipCodeToken(
   if (stringEnd !== undefined) {
     return stringEnd;
   }
-  const identifier = scanIdentifier(source, index);
+  const identifier = scanIdentifier(source, index, true);
   if (!identifier) {
-    return undefined;
+    // Skip a numeric run together rather than repeating name lookahead per digit.
+    let end = index;
+    while (end < source.length && source[end]! >= '0' && source[end]! <= '9') {
+      end += 1;
+    }
+    return end > index ? end : undefined;
   }
   if (identifier.value === 'r' && source[identifier.end] === '/') {
     return scanRegexLiteral(source, index).end;

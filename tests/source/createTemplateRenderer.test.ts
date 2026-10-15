@@ -529,3 +529,18 @@ test('rejects template-loading and extension syntax', () => {
     assert.throws(() => engine.render(source));
   }
 });
+
+test('renders digit-leading dotted properties in both modes and value APIs', () => {
+  for (const cookiecutterCompat of [false, true]) {
+    const renderer = createTemplateRenderer({ cookiecutterCompat });
+    const source = cookiecutterCompat ? '{{ values.1password }}' : '${{ values.1password }}';
+    const context = renderer.prepareContext({ values: { '1password': { enabled: true } } });
+    assert.equal(renderer.render(source, context), '[object Object]');
+    for (const coercion of ['none', 'json'] as const) {
+      const result = renderer.renderValue(source, context, { coercion }) as { enabled: boolean };
+      assert.equal(result.enabled, true);
+      assert.equal(Object.getPrototypeOf(result), null);
+      assert.ok(Object.isFrozen(result));
+    }
+  }
+});

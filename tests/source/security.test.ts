@@ -1948,6 +1948,13 @@ test('restricts numeric literals before capability dispatch', () => {
   ];
   const positionSources = [
     '{{ before() }}{{ .5 }}{{ later() }}',
+    '{{ before() }}{{ values.1 }}{{ later() }}',
+    '{{ before() }}{{ values.10 }}{{ later() }}',
+    '{{ before() }}{{ values.1.5 }}{{ later() }}',
+    '{{ before() }}{{ values.1password.constructor }}{{ later() }}',
+    '{% set 1password = "vault" %}{{ later() }}',
+    '{% for 1password in values %}{{ later() }}{% endfor %}',
+    '{{ "x" | 1password }}{{ later() }}',
     '{% if false %}{{ .5 }}{% endif %}{{ later() }}',
     '{% set value = 1e3 %}{{ later() }}',
     '{% macro render(value=0x10) %}{{ value }}{% endmacro %}{{ later() }}',
