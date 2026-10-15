@@ -47,12 +47,23 @@ belong here so those pages can remain readable.
 - Parse each complete source into an immutable, data-only AST before executing
   it. AST nodes must not contain functions, host objects, property descriptors,
   or executable closures.
-- Preserve a native `renderValue` result only when the parsed root contains
+- By default, preserve a native `renderValue` result only when the parsed root contains
   exactly one `Output` node containing exactly one non-`TemplateData`
   expression. Comments may disappear during scanning, but any literal text,
   additional output, or executable statement forces ordinary string
   rendering. Parse and evaluate once; never probe a result by re-running
   template behavior.
+- Restrict opt-in `coercion: 'json'` to `renderValue`. Classify a single
+  non-text root node from the fully validated AST; comments are absent and raw
+  output remains text. Collect ordinary output alongside JSON-encoded final
+  interpolations in one evaluation, without reevaluating callbacks or mutations
+  on fallback. Keep captures and macro bodies ordinary until their result is
+  emitted; do not rewrite source or globally change nested interpolation
+  semantics. Empty combined output becomes undefined, but an encoded empty
+  string stays a string. Only JSON syntax failure may fall back to normal text;
+  all evaluation, security, safe-value, and resource failures remain fail-stop.
+  Charge both output streams, encoding scratch/traversal, and decoded public
+  traversal; copy decoded JSON through the closed safe-value boundary.
 - Export a native result only through the safe public value boundary. Convert
   safe strings and inert regexes to ordinary strings, reject callable authority
   recursively, preserve sparse arrays and record order, freeze returned arrays

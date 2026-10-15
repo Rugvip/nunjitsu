@@ -8,6 +8,7 @@ export {
   type TemplateRenderErrorPhase,
   type PreparedTemplateContext,
   type TemplateRenderOptions,
+  type TemplateRenderValueOptions,
 } from './createTemplateRenderer.ts';
 export type {
   TemplateCapabilities,

@@ -56,7 +56,10 @@ cache. The next render starts from fresh parser and evaluator state.
 
 `createTemplateRenderer` owns immutable filter and global registries plus
 delimiter and whitespace options. `render` always returns text. `renderValue`
-preserves the public value of a sole interpolation and otherwise returns text.
+preserves the public value of a sole interpolation and otherwise returns text
+by default. Its opt-in JSON coercion mode collects ordinary and encoded final
+output in one evaluation and decodes eligible root shapes without rerunning
+template behavior. See [JSON value coercion](compatibility.md#json-value-coercion).
 `prepareContext` creates an optional immutable snapshot for applications that
 repeatedly render against mostly unchanged data.
 

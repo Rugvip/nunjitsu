@@ -7,6 +7,7 @@ import {
   type PreparedTemplateContext,
   type TemplateRenderLimits,
   type TemplateRenderOptions,
+  type TemplateRenderValueOptions,
   type TemplateValue,
   type TemplateRenderErrorDetails,
   type TemplateLimitErrorDetails,
@@ -52,3 +53,10 @@ void details;
 void limitDetails;
 void TemplateLimitError;
 void TemplateRenderError;
+
+const valueOptions: TemplateRenderValueOptions = { coercion: 'json' };
+engine.renderValue('{% if true %}false{% endif %}', {}, valueOptions);
+// @ts-expect-error Coercion is specific to value rendering.
+engine.render('text', {}, { coercion: 'json' });
+// @ts-expect-error Only supported coercion modes are accepted.
+engine.renderValue('text', {}, { coercion: 'other' });

@@ -70,6 +70,7 @@ import {
   cloneRuntimeValue,
   copyPublicValueWithWork,
   copyRuntimeContext,
+  copyRuntimeValue,
   isReservedName,
   renderRuntimeValue,
   renderedRuntimeValueCodeUnits,
@@ -123,6 +124,8 @@ export interface EvaluateOptions {
   readonly lstripBlocks: boolean;
   readonly limits: NormalizedTemplateRenderLimits;
   readonly host?: RuntimeHost;
+  /** Opt-in output coercion used only by value rendering. */
+  readonly valueCoercion?: 'none' | 'json';
 }
 
 type OutputTarget = string[];
@@ -296,6 +299,8 @@ class Evaluator {
   #workUnits = 0;
   #outputCodeUnits = 0;
   #capabilityCalls = 0;
+  #jsonOutputTarget: OutputTarget | undefined;
+  readonly #jsonOutput: string[] = [];
   #nativeOutput: AstOutputNode | undefined;
   #nativeValue: RuntimeValue = undefined;
 
@@ -321,6 +326,36 @@ class Evaluator {
     ast: AstNode,
     context: RuntimeRecord,
   ): TemplateValue | undefined {
+    if (this.#options.valueCoercion === 'json') {
+      const output: OutputTarget = [];
+      const child = ast.type === 'Root' && ast.children.length === 1
+        ? ast.children[0]
+        : undefined;
+      if (child && !(child.type === 'Output' && child.children[0]?.type === 'TemplateData')) {
+        this.#jsonOutputTarget = output;
+      }
+      return this.#evaluateTemplate(ast, context, output, () => {
+        const normal = output.join('');
+        if (!this.#jsonOutputTarget) {
+          return normal === '' ? undefined : normal;
+        }
+        const encoded = this.#jsonOutput.join('');
+        if (encoded === '') {
+          return undefined;
+        }
+        let decoded: TemplateValue;
+        try {
+          decoded = JSON.parse(encoded) as TemplateValue;
+        } catch (error) {
+          if (!(error instanceof SyntaxError)) {
+            throw error;
+          }
+          return normal === '' ? undefined : normal;
+        }
+        // Decoded text must cross the same closed value boundary as host data.
+        return copyPublicValueWithWork(copyRuntimeValue(decoded), this.#chargeExpansionWork);
+      });
+    }
     const nativeOutput = soleInterpolationOutput(ast);
     if (!nativeOutput) {
       return this.render(ast, context);
@@ -441,7 +476,17 @@ class Evaluator {
             this.#append(output, literalString(child));
           } else {
             const value = this.#evaluateExpression(child, scope, macroContext, depth + 1);
-            this.#append(output, renderRuntimeValue(value, this.#chargeExpansionWork));
+            const normal = renderRuntimeValue(value, this.#chargeExpansionWork);
+            let encoded = normal;
+            if (output === this.#jsonOutputTarget) {
+              this.#assertScratch([value]);
+              const dumped = applyBuiltinFilter(
+                'dump', value, [], new Map(),
+                count => this.#reserveIndexedValues(count, 0),
+              );
+              encoded = renderRuntimeValue(dumped, this.#chargeExpansionWork);
+            }
+            this.#append(output, normal, encoded);
           }
         }
         return;
@@ -1656,9 +1701,13 @@ class Evaluator {
     return safe ? new RuntimeSafeString(value) : value;
   }
 
-  #append(output: OutputTarget, value: string): void {
+  #append(output: OutputTarget, value: string, encoded = value): void {
     this.#chargeOutputCodeUnits(value.length);
     output.push(value);
+    if (output === this.#jsonOutputTarget) {
+      this.#chargeOutputCodeUnits(encoded.length);
+      this.#jsonOutput.push(encoded);
+    }
   }
 
   #chargeOutputCodeUnits(codeUnits: number): void {

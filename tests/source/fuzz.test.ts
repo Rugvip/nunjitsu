@@ -216,7 +216,9 @@ test('fuzzes public render failures and recovery', () => {
 
         try {
           if (preserveValue) {
-            assertPublicValue(renderer.renderValue(source, context, { limits: fuzzLimits }));
+            for (const coercion of ['none', 'json'] as const) {
+              assertPublicValue(renderer.renderValue(source, context, { limits: fuzzLimits, coercion }));
+            }
           } else {
             assert.equal(typeof renderer.render(source, context, { limits: fuzzLimits }), 'string');
           }

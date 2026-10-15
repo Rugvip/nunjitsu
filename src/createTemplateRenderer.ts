@@ -44,6 +44,24 @@ export interface TemplateRenderOptions {
   limits?: Partial<TemplateRenderLimits>;
 }
 
+/** Options specific to rendering template values. */
+export interface TemplateRenderValueOptions extends TemplateRenderOptions {
+  /**
+   * Defaults to `none`, preserving only a sole interpolation's native value.
+   *
+   * With `json`, a single non-text root node renders with JSON-encoded final
+   * interpolations, then decodes the combined output. Invalid JSON falls back
+   * to ordinary output without evaluating the template again. Empty output
+   * becomes `undefined`; an interpolated empty string remains an empty string.
+   * Comments do not count as nodes, but literal whitespace does. Captured and
+   * macro body text stays ordinary until emitted through an interpolation.
+   *
+   * Intended for compatibility with legacy Backstage Scaffolder value templates.
+   * Resource and security failures always stop rendering.
+   */
+  coercion?: 'none' | 'json';
+}
+
 /**
  * An immutable renderer-owned copy of template context data.
  *
@@ -80,13 +98,14 @@ export interface TemplateRenderer {
   /**
    * Renders one complete template while preserving a sole interpolation value.
    *
-   * Templates containing text, multiple interpolations, or executable
-   * statements return their normally rendered string.
+   * By default, templates containing text, multiple interpolations, or
+   * executable statements return their normally rendered string. Use the
+   * `coercion` option to opt into JSON value conversion.
    */
   renderValue(
     source: string,
     context?: TemplateContext | PreparedTemplateContext,
-    options?: TemplateRenderOptions,
+    options?: TemplateRenderValueOptions,
   ): TemplateValue | undefined;
 }
 
@@ -178,14 +197,20 @@ export function createTemplateRenderer(
   function renderTemplate<Result>(
     source: string,
     context: TemplateContext | PreparedTemplateContext | undefined,
-    renderOptions: TemplateRenderOptions,
+    renderOptions: TemplateRenderValueOptions,
     evaluate: (
       source: string,
       context: RuntimeRecord,
       options: EvaluateOptions,
     ) => Result,
+    allowValueCoercion = false,
   ): Result {
     try {
+      const requestedCoercion = allowValueCoercion ? renderOptions.coercion : undefined;
+      const coercion = requestedCoercion === undefined ? 'none' : requestedCoercion;
+      if (coercion !== 'none' && coercion !== 'json') {
+        throw new TypeError('Unknown template value coercion mode');
+      }
       if (typeof source !== 'string') {
         throw new TypeError('Template source must be a string');
       }
@@ -204,6 +229,7 @@ export function createTemplateRenderer(
           lstripBlocks,
           limits,
           host,
+          valueCoercion: coercion,
         });
       } catch (error) {
         if (error instanceof TemplateLimitError) {
@@ -239,13 +265,14 @@ export function createTemplateRenderer(
     renderValue(
       source: string,
       context?: TemplateContext | PreparedTemplateContext,
-      renderOptions: TemplateRenderOptions = {},
+      renderOptions: TemplateRenderValueOptions = {},
     ): TemplateValue | undefined {
       return renderTemplate(
         source,
         context,
         renderOptions,
         evaluateRuntimeTemplateValue,
+        true,
       );
     },
   });

@@ -64,6 +64,53 @@ Cookiecutter mode additionally supports array `append`, `count`, `find`,
 and `values`. Callback-taking collection methods such as `map`, `filter`,
 `reduce`, and `forEach` are deliberately unavailable.
 
+## JSON value coercion
+
+`renderValue(source, context, { coercion: 'json' })` opts into value conversion
+intended for legacy Backstage Scaffolder templates before its Nunjitsu migration.
+Ordinary Nunjucks rendering produces strings; this is an application policy,
+separate from Nunjucks compatibility and the default `renderValue` behavior.
+
+The complete template is validated first. When its parsed root has exactly one
+non-text node, final interpolations are JSON-encoded and the combined output is
+decoded as JSON. For example, `{% if true %}false{% endif %}` returns boolean
+`false`, and `{% if true %}${{ "1" }}{% endif %}` returns string `"1"`.
+If the output is not valid JSON, the ordinary rendered string is returned.
+The template runs once, including capabilities and mutations, even on fallback.
+
+Comments do not count as nodes, but literal whitespace does. Raw output is text.
+Two sibling blocks or adjacent root interpolations return ordinary text, so
+`${{ 1 }}${{ 2 }}` returns `"12"`. Nested blocks can still produce a JSON value,
+as can loops: `{% for x in [1,2] %}${{ x }}{% endfor %}` returns number `12`.
+Empty output becomes `undefined` for every root shape, while a sole `${{ "" }}`
+returns an empty string because its encoded output is `""`.
+
+Conversion follows JSON rules rather than general JavaScript coercion. Literal
+`null` becomes `null`, `1.10` becomes `1.1`, and `007` falls back to a string.
+Interpolated strings retain their type. Structured results cross the usual safe
+value boundary, including frozen arrays and records and rejection of reserved
+keys. Maps, Sets, regex values, sparse slots, and non-finite numbers follow the
+built-in `dump` filter's JSON representation. The encoding uses the built-in
+policy even if an application registers its own `dump` filter.
+
+There are deliberate differences from the legacy wrapper's source rewrite:
+
+- Multiline and whitespace-controlled interpolations use the parser's normal
+  syntax, avoiding the rewrite's missed or malformed expressions.
+- Adjacent numeric interpolations inside one block can decode to a number;
+  adjacent strings that produce invalid combined JSON fall back to ordinary
+  text. The legacy greedy rewrite could force fallback for either case.
+- Captures, macro bodies, and filter-block inputs retain ordinary text semantics.
+  Their result is encoded when emitted through a final interpolation or filter
+  output, avoiding extra quoting inside captured values.
+- Evaluation, capability, safe-value, and resource failures stop rendering. Only
+  invalid JSON triggers fallback; callbacks are never retried.
+
+Both ordinary and encoded output count toward the output limit. Encoding also
+charges structured traversal work and the filter scratch limit, and decoded
+values obey the normal safe-value bounds. These checks apply even when decoding
+would fall back to ordinary text.
+
 ## Intentional differences
 
 Security rules take precedence when Nunjucks behavior would expose or discard

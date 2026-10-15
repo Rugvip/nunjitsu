@@ -104,7 +104,7 @@ interface TemplateRenderer {
   renderValue(
     source: string,
     context?: TemplateContext | PreparedTemplateContext,
-    options?: TemplateRenderOptions,
+    options?: TemplateRenderValueOptions,
   ): TemplateValue | undefined;
 }
 
@@ -119,6 +119,25 @@ normally rendered string. Native values are detached copies; returned arrays
 and records are frozen, while returned Maps and Sets remain independent mutable
 containers. This is useful for configuration, workflow, and structured-data
 templates.
+
+To opt into JSON value coercion, pass `{ coercion: 'json' }` to `renderValue`:
+
+```ts
+const condition = renderer.renderValue(
+  '{% if enabled %}false{% endif %}',
+  { enabled: true },
+  { coercion: 'json' },
+);
+// false (boolean)
+```
+
+This mode is intended to match legacy Backstage Scaffolder value templating
+before its Nunjitsu migration. A single non-text root node can produce a JSON
+value; other root shapes return ordinary text. Empty output becomes `undefined`,
+while `${{ "" }}` remains an empty string. The default is `coercion: 'none'`, and
+`render` always keeps its ordinary behavior. See
+[JSON value coercion](docs/compatibility.md#json-value-coercion) for the rules
+and deliberate compatibility differences.
 
 `TemplateRenderOptions` configures per-render resource limits. See
 [Security](docs/security.md#resource-limits) for details.

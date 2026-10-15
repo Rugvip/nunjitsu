@@ -54,7 +54,9 @@ export function fuzz(data: Buffer): void {
     if ((selector & 8) === 0) {
       assert.equal(typeof rendererCase.renderer.render(source, context, renderOptions), 'string');
     } else {
-      assertPublicValue(rendererCase.renderer.renderValue(source, context, renderOptions));
+      assertPublicValue(rendererCase.renderer.renderValue(source, context, {
+        ...renderOptions, coercion: (selector & 16) === 0 ? 'none' : 'json',
+      }));
     }
   } catch (error) {
     assertExpectedRenderFailure(error);
