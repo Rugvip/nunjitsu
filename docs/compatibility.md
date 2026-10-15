@@ -93,18 +93,50 @@ keys. Maps, Sets, regex values, sparse slots, and non-finite numbers follow the
 built-in `dump` filter's JSON representation. The encoding uses the built-in
 policy even if an application registers its own `dump` filter.
 
-There are deliberate differences from the legacy wrapper's source rewrite:
+### Fixes for quirks in Backstage's former Scaffolder renderer
 
-- Multiline and whitespace-controlled interpolations use the parser's normal
-  syntax, avoiding the rewrite's missed or malformed expressions.
-- Adjacent numeric interpolations inside one block can decode to a number;
-  adjacent strings that produce invalid combined JSON fall back to ordinary
-  text. The legacy greedy rewrite could force fallback for either case.
-- Captures, macro bodies, and filter-block inputs retain ordinary text semantics.
-  Their result is encoded when emitted through a final interpolation or filter
-  output, avoiding extra quoting inside captured values.
-- Evaluation, capability, safe-value, and resource failures stop rendering. Only
-  invalid JSON triggers fallback; callbacks are never retried.
+Before migrating to Nunjitsu, Backstage Scaffolder used a wrapper around Nunjucks
+that rewrote interpolations with a regular expression to add the `dump` filter,
+then tried to decode the rendered output as JSON. This opt-in mode preserves that
+value-conversion policy while fixing quirks caused by the source rewrite:
+
+- **Multiline expressions preserve string types.** The former rewrite missed
+  interpolations spanning multiple lines. For example:
+
+  ```njk
+  {% if true %}${{ "1" ~
+   "2" }}{% endif %}
+  ```
+
+  The former Scaffolder renderer returned number `12`; JSON coercion returns
+  string `"12"`. Whitespace controls also keep their normal parser meaning,
+  rather than becoming part of a rewritten expression.
+
+- **Multiple interpolations in a block are encoded individually.** For
+  `{% if true %}${{ 1 }}${{ 2 }}{% endif %}`, the former greedy rewrite tried to
+  wrap both interpolations together, failed, and fell back to string `"12"`.
+  JSON coercion encodes each interpolation and returns number `12`. Adjacent
+  strings that produce invalid combined JSON still fall back to ordinary text.
+
+- **Captured text does not acquire extra quotes.** Captures, macro bodies, and
+  filter-block inputs keep ordinary text semantics. Their result is encoded
+  when emitted through a final interpolation or filter output. For example:
+
+  ```njk
+  {% if true %}{% set x %}${{ "1" }}{% endset -%}
+  ${{ x }}{% endif %}
+  ```
+
+  The former Scaffolder renderer returned the three-character string `"1"`,
+  including the quote characters. JSON coercion returns the one-character
+  string `1`.
+
+- **Fallback does not repeat callbacks.** A template such as
+  `{% if true %}hello ${{ name() }}!{% endif %}` produces ordinary text because
+  the combined output is not JSON. The former wrapper could call `name()` once
+  during its conversion attempt and again during fallback; JSON coercion calls
+  it once. Evaluation, capability, safe-value, and resource failures stop
+  rendering instead of triggering fallback.
 
 Both ordinary and encoded output count toward the output limit. Encoding also
 charges structured traversal work and the filter scratch limit, and decoded
