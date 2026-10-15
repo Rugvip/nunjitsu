@@ -1,5 +1,12 @@
 # nunjitsu
 
+## 0.6.2
+
+### Patch Changes
+
+- Fixed dotted lookups of property names that start with digits, such as `values.1password`, to match Nunjucks. Numeric-only dotted segments still require bracket syntax.
+- Added opt-in JSON coercion to `renderValue` for compatibility with legacy Backstage Scaffolder value templates. Single non-text root nodes can return decoded JSON values, with ordinary text fallback and empty output becoming `undefined`. Default value rendering and ordinary string rendering are unchanged.
+
 ## 0.6.1
 
 ### Patch Changes
