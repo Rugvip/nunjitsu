@@ -22,6 +22,7 @@ const fixtureRoot = fileURLToPath(new URL('./', import.meta.url));
 test('ships only rolled-up public declarations', async () => {
   const dist = join(root, 'dist');
   assert.deepEqual((await readdir(dist)).sort(), [
+    'browser',
     'index.cjs',
     'index.cjs.map',
     'index.d.cts',
@@ -88,6 +89,8 @@ test('resolves declarations through modern and legacy TypeScript modes', async (
       'ESNext',
       '--moduleResolution',
       'Bundler',
+      '--customConditions',
+      'browser',
       'types.mts',
     ], { cwd: temporaryRoot });
     await run(process.execPath, [

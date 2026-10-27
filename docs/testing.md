@@ -1,7 +1,8 @@
 # Testing
 
 The default test command validates source behavior, compatibility, security,
-benchmarks, package builds, declarations, and both module formats:
+benchmarks, Node.js and browser package builds, declarations, and both Node.js
+module formats:
 
 ```sh
 pnpm test
@@ -16,7 +17,7 @@ Development requires Node.js 22.18 or newer and the pnpm version pinned in
 | --- | --- | --- |
 | Source | `tests/source/` | Parser, interpreter, public API, security, and release tooling |
 | Compatibility | `tests/compat/` | Attributed Nunjucks v3.2.4 cases and coverage mapping |
-| Package | `tests/package/` | Built ESM, CommonJS, exports, and TypeScript declarations |
+| Package | `tests/package/` | Built Node.js and browser exports, TypeScript declarations, and browser-realm compatibility |
 | Benchmarks | `benchmarks/` | Output-equivalent inline rendering against pinned Nunjucks |
 
 Useful focused commands are:
@@ -27,6 +28,12 @@ pnpm typecheck
 pnpm test:package
 pnpm benchmark:quick
 ```
+
+The browser package checks execute the bundle in an isolated JavaScript realm
+without Node globals and with dynamic code generation disabled. They reuse the
+compatibility corpus and exercise value copying, callbacks, limits, and recovery,
+both with and without native error branding. These checks run on V8 through
+Node.js; they do not replace validation in other browser engines.
 
 ## Adding coverage
 

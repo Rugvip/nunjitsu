@@ -41,7 +41,7 @@ belong here so those pages can remain readable.
   `packageManager`-pinned pnpm version and `pnpm-lock.yaml`. Do not add another
   package-manager lockfile. Author one erasable `.ts` source tree and compile it
   into tested ESM and CommonJS builds with rolled-up declarations using the
-  lockfile-pinned TypeScript compiler and tsdown.
+  lockfile-pinned stable TypeScript compiler and tsdown.
 - Construct renderers synchronously and render synchronously. Renderer-level
   filters and globals are immutable after creation.
 - Implement template execution as a closed native TypeScript interpreter in
