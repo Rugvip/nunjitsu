@@ -1,4 +1,4 @@
-import { isJsonSyntaxError, utf8ByteLength } from './platform.ts';
+import { isJsonSyntaxError, estimateStringBytes } from './platform.ts';
 
 import type {
   AstBinaryNode,
@@ -2325,7 +2325,7 @@ function runtimeValueBytes(
     let bytes = 0;
     for (const [key, item] of value.entries()) {
       chargeWork?.();
-      bytes += utf8ByteLength(key) + runtimeValueBytes(item, chargeWork);
+      bytes += estimateStringBytes(key) + runtimeValueBytes(item, chargeWork);
     }
     return bytes;
   }
@@ -2345,7 +2345,7 @@ function runtimeValueBytes(
     }
     return bytes;
   }
-  return utf8ByteLength(renderRuntimeValue(value, chargeWork));
+  return estimateStringBytes(renderRuntimeValue(value, chargeWork));
 }
 
 function chargeRuntimeValueExpansion(

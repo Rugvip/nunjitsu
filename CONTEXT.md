@@ -37,6 +37,10 @@ belong here so those pages can remain readable.
   select the typed `platform.browser.ts` implementation at build time for the
   browser ESM export. Keep the parser and interpreter shared and independent of
   Node APIs. Browser output must not require Node globals or polyfills.
+- Account for string scratch usage through `estimateStringBytes`: exact UTF-8
+  bytes on Node.js, and a constant-time upper bound of three bytes per UTF-16
+  code unit in browsers. Browser estimates may reject earlier but must never
+  undercount UTF-8 size; keep output code-unit accounting unchanged.
 - Keep the TypeScript package at the repository root and manage it with the
   `packageManager`-pinned pnpm version and `pnpm-lock.yaml`. Do not add another
   package-manager lockfile. Author one erasable `.ts` source tree and compile it

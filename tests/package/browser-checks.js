@@ -85,3 +85,21 @@ assert.throws(() => renderer.render('${{ fail() }}'), error => {
   assert.equal(error.cause, undefined);
   return true;
 });
+
+for (const [source, minimum] of [
+  ['${{ value | tools.identity }}', 3],
+  ['${{ value.startsWith("x") }}', 6],
+]) {
+  assert.throws(() => renderer.render(source + '${{ later() }}', { value: 'x' }, {
+    limits: { scratchBytes: minimum - 1 },
+  }), error => {
+    assert.ok(error instanceof TemplateLimitError);
+    assert.equal(error.limit, 'scratchBytes');
+    return true;
+  });
+  assert.equal(laterCalls, 0);
+  assert.equal(typeof renderer.render(source, { value: 'x' }, {
+    limits: { scratchBytes: minimum },
+  }), 'string');
+  assert.equal(renderer.render('clean'), 'clean');
+}

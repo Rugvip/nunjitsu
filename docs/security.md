@@ -227,6 +227,12 @@ native `Error.isError` brand check. Otherwise capability failures use a generic
 message; primitive string exceptions still receive the usual sanitization.
 Renderer-owned diagnostics retain their normal details in either environment.
 
+For scratch-limit accounting, the browser build estimates each string as three
+bytes per UTF-16 code unit instead of scanning for its exact UTF-8 size. This
+conservative estimate avoids repeatedly scanning strings, but can reach the
+`scratchBytes` limit earlier than Node.js, which counts exact UTF-8 bytes. It does
+not change the `outputCodeUnits` limit.
+
 Rendering is synchronous and can occupy the browser's main thread. Limits do
 not interrupt trusted callbacks or native regex execution. Keep regex execution
 disabled for untrusted patterns, and choose limits appropriate for interactive

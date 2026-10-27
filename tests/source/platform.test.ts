@@ -1,17 +1,21 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { hostTypes, randomInteger, utf8ByteLength } from '../../src/runtime/platform.browser.ts';
+import { hostTypes, randomInteger, estimateStringBytes } from '../../src/runtime/platform.browser.ts';
 
-test('browser platform preserves UTF-8 accounting and checks native container brands', () => {
+test('browser platform conservatively bounds string bytes and checks native container brands', () => {
   const units = [0, 0x7f, 0x80, 0x7ff, 0x800, 0xd800, 0xdbff, 0xdc00, 0xdfff, 0xffff];
   for (const first of units) {
     for (const second of units) {
       const value = String.fromCharCode(first, second);
-      assert.equal(utf8ByteLength(value), Buffer.byteLength(value));
+      assert.ok(estimateStringBytes(value) >= Buffer.byteLength(value));
     }
   }
-  assert.equal(utf8ByteLength('Hello 世界 🌍'), Buffer.byteLength('Hello 世界 🌍'));
+  assert.equal(estimateStringBytes(''), 0);
+  assert.equal(estimateStringBytes('hello'), 15);
+  assert.equal(estimateStringBytes('世界'), 6);
+  assert.equal(estimateStringBytes('🌍'), 6);
+  assert.equal(estimateStringBytes('\ud800'), 3);
   assert.equal(hostTypes.isMap(new Map()), true);
   assert.equal(hostTypes.isSet(new Set()), true);
   for (const value of [null, {}, Object.create(Map.prototype), Object.create(Set.prototype)]) {

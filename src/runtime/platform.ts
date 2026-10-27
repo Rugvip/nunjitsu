@@ -21,8 +21,8 @@ export function randomInteger(maximum: number): number {
   return randomInt(maximum);
 }
 
-/** Counts UTF-8 bytes without allocating an encoded copy. */
-export function utf8ByteLength(value: string): number {
+/** Estimates string scratch usage using its exact UTF-8 byte length. */
+export function estimateStringBytes(value: string): number {
   return Buffer.byteLength(value);
 }
 
