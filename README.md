@@ -42,9 +42,8 @@ precompilation, or permission to execute generated JavaScript.
 
 The browser build targets ES2023 and requires Web Crypto for the `random` filter.
 For native browser modules, serve `dist/browser/index.js` and import its URL.
-Browser callers must supply trusted application-created input objects: unlike
-Node.js, browsers cannot detect proxies before inspecting them. See the
-[browser security boundary](docs/security.md#browser-security-boundary).
+See [Security](docs/security.md#browser-security-boundary) for browser-specific
+considerations.
 
 ## TypeScript API
 

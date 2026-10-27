@@ -216,12 +216,11 @@ The browser build uses the same closed interpreter and resource limits as the
 Node.js build. Untrusted template source cannot construct JavaScript proxies,
 access ambient browser APIs, or execute arbitrary JavaScript.
 
-Supply context, configured globals, registries, and callback results as trusted
-application-created data objects. Node.js rejects proxies before inspecting host
-values; standard browser JavaScript has no equivalent check. In a browser, a
-proxy supplied by application code can run its traps while Nunjitsu inspects or
-copies it, outside interpreter resource accounting. Input accessors are still
-rejected, and copied values remain closed interpreter data.
+Node.js additionally rejects host-supplied proxies before inspecting them;
+browsers cannot perform this check. A proxy supplied by application code may
+therefore run its traps during input copying, but templates cannot create one.
+This is a defense against behavior in host objects, rather than a template
+execution boundary.
 
 Browser errors expose host exception messages only when the browser supports the
 native `Error.isError` brand check. Otherwise capability failures use a generic
