@@ -32,8 +32,9 @@ belong here so those pages can remain readable.
 
 ## Project-wide architectural constraints
 
-- Target Node.js 22 or newer. Browser support is out of scope, and Node APIs
-  may be used throughout the package outside the closed interpreter boundary.
+- Target Node.js 22 or newer. Confine Node-specific host checks, randomness,
+  and byte counting to `src/runtime/platform.ts`; keep the parser and
+  interpreter independent of Node APIs.
 - Keep the TypeScript package at the repository root and manage it with the
   `packageManager`-pinned pnpm version and `pnpm-lock.yaml`. Do not add another
   package-manager lockfile. Author one erasable `.ts` source tree and compile it

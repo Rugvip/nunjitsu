@@ -1,4 +1,4 @@
-import { types } from 'node:util';
+import { hostTypes } from './platform.ts';
 
 const runtimeEvaluationErrors = new WeakSet<object>();
 
@@ -56,7 +56,7 @@ export class RuntimeEvaluationError extends Error {
 }
 
 function extractNativeErrorMessage(error: unknown): string | undefined {
-  if (!types.isNativeError(error)) {
+  if (!hostTypes.isNativeError(error)) {
     return undefined;
   }
   const descriptor = Object.getOwnPropertyDescriptor(error, 'message');

@@ -1,4 +1,4 @@
-import { types } from 'node:util';
+import { hostTypes } from './platform.ts';
 
 import type {
   TemplateCapabilities,
@@ -94,7 +94,7 @@ function extractCapabilityMessage(thrown: unknown): string | undefined {
   if (typeof thrown === 'string') {
     return neutralizeDiagnosticMessage(thrown);
   }
-  if (!types.isNativeError(thrown)) {
+  if (!hostTypes.isNativeError(thrown)) {
     return undefined;
   }
   const descriptor = Object.getOwnPropertyDescriptor(thrown as object, 'message');
@@ -186,7 +186,7 @@ function copyGlobals(
 }
 
 function assertPlainRecord(value: object, description: string): void {
-  if (types.isProxy(value)) {
+  if (hostTypes.isProxy(value)) {
     throw new TypeError(`Template ${description} cannot be a Proxy object`);
   }
   const prototype = Object.getPrototypeOf(value);

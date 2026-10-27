@@ -1,4 +1,4 @@
-import { types } from 'node:util';
+import { hostTypes } from './platform.ts';
 
 import type { TemplateValue } from '../values.ts';
 
@@ -121,7 +121,7 @@ export class RuntimeArray extends RuntimeContainerValue {
     validateContainment: boolean,
     chargeWork?: RuntimeWorkCharge,
   ): void {
-    if (types.isProxy(items)) {
+    if (hostTypes.isProxy(items)) {
       throw new TypeError('Proxy objects cannot be used as runtime arrays');
     }
     if (!Array.isArray(items)) {
@@ -935,7 +935,7 @@ function copyRuntimeContextWithParentTracking(
   context: Readonly<Record<string, TemplateValue>>,
   trackRuntimeParents: boolean,
 ): RuntimeRecord {
-  if (types.isProxy(context)) {
+  if (hostTypes.isProxy(context)) {
     throw new TypeError('Proxy objects cannot be used as template values');
   }
   const rootEntries = Reflect.ownKeys(context).length;
@@ -1207,7 +1207,7 @@ function copyValue(
   if (typeof value !== 'object') {
     throw new TypeError(`Unsupported template value of type ${typeof value}`);
   }
-  if (types.isProxy(value)) {
+  if (hostTypes.isProxy(value)) {
     throw new TypeError('Proxy objects cannot be used as template values');
   }
   assertRuntimeValueDepth(parentDepth + 1);
@@ -1245,7 +1245,7 @@ function copyValue(
       return copied;
     }
 
-    if (types.isMap(value)) {
+    if (hostTypes.isMap(value)) {
       const map = value as Map<unknown, unknown>;
       if (Object.getPrototypeOf(value) !== Map.prototype) {
         throw new TypeError('Template Maps cannot use a custom prototype');
@@ -1276,7 +1276,7 @@ function copyValue(
       return copied;
     }
 
-    if (types.isSet(value)) {
+    if (hostTypes.isSet(value)) {
       const set = value as Set<unknown>;
       if (Object.getPrototypeOf(value) !== Set.prototype) {
         throw new TypeError('Template Sets cannot use a custom prototype');

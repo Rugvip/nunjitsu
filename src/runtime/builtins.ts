@@ -1,4 +1,4 @@
-import { randomInt } from 'node:crypto';
+import { randomInteger } from './platform.ts';
 
 import { normalizeMacroArguments } from './arguments.ts';
 import {
@@ -479,15 +479,15 @@ function randomRuntimeValue(input: RuntimeValue): RuntimeValue {
   if (input instanceof RuntimeRecord) {
     const length = runtimeToNumber(input.get('length'));
     const index = Number.isSafeInteger(length) && length > 0
-      ? randomInt(length)
-      : Math.floor(randomInt(randomFractionResolution) / randomFractionResolution * length);
+      ? randomInteger(length)
+      : Math.floor(randomInteger(randomFractionResolution) / randomFractionResolution * length);
     return input.get(runtimeToPropertyKey(index));
   }
   const values = runtimeSequenceValues(input);
   if (!values || values.length === 0) {
     return undefined;
   }
-  return values[randomInt(values.length)];
+  return values[randomInteger(values.length)];
 }
 
 function runtimeLength(input: RuntimeValue): RuntimeValue {

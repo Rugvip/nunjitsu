@@ -1,4 +1,4 @@
-import { types } from 'node:util';
+import { isJsonSyntaxError, utf8ByteLength } from './platform.ts';
 
 import type {
   AstBinaryNode,
@@ -349,7 +349,7 @@ class Evaluator {
         try {
           decoded = JSON.parse(encoded) as TemplateValue;
         } catch (error) {
-          if (!types.isNativeError(error) || error.name !== 'SyntaxError') {
+          if (!isJsonSyntaxError(error)) {
             throw error;
           }
           return normal === '' ? undefined : normal;
@@ -2325,7 +2325,7 @@ function runtimeValueBytes(
     let bytes = 0;
     for (const [key, item] of value.entries()) {
       chargeWork?.();
-      bytes += Buffer.byteLength(key) + runtimeValueBytes(item, chargeWork);
+      bytes += utf8ByteLength(key) + runtimeValueBytes(item, chargeWork);
     }
     return bytes;
   }
@@ -2345,7 +2345,7 @@ function runtimeValueBytes(
     }
     return bytes;
   }
-  return Buffer.byteLength(renderRuntimeValue(value, chargeWork));
+  return utf8ByteLength(renderRuntimeValue(value, chargeWork));
 }
 
 function chargeRuntimeValueExpansion(
