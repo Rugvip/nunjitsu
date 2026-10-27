@@ -41,7 +41,6 @@ synchronous TypeScript API works in both environments, without Node polyfills,
 precompilation, or permission to execute generated JavaScript.
 
 The browser build targets ES2023 and requires Web Crypto for the `random` filter.
-For native browser modules, serve `dist/browser/index.js` and import its URL.
 See [Security](docs/security.md#browser-security-boundary) for browser-specific
 considerations.
 
