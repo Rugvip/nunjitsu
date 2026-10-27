@@ -1,7 +1,7 @@
 # Security
 
 Nunjitsu is designed to render fully untrusted template source without giving
-that source implicit access to JavaScript or the surrounding Node.js process.
+that source implicit access to JavaScript or the surrounding JavaScript environment.
 It does this with a closed interpreter and an explicit capability model.
 
 This page describes the security contract applications can rely on. Exact
@@ -148,13 +148,13 @@ const renderer = createTemplateRenderer({
 
 This renderer-wide setting enables regex patterns in the built-in `replace`
 filter and string `replace` and `split` methods, plus stateful regex `test`.
-These operations use Node.js's native regular-expression engine, including
+These operations use the host's native regular-expression engine, including
 captures and flags. The setting does not affect a custom registered filter
 named `replace`, which is trusted capability code like any other registered
 filter.
 
 A hostile enabled pattern and input can cause excessive backtracking and block
-the Node.js event loop.
+the application event loop.
 
 Render work limits do not close this gap. Once a synchronous native
 regular-expression operation begins, the interpreter cannot account for or
@@ -190,8 +190,9 @@ legacy RegExp state that application code set earlier; it cannot restore that
 state reliably. Applications and capabilities must not rely on those deprecated
 fields.
 
-The `random` filter uses Node.js cryptographic integer selection and does not
-read or advance the application's `Math.random` stream.
+The `random` filter uses cryptographic integer selection through Node.js crypto
+or browser Web Crypto and does not read or advance the application's
+`Math.random` stream.
 
 ## Output is still untrusted
 
@@ -206,5 +207,28 @@ Nunjitsu does not provide hard process isolation, exact CPU or heap accounting,
 safe behavior for application capabilities, protection from the
 opt-in native regular-expression backtracking described above,
 secret-data zeroization, or sanitization of rendered output. The security
-contract also assumes trusted standard Node.js intrinsics and an uncompromised
+contract also assumes trusted standard JavaScript intrinsics and an uncompromised
 Nunjitsu installation.
+
+## Browser security boundary
+
+The browser build uses the same closed interpreter and resource limits as the
+Node.js build. Untrusted template source cannot construct JavaScript proxies,
+access ambient browser APIs, or execute arbitrary JavaScript.
+
+Supply context, configured globals, registries, and callback results as trusted
+application-created data objects. Node.js rejects proxies before inspecting host
+values; standard browser JavaScript has no equivalent check. In a browser, a
+proxy supplied by application code can run its traps while Nunjitsu inspects or
+copies it, outside interpreter resource accounting. Input accessors are still
+rejected, and copied values remain closed interpreter data.
+
+Browser errors expose host exception messages only when the browser supports the
+native `Error.isError` brand check. Otherwise capability failures use a generic
+message; primitive string exceptions still receive the usual sanitization.
+Renderer-owned diagnostics retain their normal details in either environment.
+
+Rendering is synchronous and can occupy the browser's main thread. Limits do
+not interrupt trusted callbacks or native regex execution. Keep regex execution
+disabled for untrusted patterns, and choose limits appropriate for interactive
+applications. Native regex behavior can differ between JavaScript engines.

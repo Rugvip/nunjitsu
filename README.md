@@ -7,8 +7,8 @@ synchronous interpreter rather than generated JavaScript.
 
 Use Nunjitsu when templates may be untrusted and the application needs explicit
 control over every value and function exposed to them. The package targets
-Node.js 22 or newer and accepts inline template source only; filesystem loading,
-precompilation, streaming, browser execution, and asynchronous callbacks are
+Node.js 22 or newer and modern browsers, and accepts inline template source only;
+filesystem loading, precompilation, streaming, and asynchronous callbacks are
 outside its scope.
 
 Use the
@@ -32,6 +32,19 @@ npm install nunjitsu
 ```sh
 yarn add nunjitsu
 ```
+
+## Browser use
+
+Import `nunjitsu` normally in a browser application. Bundlers that support the
+`browser` export condition select the browser ESM build automatically. The same
+synchronous TypeScript API works in both environments, without Node polyfills,
+precompilation, or permission to execute generated JavaScript.
+
+The browser build targets ES2023 and requires Web Crypto for the `random` filter.
+For native browser modules, serve `dist/browser/index.js` and import its URL.
+Browser callers must supply trusted application-created input objects: unlike
+Node.js, browsers cannot detect proxies before inspecting them. See the
+[browser security boundary](docs/security.md#browser-security-boundary).
 
 ## TypeScript API
 

@@ -32,14 +32,16 @@ belong here so those pages can remain readable.
 
 ## Project-wide architectural constraints
 
-- Target Node.js 22 or newer. Confine Node-specific host checks, randomness,
-  and byte counting to `src/runtime/platform.ts`; keep the parser and
-  interpreter independent of Node APIs.
+- Target Node.js 22 or newer and ES2023-capable browsers. Confine Node-specific
+  host checks, randomness, and byte counting to `src/runtime/platform.ts`;
+  select the typed `platform.browser.ts` implementation at build time for the
+  browser ESM export. Keep the parser and interpreter shared and independent of
+  Node APIs. Browser output must not require Node globals or polyfills.
 - Keep the TypeScript package at the repository root and manage it with the
   `packageManager`-pinned pnpm version and `pnpm-lock.yaml`. Do not add another
   package-manager lockfile. Author one erasable `.ts` source tree and compile it
   into tested ESM and CommonJS builds with rolled-up declarations using the
-  lockfile-pinned stable TypeScript compiler and tsdown.
+  lockfile-pinned TypeScript compiler and tsdown.
 - Construct renderers synchronously and render synchronously. Renderer-level
   filters and globals are immutable after creation.
 - Implement template execution as a closed native TypeScript interpreter in
@@ -288,10 +290,13 @@ Do not create additional packages without a documented architectural reason.
 - Inspect input records through own property descriptors and reject accessors.
   Do not invoke getters while copying accepted plain records.
 - Reject Node-detected proxies before array detection or any reflective value
-  inspection. Keep capability result copying inside the opaque fail-stop
-  exception boundary.
+  inspection in Node.js. Browser callers must supply trusted application-created
+  host objects; proxy rejection is unavailable there, so inspection can invoke
+  proxy traps outside resource accounting. Never treat this difference as
+  authority to expose live host values inside the interpreter. Keep capability
+  result copying inside the opaque fail-stop exception boundary.
 - Accept only exact native Map and Set instances with no own properties. Reject
-  subclasses, custom prototypes, accessors, proxies, cycles, oversized
+  subclasses, custom prototypes, accessors, Node-detected proxies, cycles, oversized
   containers, and reserved string Map keys before exposing a closed snapshot.
   Preserve SameValueZero keys, values, insertion order, and aliases across the
   copied graph.
@@ -350,7 +355,7 @@ Do not create additional packages without a documented architectural reason.
   v3.2.4 `gimy` flag set. Reject duplicate or other ASCII-letter flags and
   candidate delimiters preceded by nonzero even backslash runs before
   evaluation; share complete identifier boundaries between tag and expression
-  scanning so only an exact `r/` token starts a regex. Native Node.js RegExp
+  scanning so only an exact `r/` token starts a regex. Native host RegExp
   support must never expand accepted syntax.
 - Bound every regex pattern to 16,384 UTF-16 code units while scanning, before
   passing it to native `RegExp` syntax validation. This non-configurable ceiling
@@ -369,7 +374,7 @@ Do not create additional packages without a documented architectural reason.
   explicitly registered custom filter named `replace`, which is trusted
   capability code.
 - When `allowRegexExecution` is true, regex replacement, splitting, and testing
-  deliberately execute template-controlled patterns through Node.js's native
+  deliberately execute template-controlled patterns through the host's native
   regular-expression engine for Nunjucks compatibility. Keep regex `lastIndex`
   as closed render-local state. Cooperative render limits cannot interrupt
   native matching, so protection from excessive backtracking is outside the
@@ -546,11 +551,13 @@ Do not create additional packages without a documented architectural reason.
   sanitized exception handling completes. Capabilities must not observe
   template or earlier-capability match state.
 - Implement template-visible randomness with Node's cryptographic random
-  source. Built-ins must not read or advance the caller realm's shared
+  source or browser Web Crypto with unbiased integer rejection sampling. Built-ins
+  must not read or advance the caller realm's shared
   `Math.random` stream.
 - Treat capability exceptions as fail-stop opaque values. Preserve details only
   from primitive strings or an own string data descriptor after a trap-free
-  native-error brand check, neutralize and bound the detail, discard the
+  native-error brand check (omit object exception details in browsers without
+  `Error.isError`), neutralize and bound the detail, discard the
   original thrown value, and never resume template evaluation.
 - Complete public API validation before template evaluation. Pass through only
   `TemplateLimitError` from evaluation and wrap every other evaluation failure

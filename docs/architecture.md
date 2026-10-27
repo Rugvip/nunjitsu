@@ -108,17 +108,21 @@ operational model and defaults.
 - `src/` contains the public API, parser, safe values, interpreter, and built-ins.
 - `tests/source/` exercises source TypeScript directly.
 - `tests/compat/` contains the attributed Nunjucks compatibility corpus.
-- `tests/package/` validates built ESM, CommonJS, and declaration entrypoints.
+- `tests/package/` validates built Node.js and browser entrypoints and declarations.
 - `benchmarks/` compares inline rendering with pinned Nunjucks.
 - `scripts/` contains compatibility and release tooling.
 
-One erasable TypeScript source tree produces equivalent ESM and CommonJS builds
-with rolled-up public declarations. Runtime behavior must not depend on module
-format.
+One erasable TypeScript source tree produces Node.js ESM and CommonJS builds
+and a browser ESM build with shared rolled-up public declarations. The build
+replaces `runtime/platform.ts` with `runtime/platform.browser.ts` for browser
+output. These modules isolate host value checks, randomness, and byte counting;
+the parser and interpreter are shared. Node.js module format does not change
+runtime behavior. The browser host-value boundary differs as described in
+[Security](security.md#browser-security-boundary).
 
 ## Deliberate non-goals
 
-Nunjitsu does not provide template loading, inheritance, browser support,
+Nunjitsu does not provide template loading, inheritance,
 streaming, asynchronous rendering, precompilation, persistent compiled caches,
 custom parser extensions, or the Nunjucks JavaScript API. Applications own any
 filesystem access before passing a source string to the renderer.

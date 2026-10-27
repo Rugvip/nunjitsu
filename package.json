@@ -22,6 +22,10 @@
   "types": "./dist/index.d.ts",
   "exports": {
     ".": {
+      "browser": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/browser/index.js"
+      },
       "import": {
         "types": "./dist/index.d.ts",
         "default": "./dist/index.js"
@@ -72,5 +76,6 @@
     "tsdown": "^0.22.4",
     "typescript": "~7.0.2",
     "typescript-legacy": "npm:typescript@~6.0.3"
-  }
+  },
+  "browser": "./dist/browser/index.js"
 }
